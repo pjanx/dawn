@@ -1,0 +1,301 @@
+Rationale
+=========
+
+This document is written from the perspective of the project lead.
+I can write the same story from different perspectives.  '`Why is it this way`'
+seems to be a useful one.
+
+I'm open to new information.  You always miss something: first you get wrong,
+and then you get wiser.
+
+Why make this at all
+--------------------
+ - _Image viewer:_ There is no good image viewer for Linux at all (2026).
+   I had been using my https://git.janouch.name/p/fiv[fiv] but it needed a lot
+   of improvements, some of which ran up against its technical stack.
+
+ - _Image organiser:_ Like before, the competition for querying and organising
+   huge piles of image files is thin.  All I need is a tool with reasonable
+   automation interfaces, and pair it with at least trivial local AI
+   for classification.
+
+ - _File manager:_ Linux and macOS have at best middling freely available
+   graphical https://en.wikipedia.org/wiki/File_manager#Orthodox_file_managers[
+   orthodox file managers].  I want to bring Midnight Commander to the end
+   of the last century, with MTP and SFTP support.  This must be a separate mode
+   from the image browser, because it sadly does not combine.
+
+ - Various special requirements--some in the UI/UX department,
+   some technological--can't all be solved through forking existing projects.
+
+The reasoning goes much deeper, and isn't particularly worth expanding on.
+I bear all costs, as well as gains.
+
+Devil's advocate
+----------------
+The project is explicitly local-first, and works on top of what you already
+have on a desktop, laptop computer.  But file systems are becoming an obsolete
+concept, as is personal computing as we've known it.  It will occupy a niche.
+
+AI use
+------
+Few people can say they have enough time, and this project has monstrous scope
+for a single person.  Moreover, 2026 frontier models run circles around me in
+certain areas and aspects.  Sadly not in product design--that is my own burden.
+
+The model evaluation at the time of writing is that Cursor Grok 4.6 High is
+a dumb servant that doesn't question, and Opus 5 or GPT 5.6 Sol are capable of
+resolving most problems, at a significant cost.
+
+Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
+the problems become more complex.  Perhaps as I'm shifting to a belief
+that the models can read my mind--adding context usually helps.  Giving it
+a screenshot may easily trump describing issues in words.
+
+Name
+----
+It comes from around 2013 when I wanted to make Dawn Commander.  The trail ends
+there.  And I'm finishing exactly what I've begun--this will be the file manager
+mode's name.
+
+The main binaries are to be named '`dn`' or '`dnc`' in order to save on
+keystrokes, in the pattern of '`mc`' for Midnight Commander.  I recognise the
+potential for conflicts, and won't be mad at any packagers if they rename it.
+Like it seems popular to use the reverse domain name notation these days.
+
+Constraints
+-----------
+Also see '`We care about`' in the link:../README.adoc[README].
+
+Infrastructure
+--------------
+I run my own stuff for several reasons, such as: it stays exactly as I left it,
+I can conceptually wrap it around my brain, I always have a dedicated engineer
+on hand, and I cannot be denied service.  That said, resolution of blackouts and
+Internet outages may require physical presence, and a proper failover would be
+beyond my budget, so this arrangement is far from set in stone.  GitHub is
+a passable backup or complementary solution--we already mirror there.
+
+Platforms
+---------
+I want to be able to use the software on all main OSs, as I daily drive two
+in combination.  This results in architectural pain that I'm willing to engineer
+for.  Deployment is a tad difficult:
+
+ - Linux has many odd dependencies that make it difficult to package
+   the software in a way that it wants to integrate.  I've eventually succeeded
+   at taming Flatpaks, though Flathub--the usual distribution platform--has
+   hostile policies.
+
+ - macOS needs special build slaves, at minimum a decent ARM64 virtual machine,
+   and more importantly a Developer ID certificate if any greater number
+   of people were to use the software.
+
+ - Windows is the easiest OS to package for, disappointingly.  At least it has
+   a decent market share.
+
+Language
+--------
+In principle, the project consists of several parts that may be heterogeneous,
+communicating over IPC protocols.
+
+In practice, most good libraries for reuse either have a C or *C++* API,
+and additional layers are undesirable.  I'm not too happy here.
+Alternatives need to be stable, which Zig isn't, and must not come with a myriad
+papercuts, which Rust and Cargo do.
+
+In any case, automated porting is a thing.
+
+Build system
+------------
+Having tried Meson in the predecessor, I'm not willing to endure the pain again.
+Its documentation is weak (literally searching
+https://mesonbuild.com/index.html[in the dark]), it forces you to do things in
+a particular way through its remarkably weak scripting^Wconfiguration language,
+and it comes with annoying https://github.com/mesonbuild/meson/issues/1564[bugs]
+and https://github.com/mesonbuild/meson/issues/1696[limitations].
+To say something nice about it, I like `meson devenv`.
+
+I've reverted to my favourite *CMake*.  You want it, it does it.  Easily.
+Syntax is secondary.
+
+Rendering
+---------
+CPUs are unusably slow for high-quality scaling.  You may successfully cache
+colour management but not gamma operations--every change of zoom needs many
+transfer curve conversions.  This is the main reason for going *full GPU*:
+the task is trivially parallelisable.
+
+Seeing as OpenGL is slowly going out of fashion, I went with the portable
+and overly verbose *Vulkan API*.  Bless LLMs.  Deployment is easy enough:
+macOS packages can be shipped with MoltenVK, and Windows is well served with
+a SwiftShader software fallback (llvmpipe seemed huge).
+
+Colour manglement
+-----------------
+I use *Little CMS* like everyone else and their cat.  And it's one of
+the slowest parts of loading an image.  However, if your copy of lcms2 has
+the _fast float_, and/or _multithreaded_ plugins, you can easily speed it up
+by a factor of 3 or more.  The catch is that they're normally not packaged
+in distributions, and they're licensed under the GPL (this may be related).
+Even if this project were to go commercial, oh-em-gee €150 won't kill me,
+I love me colours.
+
+The ultimate speedup would be complete CM in a shader, but it's Not Easy™,
+and I'm not a colorimetrist.  You need to port at least a basic subset of
+the library.
+
+UI toolkit
+----------
+I've made my https://git.janouch.name/p/fiv[previous image viewer] using GTK.
+That toolkit has a clean design.  Now for _a small sample_ of its problems:
+
+ - It has diverged significantly from my idea of what a user interface
+   https://p.janouch.name/text/human-interface-guidelines.html[should be like].
+ - Writing this in C is very laborious, and my UX requirements necessitate
+   a lot of custom widgets.  G-I is suboptimal.
+ - The clean design comes with breaks in compatibility between even minor
+   versions.  大嫌い。
+
+Toolkits generally like to stand in the way.  One large technical reason for
+discarding them is control over the visual processing pipeline.  I _need_ high
+bit depth, I _need_ to get all the gamut, and I _need_ a lot of GPU rendering.
+With a custom Vulkan swapchain.  Even SDL 3 couldn't serve me, because its API
+can't tell you which display a window is on.  Vendoring large codebases is
+a problem of its own.
+
+In the end, I've almost handrolled the backend completely, but after a final
+evaluation of Qt as part of cleaning up my notes, I've found out that *Qt
+GUI*, which lives _underneath_ Qt Widgets and Qt Quick, happens to be useful.
+(I've since checked that a GDK 4 path is impossible.)
+
+Its largest dependency is ICU, which we don't strictly require, and Qt can
+actually be built without it if needed for smaller standalone packages.
+
+The minimal platform abstraction layer Qt provides _still_ creates its own
+problems anyway, such as:
+
+ - On X11, it is not possible to change the back pixel for windows,
+   so resizes pre-paint parts of the window black.  (Solvable with a hack.)
+
+ - On Wayland, the default provided CSD is unsatisfactory.  We've made our own
+   CSDs, though this has forced us to paint CSD shadows outside the primary
+   window in a subsurface, and we need a private API to invoke the compositor's
+   CSD menu on right click.  Pointless machinery: Qt makes Wayland needlessly
+   miserable.
+
+ - We can't get true alpha maps for our glyph cache.  Thus text is likely
+   to be composited wrongly.  (Improvable with private APIs.)
+
+It's likely that we'll eventually drop it, whether due to licencing that
+makes potential App Store distribution prohibitively expensive, or otherwise.
+
+Actual toolkit
+--------------
+So, Qt GUI doesn't do that much by itself.  Initially, I had the idea of
+combining it with Dear ImGui, but its design assumptions fought me:
+most importantly, an image viewer is not a game, and while we're fine doing full
+frame renders, we do _not_ want to do this 60 or more times a second.
+Eventually, the immediate mode paradigm went out entirely, as it became
+an unmaintainable mess of interspersed state.
+
+And so there is a *hand-rolled retained mode UI*.
+Like in https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
+Vimperator-like hints outside a browser, and I've trivially received them.
+In general, keyboard navigation is
+https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
+
+As of writing, no effort has been made to have true popup windows, so we're
+somewhat GTK style, and it might actually not be much of a problem.
+
+// TODO(p): Talk more about particular user interface choices.
+
+Icons
+-----
+I love Jakub Steiner's '`public domain`'
+https://gitlab.gnome.org/Teams/Design/icon-development-kit[
+*Icon Development Kit*] (we can't actually legally waive copyright,
+and neither can his employer).
+A cohesive visual design makes a program come alive.
+
+SVG
+---
+Qt SVG only supports a small subset, and likes to break on the mentioned icons.
+It's completely unusable for greater image viewer needs.  But *resvg* is
+https://github.com/linebender/resvg#svg-support[cool] enough for us to declare
+it a hard dependency, in place of the more common librsvg.
+
+Unfortunately, another gotcha with the icons is that they are GTK-centric.
+If they weren't used as simple masks, they would need some patching so that
+the UI can at least inject theme colours into the symbolics.
+Selecting GPA (a GTK SVG extension) variants is yet another story.
+
+Other file formats
+------------------
+The primary loader is https://github.com/google/wuffs[*Wuffs*], which is fast,
+supposedly safe, and covers a lot of formats.  It's just moderately hard to
+integrate.
+
+With JPEG, although Wuffs has some support for it as well, it's fairly simple:
+prefer the well-established *libjpeg-turbo*.  I also bundle
+https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
+it's interesting--DCT artifacts can otherwise nullify a decent scaling
+algorithm.
+
+Raw camera photos are served with *LibRaw*, since there isn't much of a choice.
+Its automatic rendering, as well as general engineering qualities, are quite
+poor.  Thus we first try to extract full-size JPEG thumbnails from TIFF/EP
+compatible formats (I own a Nikon DSLR).
+
+I don't especially care about niche formats.  If it ever becomes desirable,
+there is an obscure project called https://snisurset.net/code/abydos/about.html[
+Abydos] which gets quite exhaustive in that regard.  The current general
+fallbacks are Glycin, the older GdkPixbuf, and on macOS the system ImageIO.
+Windows Imaging Component was so ugly that I've rather added JPEG XR explicitly
+as the only thing no other loader could do (the Raw Image Extension
+on Microsoft Store uses LibRaw).
+
+Ultimately, loaders are a zoo, which is why you can disable or reorder them.
+
+Scaling
+-------
+Initially, I naïvely thought bicubic or Lanczos upscaling would be
+an improvement over bilinear, though all of the halo-prone algorithms turn out
+to be the last thing you would want in a '`high fidelity`' image viewer.
+Luckily, I knew of GIMP's special
+https://dl.acm.org/doi/pdf/10.1145/1557626.1557657[*NoHalo algorithm*],
+and I now believe it has no real competition--it's reasonably fast, smooths out
+antialiased edges very well, and doesn't invent new features.
+
+Vulkan CPU rendering is predictably slow enough to warrant upscaling having
+a special path to go bilinear.
+
+With downscaling, the box area filter seems to create artifacts on
+high-frequency images where the *triangle* (antialiased bilinear) doesn't.
+Gaussian should be a bit smoother, though imperceptibly so, therefore I've
+skipped it.
+
+Thumbnails
+----------
+Perhaps most photos or drawings are in the landscape orientation, so I prefer
+the idea of a continuous stream of same-height thumbnails, capped at
+a reasonable ratio, such as 2:1.  To show them at an appropriate quality,
+you must also store them as such.  See link:wide-thumbnail-spec.adoc[
+the specification] I've put together.
+
+For the second milestone, wide thumbnails will move into a database, abandoning
+trying to follow a specification.  Instead, we will try to reuse platform tools.
+
+Due to quality requirements and performance constraints, scaling source image
+data for thumbnails must be done on a GPU.  The GPU is a bottleneck, and forms
+a special data path.  The solution has grown an entire thumbnail scheduler.
+(We also have various pathways of sourcing somewhat usable image data,
+before we produce a known-to-be-good quality thumbnail.)
+
+Shadows
+-------
+The UI has a few simple shadows/glows here and there.  I've noticed that people
+often employ a shortcut where they take a mask of the thing throwing a shadow,
+then apply a Gaussian blur on it.  That doesn't create correct shadows,
+which is particularly noticeable near right-angled corners.  We compute a proper
+equidistant mask.

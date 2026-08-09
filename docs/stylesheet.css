@@ -1,0 +1,9 @@
+body { max-width: 50em; margin: 0 auto 4em auto; padding: 0 2em;
+	font-family: sans-serif; } h1, h2, h3 { font-weight: normal; }
+h1 { font-size: 2.5em; } h2 { font-size: 2em; } h3 { font-size: 1.33em; }
+h2 { padding-top: .67em; border-top: 1px solid silver; }
+p { line-height: 1.5; } .figure { text-align: center; } img { max-width: 100%; }
+q { font-style: normal; } .details { border-bottom: 1px solid silver; }
+.details br { display: none; } .details br + span:before { content: " — "; }
+pre { padding: 0 1em; } kbd { border: solid #ccc; border-radius: .25em;
+	border-width: 1px 2px 2px 1px; padding: 0 .25em; font-family: inherit; }

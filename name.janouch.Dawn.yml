@@ -1,0 +1,87 @@
+app-id: name.janouch.Dawn
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+base: name.janouch.Dawn.BaseApp
+base-version: stable
+command: dn
+
+build-options:
+  strip: true
+  no-debuginfo: true
+
+# A bundle carries one reference, and a .Locale extension is another: split
+# out, the dependencies' translations would not reach anyone.  Keep them in.
+separate-locales: false
+
+# Note that the Flatpak gets its own redirected XDG_CACHE_HOME,
+# and as such won't see or touch ~/.cache/thumbnails.
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=host:ro
+  - --filesystem=/var/lib/colord/icc:ro
+  - --system-talk-name=org.freedesktop.ColorManager
+
+# `cleanup:` only ever sees files that this manifest's own modules installed,
+# and most files come from the base, so prune here explicitly.  What survives is
+# the NEEDED closure of /app/bin/dn plus what gets opened at runtime.
+cleanup-commands:
+  - find /app/bin -mindepth 1 ! -name 'dn' ! -name 'dn-*'
+      -exec rm -rf {} +
+  - find /app/libexec -mindepth 1 -maxdepth 1 ! -name glycin-loaders
+      -exec rm -rf {} +
+
+  - rm -f /app/lib/libcolorhug.so* /app/lib/libgusb.so* /app/lib/libraw_r.so*
+  - rm -rf /app/plugins/generic /app/plugins/imageformats
+      /app/plugins/platforms/libqlinuxfb.so
+      /app/plugins/platforms/libqminimal.so
+      /app/plugins/platforms/libqvkkhrdisplay.so
+
+  - rm -rf /app/doc /app/include /app/lib/cmake /app/lib/pkgconfig
+      /app/metatypes /app/mkspecs /app/modules
+  - rm -rf /app/share/color /app/share/colord /app/share/dbus-1
+      /app/share/glib-2.0 /app/share/man /app/share/qt6
+      /app/share/thumbnailers
+  - find /app/share/doc -mindepth 1 -maxdepth 1 ! -name dawn
+      -exec rm -rf {} +
+  - find /app \( -name '*.a' -o -name '*.la' -o -name '*.prl' \) -delete
+
+modules:
+  - name: dawn
+    buildsystem: cmake-ninja
+    builddir: true
+    build-options:
+      env:
+        QT_QPA_PLATFORM: offscreen
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DDAWN_WITH_GDKPIXBUF=OFF
+      - -DFETCHCONTENT_SOURCE_DIR_LCMS2=/run/build/dawn/lcms2
+      - -DFETCHCONTENT_SOURCE_DIR_JPEGQS=/run/build/dawn/jpegqs
+    sources:
+      - type: dir
+        path: .
+        skip:
+          - .flatpak
+          - .git
+      # FetchContent would need the network; and with the source directory
+      # overridden it skips patching, so jpegqs gets its build files here.
+      - type: archive
+        url: https://github.com/mm2/Little-CMS/archive/refs/tags/lcms2.19.1.tar.gz
+        sha256: 267705e278e2f7c2fb886c259dadcbaeb2be52748bcbc71c79f08aacacb7a709
+        dest: lcms2
+      - type: archive
+        url: https://github.com/ilyakurdyukov/jpeg-quantsmooth/archive/refs/tags/1.20260122.tar.gz
+        sha256: 7dcbaa7d994511a03dba845aa218a25f9c8e70c0bcb0800ff61ae3d92dd50c3d
+        dest: jpegqs
+      - type: file
+        path: cmake/jpegqs/CMakeLists.txt
+        dest: jpegqs
+      - type: dir
+        path: cmake/jpegqs/include
+        dest: jpegqs/include

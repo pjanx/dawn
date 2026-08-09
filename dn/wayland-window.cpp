@@ -1,0 +1,246 @@
+//
+// wayland-window.cpp: Wayland-specific viewer window
+//
+// Copyright The Dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#include "wayland-window.hpp"
+
+#include "app.hpp"
+#include "wayland-color-bridge.hpp"
+#include "xdg-shell-client-protocol.h"
+
+#include <QByteArray>
+#include <QCloseEvent>
+#include <QCoreApplication>
+#include <QEvent>
+#include <QGuiApplication>
+#include <QKeyEvent>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QPlatformSurfaceEvent>
+#include <QResizeEvent>
+#include <QShowEvent>
+#include <QSurfaceFormat>
+#include <QTimer>
+#include <QtGui/qguiapplication_platform.h>
+#include <QtLogging>
+#include <qpa/qplatformnativeinterface.h>
+
+#include <vulkan/vulkan.h>
+
+#include <cmath>
+
+using namespace std;
+
+namespace dn
+{
+
+void
+wayland_show_window_menu(QWindow *shell, int x, int y)
+{
+	// There is no better way of invoking this than the private API.
+	auto *iface = QGuiApplication::platformNativeInterface();
+	auto *native =
+		qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+	if (!iface || !native)
+		return;
+	auto *toplevel = (xdg_toplevel *) iface->nativeResourceForWindow(
+		QByteArrayLiteral("xdg_toplevel"), shell);
+	wl_seat *seat = native->lastInputSeat();
+	if (!toplevel || !seat)
+		return;
+	xdg_toplevel_show_window_menu(
+		toplevel, seat, native->lastInputSerial(), x, y);
+}
+
+WaylandWindow::WaylandWindow(App *app)
+	: app_(app), content_(app, this),
+	  color_bridge_(make_unique<WaylandColorBridge>())
+{
+	setTitle(QStringLiteral("dn"));
+	QSurfaceFormat shell = format();
+	shell.setAlphaBufferSize(8);
+	setFormat(shell);
+	if (app && app->needs_csd) {
+		setFlag(Qt::FramelessWindowHint);
+		// Qt Wayland treats alphaBufferSize<=0 as opaque and stamps
+		// wl_surface.set_opaque_region over the whole child, including
+		// glow that hangs outside the shell. Keep the child non-opaque.
+		QSurfaceFormat child = this->content_.format();
+		child.setAlphaBufferSize(8);
+		this->content_.setFormat(child);
+	}
+	QSurfaceFormat format = this->content_.format();
+	format.setSwapInterval(0);
+	this->content_.setFormat(format);
+	resize(this->content_.size());
+	place_content();
+	this->content_.installEventFilter(this);
+}
+
+WaylandWindow::~WaylandWindow()
+{
+	hide();
+	this->content_.removeEventFilter(this);
+}
+
+bool
+WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, bool browse)
+{
+	create();
+	place_content();
+	if (!this->content_.initialize(url, setup, browse))
+		return false;
+	attach_color_management(true);
+	return true;
+}
+
+void
+WaylandWindow::begin_close()
+{
+	if (this->close_state_ != CloseState::Open)
+		return;
+	// Keep the top-level wl_surface alive until Qt receives text-input leave.
+	this->close_state_ = CloseState::WaitingForLeave;
+	hide();
+	if (!isActive())
+		finish_close();
+}
+
+void
+WaylandWindow::finish_close()
+{
+	if (this->close_state_ != CloseState::WaitingForLeave)
+		return;
+	this->close_state_ = CloseState::ReadyToClose;
+	QTimer::singleShot(0, this, [this] {
+		if (this->close_state_ != CloseState::ReadyToClose)
+			return;
+		// Accepting the second close destroys both platform surfaces. The shell
+		// is already hidden, so Qt will not emit lastWindowClosed for it.
+		close();
+		this->app_->close_later(this);
+	});
+}
+
+bool
+WaylandWindow::event(QEvent *event)
+{
+	if (event->type() == QEvent::FocusOut)
+		finish_close();
+	if (event->type() == QEvent::WindowStateChange) {
+		place_content();
+		QCoreApplication::sendEvent(&this->content_, event);
+	}
+	if (event->type() == QEvent::DragEnter ||
+		event->type() == QEvent::DragMove || event->type() == QEvent::Drop)
+		return QCoreApplication::sendEvent(&this->content_, event);
+	return QRasterWindow::event(event);
+}
+
+bool
+WaylandWindow::eventFilter(QObject *watched, QEvent *event)
+{
+	if (watched != &this->content_)
+		return QRasterWindow::eventFilter(watched, event);
+	if (event->type() == QEvent::FocusOut)
+		finish_close();
+	if (event->type() == QEvent::PlatformSurface) {
+		auto *surface_event = static_cast<QPlatformSurfaceEvent *>(event);
+		if (surface_event->surfaceEventType() ==
+			QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
+			this->color_bridge_->detach();
+		}
+	}
+	return QRasterWindow::eventFilter(watched, event);
+}
+
+void
+WaylandWindow::attach_color_management(bool report_fallback)
+{
+	if (!this->content_.renderer_ready()) {
+		this->color_bridge_->detach();
+		return;
+	}
+	if (this->content_.color_space() == VK_COLOR_SPACE_PASS_THROUGH_EXT) {
+		this->color_bridge_->attach(&this->content_);
+	} else {
+		this->color_bridge_->detach();
+		if (report_fallback) {
+			qWarning(
+				"Wayland CM identity unavailable: Vulkan PASS_THROUGH color "
+				"space not exposed; using compositor-managed sRGB");
+		}
+	}
+}
+
+void
+WaylandWindow::closeEvent(QCloseEvent *event)
+{
+	if (this->close_state_ == CloseState::ReadyToClose) {
+		event->accept();
+		return;
+	}
+	event->ignore();
+	begin_close();
+}
+
+void
+WaylandWindow::keyPressEvent(QKeyEvent *event)
+{
+	QCoreApplication::sendEvent(&this->content_, event);
+}
+
+void
+WaylandWindow::keyReleaseEvent(QKeyEvent *event)
+{
+	QCoreApplication::sendEvent(&this->content_, event);
+}
+
+void
+WaylandWindow::paintEvent(QPaintEvent *event)
+{
+	QPainter painter(this);
+	painter.setClipRegion(event->region());
+	painter.setCompositionMode(QPainter::CompositionMode_Source);
+	painter.fillRect(QRect(QPoint(), size()), Qt::transparent);
+}
+
+void
+WaylandWindow::resizeEvent(QResizeEvent *event)
+{
+	QRasterWindow::resizeEvent(event);
+	place_content();
+}
+
+QRect
+WaylandWindow::content_geometry() const
+{
+	if ((flags() & Qt::FramelessWindowHint) &&
+		!(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
+		// Qt logical units here, so the glow stays unscaled.
+		const int glow = int(kGlowPts);
+		return {-glow, -glow, width() + 2 * glow, height() + 2 * glow};
+	}
+	return {QPoint(), size()};
+}
+
+void
+WaylandWindow::place_content()
+{
+	const QRect g = content_geometry();
+	if (this->content_.geometry() != g)
+		this->content_.setGeometry(g);
+}
+
+void
+WaylandWindow::showEvent(QShowEvent *event)
+{
+	QRasterWindow::showEvent(event);
+	this->content_.show();
+	update();
+}
+
+}  // namespace dn

@@ -1,0 +1,155 @@
+app-id: name.janouch.Dawn.BaseApp
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: /bin/true
+
+# Everything Dawn needs on top of the Freedesktop runtime, built once and folded
+# into the application at build time -- name.janouch.Dawn.yml names this as
+# its `base`.  Any pruning is done there, not here.
+
+# Without stripping, Qt alone adds 400 MiB.
+build-options:
+  strip: true
+  no-debuginfo: true
+
+# A bundle carries one reference, and a .Locale extension is another: split
+# out, the dependencies' translations would not reach anyone.  Keep them in.
+separate-locales: false
+
+modules:
+  # Qt 6.11 absorbed qtwayland: src/plugins/platforms/wayland is qtbase now.
+  - name: qtbase
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DQT_BUILD_EXAMPLES=OFF
+      - -DQT_BUILD_TESTS=OFF
+      - -DQT_GENERATE_SBOM=OFF
+      # Precompiled headers consume way too much space.
+      - -DBUILD_WITH_PCH=OFF
+      - -DFEATURE_concurrent=OFF
+      - -DFEATURE_network=OFF
+      - -DFEATURE_sql=OFF
+      - -DFEATURE_testlib=OFF
+      - -DFEATURE_widgets=OFF
+      - -DFEATURE_xml=OFF
+      - -DFEATURE_eglfs=OFF
+      - -DFEATURE_vulkan=ON
+      - -DFEATURE_wayland=ON
+      - -DFEATURE_xcb=ON
+    sources:
+      - type: archive
+        url: https://download.qt.io/official_releases/qt/6.11/6.11.2/submodules/qtbase-everywhere-src-6.11.2.tar.xz
+        sha256: 5b2e00eccaf5a4d8c14134ffa0ea8dfd0a35ae1ffc7f8d87fa4305a1ed23cf22
+
+  # The release tarball vendors its crates, hence --offline works.
+  # Upstream installs no pkg-config file; msys2-configure.sh writes one, too.
+  - name: resvg
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/resvg/cargo
+    build-commands:
+      - cargo build --offline --release --manifest-path crates/c-api/Cargo.toml
+      - install -Dm644 crates/c-api/resvg.h /app/include/resvg/resvg.h
+      - install -Dm755 target/release/libresvg.so /app/lib/libresvg.so
+      - install -Dm644 resvg.pc /app/lib/pkgconfig/resvg.pc
+    sources:
+      - type: archive
+        url: https://github.com/linebender/resvg/releases/download/v0.48.1/resvg-0.48.1.tar.xz
+        sha256: 13ed5a2bae7a01156288ecae5bf944cf7d1c572742c19fc68027947a4d87294c
+      - type: inline
+        dest-filename: resvg.pc
+        contents: |
+          prefix=/app
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include
+
+          Name: resvg
+          Description: SVG rendering library (C API)
+          Version: 0.48.1
+          Libs: -L${libdir} -lresvg
+          Cflags: -I${includedir}/resvg
+
+  # colord asks for gusb unconditionally, even with the daemon switched off.
+  - name: libgusb
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=false
+      - -Dintrospection=false
+      - -Dtests=false
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://github.com/hughsie/libgusb/releases/download/0.4.9/libgusb-0.4.9.tar.xz
+        sha256: 9df5ef301d6a4b361002aa52cce1165a87a89744055879bdbab31e7e86f1e846
+
+  # Only the client library: the daemon is the host's, reached over the bus.
+  - name: colord
+    buildsystem: meson
+    config-opts:
+      - -Ddaemon=false
+      - -Dargyllcms_sensor=false
+      - -Dbash_completion=false
+      - -Ddocs=false
+      - -Dintrospection=false
+      - -Dman=false
+      - -Dsystemd=false
+      - -Dtests=false
+      - -Dudev_rules=false
+      - -Dvapi=false
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/colord/releases/colord-1.4.8.tar.xz
+        sha256: 21500bd68975312a7f0f3ce6019d9f75f42aacaa75ca7115ec720b5445406896
+
+  - name: libraw
+    config-opts:
+      - --disable-static
+      - --disable-examples
+    sources:
+      - type: archive
+        url: https://www.libraw.org/data/LibRaw-0.22.2.tar.gz
+        sha256: de86b035655accff8d4010f1a221fdf50d353cb7b1422ba26f14a0db92612cfa
+
+  # Dawn looks for Debian's flat include/jxrlib, upstream nests by component.
+  - name: jxrlib
+    buildsystem: simple
+    build-commands:
+      - make SHARED=1 DIR_INSTALL=/app install
+      - install -Dm644 -t /app/include/jxrlib /app/include/libjxr/*/*.h
+    sources:
+      - type: git
+        url: https://github.com/mircomir/jxrlib.git
+        tag: '1.4.2'
+        commit: 568cc2c4e09cf04412bc53a3e03e678ecd1d4693
+
+  # Only glycin-image-rs: HEIF, JPEG XL, SVG and raw have their own loaders.
+  # Unlike resvg, the release tarball does not vendor its crates.
+  - name: glycin
+    buildsystem: meson
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/glycin/cargo
+    config-opts:
+      - -Dglycin-loaders=true
+      - -Dloaders=glycin-image-rs
+      - -Dlibglycin=true
+      - -Dlibglycin-gtk4=false
+      - -Dglycin-thumbnailer=false
+      - -Dintrospection=false
+      - -Dvapi=false
+      - -Dtests=false
+    sources:
+      - type: archive
+        url: https://download.gnome.org/sources/glycin/2.1/glycin-2.1.5.tar.xz
+        sha256: 6c09757ee906330a60b6705753aa56bca007ad219b95e6e3537510d41bc341c8

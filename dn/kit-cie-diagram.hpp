@@ -1,0 +1,39 @@
+//
+// kit-cie-diagram.hpp: CIE 1931 xy sidebar widget
+//
+// Copyright The Dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#pragma once
+
+#include "kit.hpp"
+
+#include "libdn/libdn.h"
+
+namespace dn
+{
+
+struct CieDiagram : Widget {
+	dawn::Chromaticities image{};
+	dawn::Chromaticities screen{};
+	bool show_screen = false;
+	bool screen_dashed = false;
+	bool image_dashed = false;
+
+	void measure(Kit &kit, int max_w, int max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+	void prepare(Kit &kit) override;
+	void paint(Kit &kit) const override;
+
+private:
+	Kit::Packed slot_{};
+	uint32_t epoch_ = 0;
+	dawn::Chromaticities packed_image_{};
+	dawn::Chromaticities packed_screen_{};
+	bool packed_show_screen_ = false;
+	bool packed_screen_dashed_ = false;
+	bool packed_image_dashed_ = false;
+};
+
+}  // namespace dn

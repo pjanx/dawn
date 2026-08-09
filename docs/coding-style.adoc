@@ -1,0 +1,66 @@
+Coding style
+============
+
+General
+-------
+ * 'Dawn' is the name of the project, 'dn' is the name of the GUI application.
+   This influences naming.
+ * The general naming convention for files and directories is
+   _lower-case-with-hyphens_.  CMake has an exception for `FindPackage`.
+
+C++
+---
+The coding style is largely defined by _.clang-format_ configuration, which may
+be applied strictly.  On top of that, these additional rules keep authors sane:
+
+ * Source files (.cpp) state `using namespace std`.
+   This namespace is used unqualified, except for `std::move`.
+
+ * Avoid anonymous namespaces, except for classes, where they make sense.
+
+ * Within methods, distinguish class fields either by naming them with
+   an appended underscore, or by using `this`.  Do not use `m_`.
+
+ * Private members in a `class` always go first, then `protected`,
+   then `public`.  Similarly, fields go first, then methods.
+
+ * Non-trivial methods, such as those not fitting on a single line,
+   must be defined out of class.
+
+ * Never use `static_cast<T>(x)`.  Prefer `T(x)`, or `(T)(x)`.
+
+ * Unless meaning differs, it is `i++` and not `++i`.
+
+ * The preprocessor's `defined` is an operator, not a function.  No parentheses.
+
+ * `sizeof` on objects is an operator, not a function.  No parentheses.
+
+ * Avoid deep nesting in functions.
+
+ * Avoid defining your own templates, and avoid default arguments.
+
+ * Avoid using Qt facilities where STL will do exactly as well.
+
+ * Avoid using declarations.  Between class definitions and method definitions,
+   the way to achieve this is to keep everything public, and to make methods
+   C-style.  Between free-standing functions, make use of their natural
+   order of dependency.
+
+ * Avoid pointless getters.  If something is not a public API, making fields
+   private is not considered helpful.
+
+ * Avoid deep directory hierarchies.  Avoid creating files senselessly.
+
+Longer sections of code are to be grouped by function, and separated using
+banners, for example:
+
+```
+// --- Section -----------------------------------------------------------------
+```
+
+CMake
+-----
+ * Local variables are spelled out in lowercase.
+ * Prefer `PROJECT_` over `CMAKE_`, as the latter is usually wrong.
+   (`CMAKE_CURRENT_` does not have this problem.)
+ * Targets split words using hyphens, not underscores.

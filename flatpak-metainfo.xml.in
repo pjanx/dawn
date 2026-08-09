@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+	<id>@DAWN_NAMESPACE@</id>
+	<metadata_license>CC0-1.0</metadata_license>
+	<project_license>MPL-2.0</project_license>
+	<name>@PROJECT_NAME@</name>
+	<summary>@PROJECT_DESCRIPTION@</summary>
+	<description><p>@PROJECT_DESCRIPTION@</p></description>
+	<launchable type="desktop-id">@DAWN_NAMESPACE@.desktop</launchable>
+	<url type="homepage">@PROJECT_HOMEPAGE_URL@</url>
+	<developer id="name.janouch"><name>@CPACK_PACKAGE_VENDOR@</name></developer>
+	<content_rating type="oars-1.1"/>
+</component>

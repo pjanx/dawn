@@ -1,0 +1,122 @@
+Dawn
+====
+:compact-option:
+
+'Dawn' is a cross-platform colour-managed image browser, with high standards for
+fidelity and responsiveness.
+
+See link:docs/why.adoc[Why you need a better image viewer] if you feel lost.
+
+image::docs/dn.webp["Screenshot of both the browser and the viewer"]
+
+Design-wise, the project is an amalgamation of
+https://git.janouch.name/p/fiv[older efforts] and
+https://git.janouch.name/p/gallery[desires].
+Right now, we're close to our first milestone.  Once we declare the viewer part
+done, we'll clean up after rapid development, and move on to tackling the next
+major goals.
+
+The project comes with a maintenance guarantee.
+Also see link:docs/plan.adoc[Plan],
+and a detailed link:docs/rationale.adoc[Rationale].
+
+Features
+--------
+We care about
+~~~~~~~~~~~~~
+ - *Wide-gamut*, high-bit-depth SDR: 10-bit displays in Adobe RGB or Display P3.
+ - *16-bit* internal precision in order to minimise quantisation errors.
+ - *Gamma-correct* scaling: see below for a test that your iPhone fails.
+ - *Good scaling*: GIMP's NoHalo is an awesome compromise for upscaling
+   both photos and man-made images.
+ - *Loading as much as we can* from any file format at the best possible
+   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, etc.;
+   at least 65535 pixels on one side.
+ - *Making good use of computing resources*: exercise the GPU and all CPU cores.
+ - *Superb keyboard accessibility*: we recognise
+   https://p.janouch.name/text/human-interface-guidelines.html[HIGs]
+   and also have Vimium-style link hints.
+ - *We never silently move or modify image files.*
+
+Do it yourself
+~~~~~~~~~~~~~~
+ - HDR: the project scope is huge as it is, but you're welcome to lend a hand.
+
+Rejected
+~~~~~~~~
+ - Image editing: GIMP works well enough already.
+ - UI animations are seen as distracting, frustrating, and even irritating.
+
+Packages
+--------
+ - Latest https://janouch.name/cd/Dawn-latest-x86_64.flatpak[Linux Flatpak],
+   https://aur.archlinux.org/packages/dn-git[Arch Linux AUR].
+
+ - Latest https://janouch.name/cd/Dawn-latest-Windows-x86_64.zip[Windows ZIP],
+   https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
+   they work in Wine.
+
+ - macOS requires a fee for a signed package to be published.  Maybe later.
+
+On Windows, if you run the application with a high integrity level and you
+have no true Vulkan backend installed, it may not initialise.  Manually rename
+'vk_swiftshader.dll' to 'vulkan-1.dll'.  You will obtain software rendering.
+
+Building
+--------
+See link:docs/building-from-source.adoc[Building from source].
+
+Configuration
+-------------
+See link:docs/configuring-your-system.adoc[Configuring your system].
+If everything goes beautifully, the following test image will exercise your
+display's true gamut, and you'll also be able to see the finer steps.
+The bottom row should look more like '`linear 188`', not '`128`'
+(a popular bug).
+
+image::docs/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
+
+Note that 'Dawn' currently implements Bayer dithering for 8-bit swapchains,
+which you may need to turn off in settings to observe the difference.
+
+Competition
+-----------
+The macOS 'Preview.app' is excellent at what it does, if limited in scope:
+it effortlessly handles wide gamuts, high bit depth, and gamma-correct scaling.
+
+Electron-based viewers like
+_https://github.com/Auxx/light-matter['Light Matter']_
+are promising in that browser engines typically handle things well,
+at the cost of being rather heavyweight.
+
+'digiKam' must be mentioned, as it covers a lot of the advanced features
+of this project.  Sadly, it's obviously been designed by programmers,
+and the programmer behind 'Dawn' can't make heads or tails of the UI.
+
+Resources
+---------
+ - https://wolf.nereid.pl/posts/image-viewer/
+
+Acknowledgments
+---------------
+ - William R. Commander for
+   https://github.com/libjpeg-turbo/libjpeg-turbo.git[libjpeg-turbo]
+ - Marti Maria for
+   https://github.com/mm2/little-cms[Little CMS]
+ - Nigel Tao for
+   https://github.com/google/wuffs[Wuffs]
+
+Contributing and Support
+------------------------
+Use https://git.janouch.name/p/dawn to report any bugs, request features,
+or submit pull requests.  `git send-email` is tolerated.  If you want to discuss
+the project, feel free to join at ircs://irc.janouch.name, channel #dev.
+
+Bitcoin donations are accepted at: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
+
+License
+-------
+This software is released under the terms of the MPL 2.0 licence, the text of
+which is included within the package along with the list of authors.
+
+With Little CMS plugins bundled in, the binary package becomes GPL-licensed.

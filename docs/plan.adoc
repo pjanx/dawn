@@ -1,0 +1,58 @@
+Plan
+====
+
+[quote,Alan Kay]
+____
+They're all about this idea, which most programmers have that's wrong, is that
+you're going to write the program the right way. Nothing's going to be wrong.
+_The whole idea is to make a fucking mess._
+____
+
+Priorities
+----------
+[options="header"]
+|===
+|                   | High              | Medium          | Low
+| This is a         | image viewer      | image organiser | file manager
+| Target system     | Linux X11/Wayland | macOS           | Windows
+| It works          | at all            | correctly       | efficiently
+| Efficiency target | development       | speed           | memory
+|===
+
+Features not thoroughly tested are assumed to be broken.
+
+Milestones
+----------
+ - [x] Flat out replace https://git.janouch.name/p/fiv[fiv]
+       (excluding GVfs, printing, reverse search, JPEG cropper)
+    * [ ] Debug, clean up, branch a stable version
+ - [ ] Become capable of browsing
+       https://git.janouch.name/p/gallery[gallery] databases
+ - [ ] Flat out replace https://git.janouch.name/p/gallery[gallery]
+    * This will replace _wide-thumbnail-spec_ with an internal database,
+      plus platform-based thumbnailers as backup.
+    * [ ] Debug, clean up, branch a stable version
+ - [ ] Replace GNOME Files (including GVfs integration or equivalent abilities)
+    * [ ] Debug, clean up, branch a stable version
+ - [ ] Replace Midnight Commander
+    * [ ] Debug, clean up, branch a stable version
+
+Planned structure
+-----------------
+Shared libraries:
+
+ - *libdn:* Image processing & CMM
+
+Servers:
+
+ - *dnthumbd:* Thumbnailing service
+ - *dndbd:* Database service
+ - *dntagd:* ML tagging service
+ - *dnvfsd:* Virtual File System service
+ - *dnimaged:* Image decoding service (if separation becomes desirable)
+
+User interfaces:
+
+ - *dn:* Vulkan frontend
+ - *dnweb:* Web frontend to the database
+ - *dntui:* notcurses frontend (with limited features)
