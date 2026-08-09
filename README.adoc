@@ -1,0 +1,114 @@
+Dawn
+====
+:compact-option:
+
+'Dawn' is a multiplatform colour-managed image browser, with very high standards
+for fidelity and responsivity.
+
+This repository deliberately stays a mess until we reach our first big milestone
+and clean it up.  The project is AI-accelerated, though design-wise it is
+an amalgamation of older efforts and desires.
+
+The project is '`daily driven`' and comes with a promise of basic maintenance.
+
+Also see link:doc/plan.adoc[Plan],
+and a detailed link:doc/rationale.adoc[Rationale].
+
+[quote,Alan Kay]
+____
+They're all about this idea, which most programmers have that's wrong, is that
+you're going to write the program the right way. Nothing's going to be wrong.
+_The whole idea is to make a fucking mess._
+____
+
+Features
+--------
+We care about
+~~~~~~~~~~~~~
+ - *Wide-gamut*, high bit depth SDR: 10-bit displays in Adobe RGB or Display P3.
+ - *16-bit* internal precision in order to minimise quantisation errors.
+ - *Gamma-correct* scaling: see below for a test that your iPhone fails.
+ - *Good scaling*: GIMP's LoHalo is an awesome compromise for upscaling
+   of both photos and man-made images.
+ - *Loading as much as we can* from any file format at the best possible
+   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, etc.;
+   resolutions up to 65535×65535.
+ - *Making good use of computing resources*: exercise the GPU and all CPU cores.
+ - *Superb keyboard accessibility*: we recognise
+   https://p.janouch.name/text/human-interface-guidelines.html[HIGs]
+   and also have Vimium-style link hints.
+ - *We never silently move or modify image files.*
+
+Do it yourself
+~~~~~~~~~~~~~~
+ - HDR: the project scope is huge as it is, but you're welcome to lend a hand.
+
+Rejected
+~~~~~~~~
+ - Image editing: GIMP works well enough already.
+ - UI animations are found to be distracting, frustrating, and even despised.
+
+Packages
+--------
+Regular releases are sporadic.  git master should be stable enough.
+
+On Windows, if your account is '`high integrity`' and you have no true Vulkan
+backend installed, manually rename 'vk_swiftshader.dll' to 'vulkan-1.dll'.
+You will obtain software rendering.
+
+Building
+--------
+Build-only dependencies: CMake >= 3.28, a C++20 compiler, pkg-config, awk,
+ glslang, wayland-protocols + wayland-scanner (Wayland),
+ rsvg-convert (*nix/Windows), icoutils (Windows) +
+Runtime dependencies: Qt6Gui >= 6.11, vulkan, lcms2 (bundled by default),
+ libjpeg, libwebp, libwebpdemux, resvg, zlib +
+*nix: colord, shared-mime-info, Qt6WaylandClient + wayland-client (optional) +
+Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
+ gdk-pixbuf-2.0
+
+ $ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
+ $ cmake --build build
+
+Configuration
+-------------
+See link:doc/configuring-your-system.adoc[Configuring your system].
+If everything goes beautifully, the following test image will exercise your
+display's true gamut, and you'll be able to see the finer steps.
+The bottom row should look more like '`linear 188`' (a popular bug).
+
+image::doc/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
+
+Note that 'Dawn' currently implements Bayer dithering, so you might not
+be able to distinguish an 8-bit swapchain.
+
+Competition
+-----------
+The macOS 'Preview.app' is excellent at what it does, if limited in scope:
+it effortlessly handles wide gamuts, high bit depth, and gamma-correct scaling.
+
+Electron-based viewers like
+_https://github.com/Auxx/light-matter['Light Matter']_
+are promising in that browser engines typically handle things well,
+at the cost of being rather heavy-weight.
+
+'digiKam' must be mentioned, as it covers a lot of the advanced features
+of this project.  Sadly, it's obviously been designed by programmers,
+and the programmer behind 'Dawn' can't make heads or tails of the UI.
+
+Resources
+---------
+ - https://wolf.nereid.pl/posts/image-viewer/
+
+Contributing and Support
+------------------------
+Use https://git.janouch.name/p/dawn to report any bugs, request features,
+or submit pull requests.  `git send-email` is tolerated.  If you want to discuss
+the project, feel free to join at ircs://irc.janouch.name, channel #dev.
+
+Bitcoin donations are accepted at: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
+
+License
+-------
+This software is released under the terms of the MPL 2.0 license, the text of
+which is included within the package along with the list of authors.

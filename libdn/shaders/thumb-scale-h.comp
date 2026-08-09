@@ -1,0 +1,72 @@
+//
+// thumb-scale-h.comp: horizontal tent pass for buffer-backed thumbnails
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+#define DN_COMPUTE
+#define DN_FILTER 1
+#include "common.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer Input { uint src[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer Output { uint dst[]; };
+
+layout(push_constant) uniform Push {
+	uint src_w, src_h, dst_w, dst_h;
+	uint src_stride, dst_stride;
+	uint orientation, transfer;
+	uint opaque, linear_source;
+} pc;
+
+vec4 unpack_unorm(uint i)
+{
+	uint a = src[i * 2 + 0];
+	uint b = src[i * 2 + 1];
+	return vec4(float(a & 65535u), float(a >> 16),
+		float(b & 65535u), float(b >> 16)) / 65535.0;
+}
+
+vec4 fetch_linear(ivec2 display_p)
+{
+	ivec2 p = oriented_to_source(
+		display_p, int(pc.orientation), ivec2(pc.src_w, pc.src_h));
+	uint i = uint(p.y) * pc.src_stride + uint(p.x);
+	vec4 t = unpack_unorm(i);
+	if (pc.linear_source != 0u)
+		return t;
+	// Source words are BGRA; reduced words are linear RGBA.
+	return associated_to_linear(
+		t.bgra, int(pc.transfer), pc.opaque != 0u);
+}
+
+void main()
+{
+	uvec2 q = gl_GlobalInvocationID.xy;
+	ivec2 disp = display_size(ivec2(pc.src_w, pc.src_h), int(pc.orientation));
+	if (q.x >= pc.dst_w || q.y >= uint(disp.y))
+		return;
+	float scale = float(pc.dst_w) / float(disp.x);
+	float pos = (float(q.x) + 0.5 - float(pc.dst_w) * 0.5) / scale +
+		float(disp.x) * 0.5 - 0.5;
+	float kernel_scale = min(scale, 1.0);
+	float radius = 1.0 / kernel_scale;
+	int first = int(floor(pos - radius)) + 1;
+	int last = int(ceil(pos + radius)) - 1;
+	vec4 sum = vec4(0.0);
+	float weights = 0.0;
+	for (int x = first; x <= last; ++x) {
+		float w = filter_weight((pos - float(x)) * kernel_scale);
+		sum += fetch_linear(ivec2(clamp(x, 0, disp.x - 1), int(q.y))) * w;
+		weights += w;
+	}
+	vec4 c = sum / max(weights, 1e-6);
+	uint i = q.y * pc.dst_stride + q.x;
+	dst[i * 2 + 0] = packHalf2x16(c.rg);
+	dst[i * 2 + 1] = packHalf2x16(c.ba);
+}

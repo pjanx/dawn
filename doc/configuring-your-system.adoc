@@ -1,0 +1,98 @@
+Configuring your system
+=======================
+
+We will adress two features of modern monitors to exploit: 10-bit colour depth,
+and non-sRGB gamuts.
+
+Your system generally does not know the effective gamut of your monitor, and you
+need to match it manually, such as to an ICC profile.  Popular colour profile
+targets are either already stored somewhere on your system, or they can be
+downloaded off the Internet.  For miserable sub-sRGB laptop screens, check your
+manufacturer's download page.  Windows may also pull these in automatically.
+
+macOS
+-----
+You're probably all set already.  Make sure your _Displays_ in _System Settings_
+have the right _Colour profile_ assigned.
+
+As a side note, you may want to use the 'Better Display' application to prevent
+macOS from using temporal dithering, so that it actually sends 10 bits to
+the display.
+
+Windows
+-------
+You're probably all set already.  Make sure your displays in 'colorcpl.exe'
+have the right colour profile assigned.
+
+*nix
+----
+Set up your displays in 'colord', either through GUIs, or through 'colormgr':
+
+```sh
+$ colormgr get-profiles --filter 'title,profile-id'
+title:Compatible with Adobe RGB (1998)
+profile-id:icc-530ed29434cce1d2894fa84f54f47056
+...
+$ colormgr get-devices-by-kind display
+$ colormgr device-add-profile xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+$ colormgr device-make-profile-default xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+```
+
+'dawn' will eventually get a manual override option as a cheap alternative.
+
+*nix/X11
+--------
+You may need to set up 'xiccd' to integrate 'colord' into your session.
+In particular, if `colormgr get-devices-by-kind display` has returned zilch.
+
+The X11's default is '`everything overshoots sRGB unless it does its own colour
+management`', such as browsers--configuring those is out of scope.
+
+While you may get 10-bit colour depth, many applications, such as 'peek'
+or modern Firefox versions, will choke up on it in wild ways.  Nonetheless,
+all you need to do is to put the following snippet in
+_/etc/X11/xorg.conf.d/30-defaultdepth.conf_ and restart your session:
+
+```
+Section "Screen"
+    Identifier    "Default Screen"
+    Monitor       "Configured Monitor"
+    Device        "Configured Video Device"
+    DefaultDepth   30
+EndSection
+```
+
+*nix/Wayland
+------------
+You've chosen to go with an experimental, barely useful system.  Good luck.
+(Time of evaluation: 2026/08)
+
+*GNOME's Hell:* In _~/.config/monitors.xml_, put the following snippet within
+`<monitor>` sections:
+
+```xml
+<colormode>sdr-native</colormode>
+<maxbpc>10</maxbpc>
+```
+
+Temporary setting; it could be worth trying to see if the `-P` option works
+to retain it as well:
+
+```sh
+gdctl set -L -M DP-1 --color-mode sdr-native
+```
+
+The compositor will ignore anything you've configured and read the monitor's
+native profile from its EDID.  Hopefully, it will be close enough for sRGB
+content.  'dawn' will read the actual profile from 'colord'.
+
+*Sway/wlroots:* In _~/.config/sway/config_, put the following snippet:
+
+```
+output DP-1 {
+	render_bit_depth 10
+	color_profile icc '/usr/share/color/icc/colord/AdobeRGB1998.icc'
+}
+```
+
+Everything will be limited to sRGB now, but at least nothing will overshoot it.

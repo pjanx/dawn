@@ -1,0 +1,165 @@
+Rationale
+=========
+
+This document is written from the perspective of the project lead.
+
+I'm open to new information.  You always miss something.
+
+Why make this at all
+--------------------
+ - There is no good image viewer for Linux at all (2026).
+   I've been using my https://git.janouch.name/p/fiv[fiv] but it needs a lot
+   of improvements, some of which hit against its technical stack.
+ - Various special requirements--some in the UI/UX department,
+   some technological--can't all be solved through forking existing projects.
+
+AI use
+------
+Few people can say they have enough time.  Moreover, 2026 frontier models run
+circles around me in certain areas and aspects.  Sadly not in product design,
+where I'm not sure myself what can make sense.
+
+The model evaluation at the time of writing is that Cursor Grok 4.6 High is
+a dumb slave that doesn't question, and Opus 5 or GPT 5.6 Sol easily fix most
+problems, at a significant cost.
+
+Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
+the problems have became more complex.  Perhaps as I'm shifting to believing
+that it can read my mind.
+
+Constraints
+-----------
+Also see '`We care about`' in the link:../README.adoc[README].
+
+I want to be able to use the software on all main OSs.  This results in some
+architectural pain that I'm willing to engineer for.
+
+Rendering
+---------
+CPUs are unusably slow for high quality scaling.  You may successfully cache
+colour management but not gamma operations--every change of zoom needs many
+transfer curve conversions.  This is the main reason for going *full GPU*,
+as this is a trivially parallelisable task.
+
+Seeing as OpenGL is slowly going out of fashion, I went with the portable
+and overly verbose *Vulkan API*.  Bless LLMs.  Deployment is easy enough:
+macOS packages can be shipped with MoltenVK, and Windows is well serviced with
+a SwiftShader software fallback.
+
+Colour manglement
+-----------------
+I use *Little CMS* like everyone else and their cat.  And it's one of
+the slowest parts of loading an image.  However, if your copy of lcms2 has
+the _fast float_, and/or _multithreaded_ plugins, you can easily speed it up
+by a factor of 3 or more.  The catch is that they're normally not packaged
+in distributions, and under the GPL licence (this may be related).
+Even if this project were to go commercial, oh-em-gee €150 won't kill me,
+I love me colours.
+
+For the ultimate speedup, it's possible to do complete CM in a shader but it's
+Not Easy™, and I'm not a colorimetrist.  You need to port at least a basic
+subset of the library.
+
+UI toolkit
+----------
+I've tried to make an image viewer https://git.janouch.name/p/fiv[before]
+using GTK.  That toolkit has clean design.  Now for a small sample of its
+problems:
+
+ - It's diverged significantly from my idea of what a user interface
+   https://p.janouch.name/text/human-interface-guidelines.html[should be like].
+ - Writing this in C is very laborious, and my UX requirements necessitate
+   a lot of custom widgets.  G-I is suboptimal.
+ - The clean design comes with breaks in compatibility between versions.
+   大嫌い。
+
+Toolkits generally like to stand in the way.  One large technical reason for
+discarding them is control over the visual processing pipeline.  I _need_ deep
+bit depth, I _need_ to get all gamut, and I _need_ a lot of GPU rendering.
+With a custom Vulkan swapchain.  Even SDL 3 couldn't serve me, because figuring
+out the display windows were on couldn't be achieved through its API.
+
+In the end, I've almost handrolled the backend completely, but after
+a last-resort evaluation of Qt in order to try to discard it as well I've found
+out that *Qt GUI*, which lives _underneath_ Qt Widgets and Qt Quick, happens to
+be useful.  (I've since checked that a GDK 4 path is impossible.)
+
+Its largest dependency is ICU, which we don't strictly require, and Qt can
+actually be built without it if needed for smaller standalone packages.
+
+Licencing-wise, Qt is pretty nuke-able, and the minimal platform abstraction
+layer it provides _still_ creates problems of its own anyway.
+
+Actual toolkit
+--------------
+So, Qt GUI doesn't do that much by itself.  Initially, I had the idea of
+combining it with Dear ImGui, but its design assumptions fought me:
+most importantly, an image viewer is not a game, and while we're fine doing full
+frame renders, we do _not_ want to do it 60 times a second.  Eventually,
+the immediate mode paradigm went out entirely, as it became an unmaintainable
+mess of interspersed state.
+
+And so there is a *hand-rolled retained mode UI*.
+Like https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
+Vimperator-like hints outside a browser, and I've trivially received them.
+
+As of writing, no effort has been made to have true popup windows,
+somewhat GTK style, and it might actually not be too big of a problem.
+
+Icons
+-----
+I love Jakub Steiner's '`public domain`' (we can't actually legally waive
+copyright, and neither can his employer)
+https://gitlab.gnome.org/Teams/Design/icon-development-kit[
+*Icon Development Kit*].
+A cohesive visual design makes a program come alive.
+
+SVG
+---
+Qt SVG only supports a small subset, and likes to break on the mentioned icons.
+It's completely unusable for image viewer needs.  But *resvg* is
+https://github.com/linebender/resvg#svg-support[cool].
+
+Unfortunately, the icons are GTK-centric, and thus if they weren't used as
+simple masks, they would need a few changes so that the UI can at least inject
+theme colours into the symbolics.  Selecting GPA variants is yet another story.
+
+Other file formats
+------------------
+https://github.com/google/wuffs[*Wuffs*] is fast, supposedly safe, covers a lot
+of formats, and is tough to integrate.
+
+With JPEG, although Wuffs has some support for it as well, it's fairly simple:
+*libjpeg-turbo*.  I also bundle
+https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
+it's interesting.
+
+Scaling
+-------
+Initially, I naïvely thought bicubic or Lanczos upscaling would be
+an improvement over bilinear, though all of the halo-prone algorithms turn out
+to be nothing you would want in a '`high fidelity`' image viewer.
+Luckily, I knew of GIMP's special
+https://dl.acm.org/doi/pdf/10.1145/1557626.1557657[*NoHalo algorithm*],
+and I now believe it has no real competition--it's reasonably fast, smooths out
+antialiased edges very well, and doesn't invent new features.
+
+Vulkan CPU rendering is expectably slow enough to warrant upscaling having
+a special path to go bilinear.
+
+With downscaling, the box area filter seems to create artifacts on
+high-frequency images where the antialiased bilinear (triangle) doesn't.
+Gaussian should be a bit smoother, though imperceptibly so, so I've skipped it.
+
+Thumbnails
+----------
+Perhaps most photos or images are in the landscape orientation, so I prefer
+the idea of a continuous stream of same-height thumbnails, capped at
+a reasonable ratio such as 2:1.  To show them at an appropriate quality,
+you must also store them as such.
+
+Due to quality requirements and performance constraints, scaling source image
+data for thumbnails must be done on a GPU.  The GPU is a bottleneck,
+and a special data path.  The solution has grown an entire thumbnail scheduler.
+(We also have various pathways of sourcing somewhat usable image data,
+before we produce a known-to-be-good quality thumbnail.)

@@ -1,0 +1,55 @@
+//
+// instance.lxdr: dn single-instance IPC envelope
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+const INSTANCE_PROTOCOL_VERSION = 1;
+
+struct Request {
+	u64 id;
+	union RequestBody switch (enum RequestKind {
+		OPEN,
+	} kind) {
+	case OPEN:
+		struct OpenRequest {
+			string paths<>;
+			string activation_token;
+		} open;
+	} body;
+};
+
+struct Response {
+	u64 id;
+	union Result switch (enum ResponseKind {
+		DONE,
+		ERROR,
+	} kind) {
+	case DONE:
+		void;
+	case ERROR:
+		Error error;
+	} result;
+};
+
+struct Frame {
+	union Payload switch (enum FrameKind {
+		HELLO,
+		HELLO_REPLY,
+		REQUEST,
+		RESPONSE,
+		CANCEL,
+	} kind) {
+	case HELLO:
+		Hello hello;
+	case HELLO_REPLY:
+		HelloReply hello_reply;
+	case REQUEST:
+		Request request;
+	case RESPONSE:
+		Response response;
+	case CANCEL:
+		Cancel cancel;
+	} payload;
+};

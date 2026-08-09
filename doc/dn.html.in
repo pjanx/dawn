@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>dn: User Guide</title>
+<link rel="stylesheet" href="stylesheet.css">
+<style>
+q:lang(en):before { content: "‘"; }
+q:lang(en):after { content: "’"; }
+</style>
+</head>
+<body>
+
+<h1>dn: User Guide</h1>
+
+<p class="details">
+<span id="author">Přemysl Eric Janouch</span><br>
+<span id="email"><a href="mailto:p@janouch.name">p@janouch.name</a></span><br>
+<span id="revnumber">version @PROJECT_VERSION@</span>
+
+<h2>Introduction</h2>
+
+<p><i>dn</i> is a colour-managed image browser and viewer. This document is a
+compact overview of the application as it stands. Press
+<kbd>Ctrl</kbd>&#8239;+&#8239;<kbd>?</kbd> in the program for the current
+keyboard shortcut list.
+
+<h2>Controls</h2>
+
+<p>Most commands are on the keyboard. <kbd>F1</kbd> opens this guide in your
+web browser. <kbd>F10</kbd> opens the menu, <kbd>F6</kbd> moves between the
+sidebar and the main view, and <kbd>F</kbd> shows Vimium-style hints for
+on-screen controls.
+
+<p>Mice with dedicated back and forward buttons work as in a web browser.
+The pointer wheel zooms in the viewer and scrolls the browser. Left- or
+middle-drag pans an image; <kbd>Ctrl</kbd>&#8239;+&#8239;middle-drag zooms;
+<kbd>Alt</kbd>&#8239;+&#8239;middle-drag or a pinch gesture rotates.
+
+<h2>Browser</h2>
+
+<p><i>dn</i> starts in a directory browser unless you open a file. The left
+sidebar lists Computer, Home, Pictures when that folder exists, then
+breadcrumbs to the current directory and its children. The toolbar changes
+thumbnail size, tiled or grid layout, filename captions, whether unsupported
+files are hidden, and the sort order.
+
+<p><kbd>Enter</kbd> opens the selected file in the viewer. Middle-click, or
+<kbd>Shift</kbd>&#8239;+&#8239;<kbd>Enter</kbd>, opens a path in a new window.
+Right-click a file or the directory for a context menu, including other
+applications registered for that type.
+
+<h2>Viewer</h2>
+
+<p><kbd>Enter</kbd> returns to the browser. Files are visited in the same order
+and with the same filtering as the directory you came from. Double-click the
+image to toggle fullscreen.
+
+<p>Zoom, fit, colour management, smooth scaling, and the transparency
+checkerboard are on the toolbar and the View menu. Rotate and mirror are on
+the Image menu, together with pages of a multi-page file and frames of an
+animation.
+
+<h2>Information</h2>
+
+<p>Show Information opens a sidebar with the file name, pixel size, a CIE
+chromaticity diagram for the current colour space, and any text tags the
+decoder exposed.
+
+<p><i>Launch ExifTool</i> runs ExifTool on the open file and opens the report
+through your default handler for <code>.txt</code> files. The Windows package
+ships ExifTool; elsewhere it must be on the search path.
+
+<h2>Thumbnails</h2>
+
+<p><i>dn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
+cache, typically <i>~/.cache/thumbnails</i>. To drop entries that no longer
+match a file, run:
+
+<pre>
+dn --invalidate-cache
+</pre>
+
+<h2>Configuration</h2>
+
+<p><i>dn</i> uses the display colour profile provided by the operating system:
+colord on Linux, the profile assigned in Windows Colour Management, or the
+profile on the display in macOS System Settings. Assign the profile that
+matches the monitor if colours look wrong.
+
+<p>Per-window View toggles such as Dark Mode and Colour Management apply for
+the session. Command-line options, including
+<code>--new-instance</code> on Linux, are listed by <code>dn --help</code>.
+
+<script>
+var toc = '', all = document.querySelectorAll('h2')
+for (var i = 0; i < all.length; i++) {
+	var name = all[i].innerHTML.replace(/[^0-9a-z]/ig, '-')
+	toc += '<li><p><a href="#' + name + '">' + all[i].innerHTML + '</a></li>'
+	all[i].id = name
+	all[i].innerHTML = (i + 1) + '. ' + all[i].innerHTML
+}
+all[0].insertAdjacentHTML('beforebegin',
+	'<h2>Table of Contents</h2><ol>' + toc + '</ol>')
+</script>

@@ -1,0 +1,382 @@
+//
+// app-menu-macos.mm: append to Qt Cocoa's QCocoaMenuLoader bar
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#include "app-menu-macos.hpp"
+
+#include "action.hpp"
+#include "app.hpp"
+#include "window.hpp"
+
+#include <QDir>
+#include <QKeySequence>
+#include <QString>
+
+#import <AppKit/AppKit.h>
+
+#include <span>
+#include <vector>
+
+namespace
+{
+
+NSEventModifierFlags
+ns_mods(dn::Accel a)
+{
+	NSEventModifierFlags f = 0;
+	if (a.mods & Qt::ControlModifier)
+		f |= NSEventModifierFlagCommand;
+	if (a.mods & Qt::AltModifier)
+		f |= NSEventModifierFlagOption;
+	if (a.mods & Qt::ShiftModifier)
+		f |= NSEventModifierFlagShift;
+	if (a.mods & Qt::MetaModifier)
+		f |= NSEventModifierFlagControl;
+	return f;
+}
+
+NSString *
+ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
+{
+	*mods = ns_mods(a);
+	const uint32_t k = a.key;
+	if (!k)
+		return @"";
+
+	if (k >= Qt::Key_A && k <= Qt::Key_Z) {
+		unichar c = unichar('a' + (k - Qt::Key_A));
+		if (*mods & NSEventModifierFlagShift) {
+			c = unichar('A' + (k - Qt::Key_A));
+			*mods &= ~NSEventModifierFlagShift;
+		}
+		return [NSString stringWithCharacters:&c length:1];
+	}
+	if (k >= Qt::Key_0 && k <= Qt::Key_9) {
+		unichar c = unichar('0' + (k - Qt::Key_0));
+		return [NSString stringWithCharacters:&c length:1];
+	}
+	if (k >= Qt::Key_F1 && k <= Qt::Key_F12) {
+		unichar c = unichar(NSF1FunctionKey + (k - Qt::Key_F1));
+		return [NSString stringWithCharacters:&c length:1];
+	}
+
+	unichar c = 0;
+	switch (k) {
+	case Qt::Key_Plus:
+		c = '+';
+		break;
+	case Qt::Key_Minus:
+		c = '-';
+		break;
+	case Qt::Key_Equal:
+		c = '=';
+		break;
+	case Qt::Key_Less:
+		c = '<';
+		break;
+	case Qt::Key_Greater:
+		c = '>';
+		break;
+	case Qt::Key_BracketLeft:
+		c = '[';
+		break;
+	case Qt::Key_BracketRight:
+		c = ']';
+		break;
+	case Qt::Key_BraceLeft:
+		c = '{';
+		break;
+	case Qt::Key_BraceRight:
+		c = '}';
+		break;
+	case Qt::Key_Space:
+		c = ' ';
+		break;
+	case Qt::Key_Return:
+	case Qt::Key_Enter:
+		c = '\r';
+		break;
+	case Qt::Key_Escape:
+		c = '\033';
+		break;
+	case Qt::Key_Backspace:
+		c = 0x7f;
+		break;
+	case Qt::Key_Tab:
+		c = '\t';
+		break;
+	case Qt::Key_Left:
+		c = NSLeftArrowFunctionKey;
+		break;
+	case Qt::Key_Right:
+		c = NSRightArrowFunctionKey;
+		break;
+	case Qt::Key_Up:
+		c = NSUpArrowFunctionKey;
+		break;
+	case Qt::Key_Down:
+		c = NSDownArrowFunctionKey;
+		break;
+	case Qt::Key_Home:
+		c = NSHomeFunctionKey;
+		break;
+	case Qt::Key_End:
+		c = NSEndFunctionKey;
+		break;
+	case Qt::Key_PageUp:
+		c = NSPageUpFunctionKey;
+		break;
+	case Qt::Key_PageDown:
+		c = NSPageDownFunctionKey;
+		break;
+	default:
+		return @"";
+	}
+	return [NSString stringWithCharacters:&c length:1];
+}
+
+const dn::MenuNode *
+find_section(std::span<const dn::MenuNode> tree, NSString *title)
+{
+	const QString want = QString::fromNSString(title);
+	for (const dn::MenuNode &n : tree) {
+		if (dn::menu_label(n.title) == want)
+			return &n;
+	}
+	return nullptr;
+}
+
+bool
+skip_action(dn::Action a)
+{
+	return a == dn::Action::Quit || a == dn::Action::About ||
+		a == dn::Action::Fullscreen;
+}
+
+NSMenuItem *
+top_item(NSMenu *menu)
+{
+	NSMenu *parent = menu.supermenu;
+	if (!parent)
+		return nil;
+	const NSInteger i = [parent indexOfItemWithSubmenu:menu];
+	return i >= 0 ? [parent itemAtIndex:i] : nil;
+}
+
+void
+sync_hidden(NSMenu *main, id delegate, std::span<const dn::MenuNode> tree)
+{
+	for (NSMenuItem *top in main.itemArray) {
+		if (top.submenu.delegate != delegate)
+			continue;
+		top.hidden = find_section(tree, top.title) ? NO : YES;
+	}
+}
+
+}  // namespace
+
+@interface DawnMenuDelegate : NSObject <NSMenuDelegate>
+@property(nonatomic, assign) dn::App *app;
+@end
+
+@implementation DawnMenuDelegate
+
+- (dn::Window *)window
+{
+	return _app ? _app->key_window() : nullptr;
+}
+
+- (const dn::Actor *)actor
+{
+	if (dn::Window *w = [self window])
+		return w->active_actor();
+	return nullptr;
+}
+
+- (void)invoke:(NSMenuItem *)sender
+{
+	const dn::Action a = dn::Action(sender.tag);
+	const dn::Actor *actor = [self actor];
+	if (actor && actor->apply)
+		actor->apply(a);
+	else if (dn::Window *w = [self window]) {
+		if (w->host().apply)
+			w->host().apply(a);
+	} else if (a == dn::Action::NewWindow && _app)
+		_app->open(QDir::currentPath());
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)item
+{
+	if (dn::Action(item.tag) == dn::Action::About)
+		return [self window] != nullptr;
+	const dn::Actor *actor = [self actor];
+	if (!actor || !actor->enabled)
+		return YES;
+	return actor->enabled(dn::Action(item.tag));
+}
+
+- (void)menuNeedsUpdate:(NSMenu *)menu
+{
+	dn::Window *w = [self window];
+	const std::span<const dn::MenuNode> tree =
+		w ? w->active_menu() : std::span<const dn::MenuNode>{};
+	const dn::Actor *actor = w ? w->active_actor() : nullptr;
+	sync_hidden([NSApp mainMenu], self, tree);
+
+	const dn::MenuNode *node = find_section(tree, menu.title);
+	[menu removeAllItems];
+	if (!node) {
+		if (NSMenuItem *top = top_item(menu))
+			top.hidden = YES;
+		return;
+	}
+	if (NSMenuItem *top = top_item(menu))
+		top.hidden = NO;
+
+	bool pending_sep = false;
+	bool any = false;
+	for (const dn::MenuNode &n : node->items) {
+		if (!n.title && n.action == dn::Action::None) {
+			pending_sep = any;
+			continue;
+		}
+		if (n.action == dn::Action::None || skip_action(n.action))
+			continue;
+		if (pending_sep) {
+			[menu addItem:[NSMenuItem separatorItem]];
+			pending_sep = false;
+		}
+		const dn::ActionDef &def = dn::action_def(n.action);
+		const bool checked = actor && actor->checked &&
+			actor->checked(n.action);
+		const QString title =
+			dn::menu_label(dn::action_label(def, checked));
+		NSString *key = @"";
+		NSEventModifierFlags mods = 0;
+		if (!(def.accel && def.keys[0].key == 0))
+			key = ns_equiv(def.keys[0], &mods);
+		NSMenuItem *it = [[[NSMenuItem alloc] initWithTitle:title.toNSString()
+							     action:@selector(invoke:)
+						      keyEquivalent:key]
+			autorelease];
+		it.tag = NSInteger(n.action);
+		it.target = self;
+		it.keyEquivalentModifierMask = mods;
+		const bool on = (def.flags & dn::ActionToggle) &&
+			!def.label[1] && checked;
+		it.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+		[menu addItem:it];
+		any = true;
+	}
+}
+
+@end
+
+namespace dn
+{
+namespace
+{
+
+DawnMenuDelegate *g_menu_delegate;
+
+bool
+has_menu(NSMenu *main, NSString *title)
+{
+	for (NSMenuItem *it in main.itemArray) {
+		if ([it.title isEqualToString:title])
+			return true;
+	}
+	return false;
+}
+
+void
+add_menu(NSMenu *main, NSString *title, id delegate)
+{
+	if (has_menu(main, title))
+		return;
+	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:title
+						      action:nil
+					       keyEquivalent:@""] autorelease];
+	NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
+	sub.delegate = delegate;
+	top.submenu = sub;
+	[main addItem:top];
+}
+
+void
+retarget_about(NSMenu *app_menu, id target)
+{
+	for (NSMenuItem *it in app_menu.itemArray) {
+		if (![it.title hasPrefix:@"About "])
+			continue;
+		if ([it.title isEqualToString:@"About Qt"])
+			continue;
+		it.hidden = NO;
+		it.enabled = YES;
+		it.tag = NSInteger(Action::About);
+		it.target = target;
+		it.action = @selector(invoke:);
+		return;
+	}
+}
+
+}  // namespace
+
+void
+sync_macos_app_menu(App *app)
+{
+	NSMenu *main = [NSApp mainMenu];
+	if (!main || !app || !g_menu_delegate)
+		return;
+	g_menu_delegate.app = app;
+	Window *w = app->key_window();
+	if (!w)
+		return;
+	sync_hidden(main, g_menu_delegate, w->active_menu());
+}
+
+void
+install_macos_app_menu(App *app)
+{
+	NSMenu *main = [NSApp mainMenu];
+	if (!main || !app)
+		return;
+
+	if (!g_menu_delegate)
+		g_menu_delegate = [[DawnMenuDelegate alloc] init];
+	DawnMenuDelegate *delegate = g_menu_delegate;
+	delegate.app = app;
+
+	if (NSMenuItem *first = [main itemAtIndex:0]) {
+		if (NSMenu *app_menu = first.submenu)
+			retarget_about(app_menu, delegate);
+	}
+
+	std::vector<QString> titles;
+	auto consider = [&](std::span<const MenuNode> tree) {
+		for (const MenuNode &n : tree) {
+			const QString t = menu_label(n.title);
+			if (t.isEmpty())
+				continue;
+			bool seen = false;
+			for (const QString &e : titles) {
+				if (e == t) {
+					seen = true;
+					break;
+				}
+			}
+			if (!seen)
+				titles.push_back(t);
+		}
+	};
+	consider(viewer_menu());
+	consider(browser_menu());
+	for (const QString &t : titles)
+		add_menu(main, t.toNSString(), delegate);
+}
+
+}  // namespace dn

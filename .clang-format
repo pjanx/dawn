@@ -1,0 +1,16 @@
+BasedOnStyle: LLVM
+ColumnLimit: 80
+IndentWidth: 4
+TabWidth: 4
+UseTab: ForContinuationAndIndentation
+AccessModifierOffset: -4
+# Member definitions keep the return type on its own line in .cpp files.
+# In-class getters stay on one line (AllDefinitions forces them to wrap).
+AlwaysBreakAfterReturnType: TopLevelDefinitions
+AllowShortFunctionsOnASingleLine: InlineOnly
+BreakBeforeBraces: Linux
+SpaceAfterCStyleCast: true
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+SpacesBeforeTrailingComments: 2
+WhitespaceSensitiveMacros: ['G_DEFINE_QUARK']

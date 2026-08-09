@@ -1,0 +1,57 @@
+//
+// thumb-reduce.comp: one 2x2 linear-premultiplied halving step
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+#define DN_COMPUTE
+#include "common.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer Input { uint src[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer Output { uint dst[]; };
+
+layout(push_constant) uniform Push {
+	uint src_w, src_h, dst_w, dst_h;
+	uint src_stride, dst_stride;
+	uint dst_x, dst_y;
+	uint transfer, opaque;
+	uint linear_source;
+} pc;
+
+vec4 fetch_linear(ivec2 p)
+{
+	p = clamp(p, ivec2(0), ivec2(pc.src_w, pc.src_h) - 1);
+	uint i = uint(p.y) * pc.src_stride + uint(p.x);
+	uint a = src[i * 2 + 0], b = src[i * 2 + 1];
+	vec4 t = vec4(float(a & 65535u), float(a >> 16),
+		float(b & 65535u), float(b >> 16)) / 65535.0;
+	if (pc.linear_source != 0u)
+		return t;
+	return associated_to_linear(
+		t.bgra, int(pc.transfer), pc.opaque != 0u);
+}
+
+uint unorm2(vec2 v)
+{
+	uvec2 q = uvec2(round(clamp(v, 0.0, 1.0) * 65535.0));
+	return q.x | (q.y << 16);
+}
+
+void main()
+{
+	uvec2 q = gl_GlobalInvocationID.xy;
+	if (q.x >= pc.dst_w || q.y >= pc.dst_h)
+		return;
+	ivec2 p = ivec2(q) * 2;
+	vec4 c = (fetch_linear(p) + fetch_linear(p + ivec2(1, 0)) +
+		fetch_linear(p + ivec2(0, 1)) + fetch_linear(p + ivec2(1, 1))) * 0.25;
+	uint i = (q.y + pc.dst_y) * pc.dst_stride + q.x + pc.dst_x;
+	dst[i * 2 + 0] = unorm2(c.rg);
+	dst[i * 2 + 1] = unorm2(c.ba);
+}

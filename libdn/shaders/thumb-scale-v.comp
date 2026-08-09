@@ -1,0 +1,75 @@
+//
+// thumb-scale-v.comp: vertical tent pass and BGRA16 encode
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#version 450
+#extension GL_GOOGLE_include_directive : require
+
+#define DN_COMPUTE
+#define DN_FILTER 1
+#include "common.glsl"
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0, std430) readonly buffer Input { uint src[]; };
+layout(set = 0, binding = 1, std430) writeonly buffer Output { uint dst[]; };
+
+layout(push_constant) uniform Push {
+	uint src_w, src_h, dst_w, dst_h;
+	uint src_stride, dst_stride;
+	uint orientation, transfer;
+	uint opaque, linear_source;
+} pc;
+
+uint unorm2(vec2 v)
+{
+	uvec2 q = uvec2(round(clamp(v, 0.0, 1.0) * 65535.0));
+	return q.x | (q.y << 16);
+}
+
+void main()
+{
+	uvec2 q = gl_GlobalInvocationID.xy;
+	if (q.x >= pc.dst_w || q.y >= pc.dst_h)
+		return;
+	uint display_h = (pc.orientation >= 5u && pc.orientation <= 8u)
+		? pc.src_w : pc.src_h;
+	uint display_w = (pc.orientation >= 5u && pc.orientation <= 8u)
+		? pc.src_h : pc.src_w;
+	float scale = float(pc.dst_w) / float(display_w);
+	vec2 image = (vec2(q) + vec2(0.5) - vec2(pc.dst_w, pc.dst_h) * 0.5) /
+		scale + vec2(display_w, display_h) * 0.5;
+	uint out_i = q.y * pc.dst_stride + q.x;
+	if (any(lessThan(image, vec2(0.0))) ||
+		any(greaterThanEqual(image, vec2(display_w, display_h)))) {
+		dst[out_i * 2 + 0] = 0u;
+		dst[out_i * 2 + 1] = 0u;
+		return;
+	}
+	float pos = image.y - 0.5;
+	float kernel_scale = min(scale, 1.0);
+	float radius = 1.0 / kernel_scale;
+	int first = int(floor(pos - radius)) + 1;
+	int last = int(ceil(pos + radius)) - 1;
+	vec4 sum = vec4(0.0);
+	float weights = 0.0;
+	for (int y = first; y <= last; ++y) {
+		float w = filter_weight((pos - float(y)) * kernel_scale);
+		uint i = uint(clamp(y, 0, int(display_h) - 1)) * pc.src_stride + q.x;
+		vec4 t = vec4(unpackHalf2x16(src[i * 2 + 0]),
+			unpackHalf2x16(src[i * 2 + 1]));
+		sum += t * w;
+		weights += w;
+	}
+	vec4 c = sum / max(weights, 1e-6);
+	float a = clamp(c.a, 0.0, 1.0);
+	vec3 rgb = clamp(c.rgb, vec3(0.0), vec3(a));
+	vec3 encoded = a > 0.0
+		? encode_rgb(rgb / a, int(pc.transfer)) * a : vec3(0.0);
+	// Destination words are BGRA16.
+	dst[out_i * 2 + 0] = unorm2(encoded.bg);
+	dst[out_i * 2 + 1] = unorm2(vec2(encoded.r, a));
+}

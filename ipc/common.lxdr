@@ -1,0 +1,47 @@
+//
+// common.lxdr: shared LibertyXDR types for Dawn IPC
+//
+// Copyright The dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+struct Hello {
+	u32 protocol_version;
+	string build_id;
+	string session;
+};
+
+union HelloReply switch (enum HelloResult {
+	ACCEPTED,
+	VERSION_MISMATCH,
+	SESSION_MISMATCH,
+} result) {
+case ACCEPTED:
+	struct Limits {
+		u32 max_payload_size;
+	} limits;
+case VERSION_MISMATCH:
+	u32 server_protocol_version;
+case SESSION_MISMATCH:
+	void;
+};
+
+enum ErrorCode {
+	CANCELLED,
+	INVALID_ARGUMENT,
+	NOT_FOUND,
+	PERMISSION_DENIED,
+	CONFLICT,
+	BUSY,
+	UNSUPPORTED,
+	INTERNAL,
+};
+
+struct Error {
+	ErrorCode code;
+	string message;
+};
+
+struct Cancel {
+	u64 id;
+};

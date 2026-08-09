@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=dn
+GenericName=Image Browser
+X-GNOME-FullName=dn Colour-Managed Image Browser
+Icon=dn
+Exec=dn -- %u
+NoDisplay=true
+Terminal=false
+StartupNotify=true
+Categories=Utility;FileTools;
+MimeType=inode/directory;

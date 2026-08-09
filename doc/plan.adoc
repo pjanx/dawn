@@ -1,0 +1,48 @@
+Plan
+====
+
+Priorities
+----------
+[options="header"]
+|===
+|                   | High              | Medium          | Low
+| This is a         | image viewer      | image organiser | file manager
+| Target system     | Linux X11/Wayland | macOS           | Windows
+| It works          | at all            | correctly       | efficiently
+| Efficiency target | development       | speed           | memory
+|===
+
+Features not thoroughly tested are assumed to be broken.
+
+Milestones
+----------
+ - [ ] Plain out replace https://git.janouch.name/p/fiv[fiv]
+       (excluding GVfs, printing, wide thumbnails)
+    * [ ] Clean up, branch a stable version
+ - [ ] Integrate filesystem scanning, automatic tagging, browsing from
+       https://git.janouch.name/p/gallery[gallery]
+    * [ ] Clean up, branch a stable version
+ - [ ] Replace GNOME Files (including GVfs integration or equivalent abilities)
+    * [ ] Clean up, branch a stable version
+ - [ ] Replace Midnight Commander
+    * [ ] Clean up, branch a stable version
+
+Planned structure
+-----------------
+Shared libraries:
+
+ - *libdn:* Image processing & CMM
+
+Servers:
+
+ - *dnthumbd:* Thumbnailing service
+ - *dndbd:* Database service
+ - *dntagd:* ML tagging service
+ - *dnvfsd:* Virtual File System service
+ - *dnimaged:* Image decoding service (if separation becomes desirable)
+
+User interfaces:
+
+ - *dn:* Vulkan frontend
+ - *dnweb:* Web frontend to the database
+ - *dntui:* notcurses frontend (with limited features)

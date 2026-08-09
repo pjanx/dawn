@@ -1,0 +1,135 @@
+Wide Thumbnail Managing Standard
+================================
+Přemysl Eric Janouch <p@janouch.name>
+v0.2, 2026-08-20: Cross-platform cache locations
+:description: Wide-format thumbnail managment specification
+
+Introduction
+------------
+This document is a follow-up to the
+https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html[Thumbnail Managing Standard],
+in particular version 0.9.0.  It extends the specification to cover wide-format
+file thumbnails, providing a well-defined mechanism for sharing them amongst
+different programs.  It also addresses new needs that have arisen with
+high-density, wide-gamut monitors.
+
+Please contact the author of this document if you intend to use it.
+
+Rationale
+~~~~~~~~~
+Photos tend to be in a 4:3 format.  Yet, nearly all file browsers at the time
+of this document's conception (end of year 2021) show previews in a rectangular
+grid.  This wastes a lot of display real estate with padding, and looks
+subjectively awkward.  The Web at large has long been moving off of this
+concept, instead preferring freely flowing items of fixed height--notably on
+such sites as DeviantArt and Google/Duck image search.  The general Unix desktop
+keeps lagging behind.
+
+Scaling sub-nominal thumbnail sizes up, or larger sizes down is not a practical
+solution: the former gives blurry images, while the latter may waste
+a significant amount of disk space.  Both require reprocessing.  Seeing as these
+issues have only become worse with the higher resolutions added to the 0.9.0
+revision of the preceding standard, a new one is necessary.
+
+Storage
+-------
+The user-specific base directory for thumbnails is:
+
+ - on systems following the XDG Base Directory Specification,
+   _$XDG_CACHE_HOME/thumbnails_, defaulting to _~/.cache/thumbnails_,
+ - on macOS, _~/Library/Caches/thumbnails_,
+ - on Windows, _%LOCALAPPDATA%/cache/thumbnails_.
+
+The list of subdirectories is similar to the original specification, but a
+`wide-` prefix is added, turning `large` into `wide-large`, and so on.  The
+`fail` directory does not constitute an exception to this rule, and is also
+duplicated, if necessary.
+
+The dimensions differ like so: the original _height_ for the respective sizes is
+kept, but a factor of 2 is applied to the _width_:
+
+ - _wide-normal_ contains previews proportionally scaled down to 256x128 pixels,
+ - _wide-large_ contains 512x256 pixel previews,
+ - _wide-x-large_ contains 1024x512 pixel previews,
+ - _wide-xx-large_ contains 2048x1024 pixel previews.
+
+It is unspecified whether non-square pixels are scaled down accordingly, but it
+is recommended to do so.
+
+File format
+~~~~~~~~~~~
+To account for very large thumbnail sizes, this specification has chosen the
+WebP codec, in its _extended file format_.  Thumbnail files still derive their
+name from the MD5 hash of input URIs, as in the original standard, because
+this widespread algorithm shows surprisingly good results for this use case.
+The filename, however, deviates in that it receives the appropriate _.webp_ file
+extension.
+
+Both lossy and lossless encodings may be used.  Animations are assumed to be
+representative samples, and their timing needn't be respected.  No metadata
+chunks are allowed other than _THUM_, which is described below.  Any Exif
+orientation changes need to be "baked-in" to the image.
+
+Metadata
+~~~~~~~~
+Because WebP doesn't directly provide any means of storing simple key-value
+pairs, thumbnail attributes are stored in a custom chunk named "THUM".
+It consists of a stream of NUL-terminated pairs, using the UTF-8 encoding.
+The last NUL byte may not be omitted.  The behavior of repeated keys is
+undefined.
+
+All keys from the original specification are adopted, including the extension
+mechanism, plus these additions:
+
+.Additional fields
+[cols="1,2"]
+|===
+| Key | Description
+| `Thumb::ColorSpace` | The thumbnail's color space, if it is known.
+|===
+
+The color space field may only be included if the producing program has applied
+color management to the input image, e.g., using any embedded ICC profiles,
+so that the color space is now known and normalized.  No rendering intent is
+hereby suggested.  It is permitted to assume sRGB for input images with
+unspecified color spaces.  The full list of allowed values is:
+
+.Color spaces
+[cols="1,2"]
+|===
+| Value | Description
+| `sRGB` | IEC 61966-2-1
+| `Display P3` | sRGB with DCI-P3 primaries, as used by Apple.
+|===
+
+Interactions
+------------
+Programs may fall back to picking up and rescaling a square-sized thumbnail if
+they fail to find a wide one, preferrably one size above what they are looking
+for.  The wide-format thumbnail should then be automatically regenerated.
+It should also be regenerated if the program supports color management, but it
+has found a thumbnail without a color space field.
+
+A _normal_-sized old-specification thumbnail may be produced alongside any
+wide ones, but it is strongly suggested to avoid duplicating the larger sizes.
+
+References
+----------
+ - https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html[Thumbnail Managing Standard];
+ - https://developers.google.com/speed/webp/docs/riff_container[WebP Container Specification];
+ - https://github.com/rurban/smhasher[smhasher -- Hash function quality and speed tests]
+   evaluates MD5 as an excellent non-cryptographic hash function;
+ - https://datatracker.ietf.org/doc/html/rfc3629[RFC 3629 -- UTF-8, a transformation format of ISO 10646];
+ - IEC 61966-2-1:1999 -- sRGB is "only" available commercially, but reduces to
+   https://www.color.org/chardata/rgb/srgb.xalter[these characteristics];
+ - https://developer.apple.com/documentation/coregraphics/cgcolorspace/1408916-displayp3[Apple's brief Display P3 definition]
+   and the corresponding
+   https://www.color.org/chardata/rgb/DCIP3.xalter[DCI-P3 characteristics].
+
+Change history
+--------------
+v0.2, 2026-08-20, Přemysl Eric Janouch::
+	Define cache roots for macOS and Windows in addition to XDG systems.
+
+v0.1, 2021-12-29, Přemysl Eric Janouch::
+	Preliminary draft.
