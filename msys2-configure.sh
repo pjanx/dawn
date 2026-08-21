@@ -2,7 +2,7 @@
 # msys2-configure.sh: set up an MSYS2-based build
 #
 # Dependencies: AWK, cURL, sha256sum (coreutils), bsdtar (libarchive), jq,
-# cabextract, wine
+# cabextract, wine, rustc, cargo, rust-src, x86_64-w64-mingw32-gcc
 repository=https://repo.msys2.org/mingw/ucrt64/
 pkg=mingw-w64-ucrt-x86_64
 
@@ -109,31 +109,24 @@ extract() {
 	rm -rf Image-ExifTool-*
 }
 
-# Reason for building: "Native rustc cannot load upstream rust-std."
+# Native rustc cannot load upstream rust-std; compile std from rust-src.
 # TODO(p): Try to push this bullshit directly to MSYS2.
 resvg() {
-	status rustup x86_64-pc-windows-gnu + resvg
+	status resvg
 	mkdir -p tmp/resvg include/resvg bin lib/pkgconfig
-
-	export RUSTUP_HOME=$PWD/tmp/rustup
-	export CARGO_HOME=$PWD/tmp/cargo
-	export PATH=$CARGO_HOME/bin:$PATH
-
-	export RUSTUP_INIT_SKIP_PATH_CHECK=yes
-	curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- \
-		-y --no-modify-path --profile minimal --default-toolchain stable
-	rustup target add x86_64-pc-windows-gnu
-
 	src=$PWD/tmp/resvg
 	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
+	# Vendor config replaces crates-io; -Zbuild-std needs hashbrown etc.
+	rm -f $src/.cargo/config
 
 	unset RUSTC
-	(cd "$src/crates/c-api" && \
+	(cd "$src/crates/c-api" &&
 		CARGO_TARGET_DIR=$src \
 		CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
 		CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc \
 		AR_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc-ar \
-		cargo build --release --target x86_64-pc-windows-gnu)
+		RUSTC_BOOTSTRAP=1 \
+		cargo build --release --target x86_64-pc-windows-gnu -Zbuild-std)
 	cp $src/crates/c-api/resvg.h include/resvg/resvg.h
 	mv $src/x86_64-pc-windows-gnu/release/resvg.dll bin/resvg.dll
 	mv $src/x86_64-pc-windows-gnu/release/libresvg.dll.a lib/libresvg.dll.a
