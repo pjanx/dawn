@@ -5,21 +5,14 @@ Dawn
 'Dawn' is a multiplatform colour-managed image browser, with very high standards
 for fidelity and responsivity.
 
-This repository deliberately stays a mess until we reach our first big milestone
-and clean it up.  The project is AI-accelerated, though design-wise it is
-an amalgamation of older efforts and desires.
+Design-wise, the project is an amalgamation of older efforts and desires.
+Right now, we've mostly reached our first milestone, and we're cleaning up
+AI-accelerated mess.
 
 The project is '`daily driven`' and comes with a promise of basic maintenance.
 
 Also see link:doc/plan.adoc[Plan],
 and a detailed link:doc/rationale.adoc[Rationale].
-
-[quote,Alan Kay]
-____
-They're all about this idea, which most programmers have that's wrong, is that
-you're going to write the program the right way. Nothing's going to be wrong.
-_The whole idea is to make a fucking mess._
-____
 
 Features
 --------
@@ -70,7 +63,10 @@ Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
  $ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
  $ cmake --build build
 
-Windows cross-compile:
+macOS successfully produces a portable application bundle with Homebrew,
+however there is currently no one to sign these packages.
+
+Windows is cross-compiled in CI:
 
  $ sh -e msys2-configure.sh
  $ cmake -DCMAKE_TOOLCHAIN_FILE=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake \

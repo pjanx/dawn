@@ -24,7 +24,7 @@ a dumb slave that doesn't question, and Opus 5 or GPT 5.6 Sol easily fix most
 problems, at a significant cost.
 
 Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
-the problems have became more complex.  Perhaps as I'm shifting to believing
+the problems become more complex.  Perhaps as I'm shifting to believing
 that it can read my mind.
 
 Constraints
@@ -33,6 +33,12 @@ Also see '`We care about`' in the link:../README.adoc[README].
 
 I want to be able to use the software on all main OSs.  This results in some
 architectural pain that I'm willing to engineer for.
+
+Language
+--------
+In principle, the project consists of several parts that may be heterogenous.
+In practice, most good libraries either have a C or C++ API, and additional
+layers are considered undesirable.  I'm not too happy here.
 
 Rendering
 ---------
@@ -44,7 +50,7 @@ as this is a trivially parallelisable task.
 Seeing as OpenGL is slowly going out of fashion, I went with the portable
 and overly verbose *Vulkan API*.  Bless LLMs.  Deployment is easy enough:
 macOS packages can be shipped with MoltenVK, and Windows is well serviced with
-a SwiftShader software fallback.
+a SwiftShader software fallback (llvmpipe seemed huge).
 
 Colour manglement
 -----------------
@@ -106,6 +112,8 @@ Vimperator-like hints outside a browser, and I've trivially received them.
 As of writing, no effort has been made to have true popup windows,
 somewhat GTK style, and it might actually not be too big of a problem.
 
+// TODO(p): Talk more about particular user interface choices.
+
 Icons
 -----
 I love Jakub Steiner's '`public domain`' (we can't actually legally waive
@@ -155,11 +163,20 @@ Thumbnails
 ----------
 Perhaps most photos or images are in the landscape orientation, so I prefer
 the idea of a continuous stream of same-height thumbnails, capped at
-a reasonable ratio such as 2:1.  To show them at an appropriate quality,
-you must also store them as such.
+a reasonable ratio, such as 2:1.  To show them at an appropriate quality,
+you must also store them as such.  See link:wide-thumbnail-spec.adoc[
+the specification] I've put together.
 
 Due to quality requirements and performance constraints, scaling source image
 data for thumbnails must be done on a GPU.  The GPU is a bottleneck,
 and a special data path.  The solution has grown an entire thumbnail scheduler.
 (We also have various pathways of sourcing somewhat usable image data,
 before we produce a known-to-be-good quality thumbnail.)
+
+Shadows
+-------
+The UI has a few simple shadows/glows here and there.  I've noticed that people
+often employ a shortcut where they take a mask of the thing throwing a shadow,
+then apply a Gaussian blur on it.  That doesn't create correct shadows,
+which is particularly noticable near right-angled corners.  We compute a proper
+equidistant mask.

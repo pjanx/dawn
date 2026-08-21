@@ -1,0 +1,26 @@
+Functional specification
+========================
+
+The fate of this document is uncertain, it might make more sense to put
+notes like these in the source code.
+
+Thumbnails
+----------
+When loading a directory, retrieve thumbnails as fast as possible:
+
+ - First, rescale already loaded thumbnails from a different nominal size.
+ - Then try to fetch existing thumbnails, in this order:
+    * _wide-thumbnail-spec_
+	* XDG _thumbnail-spec_
+ - The nominal size is attempted first, then smaller sizes, then larger ones.
+
+The wide thumbnail view is only happy _wide-thumbnail-spec_ images
+of the nominal size, with a declared gamut.
+
+The square thumbnail view is also happy with nominal size _wide-thumbnail-spec_
+images rescaled to fit the square.
+
+If happiness is not achieved, create a new thumbnail, and try to save it.
+
+While creating a thumbnail, fetching the thumbnail size itself first before data
+helps stabilise layout.  As of writing, there is no mechanism to pass this.

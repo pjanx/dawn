@@ -1,6 +1,13 @@
 Plan
 ====
 
+[quote,Alan Kay]
+____
+They're all about this idea, which most programmers have that's wrong, is that
+you're going to write the program the right way. Nothing's going to be wrong.
+_The whole idea is to make a fucking mess._
+____
+
 Priorities
 ----------
 [options="header"]
@@ -16,7 +23,7 @@ Features not thoroughly tested are assumed to be broken.
 
 Milestones
 ----------
- - [ ] Plain out replace https://git.janouch.name/p/fiv[fiv]
+ - [x] Plain out replace https://git.janouch.name/p/fiv[fiv]
        (excluding GVfs, printing, wide thumbnails)
     * [ ] Clean up, branch a stable version
  - [ ] Integrate filesystem scanning, automatic tagging, browsing from

@@ -1,0 +1,38 @@
+Coding style
+============
+
+The coding style is largely defined by _.clang-format_ configuration, which may
+be applied strictly.  On top of that, these additional rules keep authors sane:
+
+ . Source files (.cpp) state `using namespace std`.  That said, `std::move` is
+   always spelled out in full.
+
+ . Within methods, distinguish class fields either by naming them with
+   an appended underscore, or by using `this`.  Do not use `m_`.
+
+ . Private members in a `class` always go first, then `protected`,
+   then `public`.  Similarly, fields go first, then methods.
+
+ . Non-trivial methods, such as those not fitting on a single line,
+   must be defined out of class.
+
+ . Never use `static_cast<T>(x)`.  Prefer `T(x)` or `(T)(x)`.
+
+ . Avoid using non-STL templates and default arguments.
+
+ . Avoid using declarations.  Between class declarations and method definitions,
+   the way to achieve this is to keep everything public, and make methods
+   C-style.  Between free-standing functions, make use of their natural
+   order of dependency.
+
+ . Avoid pointless getters.  If something is not a public API, making fields
+   private is not considered helpful.
+
+ . Avoid deep directory hierarchies.  Avoid creating files senselessly.
+
+Longer sections of code are to be grouped by function, and separated using
+banners, for example:
+
+```
+// --- Section -----------------------------------------------------------------
+```
