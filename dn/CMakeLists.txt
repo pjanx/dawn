@@ -121,7 +121,7 @@ if(APPLE)
 	set_target_properties(dn PROPERTIES
 		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}")
 else()
-	include("${CMAKE_SOURCE_DIR}/cmake/IconUtils.cmake")
+	include(IconUtils)
 	set(DN_ICON_BASE "${CMAKE_CURRENT_BINARY_DIR}/icons")
 	set(DN_ICON_PNG_LIST)
 	foreach(DN_ICON_SIZE 16 32 48 256)

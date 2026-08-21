@@ -15,51 +15,43 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-if(APPLE)
-	# Build tree: bin/dn.app/Contents/MacOS vs bin/libdn.dylib.
-	# Install: MacOS/dn, Frameworks/libdn.dylib (macdeployqt leaves
-	# @rpath/libdn.dylib; Homebrew dylibs become @executable_path).
-	set(CMAKE_BUILD_WITH_INSTALL_RPATH OFF)
-	set(CMAKE_INSTALL_RPATH "@loader_path;@loader_path/../Frameworks")
-else()
-	# Executables find libdn beside themselves.
-	# TODO(p): This is only for development purposes, clean it up.
-	set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-	set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
-	set(CMAKE_INSTALL_RPATH "$ORIGIN")
-endif()
-
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	add_compile_options(-Wall -Wextra -Wpedantic
 		-Wno-unused-parameter -Wno-missing-field-initializers)
 endif()
 
-if(MSVC)
-	message(FATAL_ERROR "MSVC is not supported; use MinGW-w64")
-endif()
-
-# MSYS2 ucrt64 prefix from Win64Depends.sh (cross) so host .pc files cannot leak.
 if(WIN32 AND CMAKE_CROSSCOMPILING)
-	set(DN_MINGW_PREFIX "${CMAKE_BINARY_DIR}/ucrt64")
-	if(NOT EXISTS "${DN_MINGW_PREFIX}/lib/pkgconfig")
-		message(FATAL_ERROR
-			"MSYS2 prefix missing at ${DN_MINGW_PREFIX}\n"
-			"Run: sh cmake/Win64Depends.sh ${CMAKE_BINARY_DIR}")
-	endif()
+	set(DN_MINGW_PREFIX "${PROJECT_SOURCE_DIR}/ucrt64")
 	list(APPEND CMAKE_PREFIX_PATH "${DN_MINGW_PREFIX}")
 	list(APPEND CMAKE_FIND_ROOT_PATH "${DN_MINGW_PREFIX}")
-	set(ENV{PKG_CONFIG_SYSROOT_DIR} "${CMAKE_BINARY_DIR}")
+
+	# Relativize prefixes, and bar pkg-config from looking up host libraries
+	set(ENV{PKG_CONFIG_SYSROOT_DIR} "${PROJECT_SOURCE_DIR}")
 	set(DN_MINGW_PCPATH
 		"${DN_MINGW_PREFIX}/share/pkgconfig:${DN_MINGW_PREFIX}/lib/pkgconfig")
 	set(ENV{PKG_CONFIG_PATH} "${DN_MINGW_PCPATH}")
 	set(ENV{PKG_CONFIG_LIBDIR} "${DN_MINGW_PCPATH}")
-	if(NOT QT_HOST_PATH)
-		set(QT_HOST_PATH "/usr" CACHE PATH "Host Qt for moc/rcc when cross-compiling")
-	endif()
+
+	# Qt tries to find qtpaths without an .exe file extension
+	# (see Qt6CoreMacros.cmake).  This ultimately means broken windeployqt.
 	set(QT_NO_QTPATHS_DEPLOYMENT_WARNING ON)
+
+	# You may need to set WINEPATH because the MSYS2 rcc.exe may be executed.
+	# Potentially set AUTORCC_EXECUTABLE manually to something usable.
+endif()
+
+if(APPLE)
+	# Build tree: bin/dn.app/Contents/MacOS vs bin/libdn.dylib.
+	# Install: MacOS/dn, Frameworks/libdn.dylib (macdeployqt leaves
+	# @rpath/libdn.dylib; Homebrew dylibs become @executable_path).
+	set(CMAKE_INSTALL_RPATH "@loader_path;@loader_path/../Frameworks")
+else()
+	set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
 
 # Dependency fetching is centralised here in the root CMakeLists.txt.
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/submodules/liberty/cmake")
+
 find_package(PkgConfig REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(Qt6 6.11 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
@@ -145,10 +137,6 @@ else()
 		EXCLUDE_FROM_ALL
 	)
 	FetchContent_MakeAvailable(lcms2)
-	if(NOT TARGET lcms2 OR NOT TARGET lcms2_fast_float OR NOT TARGET lcms2_threaded)
-		message(FATAL_ERROR
-			"Bundled lcms2 must provide targets 'lcms2', 'lcms2_fast_float' and 'lcms2_threaded'")
-	endif()
 
 	set(DN_WITH_LCMS2_FAST_FLOAT TRUE)
 	set(DN_WITH_LCMS2_THREADED TRUE)
@@ -171,11 +159,11 @@ if(DN_WITH_JPEG_QS)
 		DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 		PATCH_COMMAND
 			${CMAKE_COMMAND} -E copy
-				"${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpegqs/CMakeLists.txt"
+				"${PROJECT_SOURCE_DIR}/cmake/jpegqs/CMakeLists.txt"
 				<SOURCE_DIR>/CMakeLists.txt
 		COMMAND
 			${CMAKE_COMMAND} -E copy_directory
-				"${CMAKE_CURRENT_SOURCE_DIR}/cmake/jpegqs/include"
+				"${PROJECT_SOURCE_DIR}/cmake/jpegqs/include"
 				<SOURCE_DIR>/include
 	)
 	FetchContent_MakeAvailable(jpegqs)
@@ -184,20 +172,21 @@ if(DN_WITH_JPEG_QS)
 	endif()
 endif()
 
+# TODO(p): This will want to be single instance everywhere.
 if(UNIX AND NOT APPLE)
 	set(DN_WITH_SINGLE_INSTANCE TRUE)
 else()
 	set(DN_WITH_SINGLE_INSTANCE FALSE)
 endif()
 
-file(SHA256 "${CMAKE_SOURCE_DIR}/ipc/common.lxdr" DN_IPC_LXDR_H1)
-file(SHA256 "${CMAKE_SOURCE_DIR}/ipc/instance.lxdr" DN_IPC_LXDR_H2)
+file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/common.lxdr" DN_IPC_LXDR_H1)
+file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/instance.lxdr" DN_IPC_LXDR_H2)
 string(SHA256 DN_IPC_LXDR_COMBINED "${DN_IPC_LXDR_H1}${DN_IPC_LXDR_H2}")
 string(SUBSTRING "${DN_IPC_LXDR_COMBINED}" 0 12 DN_IPC_LXDR_PREFIX)
 set(DN_IPC_BUILD_ID "dawn ${PROJECT_VERSION} ${DN_IPC_LXDR_PREFIX}")
 
 configure_file(
-	"${CMAKE_CURRENT_SOURCE_DIR}/dn-config.h.in"
+	"${PROJECT_SOURCE_DIR}/dn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dn-config.h"
 )
 
@@ -206,7 +195,43 @@ add_subdirectory(dnthumbd)
 add_subdirectory(dn)
 
 if(WIN32)
-	include(cmake/Win32Install.cmake)
+	install(TARGETS dn libdn dnthumbd
+		RUNTIME DESTINATION .)
+	install(DIRECTORY "${DN_MINGW_PREFIX}/bin/"
+		DESTINATION .
+		FILES_MATCHING
+			PATTERN "*.dll"
+			PATTERN "vulkan-1.dll" EXCLUDE)
+
+	install(FILES
+		"${DN_MINGW_PREFIX}/bin/wperl.exe"
+		"${DN_MINGW_PREFIX}/bin/exiftool"
+		DESTINATION .)
+	install(DIRECTORY
+		"${DN_MINGW_PREFIX}/lib/perl5/"
+		DESTINATION lib/perl5)
+
+	# TODO(p): Does this need to be branched?
+	if(TARGET Qt6::QWindowsIntegrationPlugin)
+		install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
+			RUNTIME DESTINATION platforms
+			LIBRARY DESTINATION platforms)
+	else()
+		install(FILES
+			"${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qwindows.dll"
+			DESTINATION platforms)
+	endif()
+
+	install(FILES
+		"${DN_MINGW_PREFIX}/bin/vk_swiftshader_icd.json"
+		DESTINATION .)
+	install(FILES
+		"${DN_MINGW_PREFIX}/share/mime/globs2"
+		"${DN_MINGW_PREFIX}/share/mime/subclasses"
+		DESTINATION share/mime)
+
+	# Prune unused libraries.
+	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/Win32Cleanup.cmake")
 endif()
 if(APPLE)
 	include(cmake/DarwinInstall.cmake)
@@ -216,3 +241,11 @@ include(CTest)
 if(BUILD_TESTING)
 	add_subdirectory(tests)
 endif()
+
+set(CPACK_PACKAGE_VENDOR "dawn")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_GENERATOR ZIP)
+set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CPACK_PACKAGE_FILE_NAME
+	"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+include(CPack)

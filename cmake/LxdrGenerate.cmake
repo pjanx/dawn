@@ -11,8 +11,6 @@
 # .lxdr files.  Does not attach the header to any compile target.
 #
 
-find_program(DN_CLANG_FORMAT NAMES clang-format)
-
 function(dn_lxdr_generate out_header namespace prefix_camel)
 	if(NOT AWK)
 		message(FATAL_ERROR "dn_lxdr_generate requires AWK")
@@ -36,14 +34,6 @@ function(dn_lxdr_generate out_header namespace prefix_camel)
 	get_filename_component(out_name "${out_header}" NAME)
 	string(MAKE_C_IDENTIFIER "${out_name}" out_ident)
 
-	set(format_cmd)
-	if(DN_CLANG_FORMAT)
-		set(format_cmd
-			COMMAND "${DN_CLANG_FORMAT}"
-				"--style=file:${PROJECT_SOURCE_DIR}/.clang-format"
-				-i "${out_header}")
-	endif()
-
 	add_custom_command(
 		OUTPUT "${out_header}"
 		COMMAND ${CMAKE_COMMAND} -E make_directory "${out_dir}"
@@ -53,7 +43,6 @@ function(dn_lxdr_generate out_header namespace prefix_camel)
 			-v "Namespace=${namespace}"
 			${lxdr_abs}
 			> "${out_header}"
-		${format_cmd}
 		DEPENDS ${lxdr_abs} "${lxdrgen}" "${lxdrgen_cpp}"
 		COMMENT "Generating ${out_name}"
 		VERBATIM

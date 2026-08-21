@@ -70,6 +70,13 @@ Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
  $ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
  $ cmake --build build
 
+Windows cross-compile:
+
+ $ sh -e msys2-configure.sh
+ $ cmake -DCMAKE_TOOLCHAIN_FILE=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake \
+   -DCMAKE_BUILD_TYPE=Release -B build
+ $ WINEPATH=$PWD/ucrt64/bin cmake --build build -- package
+
 Configuration
 -------------
 See link:doc/configuring-your-system.adoc[Configuring your system].
