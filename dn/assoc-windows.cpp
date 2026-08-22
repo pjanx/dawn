@@ -87,7 +87,7 @@ enum_handlers(const QString &ext, ASSOC_FILTER filter)
 	vector<Handler> out;
 	if (ext.isEmpty())
 		return out;
-	constwstring wext = ext.toStdWString();
+	const wstring wext = ext.toStdWString();
 	IEnumAssocHandlers *en = nullptr;
 	if (FAILED(SHAssocEnumHandlers(wext.c_str(), filter, &en)) || !en)
 		return out;
@@ -109,7 +109,7 @@ find_handler(const QString &ext, const QString &id)
 {
 	if (ext.isEmpty() || id.isEmpty())
 		return nullptr;
-	constwstring wext = ext.toStdWString();
+	const wstring wext = ext.toStdWString();
 	IEnumAssocHandlers *en = nullptr;
 	if (FAILED(SHAssocEnumHandlers(wext.c_str(), ASSOC_FILTER_NONE, &en)) ||
 		!en)
@@ -143,7 +143,7 @@ default_for(const QString &path)
 	const QString ext = extension_of(path);
 	if (ext.isEmpty())
 		return {};
-	constwstring wext = ext.toStdWString();
+	const wstring wext = ext.toStdWString();
 	wchar_t name[MAX_PATH] = {};
 	DWORD name_n = MAX_PATH;
 	Handler a;
@@ -210,7 +210,7 @@ launch(const Handler &app, const QString &path)
 		return false;
 
 	const QString abs = QFileInfo(path).absoluteFilePath();
-	constwstring wpath = QDir::toNativeSeparators(abs).toStdWString();
+	const wstring wpath = QDir::toNativeSeparators(abs).toStdWString();
 	IShellItem *item = nullptr;
 	HRESULT hr = SHCreateItemFromParsingName(
 		wpath.c_str(), nullptr, IID_PPV_ARGS(&item));
