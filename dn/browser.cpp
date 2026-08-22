@@ -2456,6 +2456,8 @@ make_browser_page(
 	page->modal->tree = page->menu_tree;
 	page->modal->keys = page->keys;
 	page->actor = make_actor(*b, host);
+	if (page->titlebar)
+		page->titlebar->actor = page->actor;
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
 	if (page->toolbar && page->toolbar->app_menu)

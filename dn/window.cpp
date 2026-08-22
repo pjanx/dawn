@@ -14,6 +14,7 @@
 
 #include <QByteArray>
 #include <QCloseEvent>
+#include <QCursor>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -32,6 +33,7 @@
 #include <QPlatformSurfaceEvent>
 #include <QPointer>
 #include <QProcess>
+#include <QRegion>
 #include <QScreen>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -160,6 +162,15 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 	this->kit_.post = std::move(post);
 	this->kit_.request_render = [this] { request_render(); };
+	this->kit_.start_move = [this] {
+		this->system_grab_ = shell()->startSystemMove();
+		request_render();
+	};
+	this->kit_.start_resize = [this](Qt::Edges edges) {
+		this->system_grab_ = shell()->startSystemResize(edges);
+		request_render();
+	};
+	this->csd_ = this->app_ && this->app_->needs_csd();
 	bind_host();
 }
 
@@ -207,6 +218,7 @@ Window::initialize(const QString &path, BrowseSetup setup)
 	// path can wait inside vkQueuePresentKHR while the workspace is hidden.
 	// TODO: Pass an explicit presentation policy from WaylandWindow instead of
 	// using parenthood as this platform/role proxy.
+	this->renderer_.set_prefer_premultiplied(this->csd_);
 	if (!this->renderer_.init(
 			this->app_->gpu(), this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
@@ -262,6 +274,15 @@ Window::bind_host()
 		switch (a) {
 		case Action::CloseWindow:
 			begin_close();
+			break;
+		case Action::Minimize:
+			shell()->showMinimized();
+			break;
+		case Action::Maximize:
+			if (shell()->windowState() & Qt::WindowMaximized)
+				shell()->showNormal();
+			else
+				shell()->showMaximized();
 			break;
 		case Action::Quit:
 			if (this->app_)
@@ -523,6 +544,12 @@ Window::sync_title()
 		w->setTitle(title);
 	if (this != w && this->title() != title)
 		setTitle(title);
+	auto set_bar = [&](Page *ui) {
+		if (ui && ui->titlebar)
+			ui->titlebar->text = title;
+	};
+	set_bar(this->browser_ui_.get());
+	set_bar(this->viewer_ui_.get());
 }
 
 Page *
@@ -604,6 +631,34 @@ Window::shell()
 	if (QWindow *parent_window = parent())
 		return parent_window;
 	return this;
+}
+
+void
+Window::sync_csd()
+{
+	Page *ui = active_ui();
+	if (ui)
+		ui->apply_csd_cursor(this->kit_);
+	if (this->kit_.cursor_ != this->cursor_applied_) {
+		this->cursor_applied_ = this->kit_.cursor_;
+		setCursor(this->cursor_applied_);
+	}
+	const bool shadow = this->kit_.csd_shadow_;
+	const int glow = shadow ? int(lround(double(kGlowPts))) : 0;
+	const int band = shadow ? int(lround(double(kResizeBorderPts))) : 0;
+	QRegion mask;
+	if (shadow) {
+		const QRect frame(glow, glow, max(0, width() - 2 * glow),
+			max(0, height() - 2 * glow));
+		mask = QRegion(frame.adjusted(-band, -band, band, band));
+	}
+	setMask(mask);
+	if (QWindow *sh = shell(); sh != this)
+		sh->setMask(QRegion());
+	const float dpr = host_dpr(*this);
+	const uint32_t inset =
+		shadow ? uint32_t(max(0L, lround(double(kGlowPts) * double(dpr)))) : 0;
+	this->renderer_.set_dest_inset(inset);
 }
 
 void
@@ -745,6 +800,16 @@ Window::render()
 	if (!ui)
 		return;
 	this->kit_.fullscreen_ = fullscreen;
+	this->kit_.maximized_ =
+		bool(shell()->windowState() & Qt::WindowMaximized);
+	this->kit_.csd_ = this->csd_ && !fullscreen;
+	this->kit_.csd_shadow_ =
+		this->kit_.csd_ && !this->kit_.maximized_;
+	this->kit_.active_ =
+		this->system_grab_ || shell()->isActive() || isActive();
+	sync_title();
+	if (ui->titlebar)
+		ui->titlebar->sync(this->kit_);
 	if (ui->toolbar) {
 		if (this->mode_ == Mode::Browser)
 			ui->toolbar->busy = this->awaiting_view_ ||
@@ -756,13 +821,13 @@ Window::render()
 		this->browser_->present(*ui);
 	else if (this->viewer_)
 		this->viewer_->present(*ui);
+	sync_csd();
 	if (this->viewer_ && this->viewer_->consume_open_done() &&
 		this->awaiting_view_) {
 		this->awaiting_view_ = false;
 		set_mode(Mode::View);
 		request_render();
 	}
-	sync_title();
 	const bool deferred = this->present_retry_.isActive();
 	const bool presented =
 		!deferred && this->renderer_.draw_frame(this->kit_.list_.mesh());
@@ -892,7 +957,7 @@ Window::event(QEvent *event)
 	if (event->type() == QEvent::WindowStateChange) {
 		auto *change = (QWindowStateChangeEvent *) event;
 		if ((change->oldState() ^ shell()->windowState()) &
-			Qt::WindowFullScreen) {
+			(Qt::WindowFullScreen | Qt::WindowMaximized)) {
 			// Double click to fullscreen may make us not receive a MouseUp.
 			this->kit_.left_down_ = false;
 			request_render();
@@ -914,15 +979,16 @@ Window::event(QEvent *event)
 		}
 	}
 	if (event->type() == QEvent::FocusIn ||
-		event->type() == QEvent::WindowActivate)
+		event->type() == QEvent::WindowActivate) {
 		sync_macos_app_menu(this->app_);
+		request_render();
+	}
 	if (event->type() == QEvent::FocusOut ||
 		event->type() == QEvent::WindowDeactivate) {
 		this->alt_armed_ = false;
-		if (this->kit_.popup_open()) {
+		if (this->kit_.popup_open())
 			this->kit_.close_popups();
-			request_render();
-		}
+		request_render();
 	}
 	if (event->type() == QEvent::DragEnter ||
 		event->type() == QEvent::DragMove) {
@@ -954,9 +1020,23 @@ Window::eventFilter(QObject *watched, QEvent *event)
 {
 	if (watched != this && watched != shell())
 		return false;
+	// The compositor holds the pointer for as long as it moves or resizes us,
+	// and drops our keyboard focus with it. Getting the pointer back is the
+	// only word we get that the grab is over.
+	if (this->system_grab_ &&
+		(event->type() == QEvent::Enter || event->type() == QEvent::MouseMove ||
+			event->type() == QEvent::MouseButtonPress)) {
+		this->system_grab_ = false;
+		request_render();
+	}
 	if (event->type() == QEvent::FocusIn ||
-		event->type() == QEvent::WindowActivate)
+		event->type() == QEvent::WindowActivate) {
 		sync_macos_app_menu(this->app_);
+		request_render();
+	}
+	if (event->type() == QEvent::FocusOut ||
+		event->type() == QEvent::WindowDeactivate)
+		request_render();
 	if (event->type() != QEvent::MouseMove)
 		return false;
 	auto *mouse = (QMouseEvent *) event;
@@ -1102,6 +1182,14 @@ Window::mousePressEvent(QMouseEvent *event)
 	const float x = float(pos.x());
 	const float y = float(pos.y());
 	this->alt_armed_ = false;
+	if (this->kit_.csd_ && event->button() == Qt::LeftButton) {
+		if (Page *ui = active_ui();
+			ui && ui->start_csd_resize(this->kit_, x, y)) {
+			request_render();
+			event->accept();
+			return;
+		}
+	}
 	if (event->button() == Qt::BackButton) {
 		apply_window(Action::Back);
 		request_render();

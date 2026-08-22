@@ -59,4 +59,8 @@ public:
 	void detach();
 };
 
+// True when the compositor does not advertise zxdg_decoration_manager_v1
+// (current Mutter). Never binds the global; Qt negotiates decoration itself.
+[[nodiscard]] bool wayland_needs_csd();
+
 }  // namespace dn

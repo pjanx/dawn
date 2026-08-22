@@ -71,6 +71,8 @@ public:
 
 	bool ensure_viewport(uint32_t viewport_w, uint32_t viewport_h,
 			     std::string *error = nullptr);
+	void set_dest_inset(uint32_t left, uint32_t top, uint32_t right,
+		uint32_t bottom);
 
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
 		    uint32_t viewport_h, const ScaleView &view,

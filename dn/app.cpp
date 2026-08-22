@@ -12,6 +12,7 @@
 #include "window.hpp"
 
 #if DN_WITH_WAYLAND
+#include "wayland-color-bridge.hpp"
 #include "wayland-window.hpp"
 #endif
 
@@ -46,6 +47,7 @@ App::init()
 	// wait and the timeout so presentation does not stall. Process-global;
 	// must run before the first Wayland window.
 	qputenv("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", QByteArrayLiteral("0"));
+	this->needs_csd_ = wayland_needs_csd();
 #endif
 	QGuiApplication::setQuitOnLastWindowClosed(false);
 #if defined(Q_OS_MACOS)

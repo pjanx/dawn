@@ -33,6 +33,8 @@ class WaylandWindow final : public QWindow
 	void begin_close();
 	void finish_close();
 	void attach_color_management(bool report_fallback);
+	void place_content();
+	[[nodiscard]] QRect content_geometry() const;
 
 	App *app_ = nullptr;
 	QBackingStore backing_store_;

@@ -57,6 +57,8 @@ constexpr float kFramePadY = 6.0f;
 constexpr float kTooltipPadX = 8.0f;
 constexpr float kButtonW = kIconPx + kFramePadX * 2.0f;
 constexpr float kButtonH = kIconPx + kFramePadY * 2.0f;
+constexpr float kGlowPts = 8.0f;
+constexpr float kResizeBorderPts = 8.0f;
 constexpr float kScrollBarW = 8.0f;
 constexpr float kScrollHideMs = 1000.0f;
 
@@ -129,6 +131,7 @@ struct Button : Widget {
 	QString text;
 	bool enabled_ = true;
 	bool active = false;
+	bool dim = false;
 	bool activate_on_press = false;
 	float pad_x = 0;
 	std::function<void(Kit &)> on_click;
@@ -348,7 +351,14 @@ struct Kit {
 	std::function<void(std::function<void()>)> post;
 	std::function<void()> request_render;
 	bool fullscreen_ = false;
+	bool maximized_ = false;
+	bool active_ = true;
+	bool csd_ = false;
+	bool csd_shadow_ = false;
 	bool dark_ = false;
+	Qt::CursorShape cursor_ = Qt::ArrowCursor;
+	std::function<void()> start_move;
+	std::function<void(Qt::Edges)> start_resize;
 	std::chrono::steady_clock::time_point hover_at_{};
 	std::chrono::steady_clock::time_point popup_at_{};
 	float hover_x_ = 0;

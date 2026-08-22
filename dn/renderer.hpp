@@ -88,6 +88,8 @@ class Renderer
 	VkShaderModule dither_vert_ = VK_NULL_HANDLE;
 	VkShaderModule dither_frag_ = VK_NULL_HANDLE;
 	bool needs_resize_ = false;
+	bool prefer_premultiplied_ = false;
+	uint32_t dest_inset_ = 0;
 	std::function<void()> present_about_to_queue_;
 	std::function<void()> present_queued_;
 
@@ -108,6 +110,8 @@ public:
 	void set_view(float scale, float pan_x, float pan_y,
 		dn::Orientation orientation, float angle = 0.0f);
 	void set_well_colour(float r, float g, float b);
+	void set_prefer_premultiplied(bool enabled);
+	void set_dest_inset(uint32_t px);
 	void set_checker_colour(float r, float g, float b);
 	void set_checkerboard(bool enabled);
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =

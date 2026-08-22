@@ -22,7 +22,7 @@ namespace dn
 
 enum class Action : uint8_t { None,
 	// window
-	NewWindow, CloseWindow, Quit, Fullscreen, DarkMode, Hint, Back, Forward, Help, About, Shortcuts,
+	NewWindow, CloseWindow, Minimize, Maximize, Quit, Fullscreen, DarkMode, Hint, Back, Forward, Help, About, Shortcuts,
 	Menu, Context, Cancel, NextPane, PrevPane,
 	// browser
 	Sidebar, DirPrev, DirNext, DirParent, DirHome,

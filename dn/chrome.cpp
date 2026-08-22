@@ -11,6 +11,7 @@
 #include <QtGlobal>
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -24,6 +25,62 @@ namespace
 
 constexpr float kWinPadX = 4.0f;
 constexpr float kWinPadY = 2.0f;
+
+Qt::CursorShape
+resize_cursor(Qt::Edges edges)
+{
+	const bool l = edges & Qt::LeftEdge;
+	const bool r = edges & Qt::RightEdge;
+	const bool t = edges & Qt::TopEdge;
+	const bool b = edges & Qt::BottomEdge;
+	if ((l && t) || (r && b))
+		return Qt::SizeFDiagCursor;
+	if ((r && t) || (l && b))
+		return Qt::SizeBDiagCursor;
+	if (l || r)
+		return Qt::SizeHorCursor;
+	if (t || b)
+		return Qt::SizeVerCursor;
+	return Qt::ArrowCursor;
+}
+
+Qt::Edges
+resize_edges(const Kit &kit, Rect window, Rect frame, float x, float y)
+{
+	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
+		return {};
+	if (!window.contains(x, y))
+		return {};
+	if (kit.csd_shadow_ ? frame.contains(x, y) : !frame.contains(x, y))
+		return {};
+	const float band = kResizeBorderPts;
+	Qt::Edges e;
+	if (x < frame.x + band)
+		e |= Qt::LeftEdge;
+	if (x >= frame.x + frame.w - band)
+		e |= Qt::RightEdge;
+	if (y < frame.y + band)
+		e |= Qt::TopEdge;
+	if (y >= frame.y + frame.h - band)
+		e |= Qt::BottomEdge;
+	return e;
+}
+
+unique_ptr<Button>
+make_title_button(Titlebar *bar, Action action, const char *icon)
+{
+	auto btn = make_unique<Button>();
+	btn->action = action;
+	btn->icon = icon;
+	const ActionDef &d = action_def(action);
+	btn->tip_text = action_tip(d, false);
+	btn->tip_accel = action_accel(d);
+	btn->on_click = [bar, action](Kit &) {
+		if (bar->actor.apply)
+			bar->actor.apply(action);
+	};
+	return btn;
+}
 
 void
 sync_overflow_proxy(Widget &source, Widget &proxy)
@@ -423,6 +480,167 @@ Toolbar::slot_for_more(const Button *more) const
 	return nullptr;
 }
 
+// --- Titlebar --------------------------------------------------------------
+
+Titlebar::Titlebar()
+{
+	this->pad_x = kWinPadX;
+	this->pad_y = kWinPadY;
+	this->fill = Fill::Gradient;
+	this->stroke = Stroke::Bottom;
+	this->hittable = true;
+
+	auto label = make_unique<Label>();
+	label->align = Align::Center;
+	label->bold = true;
+	this->title = label.get();
+	add_child(std::move(label));
+
+	auto min = make_title_button(this, Action::Minimize, "window-minimize");
+	this->minimize = min.get();
+	add_child(std::move(min));
+	auto max = make_title_button(this, Action::Maximize, "window-maximize");
+	this->maximize = max.get();
+	add_child(std::move(max));
+	auto cls = make_title_button(this, Action::CloseWindow, "window-close");
+	this->close = cls.get();
+	add_child(std::move(cls));
+}
+
+void
+Titlebar::sync(Kit &kit)
+{
+	const bool dim = !kit.active_;
+	if (this->title) {
+		this->title->text = this->text;
+		this->title->dim = dim;
+	}
+	if (this->maximize) {
+		const ActionDef &d = action_def(Action::Maximize);
+		const bool on = kit.maximized_;
+		this->maximize->icon = on ? "window-restore" : "window-maximize";
+		this->maximize->tip_text = action_tip(d, on);
+		this->maximize->active = on;
+	}
+	auto apply = [this, dim](Button *btn) {
+		if (!btn || btn->action == Action::None)
+			return;
+		btn->enabled_ =
+			!this->actor.enabled || this->actor.enabled(btn->action);
+		btn->dim = dim;
+	};
+	apply(this->minimize);
+	apply(this->maximize);
+	apply(this->close);
+}
+
+void
+Titlebar::measure(Kit &kit, float avail_w, float)
+{
+	const float ih = kButtonH;
+	float bw = 0.0f;
+	auto slot = [&](Button *b) {
+		if (!b)
+			return;
+		b->measure(kit, kUnlim, ih);
+		bw += b->r.w;
+	};
+	slot(this->minimize);
+	slot(this->maximize);
+	slot(this->close);
+	this->r.w = avail_w;
+	this->r.h = this->pad_y * 2.0f + ih;
+}
+
+void
+Titlebar::arrange(Kit &kit, Rect alloc)
+{
+	if (!this->visible) {
+		this->r = {};
+		return;
+	}
+	this->r = kit.snap_rect(alloc);
+	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
+	float x = bar.x + bar.w;
+	auto place = [&](Button *b) {
+		if (!b)
+			return;
+		b->measure(kit, kUnlim, bar.h);
+		x -= b->r.w;
+		b->arrange(kit, {x, bar.y, b->r.w, bar.h});
+	};
+	place(this->close);
+	place(this->maximize);
+	place(this->minimize);
+	if (this->title) {
+		const float left = bar.x;
+		const float right = x;
+		const float avail = max(0.0f, right - left);
+		this->title->text =
+			kit.elide_lines(this->text, avail, 1, this->title->bold);
+		this->title->measure(kit, avail, bar.h);
+		float tw = min(this->title->r.w, avail);
+		float tx = this->r.x + (this->r.w - tw) * 0.5f;
+		if (tx < left)
+			tx = left;
+		if (tx + tw > right)
+			tx = max(left, right - tw);
+		this->title->arrange(kit, {tx, bar.y, tw, bar.h});
+	}
+}
+
+void
+Titlebar::paint(Kit &kit) const
+{
+	Panel::paint(kit);
+}
+
+void
+Titlebar::prepare(Kit &kit)
+{
+	const int px = max(16, int(lround(double(kIconPx) * double(kit.dpr_))));
+	kit.pack_icon("window-minimize", px);
+	kit.pack_icon("window-maximize", px);
+	kit.pack_icon("window-restore", px);
+	kit.pack_icon("window-close", px);
+	if (this->title && !this->title->text.isEmpty())
+		kit.cache_text(this->title->text, this->title->bold);
+	Panel::prepare(kit);
+}
+
+bool
+Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	if (Page *page = dynamic_cast<Page *>(this->parent_)) {
+		const Qt::Edges edges =
+			resize_edges(kit, page->r, page->frame(), x, y);
+		if (edges && kit.start_resize) {
+			kit.start_resize(edges);
+			return true;
+		}
+	}
+	if (kit.start_move) {
+		kit.start_move();
+		return true;
+	}
+	return false;
+}
+
+bool
+Titlebar::double_click(
+	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	if (dynamic_cast<Button *>(kit.hit(x, y)))
+		return false;
+	if (this->actor.apply)
+		this->actor.apply(Action::Maximize);
+	return true;
+}
+
 Sidebar::Sidebar(unique_ptr<Widget> child)
 {
 	this->content = child.get();
@@ -459,6 +677,9 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	unique_ptr<Widget> body)
 	: side(s)
 {
+	auto title = make_unique<Titlebar>();
+	this->titlebar = title.get();
+	add_child(std::move(title));
 	this->toolbar = tb.get();
 	add_child(std::move(tb));
 	this->sidebar = sb.get();
@@ -471,12 +692,13 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->splitter->on_drag = [this](float mx) {
 			if (!this->sidebar_open || this->side == Side::None)
 				return;
-			const float max_side = max(kMinSide, this->r.w - kMinWell);
+			const float max_side = max(kMinSide, this->frame_.w - kMinWell);
 			if (this->side == Side::Right)
-				this->sidebar_w =
-					clamp(this->r.x + this->r.w - mx, kMinSide, max_side);
+				this->sidebar_w = clamp(
+					this->frame_.x + this->frame_.w - mx, kMinSide, max_side);
 			else
-				this->sidebar_w = clamp(mx - this->r.x, kMinSide, max_side);
+				this->sidebar_w =
+					clamp(mx - this->frame_.x, kMinSide, max_side);
 		};
 		add_child(std::move(split));
 	}
@@ -529,22 +751,35 @@ Page::arrange(Kit &kit, Rect alloc)
 		return;
 	}
 	this->r = kit.snap_rect(alloc);
-	float y = this->r.y;
+	this->frame_ = this->r;
+	if (kit.csd_shadow_)
+		this->frame_ = kit.snap_rect(this->r.inset(kGlowPts, kGlowPts));
+	if (this->titlebar)
+		this->titlebar->visible = kit.csd_ && !kit.fullscreen_;
+	float y = this->frame_.y;
+	if (this->titlebar && this->titlebar->visible) {
+		this->titlebar->measure(kit, this->frame_.w, this->frame_.h);
+		this->titlebar->arrange(
+			kit, {this->frame_.x, y, this->frame_.w, this->titlebar->r.h});
+		y += this->titlebar->r.h;
+	} else if (this->titlebar) {
+		this->titlebar->r = {};
+	}
 	if (this->toolbar && this->toolbar->visible) {
-		this->toolbar->measure(kit, this->r.w, this->r.h);
+		this->toolbar->measure(kit, this->frame_.w, this->frame_.h);
 		this->toolbar->arrange(
-			kit, {this->r.x, y, this->r.w, this->toolbar->r.h});
+			kit, {this->frame_.x, y, this->frame_.w, this->toolbar->r.h});
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
-		const float rest = max(0.0f, this->r.y + this->r.h - y);
-		this->banner->measure(kit, this->r.w, rest);
+		const float rest = max(0.0f, this->frame_.y + this->frame_.h - y);
+		this->banner->measure(kit, this->frame_.w, rest);
 		this->banner->arrange(
-			kit, {this->r.x, y, this->r.w, this->banner->r.h});
+			kit, {this->frame_.x, y, this->frame_.w, this->banner->r.h});
 		y += this->banner->r.h;
 	}
 	const float body_y = y;
-	const float body_h = max(0.0f, this->r.y + this->r.h - body_y);
+	const float body_h = max(0.0f, this->frame_.y + this->frame_.h - body_y);
 	float side_w = 0.0f;
 	if (this->sidebar) {
 		this->sidebar->visible =
@@ -554,15 +789,16 @@ Page::arrange(Kit &kit, Rect alloc)
 			this->sidebar->min_w = side_w;
 			if (this->side == Side::Left)
 				this->sidebar->arrange(
-					kit, {this->r.x, body_y, side_w, body_h});
+					kit, {this->frame_.x, body_y, side_w, body_h});
 			else
-				this->sidebar->arrange(kit,
-					{this->r.x + this->r.w - side_w, body_y, side_w, body_h});
+				this->sidebar->arrange(kit, {this->frame_.x + this->frame_.w -
+						side_w,
+					body_y, side_w, body_h});
 		} else {
 			this->sidebar->r = {};
 		}
 	}
-	this->well_ = {this->r.x, body_y, this->r.w, body_h};
+	this->well_ = {this->frame_.x, body_y, this->frame_.w, body_h};
 	if (this->sidebar && this->sidebar->visible) {
 		if (this->side == Side::Left)
 			this->well_.x += side_w;
@@ -624,10 +860,60 @@ Page::key(Kit &kit, int key, unsigned mods)
 	return true;
 }
 
+void
+Page::paint(Kit &kit) const
+{
+	if (!shown())
+		return;
+	if (kit.csd_shadow_ && this->frame_.w > 0.0f && this->frame_.h > 0.0f)
+		kit.draw_glow(this->frame_.x, this->frame_.y, this->frame_.w,
+			this->frame_.h, {0, 0, 0, 0.25f});
+	Widget::paint(kit);
+}
+
+bool
+Page::press(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	const Qt::Edges edges = resize_edges(kit, this->r, this->frame_, x, y);
+	if (edges && kit.start_resize) {
+		kit.start_resize(edges);
+		return true;
+	}
+	return false;
+}
+
+void
+Page::apply_csd_cursor(Kit &kit)
+{
+	kit.cursor_ = Qt::ArrowCursor;
+	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
+		return;
+	if (dynamic_cast<Button *>(kit.hot_))
+		return;
+	const Qt::Edges edges =
+		resize_edges(kit, this->r, this->frame_, kit.mouse_x_, kit.mouse_y_);
+	if (edges)
+		kit.cursor_ = resize_cursor(edges);
+}
+
+bool
+Page::start_csd_resize(Kit &kit, float x, float y)
+{
+	if (dynamic_cast<Button *>(kit.hit(x, y)))
+		return false;
+	const Qt::Edges edges = resize_edges(kit, this->r, this->frame_, x, y);
+	if (!edges || !kit.start_resize)
+		return false;
+	kit.start_resize(edges);
+	return true;
+}
+
 size_t
 Page::child_count() const
 {
-	return 5;
+	return 6;
 }
 
 Widget *
@@ -636,14 +922,16 @@ Page::child(size_t i) const
 	const bool right = this->side == Side::Right;
 	switch (i) {
 	case 0:
-		return this->toolbar;
+		return this->titlebar;
 	case 1:
-		return this->banner;
+		return this->toolbar;
 	case 2:
-		return right ? this->content : this->sidebar;
+		return this->banner;
 	case 3:
-		return right ? this->sidebar : this->content;
+		return right ? this->content : this->sidebar;
 	case 4:
+		return right ? this->sidebar : this->content;
+	case 5:
 		return this->splitter;
 	default:
 		return nullptr;

@@ -180,8 +180,14 @@ struct ScaleEngine::Impl {
 
 	uint32_t viewport_w = 0;
 	uint32_t viewport_h = 0;
+	uint32_t dest_inset_l = 0;
+	uint32_t dest_inset_t = 0;
+	uint32_t dest_inset_r = 0;
+	uint32_t dest_inset_b = 0;
 
 	bool ready = false;
+
+	VkRect2D dest_area(uint32_t vp_w, uint32_t vp_h) const;
 
 	void destroy_mid();
 	void destroy_tiles();
@@ -1200,6 +1206,16 @@ ScaleEngine::Impl::cmd_barrier_mid(
 		&barrier);
 }
 
+VkRect2D
+ScaleEngine::Impl::dest_area(uint32_t vp_w, uint32_t vp_h) const
+{
+	const uint32_t x = min(this->dest_inset_l, vp_w);
+	const uint32_t y = min(this->dest_inset_t, vp_h);
+	const uint32_t w = vp_w - x - min(this->dest_inset_r, vp_w - x);
+	const uint32_t h = vp_h - y - min(this->dest_inset_b, vp_h - y);
+	return {{int32_t(x), int32_t(y)}, {w, h}};
+}
+
 void
 ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
@@ -1207,11 +1223,12 @@ ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 {
 	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
 								 clear_rgba[2], clear_rgba[3]}}};
+	const VkRect2D area = dest_area(vp_w, vp_h);
 	VkRenderPassBeginInfo rp{
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 		.renderPass = dest_render_pass,
 		.framebuffer = dest_fb,
-		.renderArea = {.extent = {vp_w, vp_h}},
+		.renderArea = area,
 		.clearValueCount = 1,
 		.pClearValues = &clear,
 	};
@@ -1225,7 +1242,7 @@ ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 		.minDepth = 0.0f,
 		.maxDepth = 1.0f,
 	};
-	VkRect2D scissor{.extent = {vp_w, vp_h}};
+	VkRect2D scissor = area;
 	vkCmdSetViewport(cmd, 0, 1, &vp);
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_v);
@@ -1244,11 +1261,12 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 {
 	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
 								 clear_rgba[2], clear_rgba[3]}}};
+	const VkRect2D area = dest_area(vp_w, vp_h);
 	VkRenderPassBeginInfo rp{
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 		.renderPass = dest_render_pass,
 		.framebuffer = dest_fb,
-		.renderArea = {.extent = {vp_w, vp_h}},
+		.renderArea = area,
 		.clearValueCount = 1,
 		.pClearValues = &clear,
 	};
@@ -1262,7 +1280,7 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 		.minDepth = 0.0f,
 		.maxDepth = 1.0f,
 	};
-	VkRect2D scissor{.extent = {vp_w, vp_h}};
+	VkRect2D scissor = area;
 	vkCmdSetViewport(cmd, 0, 1, &vp);
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_2d);
@@ -1310,6 +1328,18 @@ ScaleEngine::Impl::cmd_fill_visible_mid(VkCommandBuffer cmd,
 	return {first, last};
 }
 
+
+void
+ScaleEngine::set_dest_inset(uint32_t left, uint32_t top, uint32_t right,
+	uint32_t bottom)
+{
+	if (!impl_)
+		return;
+	impl_->dest_inset_l = left;
+	impl_->dest_inset_t = top;
+	impl_->dest_inset_r = right;
+	impl_->dest_inset_b = bottom;
+}
 
 ScaleEngine::ScaleEngine() = default;
 
@@ -1625,11 +1655,12 @@ ScaleEngine::record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 
 	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
 								 clear_rgba[2], clear_rgba[3]}}};
+	const VkRect2D area = impl_->dest_area(viewport_w, viewport_h);
 	VkRenderPassBeginInfo rp{
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 		.renderPass = impl_->dest_render_pass,
 		.framebuffer = dest_fb,
-		.renderArea = {.extent = {viewport_w, viewport_h}},
+		.renderArea = area,
 		.clearValueCount = 1,
 		.pClearValues = &clear,
 	};

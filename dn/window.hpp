@@ -70,6 +70,7 @@ class Window final : public QWindow
 	void bind_host();
 	void set_mode(Mode m);
 	void sync_title();
+	void sync_csd();
 	bool handle_native_gesture(QNativeGestureEvent *event);
 	bool handle_touch(QTouchEvent *event);
 	[[nodiscard]] Extent pixel_size() const;
@@ -106,6 +107,9 @@ class Window final : public QWindow
 	float touch_x1_ = 0;
 	float touch_y1_ = 0;
 	bool alt_armed_ = false;
+	bool csd_ = false;
+	bool system_grab_ = false;
+	Qt::CursorShape cursor_applied_ = Qt::ArrowCursor;
 
 protected:
 	bool event(QEvent *event) override;

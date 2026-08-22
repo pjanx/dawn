@@ -20,6 +20,50 @@ using namespace std;
 
 namespace dn
 {
+namespace
+{
+
+void
+registry_note(void *data, wl_registry *, uint32_t, const char *interface,
+	uint32_t)
+{
+	if (interface && strcmp(interface, "zxdg_decoration_manager_v1") == 0)
+		*static_cast<bool *>(data) = true;
+}
+
+void
+registry_drop(void *, wl_registry *, uint32_t)
+{
+}
+
+}  // namespace
+
+bool
+wayland_needs_csd()
+{
+	if (!qGuiApp ||
+		QGuiApplication::platformName() != QStringLiteral("wayland"))
+		return false;
+	auto *native =
+		qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+	if (!native)
+		return false;
+	wl_display *display = native->display();
+	if (!display)
+		return false;
+	wl_registry *registry = wl_display_get_registry(display);
+	if (!registry)
+		return false;
+	bool has_ssd = false;
+	const wl_registry_listener listener = {
+		.global = registry_note,
+		.global_remove = registry_drop,
+	};
+	wl_registry_add_listener(registry, &listener, &has_ssd);
+	wl_display_roundtrip(display);
+	wl_registry_destroy(registry);
+	return !has_ssd;
+}
 
 void
 WaylandColorBridge::request_preferred()

@@ -77,6 +77,26 @@ private:
 	ToolbarSlot *slot_for_more(const Button *more) const;
 };
 
+struct Titlebar : Panel {
+	Label *title = nullptr;
+	Button *minimize = nullptr;
+	Button *maximize = nullptr;
+	Button *close = nullptr;
+	Actor actor;
+	QString text;
+
+	Titlebar();
+	void sync(Kit &kit);
+
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
+		unsigned mods) override;
+};
+
 struct Sidebar : Panel {
 	Widget *content = nullptr;
 
@@ -85,6 +105,7 @@ struct Sidebar : Panel {
 };
 
 struct Page : Composite {
+	Titlebar *titlebar = nullptr;
 	Toolbar *toolbar = nullptr;
 	Sidebar *sidebar = nullptr;
 	Splitter *splitter = nullptr;
@@ -109,12 +130,17 @@ struct Page : Composite {
 
 	void measure(Kit &kit, float max_w, float max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
+	void paint(Kit &kit) const override;
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, int key, unsigned mods) override;
 	std::size_t child_count() const override;
 	Widget *child(std::size_t i) const override;
+	void apply_csd_cursor(Kit &kit);
+	bool start_csd_resize(Kit &kit, float x, float y);
 
 	[[nodiscard]] float toolbar_h() const { return this->well_.y - this->r.y; }
 	[[nodiscard]] Rect well() const { return this->well_; }
+	[[nodiscard]] Rect frame() const { return this->frame_; }
 
 private:
 	std::unique_ptr<Widget> banner_owned_;
@@ -124,6 +150,7 @@ private:
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;
 	Rect well_{};
+	Rect frame_{};
 };
 
 Actor chain_actor(const HostActions &host, std::function<bool(Action)> apply,

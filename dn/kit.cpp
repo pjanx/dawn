@@ -17,6 +17,7 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QPen>
 #include <QTextLayout>
 #include <QTextLine>
 #include <QTextOption>
@@ -28,6 +29,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -44,7 +46,6 @@ namespace
 
 constexpr int kAtlasStart = 512;
 constexpr int kAtlasMax = 4096;
-constexpr float kGlowPts = 8.0f;
 
 uint16_t
 widen8(uint8_t v)
@@ -120,6 +121,60 @@ raster_symbolic(const char *name, int px)
 			(const unsigned char *) (pixmap.data() + size_t(y) * stride);
 		for (int x = 0; x < px; ++x)
 			row[x] = qRgba(cr, cg, cb, src[x * 4 + 3]);
+	}
+	return image;
+}
+
+QImage
+raster_window_button(const char *name, int px)
+{
+	enum class Kind : uint8_t { None, Min, Max, Rest, Close };
+	Kind kind = Kind::None;
+	if (name && strcmp(name, "window-minimize") == 0)
+		kind = Kind::Min;
+	else if (name && strcmp(name, "window-maximize") == 0)
+		kind = Kind::Max;
+	else if (name && strcmp(name, "window-restore") == 0)
+		kind = Kind::Rest;
+	else if (name && strcmp(name, "window-close") == 0)
+		kind = Kind::Close;
+	if (kind == Kind::None || px < 1)
+		return {};
+	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
+	image.fill(Qt::transparent);
+	QPainter painter(&image);
+	painter.setRenderHint(QPainter::Antialiasing, true);
+	const qreal sw = max(1.25, qreal(px) / 12.0);
+	painter.setPen(QPen(Qt::white, sw, Qt::SolidLine, Qt::SquareCap,
+		Qt::MiterJoin));
+	painter.setBrush(Qt::NoBrush);
+	const qreal m = qreal(px) * 0.22;
+	const QRectF box(m, m, qreal(px) - 2.0 * m, qreal(px) - 2.0 * m);
+	switch (kind) {
+	case Kind::Min:
+		painter.drawLine(QPointF(m, qreal(px) * 0.55),
+			QPointF(qreal(px) - m, qreal(px) * 0.55));
+		break;
+	case Kind::Max:
+		painter.drawRect(box);
+		break;
+	case Kind::Rest: {
+		const qreal s = box.width() * 0.68;
+		const QRectF back(box.right() - s, box.top(), s, s);
+		const QRectF front(box.left(), box.bottom() - s, s, s);
+		painter.drawRect(back);
+		painter.setCompositionMode(QPainter::CompositionMode_Source);
+		painter.fillRect(front.adjusted(-sw, -sw, sw, sw), Qt::transparent);
+		painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+		painter.drawRect(front);
+		break;
+	}
+	case Kind::Close:
+		painter.drawLine(box.topLeft(), box.bottomRight());
+		painter.drawLine(box.topRight(), box.bottomLeft());
+		break;
+	case Kind::None:
+		break;
 	}
 	return image;
 }
@@ -624,17 +679,17 @@ Button::paint(Kit &kit) const
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.hover_));
 	const float px = kFramePadX + this->pad_x;
+	const float ink_a =
+		(this->enabled_ ? 1.0f : 0.375f) * (this->dim ? 0.5f : 1.0f);
 	if (this->icon)
 		emit_icon(kit, this->r.x + px,
 			this->r.y + (this->r.h - kIconPx) * 0.5f, kIconPx, this->icon,
-			col(kit.ink_, this->enabled_ ? 1.0f : 0.375f));
+			col(kit.ink_, ink_a));
 	if (!this->text.isEmpty()) {
 		const float tx = this->r.x + px + (this->icon ? kIconPx + 4.0f : 0.0f);
 		const float th = kit.text_height(this->text, 0.0f, false);
-		const Colour c = kit.ink_;
 		emit_text(kit, tx, this->r.y + (this->r.h - th) * 0.5f,
-			button_shown(kit, *this),
-			{c.r, c.g, c.b, this->enabled_ ? c.a : c.a * 0.5f}, false);
+			button_shown(kit, *this), col(kit.ink_, ink_a), false);
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -1443,6 +1498,8 @@ Kit::pack_icon(const char *name, int px)
 	if (it != this->icons_.end() && it->second.w == px && it->second.h == px)
 		return;
 	QImage image = raster_symbolic(name, px);
+	if (image.isNull())
+		image = raster_window_button(name, px);
 	if (image.isNull())
 		return;
 	const Packed packed = pack_or_grow(*this, image.width(), image.height());

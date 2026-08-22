@@ -24,5 +24,5 @@ main()
 {
 	vec4 c = texelFetch(u_compose, ivec2(gl_FragCoord.xy), 0);
 	c.rgb += (bayer8(gl_FragCoord.xy) - 0.5) / 255.0;
-	out_color = vec4(c.rgb, 1.0);
+	out_color = vec4(c.rgb, c.a);
 }

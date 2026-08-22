@@ -24,6 +24,7 @@
 
 #include <vulkan/vulkan.h>
 
+#include <cmath>
 #include <cstdio>
 
 using namespace std;
@@ -36,11 +37,20 @@ WaylandWindow::WaylandWindow(App *app)
 {
 	setSurfaceType(QSurface::RasterSurface);
 	setTitle(QStringLiteral("dn"));
+	if (app && app->needs_csd()) {
+		setFlag(Qt::FramelessWindowHint);
+		// Qt Wayland treats alphaBufferSize<=0 as opaque and stamps
+		// wl_surface.set_opaque_region over the whole child, including
+		// glow that hangs outside the shell. Keep the child non-opaque.
+		QSurfaceFormat child = this->content_.format();
+		child.setAlphaBufferSize(8);
+		this->content_.setFormat(child);
+	}
 	QSurfaceFormat format = this->content_.format();
 	format.setSwapInterval(0);
 	this->content_.setFormat(format);
 	resize(this->content_.size());
-	this->content_.setGeometry(QRect(QPoint(), size()));
+	place_content();
 	this->content_.installEventFilter(this);
 }
 
@@ -54,7 +64,7 @@ bool
 WaylandWindow::initialize(const QString &path, BrowseSetup setup)
 {
 	create();
-	this->content_.setGeometry(QRect(QPoint(), size()));
+	place_content();
 	if (!this->content_.initialize(path, setup))
 		return false;
 	this->initialized_ = true;
@@ -113,8 +123,10 @@ WaylandWindow::event(QEvent *event)
 {
 	if (event->type() == QEvent::FocusOut)
 		finish_close();
-	if (event->type() == QEvent::WindowStateChange)
+	if (event->type() == QEvent::WindowStateChange) {
+		place_content();
 		QCoreApplication::sendEvent(&this->content_, event);
+	}
 	if (event->type() == QEvent::UpdateRequest) {
 		render_background();
 		return true;
@@ -200,8 +212,27 @@ void
 WaylandWindow::resizeEvent(QResizeEvent *event)
 {
 	this->backing_store_.resize(event->size());
-	this->content_.setGeometry(QRect(QPoint(), event->size()));
+	place_content();
 	requestUpdate();
+}
+
+QRect
+WaylandWindow::content_geometry() const
+{
+	if ((flags() & Qt::FramelessWindowHint) &&
+		!(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
+		const int glow = int(lround(double(kGlowPts)));
+		return {-glow, -glow, width() + 2 * glow, height() + 2 * glow};
+	}
+	return {QPoint(), size()};
+}
+
+void
+WaylandWindow::place_content()
+{
+	const QRect g = content_geometry();
+	if (this->content_.geometry() != g)
+		this->content_.setGeometry(g);
 }
 
 void

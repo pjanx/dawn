@@ -50,6 +50,7 @@ public:
 	{
 		return this->display_profiles_;
 	}
+	[[nodiscard]] bool needs_csd() const { return this->needs_csd_; }
 
 private:
 	QVulkanInstance vulkan_instance_;
@@ -57,6 +58,7 @@ private:
 	Thumbnailer thumbnailer_;
 	DisplayProfileWatch display_profiles_;
 	std::vector<std::unique_ptr<QWindow>> windows_;
+	bool needs_csd_ = false;
 };
 
 }  // namespace dn

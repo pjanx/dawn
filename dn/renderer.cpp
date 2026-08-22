@@ -343,7 +343,16 @@ Renderer::create_swapchain()
 		image_count = capabilities.maxImageCount;
 	VkCompositeAlphaFlagBitsKHR composite_alpha =
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	if (!(capabilities.supportedCompositeAlpha & composite_alpha)) {
+	if (this->prefer_premultiplied_) {
+		if (capabilities.supportedCompositeAlpha &
+			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
+			composite_alpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+		else
+			fprintf(stderr,
+				"swapchain: PRE_MULTIPLIED composite alpha unavailable\n");
+	}
+	if (composite_alpha == VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR &&
+		!(capabilities.supportedCompositeAlpha & composite_alpha)) {
 		for (VkCompositeAlphaFlagBitsKHR candidate :
 			{VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
 				VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
@@ -496,6 +505,18 @@ Renderer::set_well_colour(float r, float g, float b)
 }
 
 void
+Renderer::set_prefer_premultiplied(bool enabled)
+{
+	this->prefer_premultiplied_ = enabled;
+}
+
+void
+Renderer::set_dest_inset(uint32_t px)
+{
+	this->dest_inset_ = px;
+}
+
+void
 Renderer::set_checker_colour(float r, float g, float b)
 {
 	this->checker_[0] = r;
@@ -608,6 +629,21 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	VkFramebuffer dest_fb =
 		dither ? this->compose_fb_ : this->framebuffers_[index];
 	string error;
+	const uint32_t inset =
+		(this->dest_inset_ > 0 && this->extent_.width > this->dest_inset_ * 2 &&
+			this->extent_.height > this->dest_inset_ * 2)
+		? this->dest_inset_
+		: 0;
+	if (inset > 0) {
+		const float none[4] = {0, 0, 0, 0};
+		this->engine_.set_dest_inset(0, 0, 0, 0);
+		if (!this->engine_.record_clear(this->cmd_, dest_fb,
+				this->extent_.width, this->extent_.height, none, &error))
+			die(error.c_str());
+		this->engine_.set_dest_inset(inset, inset, inset, inset);
+	} else {
+		this->engine_.set_dest_inset(0, 0, 0, 0);
+	}
 	if (this->engine_.has_image()) {
 		if (!this->engine_.record(this->cmd_, dest_fb, this->extent_.width,
 				this->extent_.height, view, clear, &error))

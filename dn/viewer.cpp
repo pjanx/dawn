@@ -1892,6 +1892,8 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	page->modal->tree = page->menu_tree;
 	page->modal->keys = page->keys;
 	page->actor = make_actor(*v, host);
+	if (page->titlebar)
+		page->titlebar->actor = page->actor;
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
 	if (page->toolbar && page->toolbar->app_menu)

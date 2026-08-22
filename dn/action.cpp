@@ -39,6 +39,8 @@ constexpr ActionDef kDefs[] = {
 	{},
 	{kMenu, {"_New Window"}, {}, {{Qt::Key_N, kCtrl}}, {}},
 	{kMenu, {"_Close Window"}, {}, {{Qt::Key_W, kCtrl}, {Qt::Key_Q}}, {}},
+	{0, {"_Minimise"}, {}, {}, {}},
+	{kToggle, {"_Maximise", "Res_tore"}, {}, {}, {}},
 	{kMenu, {"_Quit"}, {}, {{Qt::Key_Q, kCtrl}}, {}},
 	{kToggle, {"_Fullscreen", "E_xit Fullscreen"},
 		{"view-fullscreen-symbolic", "view-restore-symbolic"},
