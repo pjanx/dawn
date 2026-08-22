@@ -218,16 +218,9 @@ if(WIN32)
 		DESTINATION lib/perl5
 		OPTIONAL)
 
-	# TODO(p): Does this need to be branched?
-	if(TARGET Qt6::QWindowsIntegrationPlugin)
-		install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
-			RUNTIME DESTINATION platforms
-			LIBRARY DESTINATION platforms)
-	else()
-		install(FILES
-			"${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/qwindows.dll"
-			DESTINATION platforms)
-	endif()
+	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
+		RUNTIME DESTINATION platforms
+		LIBRARY DESTINATION platforms)
 
 	install(FILES
 		"${DN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"

@@ -28,17 +28,9 @@ install(FILES
 
 # macdeployqt otherwise copies imageformats/virtualkeyboard/styles and
 # pulls QtSvg, QtPdf, QtQuick, QtWidgets, QtNetwork with them.
-if(TARGET Qt6::QCocoaIntegrationPlugin)
-	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QCocoaIntegrationPlugin
-		LIBRARY DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms"
-		RUNTIME DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms")
-else()
-	set(_dn_qcocoa
-		"${QT6_INSTALL_PREFIX}/${QT6_INSTALL_PLUGINS}/platforms/libqcocoa.dylib")
-	install(FILES "${_dn_qcocoa}"
-		DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms")
-	unset(_dn_qcocoa)
-endif()
+install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QCocoaIntegrationPlugin
+	LIBRARY DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms"
+	RUNTIME DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms")
 
 # MoltenVK is an ICD; macdeployqt only copies the linked loader.
 # Homebrew lib/libMoltenVK.dylib is a Cellar symlink; install(FILES) would
