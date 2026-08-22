@@ -19,7 +19,7 @@
 #define WUFFS_CONFIG__MODULE__ZLIB
 #include "wuffs-v0.3.c"
 
-#include "dn-config.h"
+#include "dawn-config.h"
 #include "libdn.h"
 #include "libdn-loaders.h"
 

@@ -6,7 +6,7 @@
 //
 
 #include "app.hpp"
-#include "dn-config.h"
+#include "dawn-config.h"
 #include "thumbnail-cache.hpp"
 
 #if DN_WITH_SINGLE_INSTANCE

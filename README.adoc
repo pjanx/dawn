@@ -25,7 +25,7 @@ We care about
    of both photos and man-made images.
  - *Loading as much as we can* from any file format at the best possible
    quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, etc.;
-   resolutions up to 65535×65535.
+   resolutions up to 65535 at least on one side.
  - *Making good use of computing resources*: exercise the GPU and all CPU cores.
  - *Superb keyboard accessibility*: we recognise
    https://p.janouch.name/text/human-interface-guidelines.html[HIGs]
@@ -44,6 +44,8 @@ Rejected
 Packages
 --------
 Regular releases are sporadic.  git master should be stable enough.
+
+https://janouch.name/cd[Windows packages can be found here].
 
 On Windows, if your account is '`high integrity`' and you have no true Vulkan
 backend installed, manually rename 'vk_swiftshader.dll' to 'vulkan-1.dll'.

@@ -15,7 +15,7 @@
 // a dependency of this library at all.
 //
 
-#include "dn-config.h"
+#include "dawn-config.h"
 #include "libdn.h"
 #include "libdn-loaders.h"
 

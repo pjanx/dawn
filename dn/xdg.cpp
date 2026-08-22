@@ -7,7 +7,7 @@
 
 #include "xdg.hpp"
 
-#include "dn-config.h"
+#include "dawn-config.h"
 
 #include <QCoreApplication>
 #include <QDir>

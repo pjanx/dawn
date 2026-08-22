@@ -6,7 +6,7 @@
 //
 
 #include "libdn.h"
-#include "dn-config.h"
+#include "dawn-config.h"
 #include "libdn-loaders.h"
 
 #include <lcms2.h>

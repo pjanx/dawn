@@ -1,5 +1,5 @@
 //
-// dn-config.h.in: build-time feature macros
+// dawn-config.h.in: build-time feature macros
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0

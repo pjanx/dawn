@@ -186,8 +186,8 @@ string(SUBSTRING "${DN_IPC_LXDR_COMBINED}" 0 12 DN_IPC_LXDR_PREFIX)
 set(DN_IPC_BUILD_ID "dawn ${PROJECT_VERSION} ${DN_IPC_LXDR_PREFIX}")
 
 configure_file(
-	"${PROJECT_SOURCE_DIR}/dn-config.h.in"
-	"${PROJECT_BINARY_DIR}/dn-config.h"
+	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
+	"${PROJECT_BINARY_DIR}/dawn-config.h"
 )
 
 add_subdirectory(libdn)

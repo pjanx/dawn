@@ -7,7 +7,7 @@
 
 #include "app.hpp"
 
-#include "dn-config.h"
+#include "dawn-config.h"
 #include "vk-device.hpp"
 #include "window.hpp"
 
