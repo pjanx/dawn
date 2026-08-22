@@ -905,7 +905,7 @@ Page::paint(Kit &kit) const
 		return;
 	if (kit.csd_shadow_ && this->frame_.w > 0.0f && this->frame_.h > 0.0f)
 		kit.draw_glow(this->frame_.x, this->frame_.y, this->frame_.w,
-			this->frame_.h, {0, 0, 0, 0.25f});
+			this->frame_.h, {0, 0, 0, kit.active_ ? 0.25f : 0.125f});
 	Widget::paint(kit);
 }
 
