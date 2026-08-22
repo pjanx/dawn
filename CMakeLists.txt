@@ -206,10 +206,12 @@ if(WIN32)
 	install(FILES
 		"${DN_MINGW_PREFIX}/bin/wperl.exe"
 		"${DN_MINGW_PREFIX}/bin/exiftool"
-		DESTINATION .)
+		DESTINATION .
+		OPTIONAL)
 	install(DIRECTORY
 		"${DN_MINGW_PREFIX}/lib/perl5/"
-		DESTINATION lib/perl5)
+		DESTINATION lib/perl5
+		OPTIONAL)
 
 	# TODO(p): Does this need to be branched?
 	if(TARGET Qt6::QWindowsIntegrationPlugin)

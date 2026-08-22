@@ -104,10 +104,11 @@ extract() {
 	rm -rf tmp
 
 	# ExifTool
-	bsdtar -xf exiftool.tar.gz
-	mv Image-ExifTool-*/exiftool bin
-	mv Image-ExifTool-*/lib/* lib/perl5/site_perl
-	rm -rf Image-ExifTool-*
+	# ExifTool is quite massive (mainly in file count), not sure what to do
+	#bsdtar -xf exiftool.tar.gz
+	#mv Image-ExifTool-*/exiftool bin
+	#mv Image-ExifTool-*/lib/* lib/perl5/site_perl
+	#rm -rf Image-ExifTool-*
 }
 
 # Native rustc cannot load upstream rust-std; compile std from rust-src.
@@ -167,7 +168,8 @@ cd ucrt64
 dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libraw $pkg-zlib \
-	$pkg-shared-mime-info $pkg-gcc-libs $pkg-perl $pkg-perl-win32-api
+	$pkg-shared-mime-info $pkg-gcc-libs \
+	#$pkg-perl $pkg-perl-win32-api
 verify
 extract
 resvg
