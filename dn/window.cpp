@@ -19,8 +19,8 @@
 
 #include <QByteArray>
 #include <QCloseEvent>
-#include <QCursor>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDesktopServices>
 #include <QDir>
 #include <QDropEvent>
@@ -821,11 +821,9 @@ Window::render()
 	if (!ui)
 		return;
 	this->kit_.fullscreen_ = fullscreen;
-	this->kit_.maximized_ =
-		bool(shell()->windowState() & Qt::WindowMaximized);
+	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
 	this->kit_.csd_ = this->csd_ && !fullscreen;
-	this->kit_.csd_shadow_ =
-		this->kit_.csd_ && !this->kit_.maximized_;
+	this->kit_.csd_shadow_ = this->kit_.csd_ && !this->kit_.maximized_;
 	this->kit_.active_ =
 		this->system_grab_ || shell()->isActive() || isActive();
 	sync_title();
@@ -1050,13 +1048,15 @@ Window::eventFilter(QObject *watched, QEvent *event)
 		this->system_grab_ = false;
 		request_render();
 	}
-	if (event->type() == QEvent::FocusIn ||
-		event->type() == QEvent::WindowActivate) {
+	if (watched != this &&
+		(event->type() == QEvent::FocusIn ||
+			event->type() == QEvent::WindowActivate)) {
 		sync_macos_app_menu(this->app_);
 		request_render();
 	}
-	if (event->type() == QEvent::FocusOut ||
-		event->type() == QEvent::WindowDeactivate)
+	if (watched != this &&
+		(event->type() == QEvent::FocusOut ||
+			event->type() == QEvent::WindowDeactivate))
 		request_render();
 	if (event->type() != QEvent::MouseMove)
 		return false;
@@ -1077,9 +1077,13 @@ Window::exposeEvent(QExposeEvent *)
 	// state, so an expose while already exposed asks for nothing new.
 	// MoltenVK marks the layer as needing display on every present, so Cocoa
 	// exposes us once per presented frame; repainting on that never settles.
+	// X11/i3 keeps us mapped across workspaces and still sends Expose when
+	// we are shown again, including without keyboard focus.
 	const bool was_exposed = this->exposed_;
 	this->exposed_ = isExposed();
-	if (this->exposed_ && !was_exposed)
+	if (this->exposed_ &&
+		(!was_exposed ||
+			QGuiApplication::platformName() == QLatin1String("xcb")))
 		request_render();
 }
 
