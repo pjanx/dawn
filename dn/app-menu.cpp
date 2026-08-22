@@ -529,7 +529,12 @@ MenuItem::measure(Kit &kit, float, float)
 	if (this->sub)
 		width += kIconPx;
 	width += kFramePadX;
-	this->r = {0, 0, width, kButtonH};
+	float ch = kIconPx;
+	if (!this->text.isEmpty())
+		ch = max(ch, kit.text_height(this->text, 0.0f, false));
+	if (!this->accel.isEmpty())
+		ch = max(ch, kit.text_height(this->accel, 0.0f, false));
+	this->r = {0, 0, width, kFramePadY * 2.0f + ch};
 }
 
 void
@@ -549,8 +554,11 @@ MenuItem::paint(Kit &kit) const
 	const float lead_x = this->r.x + pad;
 	const float label_x = lead_x + kIconPx + pad;
 	const float accel_x = this->r.x + this->r.w - pad - chev - aw;
-	const float ty = this->r.y + kFramePadY;
-	const float iy = this->r.y + max(kFramePadY, (this->r.h - kIconPx) * 0.5f);
+	const float th = this->text.isEmpty()
+		? 0.0f
+		: kit.text_height(this->text, 0.0f, false);
+	const float ty = this->r.y + (this->r.h - th) * 0.5f;
+	const float iy = this->r.y + (this->r.h - kIconPx) * 0.5f;
 	const Colour label_c = col(kit.ink_, this->enabled_ ? 1.0f : 0.5f);
 
 	if (this->checkable && this->checked)
@@ -572,8 +580,10 @@ MenuItem::paint(Kit &kit) const
 	}
 	if (!this->accel.isEmpty()) {
 		const float tw = kit.text_width(this->accel, false);
-		kit.emit_text(
-			accel_x + aw - tw, ty, this->accel, col(kit.ink_, 0.5f), false);
+		const float ath = kit.text_height(this->accel, 0.0f, false);
+		kit.emit_text(accel_x + aw - tw,
+			this->r.y + (this->r.h - ath) * 0.5f, this->accel,
+			col(kit.ink_, 0.5f), false);
 	}
 	if (this->sub) {
 		emit_icon(kit, this->r.x + this->r.w - pad - chev, iy, kIconPx,

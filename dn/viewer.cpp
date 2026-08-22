@@ -186,7 +186,6 @@ make_item(Viewer &v, const Spec &spec, float scale_slot)
 		n->hittable = true;
 		n->min_w = scale_slot;
 		n->align = Align::Center;
-		n->pad_y = kFramePadY;
 		n->text = v.scale_text_;
 		n->tip_text = action_tip(action_def(Action::ZoomLevel), false);
 		n->tip_accel = action_accel(action_def(Action::ZoomLevel));
@@ -606,7 +605,6 @@ make_error(Viewer &v)
 	row->pad_x = kWinPadX;
 	row->pad_y = kWinPadY;
 	row->grow = true;
-	row->cross = Align::Center;
 	auto lab = make_unique<Label>();
 	lab->grow = true;
 	lab->wrap = true;

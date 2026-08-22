@@ -193,7 +193,6 @@ struct Container : Composite {
 	float pad_x = 0;
 	float pad_y = 0;
 	bool grow = false;
-	Align cross = Align::Start;
 	bool grows() const override { return this->grow; }
 
 	void measure_pack(Kit &kit, float max_w, float max_h, bool hz);

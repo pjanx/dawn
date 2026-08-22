@@ -588,19 +588,19 @@ void
 Button::measure(Kit &kit, float, float)
 {
 	const float px = kFramePadX + this->pad_x;
-	float content_w = 0.0f;
-	float content_h = 0.0f;
+	float cw = 0.0f;
+	float ch = 0.0f;
 	if (this->icon) {
-		content_w += kIconPx;
-		content_h = max(content_h, kIconPx);
+		cw = kIconPx;
+		ch = kIconPx;
 	}
 	if (!this->text.isEmpty()) {
 		if (this->icon)
-			content_w += 4.0f;
-		content_w += kit.text_width(this->text, false);
-		content_h = max(content_h, kit.text_height(this->text, 0.0f, false));
+			cw += 4.0f;
+		cw += kit.text_width(this->text, false);
+		ch = max(ch, kit.text_height(this->text, 0.0f, false));
 	}
-	this->r = {0, 0, px * 2.0f + content_w, kFramePadY * 2.0f + content_h};
+	this->r = {0, 0, px * 2.0f + cw, kFramePadY * 2.0f + ch};
 }
 
 void
@@ -623,19 +623,16 @@ Button::paint(Kit &kit) const
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.hover_));
 	const float px = kFramePadX + this->pad_x;
-	float content_h = 0.0f;
 	if (this->icon)
-		content_h = max(content_h, kIconPx);
-	if (!this->text.isEmpty())
-		content_h = max(content_h, kit.text_height(this->text, 0.0f, false));
-	const float py = (this->r.h - content_h) * 0.5f;
-	if (this->icon)
-		emit_icon(kit, this->r.x + px, this->r.y + py, kIconPx, this->icon,
+		emit_icon(kit, this->r.x + px,
+			this->r.y + (this->r.h - kIconPx) * 0.5f, kIconPx, this->icon,
 			col(kit.ink_, this->enabled_ ? 1.0f : 0.375f));
 	if (!this->text.isEmpty()) {
 		const float tx = this->r.x + px + (this->icon ? kIconPx + 4.0f : 0.0f);
+		const float th = kit.text_height(this->text, 0.0f, false);
 		const Colour c = kit.ink_;
-		emit_text(kit, tx, this->r.y + py, button_shown(kit, *this),
+		emit_text(kit, tx, this->r.y + (this->r.h - th) * 0.5f,
+			button_shown(kit, *this),
 			{c.r, c.g, c.b, this->enabled_ ? c.a : c.a * 0.5f}, false);
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -971,13 +968,9 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 				k->r = {};
 			continue;
 		}
-		if (hz) {
-			const float kh = k->r.h > 0.0f ? k->r.h : in.h;
-			float ky = in.y;
-			if (this->cross == Align::Center)
-				ky += max(0.0f, (in.h - kh) * 0.5f);
-			k->arrange(kit, {p, ky, k->r.w, kh});
-		} else
+		if (hz)
+			k->arrange(kit, {p, in.y, k->r.w, in.h});
+		else
 			k->arrange(kit, {in.x, p, in.w, k->r.h});
 		p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + this->gap;
 	}
