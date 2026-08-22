@@ -43,7 +43,7 @@ target_link_libraries(dn PRIVATE
 )
 
 set(DN_UI_SHADER_DIR "${PROJECT_SOURCE_DIR}/shaders")
-set(DN_UI_SHADER_GEN "${PROJECT_BINARY_DIR}/generated")
+set(DN_UI_SHADER_GEN "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${DN_UI_SHADER_GEN}")
 
 function(dn_ui_embed_shader src symbol)

@@ -117,7 +117,7 @@ target_link_libraries(libdn
 
 # Vulkan scale shaders
 set(DN_SHADER_DIR "${PROJECT_SOURCE_DIR}/shaders")
-set(DN_SHADER_GEN_DIR "${PROJECT_BINARY_DIR}/generated")
+set(DN_SHADER_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${DN_SHADER_GEN_DIR}")
 
 function(dn_embed_shader src symbol)
