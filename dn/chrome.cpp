@@ -611,6 +611,12 @@ Titlebar::prepare(Kit &kit)
 bool
 Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
+	if (button == Qt::RightButton) {
+		if (!kit.start_menu)
+			return false;
+		kit.start_menu(x, y);
+		return true;
+	}
 	if (button != Qt::LeftButton)
 		return false;
 	if (Page *page = dynamic_cast<Page *>(this->parent_)) {

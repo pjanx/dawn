@@ -10,7 +10,12 @@
 #include "action.hpp"
 #include "app-menu-macos.hpp"
 #include "app.hpp"
+#include "dawn-config.h"
 #include "display-profile.hpp"
+
+#if DN_WITH_WAYLAND
+#include "wayland-window.hpp"
+#endif
 
 #include <QByteArray>
 #include <QCloseEvent>
@@ -170,6 +175,13 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 		this->system_grab_ = shell()->startSystemResize(edges);
 		request_render();
 	};
+#if DN_WITH_WAYLAND
+	this->kit_.start_menu = [this](float x, float y) {
+		// Wants shell-local coordinates; we may hang off it by the glow.
+		const QPoint p = position() + QPoint(int(x), int(y));
+		wayland_show_window_menu(shell(), p.x(), p.y());
+	};
+#endif
 	this->csd_ = this->app_ && this->app_->needs_csd();
 	bind_host();
 }

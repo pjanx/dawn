@@ -9,11 +9,14 @@
 
 #include "app.hpp"
 #include "wayland-color-bridge.hpp"
+#include "xdg-shell-client-protocol.h"
 
+#include <QByteArray>
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QEvent>
 #include <QExposeEvent>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QPlatformSurfaceEvent>
@@ -21,6 +24,7 @@
 #include <QShowEvent>
 #include <QSurfaceFormat>
 #include <QTimer>
+#include <QtGui/qguiapplication_platform.h>
 
 #include <vulkan/vulkan.h>
 
@@ -31,6 +35,38 @@ using namespace std;
 
 namespace dn
 {
+namespace
+{
+
+// QGuiApplication::platformNativeInterface() is public, its class is QPA.
+// Mirror enough of QPlatformNativeInterface to reach its fourth virtual,
+// nativeResourceForWindow(); Qt's xdg-shell exports the toplevel there.
+struct NativeResources : QObject {
+	virtual void *integration(const QByteArray &) = 0;
+	virtual void *context(const QByteArray &, void *) = 0;
+	virtual void *screen(const QByteArray &, void *) = 0;
+	virtual void *window(const QByteArray &, QWindow *) = 0;
+};
+
+}  // namespace
+
+void
+wayland_show_window_menu(QWindow *shell, int x, int y)
+{
+	auto *iface = (NativeResources *) (void *)
+		QGuiApplication::platformNativeInterface();
+	auto *native =
+		qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
+	if (!iface || !native)
+		return;
+	auto *toplevel = (xdg_toplevel *) iface->window(
+		QByteArrayLiteral("xdg_toplevel"), shell);
+	if (!toplevel)
+		return;
+	xdg_toplevel_show_window_menu(
+		toplevel, native->lastInputSeat(), native->lastInputSerial(), x, y);
+}
+
 WaylandWindow::WaylandWindow(App *app)
 	: app_(app), backing_store_(this), content_(app, this),
 	  color_bridge_(make_unique<WaylandColorBridge>())

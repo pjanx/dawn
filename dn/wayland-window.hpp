@@ -60,4 +60,7 @@ public:
 	bool initialize(const QString &path, BrowseSetup setup = {});
 };
 
+// What Qt's own CSD does on titlebar right-click, in shell-local coordinates.
+void wayland_show_window_menu(QWindow *shell, int x, int y);
+
 }  // namespace dn

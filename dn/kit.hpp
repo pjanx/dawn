@@ -359,6 +359,7 @@ struct Kit {
 	Qt::CursorShape cursor_ = Qt::ArrowCursor;
 	std::function<void()> start_move;
 	std::function<void(Qt::Edges)> start_resize;
+	std::function<void(float, float)> start_menu;
 	std::chrono::steady_clock::time_point hover_at_{};
 	std::chrono::steady_clock::time_point popup_at_{};
 	float hover_x_ = 0;

@@ -168,14 +168,19 @@ if(DN_WITH_WAYLAND)
 		"${DN_PROTOCOL_DIR}/color-management-v1-client-protocol.h")
 	set(DN_COLOR_SOURCE
 		"${DN_PROTOCOL_DIR}/color-management-v1-protocol.c")
+	set(DN_XDG_XML
+		"${DN_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
+	set(DN_XDG_HEADER "${DN_PROTOCOL_DIR}/xdg-shell-client-protocol.h")
 	add_custom_command(
-		OUTPUT "${DN_COLOR_HEADER}" "${DN_COLOR_SOURCE}"
+		OUTPUT "${DN_COLOR_HEADER}" "${DN_COLOR_SOURCE}" "${DN_XDG_HEADER}"
 		COMMAND "${DN_WAYLAND_SCANNER}" client-header
 			"${DN_COLOR_XML}" "${DN_COLOR_HEADER}"
 		COMMAND "${DN_WAYLAND_SCANNER}" private-code
 			"${DN_COLOR_XML}" "${DN_COLOR_SOURCE}"
-		DEPENDS "${DN_COLOR_XML}"
-		COMMENT "wayland-scanner color-management-v1 for dn"
+		COMMAND "${DN_WAYLAND_SCANNER}" client-header
+			"${DN_XDG_XML}" "${DN_XDG_HEADER}"
+		DEPENDS "${DN_COLOR_XML}" "${DN_XDG_XML}"
+		COMMENT "wayland-scanner protocols for dn"
 		VERBATIM
 	)
 
@@ -184,6 +189,7 @@ if(DN_WITH_WAYLAND)
 		wayland-window.cpp
 		"${DN_COLOR_HEADER}"
 		"${DN_COLOR_SOURCE}"
+		"${DN_XDG_HEADER}"
 	)
 	target_include_directories(dn PRIVATE "${DN_PROTOCOL_DIR}")
 	target_link_libraries(dn PRIVATE PkgConfig::DN_WAYLAND)
