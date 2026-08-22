@@ -27,7 +27,7 @@ set_target_properties(dn PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER name.janouch.dn)
 target_include_directories(dn PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
-	"${CMAKE_SOURCE_DIR}/libdn"
+	"${PROJECT_SOURCE_DIR}/libdn"
 )
 find_package(Threads REQUIRED)
 target_link_libraries(dn PRIVATE
@@ -191,14 +191,14 @@ endif()
 
 # User guide: build tree at share/doc/dn (../share from bin/), installed
 # next to the application on each platform.
-set(DN_HELP_DIR "${CMAKE_BINARY_DIR}/share/doc/dn")
+set(DN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dn")
 file(MAKE_DIRECTORY "${DN_HELP_DIR}")
 configure_file(
-	"${CMAKE_SOURCE_DIR}/doc/dn.html.in"
+	"${PROJECT_SOURCE_DIR}/doc/dn.html.in"
 	"${DN_HELP_DIR}/dn.html"
 	@ONLY)
 configure_file(
-	"${CMAKE_SOURCE_DIR}/doc/stylesheet.css"
+	"${PROJECT_SOURCE_DIR}/doc/stylesheet.css"
 	"${DN_HELP_DIR}/stylesheet.css"
 	COPYONLY)
 

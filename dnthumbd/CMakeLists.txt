@@ -11,5 +11,5 @@ target_link_libraries(dnthumbd PRIVATE
 
 target_include_directories(dnthumbd PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}
-	${CMAKE_SOURCE_DIR}/libdn
+	${PROJECT_SOURCE_DIR}/libdn
 )

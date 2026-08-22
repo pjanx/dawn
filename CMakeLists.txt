@@ -183,6 +183,7 @@ else()
 	set(DN_WITH_SINGLE_INSTANCE FALSE)
 endif()
 
+# TODO(p): Comments shouldn't change the signature.
 file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/common.lxdr" DN_IPC_LXDR_H1)
 file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/instance.lxdr" DN_IPC_LXDR_H2)
 string(SHA256 DN_IPC_LXDR_COMBINED "${DN_IPC_LXDR_H1}${DN_IPC_LXDR_H2}")
@@ -206,6 +207,17 @@ if(WIN32)
 		FILES_MATCHING
 			PATTERN "*.dll"
 			PATTERN "vulkan-1.dll" EXCLUDE)
+	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
+		RUNTIME DESTINATION platforms
+		LIBRARY DESTINATION platforms)
+	install(FILES
+		"${DN_MSYS2_PREFIX}/share/mime/globs2"
+		"${DN_MSYS2_PREFIX}/share/mime/subclasses"
+		DESTINATION share/mime)
+
+	install(FILES
+		"${DN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"
+		DESTINATION .)
 
 	# This installation is pretty big, with a ton of files, thus it's optional.
 	install(FILES
@@ -217,18 +229,6 @@ if(WIN32)
 		"${DN_MSYS2_PREFIX}/lib/perl5/"
 		DESTINATION lib/perl5
 		OPTIONAL)
-
-	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
-		RUNTIME DESTINATION platforms
-		LIBRARY DESTINATION platforms)
-
-	install(FILES
-		"${DN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"
-		DESTINATION .)
-	install(FILES
-		"${DN_MSYS2_PREFIX}/share/mime/globs2"
-		"${DN_MSYS2_PREFIX}/share/mime/subclasses"
-		DESTINATION share/mime)
 
 	# Prune unused libraries.
 	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/msys2-cleanup.cmake")
@@ -242,10 +242,11 @@ if(BUILD_TESTING)
 	add_subdirectory(tests)
 endif()
 
-set(CPACK_PACKAGE_VENDOR "dawn")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_PACKAGE_VENDOR "The dawn Authors")
+set(CPACK_PACKAGE_CONTACT "Přemysl Eric Janouch <p@janouch.name>")
+set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_GENERATOR ZIP)
-set(CPACK_PACKAGE_DIRECTORY "${CMAKE_BINARY_DIR}")
+set(CPACK_PACKAGE_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CPACK_PACKAGE_FILE_NAME
 	"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 include(CPack)

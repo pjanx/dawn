@@ -25,14 +25,14 @@ Milestones
 ----------
  - [x] Plain out replace https://git.janouch.name/p/fiv[fiv]
        (excluding GVfs, printing, wide thumbnails)
-    * [ ] Clean up, branch a stable version
+    * [ ] Debug, clean up, branch a stable version
  - [ ] Integrate filesystem scanning, automatic tagging, browsing from
        https://git.janouch.name/p/gallery[gallery]
-    * [ ] Clean up, branch a stable version
+    * [ ] Debug, clean up, branch a stable version
  - [ ] Replace GNOME Files (including GVfs integration or equivalent abilities)
-    * [ ] Clean up, branch a stable version
+    * [ ] Debug, clean up, branch a stable version
  - [ ] Replace Midnight Commander
-    * [ ] Clean up, branch a stable version
+    * [ ] Debug, clean up, branch a stable version
 
 Planned structure
 -----------------

@@ -7,7 +7,7 @@ for fidelity and responsivity.
 
 Design-wise, the project is an amalgamation of older efforts and desires.
 Right now, we've mostly reached our first milestone, and we're cleaning up
-AI-accelerated mess.
+AI-accelerated mess before we can afford to continue making large steps.
 
 The project is '`daily driven`' and comes with a promise of basic maintenance.
 
@@ -62,16 +62,20 @@ Runtime dependencies: Qt6Gui >= 6.11, vulkan, lcms2 (bundled by default),
 Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
  gdk-pixbuf-2.0
 
- $ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
- $ cmake --build build
+```
+$ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
+$ cmake --build build
+```
 
 macOS successfully produces a portable application bundle with Homebrew,
 however there is currently no one to sign these packages.
 
 Windows is cross-compiled in CI:
 
- $ sh -e msys2-configure.sh -DCMAKE_BUILD_TYPE=Release -B build-msys2
- $ cmake --build build-msys2 -- package
+```
+$ sh -e msys2-configure.sh -DCMAKE_BUILD_TYPE=Release -B build-msys2
+$ cmake --build build-msys2 -- package
+```
 
 Configuration
 -------------

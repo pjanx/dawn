@@ -31,13 +31,27 @@ Constraints
 -----------
 Also see '`We care about`' in the link:../README.adoc[README].
 
+Platforms
+---------
 I want to be able to use the software on all main OSs.  This results in some
-architectural pain that I'm willing to engineer for.
+architectural pain that I'm willing to engineer for.  Deployment i
+
+ - macOS needs special build slaves, and more importantly a Developer ID
+   certificate if any greater number of people want to use the software.
+
+ - Linux has many odd dependencies that make it particularly difficult
+   to package the software in a way that it wants to integrate.
+   Flathub has particularly hostile policies, but Flatpaks alone will be
+   a challenge.
+
+ - Windows being the easiest OS to make packages for is a very unfortunate
+   situation.  At least it has a decent market share.
 
 Language
 --------
-In principle, the project consists of several parts that may be heterogenous.
-In practice, most good libraries either have a C or C++ API, and additional
+In principle, the project consists of several parts that may be heterogenous,
+communicating through IPCs.
+In practice, most good libraries either have a C or *C++* API, and additional
 layers are considered undesirable.  I'm not too happy here.
 
 Rendering
@@ -94,7 +108,8 @@ Its largest dependency is ICU, which we don't strictly require, and Qt can
 actually be built without it if needed for smaller standalone packages.
 
 Licencing-wise, Qt is pretty nuke-able, and the minimal platform abstraction
-layer it provides _still_ creates problems of its own anyway.
+layer it provides _still_ creates problems of its own anyway.  It's likely that
+we'll get rid of it eventually.
 
 Actual toolkit
 --------------
@@ -126,9 +141,10 @@ SVG
 ---
 Qt SVG only supports a small subset, and likes to break on the mentioned icons.
 It's completely unusable for image viewer needs.  But *resvg* is
-https://github.com/linebender/resvg#svg-support[cool].
+https://github.com/linebender/resvg#svg-support[cool] enough for us to declare
+it as a hard dependency, and instead of the more common librsvg.
 
-Unfortunately, the icons are GTK-centric, and thus if they weren't used as
+Unfortunately, our icons are GTK-centric, and thus if they weren't used as
 simple masks, they would need a few changes so that the UI can at least inject
 theme colours into the symbolics.  Selecting GPA variants is yet another story.
 
@@ -140,7 +156,8 @@ of formats, and is tough to integrate.
 With JPEG, although Wuffs has some support for it as well, it's fairly simple:
 *libjpeg-turbo*.  I also bundle
 https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
-it's interesting.
+it's interesting--having a decent scaling algorithm can otherwise be nullified
+by DCT artifacts.
 
 Scaling
 -------

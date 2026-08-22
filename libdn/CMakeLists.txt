@@ -11,7 +11,7 @@ add_custom_command(
 add_custom_target(dn_tiff_tables
 	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tiff-tables.h)
 
-set(DN_WUFFS_DIR ${CMAKE_SOURCE_DIR}/submodules/wuffs-mirror-release-c)
+set(DN_WUFFS_DIR ${PROJECT_SOURCE_DIR}/submodules/wuffs-mirror-release-c)
 
 set(DN_LOADER_SOURCES "")
 set(DN_OPTIONAL_LIBS "")
@@ -67,11 +67,11 @@ endif()
 
 # Generated LXDR header; ipc.cpp compile-checks it against Encoder/Decoder.
 dn_lxdr_generate(
-	${CMAKE_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
+	${PROJECT_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
 	dn::ipc::instance
 	Instance
-	${CMAKE_SOURCE_DIR}/ipc/common.lxdr
-	${CMAKE_SOURCE_DIR}/ipc/instance.lxdr
+	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
+	${PROJECT_SOURCE_DIR}/ipc/instance.lxdr
 )
 add_dependencies(libdn dn_tiff_tables dn_lxdr_instance_lxdr_hpp)
 
@@ -79,7 +79,7 @@ target_include_directories(libdn
 	PUBLIC
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
-		$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/generated>
+		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>
 		$<INSTALL_INTERFACE:include>
 	PRIVATE
 		${CMAKE_CURRENT_BINARY_DIR}

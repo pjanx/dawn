@@ -67,9 +67,9 @@ set_tests_properties(channels PROPERTIES
 add_executable(bench_open bench-open.cpp)
 target_link_libraries(bench_open PRIVATE dawn::libdn)
 
-add_executable(test_xdg test-xdg.cpp "${CMAKE_SOURCE_DIR}/dn/xdg.cpp")
+add_executable(test_xdg test-xdg.cpp "${PROJECT_SOURCE_DIR}/dn/xdg.cpp")
 target_include_directories(test_xdg PRIVATE
-	"${CMAKE_SOURCE_DIR}/dn"
+	"${PROJECT_SOURCE_DIR}/dn"
 	"${PROJECT_BINARY_DIR}"
 )
 target_link_libraries(test_xdg PRIVATE Qt6::Gui)
@@ -77,9 +77,9 @@ add_test(NAME xdg COMMAND test_xdg)
 
 add_executable(test_thumbnail_cache
 	test-thumbnail-cache.cpp
-	"${CMAKE_SOURCE_DIR}/dn/thumbnail-cache.cpp")
+	"${PROJECT_SOURCE_DIR}/dn/thumbnail-cache.cpp")
 target_include_directories(test_thumbnail_cache PRIVATE
-	"${CMAKE_SOURCE_DIR}/dn")
+	"${PROJECT_SOURCE_DIR}/dn")
 target_link_libraries(test_thumbnail_cache PRIVATE
 	dawn::libdn
 	Qt6::Gui
@@ -90,10 +90,10 @@ add_test(NAME thumbnail_cache COMMAND test_thumbnail_cache)
 
 add_executable(test_thumbnailer
 	test-thumbnailer.cpp
-	"${CMAKE_SOURCE_DIR}/dn/thumbnailer.cpp")
+	"${PROJECT_SOURCE_DIR}/dn/thumbnailer.cpp")
 target_include_directories(test_thumbnailer PRIVATE
-	"${CMAKE_SOURCE_DIR}/dn"
-	"${CMAKE_SOURCE_DIR}/libdn")
+	"${PROJECT_SOURCE_DIR}/dn"
+	"${PROJECT_SOURCE_DIR}/libdn")
 target_link_libraries(test_thumbnailer PRIVATE
 	dawn::libdn
 	Qt6::Gui
