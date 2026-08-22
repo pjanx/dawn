@@ -1,32 +1,42 @@
-# Embed a SPIR-V binary as a C++ uint32_t array header.
+#
+# embed-spirv.cmake: embed a SPIR-V binary as a C++ uint32_t array header
+#
+# Copyright The dawn Authors
+# SPDX-License-Identifier: MPL-2.0
+#
 # Usage: cmake -DINPUT=foo.spv -DOUTPUT=foo-spv.h -DSYMBOL=foo_spv -P embed-spirv.cmake
+#
 
 if(NOT INPUT OR NOT OUTPUT OR NOT SYMBOL)
 	message(FATAL_ERROR "INPUT, OUTPUT, and SYMBOL required")
 endif()
 
-file(READ "${INPUT}" SPIRV_HEX HEX)
-string(LENGTH "${SPIRV_HEX}" HEX_LEN)
-math(EXPR WORD_COUNT "${HEX_LEN} / 8")
+file(READ "${INPUT}" spirv_hex HEX)
+string(LENGTH "${spirv_hex}" hex_len)
+math(EXPR word_count "${hex_len} / 8")
 
-set(OUT "/* Auto-generated from ${INPUT} — do not edit. */\n")
-string(APPEND OUT "#pragma once\n\n")
-string(APPEND OUT "#include <cstdint>\n\n")
-string(APPEND OUT "static constexpr uint32_t ${SYMBOL}[] = {\n")
+set(out "// Code generated from ${INPUT}. DO NOT EDIT.\n")
+string(APPEND out [[
+#pragma once
 
-set(I 0)
-while(I LESS HEX_LEN)
-	string(SUBSTRING "${SPIRV_HEX}" ${I} 8 WORD_HEX)
+#include <cstdint>
+
+]])
+string(APPEND out "static constexpr uint32_t ${SYMBOL}[] = {\n")
+
+set(i 0)
+while(i LESS hex_len)
+	string(SUBSTRING "${spirv_hex}" ${i} 8 word_hex)
 	# SPIR-V is little-endian in the file; HEX read is byte order as stored.
-	string(SUBSTRING "${WORD_HEX}" 0 2 B0)
-	string(SUBSTRING "${WORD_HEX}" 2 2 B1)
-	string(SUBSTRING "${WORD_HEX}" 4 2 B2)
-	string(SUBSTRING "${WORD_HEX}" 6 2 B3)
-	string(APPEND OUT "\t0x${B3}${B2}${B1}${B0}u,\n")
-	math(EXPR I "${I} + 8")
+	string(SUBSTRING "${word_hex}" 0 2 b0)
+	string(SUBSTRING "${word_hex}" 2 2 b1)
+	string(SUBSTRING "${word_hex}" 4 2 b2)
+	string(SUBSTRING "${word_hex}" 6 2 b3)
+	string(APPEND out "\t0x${b3}${b2}${b1}${b0}u,\n")
+	math(EXPR i "${i} + 8")
 endwhile()
 
-string(APPEND OUT "};\n")
-string(APPEND OUT "static constexpr uint32_t ${SYMBOL}_words = ${WORD_COUNT}u;\n")
+string(APPEND out "};\n")
+string(APPEND out "static constexpr uint32_t ${SYMBOL}_words = ${word_count}u;\n")
 
-file(WRITE "${OUTPUT}" "${OUT}")
+file(WRITE "${OUTPUT}" "${out}")

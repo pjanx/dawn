@@ -42,8 +42,8 @@ target_link_libraries(dn PRIVATE
 	Threads::Threads
 )
 
-set(DN_UI_SHADER_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
-set(DN_UI_SHADER_GEN "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(DN_UI_SHADER_DIR "${PROJECT_SOURCE_DIR}/shaders")
+set(DN_UI_SHADER_GEN "${PROJECT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${DN_UI_SHADER_GEN}")
 
 function(dn_ui_embed_shader src symbol)
@@ -64,11 +64,10 @@ function(dn_ui_embed_shader src symbol)
 	target_sources(dn PRIVATE "${hdr}")
 endfunction()
 
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/overlay.vert" overlay_vert)
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/overlay.frag" overlay_frag)
-dn_ui_embed_shader("${CMAKE_SOURCE_DIR}/libdn/shaders/fullscreen.vert"
-	fullscreen_vert)
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dither.frag" dither_frag)
+dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-overlay.vert" overlay_vert)
+dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-overlay.frag" overlay_frag)
+dn_ui_embed_shader("${DN_UI_SHADER_DIR}/fullscreen.vert" fullscreen_vert)
+dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-dither.frag" dither_frag)
 
 if(WIN32)
 	target_sources(dn PRIVATE
@@ -122,7 +121,7 @@ if(APPLE)
 		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}")
 else()
 	include(IconUtils)
-	set(DN_ICON_BASE "${PROJECT_SOURCE_DIR}/icons")
+	set(DN_ICON_BASE "${PROJECT_BINARY_DIR}/icons")
 	set(DN_ICON_PNG_LIST)
 	foreach(DN_ICON_SIZE 16 32 48 256)
 		icon_to_png(dn "${DN_ICON_SVG}" ${DN_ICON_SIZE}
