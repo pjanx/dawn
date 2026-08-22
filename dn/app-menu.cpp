@@ -534,7 +534,8 @@ MenuItem::measure(Kit &kit, float, float)
 		ch = max(ch, kit.text_height(this->text, 0.0f, false));
 	if (!this->accel.isEmpty())
 		ch = max(ch, kit.text_height(this->accel, 0.0f, false));
-	this->r = {0, 0, width, kFramePadY * 2.0f + ch};
+	this->r = {0, 0, kit.snap_size(width),
+		kit.snap_size(kFramePadY * 2.0f + ch)};
 }
 
 void

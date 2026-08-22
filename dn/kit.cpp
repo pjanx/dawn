@@ -600,7 +600,8 @@ Button::measure(Kit &kit, float, float)
 		cw += kit.text_width(this->text, false);
 		ch = max(ch, kit.text_height(this->text, 0.0f, false));
 	}
-	this->r = {0, 0, px * 2.0f + cw, kFramePadY * 2.0f + ch};
+	this->r = {0, 0, kit.snap_size(px * 2.0f + cw),
+		kit.snap_size(kFramePadY * 2.0f + ch)};
 }
 
 void
@@ -712,9 +713,10 @@ Label::measure(Kit &kit, float max_w, float)
 	float w = max(kit.text_width(this->text, this->bold), this->min_w);
 	if (this->wrap)
 		w = max(1.0f, iw < kUnlim ? iw : w);
-	this->r.w = w + this->pad_x * 2.0f;
-	this->r.h = kit.text_height(this->text, this->wrap ? w : 0.0f, this->bold) +
-		this->pad_y * 2.0f;
+	this->r.w = kit.snap_size(w + this->pad_x * 2.0f);
+	this->r.h = kit.snap_size(
+		kit.text_height(this->text, this->wrap ? w : 0.0f, this->bold) +
+		this->pad_y * 2.0f);
 }
 
 void
@@ -724,8 +726,8 @@ Label::arrange(Kit &kit, Rect alloc)
 	if (!shown() || !this->wrap)
 		return;
 	const float w = max(1.0f, this->r.w - this->pad_x * 2.0f);
-	this->r.h = max(this->r.h,
-		kit.text_height(this->text, w, this->bold) + this->pad_y * 2.0f);
+	this->r.h = kit.snap_size(max(this->r.h,
+		kit.text_height(this->text, w, this->bold) + this->pad_y * 2.0f));
 }
 
 void
@@ -900,8 +902,8 @@ Container::measure_pack(Kit &kit, float max_w, float max_h, bool hz)
 		}
 	}
 	used += gaps;
-	this->r.w = this->pad_x * 2.0f + (hz ? used : cross);
-	this->r.h = this->pad_y * 2.0f + (hz ? cross : used);
+	this->r.w = kit.snap_size(this->pad_x * 2.0f + (hz ? used : cross));
+	this->r.h = kit.snap_size(this->pad_y * 2.0f + (hz ? cross : used));
 	if (this->grow)
 		this->r.w = max_w;
 }
@@ -1596,14 +1598,22 @@ Kit::snap(float v) const
 	return round(v * d) / d;
 }
 
+float
+Kit::snap_size(float v) const
+{
+	if (v <= 0.0f)
+		return 0.0f;
+	const float d = max(this->dpr_, 0.01f);
+	return ceil(v * d - 1e-4f) / d;
+}
+
 Rect
 Kit::snap_rect(Rect r) const
 {
-	const float d = max(this->dpr_, 0.01f);
 	r.x = snap(r.x);
 	r.y = snap(r.y);
-	r.w = max(0.0f, ceil(r.w * d - 1e-4f) / d);
-	r.h = max(0.0f, ceil(r.h * d - 1e-4f) / d);
+	r.w = snap_size(r.w);
+	r.h = snap_size(r.h);
 	return r;
 }
 

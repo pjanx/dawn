@@ -412,6 +412,7 @@ struct Kit {
 	[[nodiscard]] float text_height(
 		const QString &text, float wrap_pts, bool bold) const;
 	[[nodiscard]] float snap(float v) const;
+	[[nodiscard]] float snap_size(float v) const;
 	[[nodiscard]] Rect snap_rect(Rect r) const;
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
 	[[nodiscard]] bool font_pixels(
