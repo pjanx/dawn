@@ -34,15 +34,15 @@ Also see '`We care about`' in the link:../README.adoc[README].
 Platforms
 ---------
 I want to be able to use the software on all main OSs.  This results in some
-architectural pain that I'm willing to engineer for.  Deployment i
+architectural pain that I'm willing to engineer for.  Deployment is a tad
+difficult:
 
  - macOS needs special build slaves, and more importantly a Developer ID
-   certificate if any greater number of people want to use the software.
+   certificate if any greater number of people were to use the software.
 
- - Linux has many odd dependencies that make it particularly difficult
-   to package the software in a way that it wants to integrate.
-   Flathub has particularly hostile policies, but Flatpaks alone will be
-   a challenge.
+ - Linux has many odd dependencies that make it difficult to package
+   the software in a way that it wants to integrate.  Flathub has particularly
+   hostile policies, but Flatpaks alone will be a challenge.
 
  - Windows being the easiest OS to make packages for is a very unfortunate
    situation.  At least it has a decent market share.
@@ -56,7 +56,7 @@ layers are considered undesirable.  I'm not too happy here.
 
 Rendering
 ---------
-CPUs are unusably slow for high quality scaling.  You may successfully cache
+CPUs are unusably slow for high-quality scaling.  You may successfully cache
 colour management but not gamma operations--every change of zoom needs many
 transfer curve conversions.  This is the main reason for going *full GPU*,
 as this is a trivially parallelisable task.
@@ -72,26 +72,25 @@ I use *Little CMS* like everyone else and their cat.  And it's one of
 the slowest parts of loading an image.  However, if your copy of lcms2 has
 the _fast float_, and/or _multithreaded_ plugins, you can easily speed it up
 by a factor of 3 or more.  The catch is that they're normally not packaged
-in distributions, and under the GPL licence (this may be related).
+in distributions, and they're licenced under the GPL (this may be related).
 Even if this project were to go commercial, oh-em-gee €150 won't kill me,
 I love me colours.
 
-For the ultimate speedup, it's possible to do complete CM in a shader but it's
+For the ultimate speedup, it's possible to do complete CM in a shader, but it's
 Not Easy™, and I'm not a colorimetrist.  You need to port at least a basic
 subset of the library.
 
 UI toolkit
 ----------
-I've tried to make an image viewer https://git.janouch.name/p/fiv[before]
-using GTK.  That toolkit has clean design.  Now for a small sample of its
-problems:
+I've made my https://git.janouch.name/p/fiv[previous image viewer] using GTK.
+That toolkit has clean design.  Now for a small sample of its problems:
 
- - It's diverged significantly from my idea of what a user interface
+ - It has diverged significantly from my idea of what a user interface
    https://p.janouch.name/text/human-interface-guidelines.html[should be like].
  - Writing this in C is very laborious, and my UX requirements necessitate
    a lot of custom widgets.  G-I is suboptimal.
- - The clean design comes with breaks in compatibility between versions.
-   大嫌い。
+ - The clean design comes with breaks in compatibility between even minor
+   versions.  大嫌い。
 
 Toolkits generally like to stand in the way.  One large technical reason for
 discarding them is control over the visual processing pipeline.  I _need_ deep
@@ -107,46 +106,47 @@ be useful.  (I've since checked that a GDK 4 path is impossible.)
 Its largest dependency is ICU, which we don't strictly require, and Qt can
 actually be built without it if needed for smaller standalone packages.
 
-Licencing-wise, Qt is pretty nuke-able, and the minimal platform abstraction
-layer it provides _still_ creates problems of its own anyway.  It's likely that
-we'll get rid of it eventually.
+Qt is pretty nuke-able, and the minimal platform abstraction layer it provides
+_still_ creates problems of its own anyway.  It's likely that we'll get rid of
+it eventually, whether due to licencing or otherwise.
 
 Actual toolkit
 --------------
 So, Qt GUI doesn't do that much by itself.  Initially, I had the idea of
 combining it with Dear ImGui, but its design assumptions fought me:
 most importantly, an image viewer is not a game, and while we're fine doing full
-frame renders, we do _not_ want to do it 60 times a second.  Eventually,
+frame renders, we do _not_ want to do it 60 or more times a second.  Eventually,
 the immediate mode paradigm went out entirely, as it became an unmaintainable
 mess of interspersed state.
 
 And so there is a *hand-rolled retained mode UI*.
-Like https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
+Like in https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
 Vimperator-like hints outside a browser, and I've trivially received them.
 
-As of writing, no effort has been made to have true popup windows,
+As of writing, no effort has been made to have true popup windows, so we're
 somewhat GTK style, and it might actually not be too big of a problem.
 
 // TODO(p): Talk more about particular user interface choices.
 
 Icons
 -----
-I love Jakub Steiner's '`public domain`' (we can't actually legally waive
-copyright, and neither can his employer)
+I love Jakub Steiner's '`public domain`'
 https://gitlab.gnome.org/Teams/Design/icon-development-kit[
-*Icon Development Kit*].
+*Icon Development Kit*] (we can't actually legally waive copyright,
+and neither can his employer).
 A cohesive visual design makes a program come alive.
 
 SVG
 ---
 Qt SVG only supports a small subset, and likes to break on the mentioned icons.
-It's completely unusable for image viewer needs.  But *resvg* is
+It's completely unusable for greater image viewer needs.  But *resvg* is
 https://github.com/linebender/resvg#svg-support[cool] enough for us to declare
 it as a hard dependency, and instead of the more common librsvg.
 
-Unfortunately, our icons are GTK-centric, and thus if they weren't used as
-simple masks, they would need a few changes so that the UI can at least inject
-theme colours into the symbolics.  Selecting GPA variants is yet another story.
+Unfortunately, another gotcha with the icons is that they are GTK-centric.
+If they weren't used as simple masks, they would need some patching so that
+the UI can at least inject theme colours into the symbolics.
+Selecting GPA variants is yet another story.
 
 Other file formats
 ------------------
@@ -173,7 +173,7 @@ Vulkan CPU rendering is expectably slow enough to warrant upscaling having
 a special path to go bilinear.
 
 With downscaling, the box area filter seems to create artifacts on
-high-frequency images where the antialiased bilinear (triangle) doesn't.
+high-frequency images where the *triangle* (antialiased bilinear) doesn't.
 Gaussian should be a bit smoother, though imperceptibly so, so I've skipped it.
 
 Thumbnails
