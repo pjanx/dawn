@@ -504,8 +504,6 @@ test_chromaticities()
 			++g_failures;
 		}
 	}
-
-	CHECK(dn::cie1931_locus().size() == 471);
 }
 
 void

@@ -829,27 +829,6 @@ profile_chromaticities(const Profile *profile)
 	return c;
 }
 
-#include "cmf-cie1931-2deg-1nm.h"
-
-span<const CieXy>
-cie1931_locus()
-{
-	static const vector<CieXy> locus = [] {
-		vector<CieXy> v;
-		v.reserve(size_t(kCmfN));
-		for (int i = 0; i < kCmfN; ++i) {
-			const double s = kCmf[i][0] + kCmf[i][1] + kCmf[i][2];
-			if (s <= 0.0) {
-				v.push_back({});
-				continue;
-			}
-			v.push_back({float(kCmf[i][0] / s), float(kCmf[i][1] / s)});
-		}
-		return v;
-	}();
-	return locus;
-}
-
 Transfer
 profile_transfer(const Profile *profile)
 {

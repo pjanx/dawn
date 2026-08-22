@@ -108,14 +108,6 @@ struct Chromaticities {
 
 Chromaticities profile_chromaticities(const Profile *profile);
 
-struct CieXy {
-	float x = 0;
-	float y = 0;
-};
-
-/// CIE 1931 2° spectral locus (1 nm), xy.
-std::span<const CieXy> cie1931_locus();
-
 /// Accumulated CPU milliseconds for one `open()` / `open_from_data()`.
 /// Zeroed by the caller; filled when `OpenContext::timing` is set.
 struct OpenTiming {

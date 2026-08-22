@@ -7,6 +7,8 @@
 
 #include "cie-diagram.hpp"
 
+#include "cmf-cie1931-2deg-1nm.h"
+
 #include <QColor>
 #include <QPainter>
 #include <QPainterPath>
@@ -69,12 +71,20 @@ QPainterPath
 locus_path(int w, int h)
 {
 	QPainterPath path;
-	const auto locus = cie1931_locus();
-	if (locus.empty())
+	if (kCmfN <= 0)
 		return path;
-	path.moveTo(xy_to_px(locus.front().x, locus.front().y, w, h));
-	for (size_t i = 1; i < locus.size(); ++i)
-		path.lineTo(xy_to_px(locus[i].x, locus[i].y, w, h));
+	const auto xy = [](int i) {
+		const double s = kCmf[i][0] + kCmf[i][1] + kCmf[i][2];
+		if (s <= 0.0)
+			return QPointF{};
+		return QPointF{kCmf[i][0] / s, kCmf[i][1] / s};
+	};
+	QPointF p0 = xy(0);
+	path.moveTo(xy_to_px(p0.x(), p0.y(), w, h));
+	for (int i = 1; i < kCmfN; ++i) {
+		QPointF p = xy(i);
+		path.lineTo(xy_to_px(p.x(), p.y(), w, h));
+	}
 	path.closeSubpath();
 	return path;
 }

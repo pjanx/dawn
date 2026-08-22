@@ -41,6 +41,22 @@ target_link_libraries(dn PRIVATE
 	Threads::Threads
 )
 
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+add_custom_command(
+	OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h
+	COMMAND ${AWK} -f ${CMAKE_CURRENT_SOURCE_DIR}/cmf-to-header.awk
+		${CMAKE_CURRENT_SOURCE_DIR}/ciexyz31_1.csv
+		${CMAKE_CURRENT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h
+	DEPENDS
+		${CMAKE_CURRENT_SOURCE_DIR}/cmf-to-header.awk
+		${CMAKE_CURRENT_SOURCE_DIR}/ciexyz31_1.csv
+	COMMENT "Generate CIE 1931 2° 1 nm CMF header"
+	VERBATIM
+)
+add_custom_target(dn_cmf_header
+	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h)
+add_dependencies(dn dn_cmf_header)
+
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
 dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
