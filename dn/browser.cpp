@@ -358,9 +358,10 @@ struct SideRow : Button {
 };
 
 void
-SideRow::measure(Kit &, float max_w, float)
+SideRow::measure(Kit &kit, float max_w, float max_h)
 {
-	this->r = {0, 0, max_w, kButtonH + kWinPadY * 2.0f};
+	Button::measure(kit, max_w, max_h);
+	this->r.w = max_w;
 }
 
 bool

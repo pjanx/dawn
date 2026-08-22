@@ -50,7 +50,6 @@ namespace
 constexpr float kWinPadX = 4.0f;
 constexpr float kWinPadY = 2.0f;
 constexpr float kItemGap = 2.0f;
-constexpr float kRowH = kButtonH + kWinPadY * 2.0f;
 constexpr float kZoomStep = 1.25f;
 constexpr float kZoomDragPts = 40.0f;
 constexpr float kRotateMinR = 8.0f;
@@ -616,7 +615,6 @@ make_error(Viewer &v)
 	row->add_child(std::move(lab));
 	row->add_child(std::move(dismiss));
 	auto err = make_unique<Panel>();
-	err->min_h = kRowH;
 	err->fill = Fill::Solid;
 	err->stroke = Stroke::Bottom;
 	err->grow = true;
@@ -683,7 +681,7 @@ sync_ui(Viewer &v, Page &ui)
 		ui.toolbar->sync_buttons();
 	if (v.error_) {
 		v.error_->visible = !v.message_.empty() && !v.message_dismissed_;
-		v.error_->max_h = max(kRowH, v.kit_.host_h_ * 0.4f);
+		v.error_->max_h = v.kit_.host_h_ * 0.4f;
 		if (v.error_->visible && v.error_label_)
 			v.error_label_->text =
 				QStringLiteral("Error: ") + QString::fromStdString(v.message_);

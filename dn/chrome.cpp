@@ -540,13 +540,12 @@ Titlebar::sync(Kit &kit)
 void
 Titlebar::measure(Kit &kit, float avail_w, float)
 {
-	const float ih = kButtonH;
-	float bw = 0.0f;
+	float ih = 0.0f;
 	auto slot = [&](Button *b) {
 		if (!b)
 			return;
-		b->measure(kit, kUnlim, ih);
-		bw += b->r.w;
+		b->measure(kit, kUnlim, kUnlim);
+		ih = max(ih, b->r.h);
 	};
 	slot(this->minimize);
 	slot(this->maximize);

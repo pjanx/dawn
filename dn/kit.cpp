@@ -644,10 +644,10 @@ Button::measure(Kit &kit, float, float)
 {
 	const float px = kFramePadX + this->pad_x;
 	float cw = 0.0f;
-	float ch = 0.0f;
+	float ch = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
 	if (this->icon) {
 		cw = kIconPx;
-		ch = kIconPx;
+		ch = max(ch, kIconPx);
 	}
 	if (!this->text.isEmpty()) {
 		if (this->icon)
@@ -1143,7 +1143,7 @@ Scroll::thumb_rect(Rect viewport) const
 	if (bar.h <= 0.0f || this->content <= 0.0f)
 		return bar;
 	float th = bar.h * (this->view / this->content);
-	th = std::clamp(th, min(kButtonH, bar.h), bar.h);
+	th = std::clamp(th, min(kScrollStep, bar.h), bar.h);
 	const float travel = bar.h - th;
 	const float range = max_offset();
 	const float ty =
@@ -1189,7 +1189,7 @@ Scroll::page(int dir)
 	if (this->content <= this->view)
 		return false;
 	const float step =
-		this->view > kButtonH ? this->view - kButtonH : this->view;
+		this->view > kScrollStep ? this->view - kScrollStep : this->view;
 	const float prev = this->offset;
 	this->offset =
 		std::clamp(this->offset + float(dir) * step, 0.0f, max_offset());
@@ -1334,7 +1334,7 @@ ScrollColumn::motion(Kit &, float, float y)
 bool
 ScrollColumn::scroll(Kit &, float, float, int delta)
 {
-	return this->scroll_.wheel(delta, kButtonH * 3.0f);
+	return this->scroll_.wheel(delta, kScrollStep * 3.0f);
 }
 
 bool

@@ -529,7 +529,8 @@ MenuItem::measure(Kit &kit, float, float)
 	if (this->sub)
 		width += kIconPx;
 	width += kFramePadX;
-	float ch = kIconPx;
+	float ch = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
+	ch = max(ch, kIconPx);
 	if (!this->text.isEmpty())
 		ch = max(ch, kit.text_height(this->text, 0.0f, false));
 	if (!this->accel.isEmpty())

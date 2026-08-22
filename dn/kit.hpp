@@ -55,11 +55,10 @@ constexpr float kIconPx = 16.0f;
 constexpr float kFramePadX = 6.0f;
 constexpr float kFramePadY = 6.0f;
 constexpr float kTooltipPadX = 8.0f;
-constexpr float kButtonW = kIconPx + kFramePadX * 2.0f;
-constexpr float kButtonH = kIconPx + kFramePadY * 2.0f;
 constexpr float kGlowPts = 8.0f;
 constexpr float kResizeBorderPts = 8.0f;
 constexpr float kScrollBarW = 8.0f;
+constexpr float kScrollStep = 32.0f;
 constexpr float kScrollHideMs = 1000.0f;
 
 struct Kit;
