@@ -177,10 +177,7 @@ function codegen_enum_value(name, subname, value, cg) {
 	append(cg, "fields",
 		"\t" snaketocamel(subname) " = " value ",\n")
 	append(cg, "cases",
-		"\tcase static_cast<int8_t>(" name "::" \
-			snaketocamel(subname) "):\n" \
-		"\t\tvalue = " name "::" snaketocamel(subname) ";\n" \
-		"\t\treturn true;\n")
+		"\tcase " name "::" snaketocamel(subname) ":\n")
 }
 
 function codegen_enum(name, cg,    fields) {
@@ -205,8 +202,11 @@ function codegen_enum(name, cg,    fields) {
 	print "\tint8_t raw{};"
 	print "\tif (!decoder.i8(raw) || raw == 0)"
 	print "\t\treturn false;"
-	print "\tswitch (raw) {"
+	print "\tauto const code = static_cast<" name ">(raw);"
+	print "\tswitch (code) {"
 	printf "%s", cg["cases"]
+	print "\t\tvalue = code;"
+	print "\t\treturn true;"
 	print "\tdefault:"
 	print "\t\treturn false;"
 	print "\t}"
@@ -369,10 +369,9 @@ function codegen_union(name, cg,    view, n, i, own_list, view_list, tag) {
 	print "\tint8_t tag{};"
 	print "\tif (!decoder.i8(tag) || tag == 0)"
 	print "\t\treturn false;"
-	print "\tswitch (tag) {"
+	print "\tswitch (static_cast<" tag ">(tag)) {"
 	for (i = 0; i < n; i++) {
-		print "\tcase static_cast<int8_t>(" tag "::" \
-			cg["case", i] "): {"
+		print "\tcase " tag "::" cg["case", i] ": {"
 		print "\t\t" cg["view", i] " arm{};"
 		print "\t\tif (!decode(decoder, arm))"
 		print "\t\t\treturn false;"
