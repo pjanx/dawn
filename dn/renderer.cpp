@@ -7,7 +7,7 @@
 
 #include "renderer.hpp"
 
-#include "dither-frag-spv.h"
+#include "dn-dither-frag-spv.h"
 #include "fullscreen-vert-spv.h"
 #include "vk-device.hpp"
 

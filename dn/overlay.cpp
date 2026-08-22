@@ -7,8 +7,8 @@
 
 #include "overlay.hpp"
 
-#include "overlay-frag-spv.h"
-#include "overlay-vert-spv.h"
+#include "dn-overlay-frag-spv.h"
+#include "dn-overlay-vert-spv.h"
 #include "vk-device.hpp"
 
 #include <algorithm>
