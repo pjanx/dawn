@@ -21,16 +21,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(WIN32 AND CMAKE_CROSSCOMPILING)
-	set(DN_MINGW_PREFIX "${PROJECT_SOURCE_DIR}/ucrt64")
-	list(APPEND CMAKE_PREFIX_PATH "${DN_MINGW_PREFIX}")
-	list(APPEND CMAKE_FIND_ROOT_PATH "${DN_MINGW_PREFIX}")
+	set(DN_MSYS2_PREFIX "${PROJECT_SOURCE_DIR}/ucrt64")
+	list(APPEND CMAKE_PREFIX_PATH "${DN_MSYS2_PREFIX}")
+	list(APPEND CMAKE_FIND_ROOT_PATH "${DN_MSYS2_PREFIX}")
 
 	# Relativize prefixes, and bar pkg-config from looking up host libraries
 	set(ENV{PKG_CONFIG_SYSROOT_DIR} "${PROJECT_SOURCE_DIR}")
-	set(DN_MINGW_PCPATH
-		"${DN_MINGW_PREFIX}/share/pkgconfig:${DN_MINGW_PREFIX}/lib/pkgconfig")
-	set(ENV{PKG_CONFIG_PATH} "${DN_MINGW_PCPATH}")
-	set(ENV{PKG_CONFIG_LIBDIR} "${DN_MINGW_PCPATH}")
+	set(DN_MSYS2_PCPATH
+		"${DN_MSYS2_PREFIX}/share/pkgconfig:${DN_MSYS2_PREFIX}/lib/pkgconfig")
+	set(ENV{PKG_CONFIG_PATH} "${DN_MSYS2_PCPATH}")
+	set(ENV{PKG_CONFIG_LIBDIR} "${DN_MSYS2_PCPATH}")
 
 	# Qt tries to find qtpaths without an .exe file extension
 	# (see Qt6CoreMacros.cmake).  This ultimately means broken windeployqt.
@@ -50,13 +50,16 @@ else()
 endif()
 
 # Dependency fetching is centralised here in the root CMakeLists.txt.
-set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/submodules/liberty/cmake")
+set(CMAKE_MODULE_PATH
+	"${PROJECT_SOURCE_DIR}/cmake"
+	"${PROJECT_SOURCE_DIR}/submodules/liberty/cmake"
+)
 
 find_package(PkgConfig REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(Qt6 6.11 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
 find_program(AWK NAMES awk REQUIRED)
-include(cmake/LxdrGenerate.cmake)
+include(lxdr-generate)
 find_program(GLSLANG_VALIDATOR
 	NAMES glslangValidator glslang
 	HINTS ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}
@@ -197,19 +200,20 @@ add_subdirectory(dn)
 if(WIN32)
 	install(TARGETS dn libdn dnthumbd
 		RUNTIME DESTINATION .)
-	install(DIRECTORY "${DN_MINGW_PREFIX}/bin/"
+	install(DIRECTORY "${DN_MSYS2_PREFIX}/bin/"
 		DESTINATION .
 		FILES_MATCHING
 			PATTERN "*.dll"
 			PATTERN "vulkan-1.dll" EXCLUDE)
 
+	# This installation is pretty big, with a ton of files, thus it's optional.
 	install(FILES
-		"${DN_MINGW_PREFIX}/bin/wperl.exe"
-		"${DN_MINGW_PREFIX}/bin/exiftool"
+		"${DN_MSYS2_PREFIX}/bin/wperl.exe"
+		"${DN_MSYS2_PREFIX}/bin/exiftool"
 		DESTINATION .
 		OPTIONAL)
 	install(DIRECTORY
-		"${DN_MINGW_PREFIX}/lib/perl5/"
+		"${DN_MSYS2_PREFIX}/lib/perl5/"
 		DESTINATION lib/perl5
 		OPTIONAL)
 
@@ -225,18 +229,18 @@ if(WIN32)
 	endif()
 
 	install(FILES
-		"${DN_MINGW_PREFIX}/bin/vk_swiftshader_icd.json"
+		"${DN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"
 		DESTINATION .)
 	install(FILES
-		"${DN_MINGW_PREFIX}/share/mime/globs2"
-		"${DN_MINGW_PREFIX}/share/mime/subclasses"
+		"${DN_MSYS2_PREFIX}/share/mime/globs2"
+		"${DN_MSYS2_PREFIX}/share/mime/subclasses"
 		DESTINATION share/mime)
 
 	# Prune unused libraries.
-	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/Win32Cleanup.cmake")
+	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/msys2-cleanup.cmake")
 endif()
 if(APPLE)
-	include(cmake/DarwinInstall.cmake)
+	include(cmake/macos-install.cmake)
 endif()
 
 include(CTest)

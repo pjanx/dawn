@@ -130,9 +130,9 @@ function(dn_embed_shader src symbol)
 			-V "-I${DN_SHADER_DIR}" ${ARGN} "${src}" -o "${spv}"
 		COMMAND "${CMAKE_COMMAND}"
 			"-DINPUT=${spv}" "-DOUTPUT=${hdr}" "-DSYMBOL=${symbol}"
-			-P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed-spirv.cmake"
+			-P "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
 		DEPENDS "${src}" "${DN_SHADER_DIR}/common.glsl"
-			"${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed-spirv.cmake"
+			"${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
 		COMMENT "SPIR-V ${stem}"
 		VERBATIM
 	)

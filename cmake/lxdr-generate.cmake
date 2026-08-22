@@ -1,5 +1,5 @@
 #
-# LxdrGenerate.cmake: build-time LibertyXDR C++ header generation
+# lxdr-generate.cmake: build-time LibertyXDR C++ header generation
 #
 # Copyright The dawn Authors
 # SPDX-License-Identifier: MPL-2.0
@@ -19,7 +19,7 @@ function(dn_lxdr_generate out_header namespace prefix_camel)
 		message(FATAL_ERROR "dn_lxdr_generate: no .lxdr inputs")
 	endif()
 
-	set(lxdrgen "${PROJECT_SOURCE_DIR}/ipc/lxdrgen.awk")
+	set(lxdrgen "${PROJECT_SOURCE_DIR}/submodules/liberty/tools/lxdrgen.awk")
 	set(lxdrgen_cpp "${PROJECT_SOURCE_DIR}/ipc/lxdrgen-cpp.awk")
 
 	set(lxdr_abs)

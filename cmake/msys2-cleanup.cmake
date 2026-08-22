@@ -23,7 +23,8 @@ function(expand path)
 	foreach(string ${strings})
 		string(REGEX MATCH "[-.+_a-zA-Z0-9]+$" word "${string}")
 		expand("${installdir}/${word}")
-		# Windows is case-insensitive; MinGW/MSVC names on disk are lowercase.
+
+		# Windows is case-insensitive.
 		string(TOLOWER "${word}" lower)
 		if(NOT word STREQUAL lower)
 			expand("${installdir}/${lower}")
@@ -31,8 +32,7 @@ function(expand path)
 	endforeach()
 endfunction()
 
-file(GLOB roots LIST_DIRECTORIES false
-	"${installdir}/*.[Ee][Xx][Ee]"
+file(GLOB roots LIST_DIRECTORIES false "${installdir}/*.[Ee][Xx][Ee]"
 	"${installdir}/platforms/*.[Dd][Ll][Ll]"
 	"${installdir}/vk_swiftshader.dll")
 foreach(binary ${roots})

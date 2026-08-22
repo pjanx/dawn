@@ -56,8 +56,8 @@ function(dn_ui_embed_shader src symbol)
 		COMMAND "${GLSLANG_VALIDATOR}" -V "${src}" -o "${spv}"
 		COMMAND "${CMAKE_COMMAND}"
 			"-DINPUT=${spv}" "-DOUTPUT=${hdr}" "-DSYMBOL=${symbol}"
-			-P "${CMAKE_SOURCE_DIR}/libdn/cmake/embed-spirv.cmake"
-		DEPENDS "${src}" "${CMAKE_SOURCE_DIR}/libdn/cmake/embed-spirv.cmake"
+			-P "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
+		DEPENDS "${src}" "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
 		COMMENT "SPIR-V ${name}"
 		VERBATIM
 	)
@@ -122,7 +122,7 @@ if(APPLE)
 		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}")
 else()
 	include(IconUtils)
-	set(DN_ICON_BASE "${CMAKE_CURRENT_BINARY_DIR}/icons")
+	set(DN_ICON_BASE "${PROJECT_SOURCE_DIR}/icons")
 	set(DN_ICON_PNG_LIST)
 	foreach(DN_ICON_SIZE 16 32 48 256)
 		icon_to_png(dn "${DN_ICON_SVG}" ${DN_ICON_SIZE}
