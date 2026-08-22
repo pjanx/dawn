@@ -68,10 +68,8 @@ however there is currently no one to sign these packages.
 
 Windows is cross-compiled in CI:
 
- $ sh -e msys2-configure.sh
- $ cmake -DCMAKE_TOOLCHAIN_FILE=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake \
-   -DCMAKE_BUILD_TYPE=Release -B build
- $ WINEPATH=$PWD/ucrt64/bin cmake --build build -- package
+ $ sh -e msys2-configure.sh -DCMAKE_BUILD_TYPE=Release -B build-msys2
+ $ cmake --build build-msys2 -- package
 
 Configuration
 -------------

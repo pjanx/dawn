@@ -112,7 +112,7 @@ extract() {
 # Native rustc cannot load upstream rust-std; compile std from rust-src.
 # TODO(p): Try to push this bullshit directly to MSYS2.
 resvg() {
-	status resvg
+	status Building resvg
 	mkdir -p tmp/resvg include/resvg bin lib/pkgconfig
 	src=$PWD/tmp/resvg
 	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
@@ -147,6 +147,10 @@ resvg() {
 configure() {
 	status Configuring packages
 	wine bin/update-mime-database.exe share/mime
+
+	echo "WINEPATH=$PWD/bin wine $PWD/share/qt6/bin/rcc.exe"' "$@"' > autorcc
+	echo "WINEPATH=$PWD/bin wine $PWD/share/qt6/bin/moc.exe"' "$@"' > automoc
+	chmod +x autorcc automoc
 }
 
 # This directory name matches the prefix in .pc files, so we don't need to
@@ -161,6 +165,10 @@ fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 verify
 extract
 resvg
-configure
+configure "$@"
 
-status Success
+cd ..
+toolchain=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake
+cmake -DCMAKE_TOOLCHAIN_FILE=$toolchain \
+	-DCMAKE_AUTOMOC_EXECUTABLE=$PWD/ucrt64/automoc \
+	-DCMAKE_AUTORCC_EXECUTABLE=$PWD/ucrt64/autorcc "$@"
