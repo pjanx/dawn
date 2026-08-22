@@ -1599,12 +1599,11 @@ Kit::snap(float v) const
 Rect
 Kit::snap_rect(Rect r) const
 {
-	const float x1 = snap(r.x + r.w);
-	const float y1 = snap(r.y + r.h);
+	const float d = max(this->dpr_, 0.01f);
 	r.x = snap(r.x);
 	r.y = snap(r.y);
-	r.w = max(0.0f, x1 - r.x);
-	r.h = max(0.0f, y1 - r.y);
+	r.w = max(0.0f, ceil(r.w * d - 1e-4f) / d);
+	r.h = max(0.0f, ceil(r.h * d - 1e-4f) / d);
 	return r;
 }
 
