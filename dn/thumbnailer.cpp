@@ -8,6 +8,7 @@
 #include "thumbnailer.hpp"
 
 #include <QMetaObject>
+#include <QThread>
 #include <QTimer>
 
 #include <array>
@@ -127,6 +128,9 @@ struct Thumbnailer::Impl {
 	void erase_queued(Client id, ClientState &state);
 	void erase_gui(Client id, ClientState &state);
 	void erase_gpu(Client id, ClientState &state);
+	void drop_gpu(uint64_t gpu_id);
+	void fail_gpu(uint64_t gpu_id, string path);
+	bool scaler_queue(const ThumbScaler::Job &job);
 };
 
 Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
@@ -302,6 +306,45 @@ Thumbnailer::Impl::erase_gpu(Client id, ClientState &state)
 	}
 }
 
+void
+Thumbnailer::Impl::drop_gpu(uint64_t gpu_id)
+{
+	auto found = gpu_tasks.find(gpu_id);
+	if (found == gpu_tasks.end())
+		return;
+	if (auto client = clients.find(found->second.client);
+		client != clients.end()) {
+		client->second.gpu--;
+		client->second.activity_pending = true;
+	}
+	gpu_tasks.erase(found);
+}
+
+void
+Thumbnailer::Impl::fail_gpu(uint64_t gpu_id, string path)
+{
+	auto found = gpu_tasks.find(gpu_id);
+	if (found == gpu_tasks.end())
+		return;
+	ThumbScaler::Result result;
+	result.user = gpu_id;
+	result.path = std::move(path);
+	result.failed = true;
+	found->second.result = std::move(result);
+}
+
+bool
+Thumbnailer::Impl::scaler_queue(const ThumbScaler::Job &job)
+{
+	if (!scaler)
+		return false;
+	owner->schedule_pump();
+	if (!scaler->queue(job))
+		return false;
+	owner->schedule_pump();
+	return true;
+}
+
 Thumbnailer::Thumbnailer(QObject *parent, unsigned workers)
 	: QObject(parent), impl_(make_unique<Impl>(this, workers))
 {
@@ -475,25 +518,30 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 		client->second.gpu++;
 		client->second.activity_pending = true;
 	}
-	// Oversized jobs are copied into the bounded scaler ring one tile at a
-	// time.  queue() may therefore wait for the GUI thread to flush an earlier
-	// tile before it can claim space for the next one.  Start pumping while the
-	// producer is still in queue(), rather than only after it returns.
-	schedule_pump();
 	job.user = gpu_id;
 	job.priority = scaler_priority(priority);
-	if (!impl_->scaler->queue(job)) {
+	// queue() waits for pump() to free ring space.  Workers may block;
+	// this thread may not.  Hand GUI callers a CPU task that does the copy.
+	if (QThread::currentThread() != thread()) {
+		if (impl_->scaler_queue(job))
+			return true;
 		lock_guard lock(impl_->mu);
-		if (impl_->gpu_tasks.erase(gpu_id)) {
-			if (auto client = impl_->clients.find(id);
-				client != impl_->clients.end()) {
-				client->second.gpu--;
-				client->second.activity_pending = true;
-			}
-		}
+		impl_->drop_gpu(gpu_id);
 		return false;
 	}
-	schedule_pump();
+	string path = job.path;
+	if (!submit(id, epoch, priority,
+			[this, job = std::move(job), gpu_id, path]() mutable {
+				if (!impl_->scaler_queue(job)) {
+					lock_guard lock(impl_->mu);
+					impl_->fail_gpu(gpu_id, std::move(path));
+				}
+				return Completion{};
+			})) {
+		lock_guard lock(impl_->mu);
+		impl_->drop_gpu(gpu_id);
+		return false;
+	}
 	return true;
 }
 

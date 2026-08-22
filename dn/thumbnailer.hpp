@@ -51,6 +51,8 @@ public:
 		std::string key = {});
 	bool reprioritize(Client client, uint64_t epoch, Priority priority,
 		const std::string &key);
+	/// Copies job pixels on a worker. Safe on the GUI thread; keep `job.pixels`
+	/// alive until the completion runs.
 	bool submit_gpu(Client client, uint64_t epoch, Priority priority,
 		ThumbScaler::Job job, GpuCompletion completion, std::string key = {});
 	[[nodiscard]] bool busy(Client client) const;

@@ -730,7 +730,7 @@ trim_ram(Browser &b)
 	vector<int> idx;
 	for (int i = 0; i < int(b.files_.size()); ++i) {
 		const Browser::File &f = b.files_[size_t(i)];
-		if (f.ram.empty() || thumb_in_band(b, f, pad))
+		if (f.ram.empty() || f.ram_pending || thumb_in_band(b, f, pad))
 			continue;
 		idx.push_back(i);
 	}
