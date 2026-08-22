@@ -5,7 +5,7 @@ Dawn
 'Dawn' is a multiplatform colour-managed image browser, with very high standards
 for fidelity and responsivity.
 
-image::docs/dn.webp["Screenshot of both the browser and the viewer"]
+image::doc/dn.webp["Screenshot of both the browser and the viewer"]
 
 Design-wise, the project is an amalgamation of older efforts and desires.
 Right now, we've mostly reached our first milestone, and we're cleaning up
