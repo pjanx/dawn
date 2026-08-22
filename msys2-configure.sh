@@ -101,6 +101,7 @@ extract() {
 	for n in msvcp140 vcruntime140 vcruntime140_1
 	do mv tmp/$n.dll_amd64 bin/$n.dll
 	done
+	rm -rf tmp
 
 	# ExifTool
 	bsdtar -xf exiftool.tar.gz
@@ -113,8 +114,8 @@ extract() {
 # TODO(p): Try to push this bullshit directly to MSYS2.
 resvg() {
 	status Building resvg
-	mkdir -p tmp/resvg include/resvg bin lib/pkgconfig
-	src=$PWD/tmp/resvg
+	mkdir -p tmp include/resvg bin lib/pkgconfig
+	src=$PWD/tmp
 	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
 	# Vendor config replaces crates-io; -Zbuild-std needs hashbrown etc.
 	rm -f $src/.cargo/config
@@ -142,6 +143,7 @@ resvg() {
 		Libs: -L${libdir} -lresvg
 		Cflags: -I${includedir}/resvg
 	EOF
+	rm -rf tmp
 }
 
 forward() {
