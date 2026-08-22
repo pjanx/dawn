@@ -26,6 +26,9 @@ namespace
 constexpr float kWinPadX = 4.0f;
 constexpr float kWinPadY = 2.0f;
 
+// How far the pointer must travel before a titlebar press becomes a move.
+constexpr float kDragPx = 4.0f;
+
 Qt::CursorShape
 resize_cursor(Qt::Edges edges)
 {
@@ -627,11 +630,40 @@ Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
 			return true;
 		}
 	}
-	if (kit.start_move) {
-		kit.start_move();
-		return true;
-	}
-	return false;
+	if (!kit.start_move)
+		return false;
+	// Asking for the move on the press would leave a compositor grab open
+	// across the whole double click, and Mutter anchors an unmaximize to the
+	// pointer whenever one is: the window would land under the cursor rather
+	// than back where it was. Wait for the pointer to travel instead.
+	this->drag_x_ = x;
+	this->drag_y_ = y;
+	this->drag_armed_ = true;
+	kit.pressed_ = this;
+	return true;
+}
+
+bool
+Titlebar::release(Kit &, float, float, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	this->drag_armed_ = false;
+	return true;
+}
+
+bool
+Titlebar::motion(Kit &kit, float x, float y)
+{
+	if (!this->drag_armed_ || !kit.start_move)
+		return false;
+	const float dx = x - this->drag_x_;
+	const float dy = y - this->drag_y_;
+	if (dx * dx + dy * dy < kDragPx * kDragPx)
+		return false;
+	this->drag_armed_ = false;
+	kit.start_move();
+	return true;
 }
 
 bool

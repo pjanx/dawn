@@ -676,11 +676,20 @@ Window::sync_csd()
 void
 Window::toggle_fullscreen()
 {
+	// windowState() collapses the mask, hiding Maximized behind FullScreen,
+	// and showFullScreen() overwrites it anyway. Remember it ourselves.
 	QWindow *target = shell();
-	if (target->windowState() & Qt::WindowFullScreen)
-		target->showNormal();
-	else
+	if (target->windowStates() & Qt::WindowFullScreen) {
+		if (this->fullscreen_from_maximized_)
+			target->showMaximized();
+		else
+			target->showNormal();
+		this->fullscreen_from_maximized_ = false;
+	} else {
+		this->fullscreen_from_maximized_ =
+			bool(target->windowStates() & Qt::WindowMaximized);
 		target->showFullScreen();
+	}
 }
 
 void

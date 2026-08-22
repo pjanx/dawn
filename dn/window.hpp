@@ -109,6 +109,7 @@ class Window final : public QWindow
 	bool alt_armed_ = false;
 	bool csd_ = false;
 	bool system_grab_ = false;
+	bool fullscreen_from_maximized_ = false;
 	Qt::CursorShape cursor_applied_ = Qt::ArrowCursor;
 
 protected:

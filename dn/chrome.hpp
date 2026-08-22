@@ -84,6 +84,9 @@ struct Titlebar : Panel {
 	Button *close = nullptr;
 	Actor actor;
 	QString text;
+	float drag_x_ = 0.0f;
+	float drag_y_ = 0.0f;
+	bool drag_armed_ = false;
 
 	Titlebar();
 	void sync(Kit &kit);
@@ -93,6 +96,8 @@ struct Titlebar : Panel {
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, float x, float y) override;
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
 };
