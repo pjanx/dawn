@@ -159,6 +159,7 @@ struct Label : Widget {
 	bool grow = false;
 	bool dim = false;
 	Align align = Align::Start;
+	Align valign = Align::Center;
 	QString tip_text;
 	QString tip_accel;
 

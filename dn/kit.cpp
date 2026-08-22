@@ -796,15 +796,16 @@ Label::paint(Kit &kit) const
 		tx = kit.snap(this->r.x +
 			max(0.0f,
 				(this->r.w - kit.text_width(this->text, this->bold)) * 0.5f));
+	const float wrap_w =
+		this->wrap ? max(1.0f, this->r.w - this->pad_x * 2.0f) : 0.0f;
+	const float th = kit.text_height(this->text, wrap_w, this->bold);
 	float ty = this->r.y + this->pad_y;
-	if (!this->wrap) {
-		const float th = kit.text_height(this->text, 0.0f, this->bold);
+	if (this->valign == Align::Center)
 		ty = this->r.y + (this->r.h - th) * 0.5f;
-	}
+	else if (this->valign == Align::End)
+		ty = this->r.y + this->r.h - this->pad_y - th;
 	emit_text(kit, tx, ty, this->text, col(kit.ink_, this->dim ? 0.5f : 1.0f),
-		this->bold,
-		this->wrap ? max(1.0f, this->r.w - this->pad_x * 2.0f) : 0.0f,
-		wrap_center);
+		this->bold, wrap_w, wrap_center);
 }
 
 void

@@ -607,6 +607,7 @@ make_error(Viewer &v)
 	auto lab = make_unique<Label>();
 	lab->grow = true;
 	lab->wrap = true;
+	lab->valign = Align::Center;
 	auto dismiss = make_unique<Button>();
 	dismiss->tip_text = "Dismiss";
 	dismiss->icon = "x-symbolic";
