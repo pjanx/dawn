@@ -116,50 +116,24 @@ target_link_libraries(libdn
 
 
 # Vulkan scale shaders
-set(DN_SHADER_DIR "${PROJECT_SOURCE_DIR}/shaders")
-set(DN_SHADER_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY "${DN_SHADER_GEN_DIR}")
-
-function(dn_embed_shader src symbol)
-	string(REPLACE "_" "-" stem "${symbol}")
-	set(spv "${DN_SHADER_GEN_DIR}/${stem}.spv")
-	set(hdr "${DN_SHADER_GEN_DIR}/${stem}-spv.h")
-	add_custom_command(
-		OUTPUT "${spv}" "${hdr}"
-		COMMAND "${GLSLANG_VALIDATOR}"
-			-V "-I${DN_SHADER_DIR}" ${ARGN} "${src}" -o "${spv}"
-		COMMAND "${CMAKE_COMMAND}"
-			"-DINPUT=${spv}" "-DOUTPUT=${hdr}" "-DSYMBOL=${symbol}"
-			-P "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
-		DEPENDS "${src}" "${DN_SHADER_DIR}/common.glsl"
-			"${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
-		COMMENT "SPIR-V ${stem}"
-		VERBATIM
-	)
-	set(DN_SHADER_HEADERS "${DN_SHADER_HEADERS}" "${hdr}" PARENT_SCOPE)
-endfunction()
-
-set(DN_SHADER_HEADERS "")
-dn_embed_shader("${DN_SHADER_DIR}/fullscreen.vert" fullscreen_vert)
-dn_embed_shader("${DN_SHADER_DIR}/scale-h.frag" scale_h_bilinear
+dawn_embed_shader(libdn fullscreen.vert fullscreen_vert)
+dawn_embed_shader(libdn scale-h.frag scale_h_bilinear
 	-DDN_FILTER=1)
-dn_embed_shader("${DN_SHADER_DIR}/scale-v.frag" scale_v_bilinear
+dawn_embed_shader(libdn scale-v.frag scale_v_bilinear
 	-DDN_FILTER=1)
-dn_embed_shader("${DN_SHADER_DIR}/scale-2d.frag" scale_2d_nearest
+dawn_embed_shader(libdn scale-2d.frag scale_2d_nearest
 	-DDN_FILTER=0)
-dn_embed_shader("${DN_SHADER_DIR}/scale-2d.frag" scale_2d_bilinear
+dawn_embed_shader(libdn scale-2d.frag scale_2d_bilinear
 	-DDN_FILTER=1)
-dn_embed_shader("${DN_SHADER_DIR}/scale-2d.frag" scale_2d_nohalo
+dawn_embed_shader(libdn scale-2d.frag scale_2d_nohalo
 	-DDN_FILTER=2)
-dn_embed_shader("${DN_SHADER_DIR}/thumb-scale-h.comp" thumb_scale_h)
-dn_embed_shader("${DN_SHADER_DIR}/thumb-scale-v.comp" thumb_scale_v)
-dn_embed_shader("${DN_SHADER_DIR}/thumb-reduce.comp" thumb_reduce)
+dawn_embed_shader(libdn thumb-scale-h.comp thumb_scale_h)
+dawn_embed_shader(libdn thumb-scale-v.comp thumb_scale_v)
+dawn_embed_shader(libdn thumb-reduce.comp thumb_reduce)
 
 target_sources(libdn PRIVATE
 	scale-engine.cpp
 	scale-scaler.cpp
 	thumb-scaler.cpp
 	vk-device.cpp
-	${DN_SHADER_HEADERS}
 )
-target_include_directories(libdn PRIVATE ${DN_SHADER_GEN_DIR})

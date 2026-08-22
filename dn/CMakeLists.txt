@@ -27,7 +27,6 @@ set_target_properties(dn PROPERTIES
 	MACOSX_BUNDLE_GUI_IDENTIFIER name.janouch.dn)
 target_include_directories(dn PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
-	"${CMAKE_CURRENT_BINARY_DIR}/generated"
 	"${CMAKE_SOURCE_DIR}/libdn"
 )
 find_package(Threads REQUIRED)
@@ -42,32 +41,10 @@ target_link_libraries(dn PRIVATE
 	Threads::Threads
 )
 
-set(DN_UI_SHADER_DIR "${PROJECT_SOURCE_DIR}/shaders")
-set(DN_UI_SHADER_GEN "${CMAKE_CURRENT_BINARY_DIR}/generated")
-file(MAKE_DIRECTORY "${DN_UI_SHADER_GEN}")
-
-function(dn_ui_embed_shader src symbol)
-	get_filename_component(name "${src}" NAME)
-	set(spv "${DN_UI_SHADER_GEN}/${name}.spv")
-	string(REPLACE "." "-" header_stem "${name}")
-	set(hdr "${DN_UI_SHADER_GEN}/${header_stem}-spv.h")
-	add_custom_command(
-		OUTPUT "${spv}" "${hdr}"
-		COMMAND "${GLSLANG_VALIDATOR}" -V "${src}" -o "${spv}"
-		COMMAND "${CMAKE_COMMAND}"
-			"-DINPUT=${spv}" "-DOUTPUT=${hdr}" "-DSYMBOL=${symbol}"
-			-P "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
-		DEPENDS "${src}" "${PROJECT_SOURCE_DIR}/cmake/embed-spirv.cmake"
-		COMMENT "SPIR-V ${name}"
-		VERBATIM
-	)
-	target_sources(dn PRIVATE "${hdr}")
-endfunction()
-
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-overlay.vert" overlay_vert)
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-overlay.frag" overlay_frag)
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/fullscreen.vert" fullscreen_vert)
-dn_ui_embed_shader("${DN_UI_SHADER_DIR}/dn-dither.frag" dither_frag)
+dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
+dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
+dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
+dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
 
 if(WIN32)
 	target_sources(dn PRIVATE

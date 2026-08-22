@@ -65,6 +65,7 @@ find_program(GLSLANG_VALIDATOR
 	HINTS ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}
 	REQUIRED
 )
+include(embed-shader)
 set(DN_WITH_WAYLAND "${Qt6WaylandClient_FOUND}")
 if (DN_WITH_WAYLAND)
 	pkg_check_modules(DN_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)

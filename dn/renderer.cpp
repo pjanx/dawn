@@ -881,8 +881,8 @@ Renderer::create_dither()
 		"vkCreateShaderModule dither vert");
 	VkShaderModuleCreateInfo frag_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dither_frag_words * sizeof(uint32_t),
-		.pCode = dither_frag,
+		.codeSize = dn_dither_frag_words * sizeof(uint32_t),
+		.pCode = dn_dither_frag,
 	};
 	check_vk(vkCreateShaderModule(
 				 this->device_, &frag_info, nullptr, &this->dither_frag_),

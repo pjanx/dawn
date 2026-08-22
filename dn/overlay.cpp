@@ -387,13 +387,13 @@ OverlayVulkan::create_pipeline()
 {
 	VkShaderModuleCreateInfo vert_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = overlay_vert_words * sizeof(uint32_t),
-		.pCode = overlay_vert,
+		.codeSize = dn_overlay_vert_words * sizeof(uint32_t),
+		.pCode = dn_overlay_vert,
 	};
 	VkShaderModuleCreateInfo frag_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = overlay_frag_words * sizeof(uint32_t),
-		.pCode = overlay_frag,
+		.codeSize = dn_overlay_frag_words * sizeof(uint32_t),
+		.pCode = dn_overlay_frag,
 	};
 	check_vk(
 		vkCreateShaderModule(this->device_, &vert_info, nullptr, &this->vert_),
