@@ -144,13 +144,17 @@ resvg() {
 	EOF
 }
 
+forward() {
+	echo "#!/bin/sh" >$2
+	echo "WINEPATH=$PWD/bin wine $PWD/share/qt6/bin/$1.exe"' "$@"' >>$2
+	chmod +x $2
+}
+
 configure() {
 	status Configuring packages
 	wine bin/update-mime-database.exe share/mime
-
-	echo "WINEPATH=$PWD/bin wine $PWD/share/qt6/bin/rcc.exe"' "$@"' > autorcc
-	echo "WINEPATH=$PWD/bin wine $PWD/share/qt6/bin/moc.exe"' "$@"' > automoc
-	chmod +x autorcc automoc
+	forward rcc autorcc
+	forward moc automoc
 }
 
 # This directory name matches the prefix in .pc files, so we don't need to
