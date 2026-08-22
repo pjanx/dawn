@@ -19,15 +19,21 @@
 #include <cstdio>
 #include <vector>
 
+using namespace std;
+
 namespace
 {
 
 int failures = 0;
 
-#define CHECK(x) do { if (!(x)) { \
-	fprintf(stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #x); \
-	++failures; \
-} } while (0)
+#define CHECK(x)                                                               \
+	do {                                                                       \
+		if (!(x)) {                                                            \
+			fprintf(                                                           \
+				stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #x);  \
+			++failures;                                                        \
+		}                                                                      \
+	} while (0)
 
 void
 append_field(QByteArray &out, const char *key, const QByteArray &value)
@@ -57,8 +63,7 @@ retag(const QString &path, const dn::ThumbnailSource &source,
 	append_field(metadata, "Thumb::MTime", QByteArray::number(source.mtime));
 	append_field(metadata, "Thumb::Size", QByteArray::number(source.size));
 	append_field(metadata, "Thumb::ColorSpace", color_space);
-	const WebPData thum{
-		reinterpret_cast<const uint8_t *>(metadata.constData()),
+	const WebPData thum{reinterpret_cast<const uint8_t *>(metadata.constData()),
 		size_t(metadata.size())};
 	WebPData output{};
 	const bool ok = WebPMuxSetChunk(mux, "THUM", &thum, 1) == WEBP_MUX_OK &&
@@ -70,8 +75,9 @@ retag(const QString &path, const dn::ThumbnailSource &source,
 		WebPDataClear(&output);
 		return false;
 	}
-	const bool written = file.write(reinterpret_cast<const char *>(output.bytes),
-		qint64(output.size)) == qint64(output.size);
+	const bool written =
+		file.write(reinterpret_cast<const char *>(output.bytes),
+			qint64(output.size)) == qint64(output.size);
 	file.close();
 	WebPDataClear(&output);
 	return written;
@@ -96,7 +102,8 @@ main(int argc, char **argv)
 	CHECK(dn::thumbnail_tier_for_height(129) == 1);
 	CHECK(dn::thumbnail_tier_for_height(2000) == 3);
 
-	const QString input = QDir(inputs.path()).filePath(QStringLiteral("red.png"));
+	const QString input =
+		QDir(inputs.path()).filePath(QStringLiteral("red.png"));
 	QFile source_file(input);
 	CHECK(source_file.open(QIODevice::WriteOnly));
 	CHECK(source_file.write("source") == 6);
@@ -108,9 +115,15 @@ main(int argc, char **argv)
 	CHECK(source.hash.size() == 32);
 	CHECK(!dn::thumbnail_cache_contains(input));
 
-	const std::vector<uint16_t> pixels = {
-		0, 0, 65535, 65535,
-		0, 0, 65535, 65535,
+	const vector<uint16_t> pixels = {
+		0,
+		0,
+		65535,
+		65535,
+		0,
+		0,
+		65535,
+		65535,
 	};
 	QString error;
 	CHECK(dn::thumbnail_cache_write(
@@ -118,18 +131,18 @@ main(int argc, char **argv)
 	if (!error.isEmpty())
 		fprintf(stderr, "%s\n", qUtf8Printable(error));
 
-	auto cmm = std::make_shared<dn::Cmm>();
+	auto cmm = make_shared<dn::Cmm>();
 	auto p3 = cmm->get_profile_display_p3();
-	dn::ThumbnailHit hit =
-		dn::thumbnail_cache_lookup(source, 0, cmm, p3.get());
+	dn::ThumbnailHit hit = dn::thumbnail_cache_lookup(source, 0, cmm, p3.get());
 	CHECK(!hit.pixels.empty());
 	CHECK(hit.width == 2 && hit.height == 1);
 	CHECK(hit.image_width == 20 && hit.image_height == 10);
 	CHECK(hit.tier == 0);
 	CHECK(!hit.interim);
 
-	const QString cached = QDir(dn::thumbnail_cache_root()).filePath(
-		QStringLiteral("wide-normal/%1.webp").arg(QString::fromLatin1(source.hash)));
+	const QString cached = QDir(dn::thumbnail_cache_root())
+							   .filePath(QStringLiteral("wide-normal/%1.webp")
+									   .arg(QString::fromLatin1(source.hash)));
 	CHECK(QFileInfo::exists(cached));
 	CHECK(retag(cached, source, QByteArrayLiteral("sRGB")));
 	hit = dn::thumbnail_cache_lookup(source, 0, cmm, p3.get());
@@ -158,10 +171,12 @@ main(int argc, char **argv)
 		QString::fromLatin1(png_source.hash) + QStringLiteral(".png"));
 	QImage png(2, 1, QImage::Format_RGBA8888);
 	png.fill(Qt::red);
-	png.setText(QStringLiteral("Thumb::URI"), QString::fromUtf8(png_source.uri));
-	png.setText(QStringLiteral("Thumb::MTime"),
-		QString::number(png_source.mtime));
-	png.setText(QStringLiteral("Thumb::Size"), QString::number(png_source.size));
+	png.setText(
+		QStringLiteral("Thumb::URI"), QString::fromUtf8(png_source.uri));
+	png.setText(
+		QStringLiteral("Thumb::MTime"), QString::number(png_source.mtime));
+	png.setText(
+		QStringLiteral("Thumb::Size"), QString::number(png_source.size));
 	png.setText(QStringLiteral("Thumb::Image::Width"), QStringLiteral("8"));
 	png.setText(QStringLiteral("Thumb::Image::Height"), QStringLiteral("4"));
 	CHECK(png.save(png_path, "PNG"));

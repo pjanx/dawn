@@ -6,8 +6,8 @@
 //
 
 #include "dawn-config.h"
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <cmath>
 #include <cstdint>
@@ -20,7 +20,7 @@
 #include <vector>
 
 using namespace std;
-namespace fs = std::filesystem;
+namespace fs = filesystem;
 
 #ifndef DN_TEST_FIXTURES_DIR
 #error DN_TEST_FIXTURES_DIR must be defined
@@ -429,8 +429,8 @@ void
 near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 {
 	if (fabs(x - xe) > tol || fabs(y - ye) > tol) {
-		fprintf(stderr, "%s: xy=(%.5f, %.5f) expected (~%.5f, ~%.5f)\n",
-			label, x, y, xe, ye);
+		fprintf(stderr, "%s: xy=(%.5f, %.5f) expected (~%.5f, ~%.5f)\n", label,
+			x, y, xe, ye);
 		++g_failures;
 	}
 }

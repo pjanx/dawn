@@ -14,33 +14,37 @@
 
 #include <utility>
 
-namespace dn {
-namespace ipc {
-namespace {
+using namespace std;
+
+namespace dn
+{
+namespace ipc
+{
+namespace
+{
 
 constexpr char kService[] = "instance";
 
 enum class Wait : uint8_t { Ok, Timeout, Fail };
 
 void
-consume_elapsed(std::chrono::milliseconds &left,
-	std::chrono::milliseconds dt)
+consume_elapsed(chrono::milliseconds &left, chrono::milliseconds dt)
 {
 	if (dt >= left)
-		left = std::chrono::milliseconds{0};
+		left = chrono::milliseconds{0};
 	else
 		left -= dt;
 }
 
 Wait
-wait_fd(int fd, short events, std::chrono::milliseconds &left)
+wait_fd(int fd, short events, chrono::milliseconds &left)
 {
-	using clock = std::chrono::steady_clock;
+	using clock = chrono::steady_clock;
 	if (fd < 0)
 		return Wait::Fail;
 	for (;;) {
 		if (left.count() < 0)
-			left = std::chrono::milliseconds{0};
+			left = chrono::milliseconds{0};
 		pollfd pfd{};
 		pfd.fd = fd;
 		pfd.events = events;
@@ -51,8 +55,8 @@ wait_fd(int fd, short events, std::chrono::milliseconds &left)
 			ms = int(left.count());
 		const auto t0 = clock::now();
 		const int n = ::poll(&pfd, 1, ms);
-		consume_elapsed(left, std::chrono::duration_cast<
-			std::chrono::milliseconds>(clock::now() - t0));
+		consume_elapsed(left,
+			chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -71,7 +75,7 @@ wait_fd(int fd, short events, std::chrono::milliseconds &left)
 }
 
 bool
-flush_deadline(Connection &conn, std::chrono::milliseconds &left)
+flush_deadline(Connection &conn, chrono::milliseconds &left)
 {
 	if (conn.flush())
 		return true;
@@ -89,8 +93,8 @@ flush_deadline(Connection &conn, std::chrono::milliseconds &left)
 }
 
 bool
-write_bytes(Connection &conn, std::span<const std::byte> payload,
-	std::chrono::milliseconds &left)
+write_bytes(
+	Connection &conn, span<const byte> payload, chrono::milliseconds &left)
 {
 	if (!conn.write_payload(payload))
 		return false;
@@ -98,8 +102,7 @@ write_bytes(Connection &conn, std::span<const std::byte> payload,
 }
 
 bool
-read_one_frame(Connection &conn, std::vector<std::byte> &out,
-	std::chrono::milliseconds &left)
+read_one_frame(Connection &conn, vector<byte> &out, chrono::milliseconds &left)
 {
 	for (;;) {
 		switch (conn.read()) {
@@ -116,7 +119,7 @@ read_one_frame(Connection &conn, std::vector<std::byte> &out,
 }
 
 bool
-encode_frame(const instance::Frame &frame, std::vector<std::byte> &buf)
+encode_frame(const instance::Frame &frame, vector<byte> &buf)
 {
 	buf.clear();
 	Encoder enc(buf);
@@ -132,42 +135,36 @@ set_internal(instance::Error *error)
 	error->code = instance::ErrorCode::Internal;
 	error->message.clear();
 }
-
-std::optional<BlockingClient>
-fail_hello(BlockingClient::HelloStatus *status,
-	BlockingClient::HelloStatus s)
+optional<BlockingClient>
+fail_hello(BlockingClient::HelloStatus *status, BlockingClient::HelloStatus s)
 {
 	if (status)
 		*status = s;
-	return std::nullopt;
+	return nullopt;
 }
 
 }  // namespace
 
-BlockingClient::BlockingClient(Connection conn)
-	: conn_(std::move(conn))
+BlockingClient::BlockingClient(Connection conn) : conn_(std::move(conn))
 {
 }
 
 BlockingClient::BlockingClient(BlockingClient &&) noexcept = default;
-BlockingClient &
-BlockingClient::operator=(BlockingClient &&) noexcept = default;
+BlockingClient &BlockingClient::operator=(BlockingClient &&) noexcept = default;
 BlockingClient::~BlockingClient() = default;
-
-std::optional<BlockingClient>
-BlockingClient::connect(std::string_view build_id,
-	std::string_view session, HelloStatus *status,
-	std::chrono::milliseconds timeout)
+optional<BlockingClient>
+BlockingClient::connect(string_view build_id, string_view session,
+	HelloStatus *status, chrono::milliseconds timeout)
 {
-	using clock = std::chrono::steady_clock;
-	std::chrono::milliseconds left = timeout;
+	using clock = chrono::steady_clock;
+	chrono::milliseconds left = timeout;
 	if (left.count() < 0)
-		left = std::chrono::milliseconds{0};
+		left = chrono::milliseconds{0};
 
 	const auto t0 = clock::now();
 	const Endpoint::Connect ep = Endpoint::connect(kService);
-	consume_elapsed(left, std::chrono::duration_cast<
-		std::chrono::milliseconds>(clock::now() - t0));
+	consume_elapsed(
+		left, chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
 	if (ep.status != Endpoint::ConnectStatus::Ok || ep.fd < 0)
 		return fail_hello(status, HelloStatus::Unavailable);
 
@@ -176,18 +173,14 @@ BlockingClient::connect(std::string_view build_id,
 		return fail_hello(status, HelloStatus::Unavailable);
 
 	instance::Hello hello;
-	hello.protocol_version =
-		uint32_t(instance::kInstanceProtocolVersion);
-	hello.build_id = std::string(build_id);
-	hello.session = std::string(session);
+	hello.protocol_version = uint32_t(instance::kInstanceProtocolVersion);
+	hello.build_id = string(build_id);
+	hello.session = string(session);
 
 	instance::Frame hello_frame;
-	hello_frame.payload.value =
-		instance::PayloadHello{std::move(hello)};
-
-	std::vector<std::byte> buf;
-	if (!encode_frame(hello_frame, buf) ||
-		!write_bytes(conn, buf, left))
+	hello_frame.payload.value = instance::PayloadHello{std::move(hello)};
+	vector<byte> buf;
+	if (!encode_frame(hello_frame, buf) || !write_bytes(conn, buf, left))
 		return fail_hello(status, HelloStatus::Unavailable);
 
 	if (!read_one_frame(conn, buf, left))
@@ -199,43 +192,38 @@ BlockingClient::connect(std::string_view build_id,
 		return fail_hello(status, HelloStatus::Unavailable);
 
 	const auto *reply =
-		std::get_if<instance::PayloadHelloReplyView>(
-			&view.payload.value);
+		get_if<instance::PayloadHelloReplyView>(&view.payload.value);
 	if (!reply)
 		return fail_hello(status, HelloStatus::Unavailable);
 
 	const auto &hr = reply->hello_reply.value;
-	if (std::holds_alternative<instance::HelloReplyAcceptedView>(hr)) {
+	if (holds_alternative<instance::HelloReplyAcceptedView>(hr)) {
 		if (status)
 			*status = HelloStatus::Ok;
 		return BlockingClient(std::move(conn));
 	}
-	if (std::holds_alternative<
-		instance::HelloReplyVersionMismatchView>(hr))
+	if (holds_alternative<instance::HelloReplyVersionMismatchView>(hr))
 		return fail_hello(status, HelloStatus::VersionMismatch);
-	if (std::holds_alternative<
-		instance::HelloReplySessionMismatchView>(hr))
+	if (holds_alternative<instance::HelloReplySessionMismatchView>(hr))
 		return fail_hello(status, HelloStatus::SessionMismatch);
 	return fail_hello(status, HelloStatus::Unavailable);
 }
 
 bool
-BlockingClient::open(const std::vector<std::string> &paths,
-	std::string_view activation_token, instance::Error *error,
-	std::chrono::milliseconds timeout)
+BlockingClient::open(const vector<string> &paths, string_view activation_token,
+	instance::Error *error, chrono::milliseconds timeout)
 {
 	if (!conn_.ok()) {
 		set_internal(error);
 		return false;
 	}
-
-	std::chrono::milliseconds left = timeout;
+	chrono::milliseconds left = timeout;
 	if (left.count() < 0)
-		left = std::chrono::milliseconds{0};
+		left = chrono::milliseconds{0};
 
 	instance::OpenRequest open_req;
 	open_req.paths = paths;
-	open_req.activation_token = std::string(activation_token);
+	open_req.activation_token = string(activation_token);
 
 	instance::Request req;
 	req.id = 1;
@@ -243,8 +231,7 @@ BlockingClient::open(const std::vector<std::string> &paths,
 
 	instance::Frame frame;
 	frame.payload.value = instance::PayloadRequest{std::move(req)};
-
-	std::vector<std::byte> buf;
+	vector<byte> buf;
 	if (!encode_frame(frame, buf) || !write_bytes(conn_, buf, left)) {
 		set_internal(error);
 		return false;
@@ -261,21 +248,20 @@ BlockingClient::open(const std::vector<std::string> &paths,
 		return false;
 	}
 
-	const auto *presp = std::get_if<instance::PayloadResponseView>(
-		&view.payload.value);
+	const auto *presp =
+		get_if<instance::PayloadResponseView>(&view.payload.value);
 	if (!presp || presp->response.id != 1) {
 		set_internal(error);
 		return false;
 	}
 
 	const auto &result = presp->response.result.value;
-	if (std::holds_alternative<instance::ResultDoneView>(result))
+	if (holds_alternative<instance::ResultDoneView>(result))
 		return true;
-	if (const auto *err =
-		std::get_if<instance::ResultErrorView>(&result)) {
+	if (const auto *err = get_if<instance::ResultErrorView>(&result)) {
 		if (error) {
 			error->code = err->error.code;
-			error->message = std::string(err->error.message);
+			error->message = string(err->error.message);
 		}
 		return false;
 	}
@@ -283,14 +269,12 @@ BlockingClient::open(const std::vector<std::string> &paths,
 	return false;
 }
 
-Server::Conn::Conn(int fd)
-	: conn(fd)
+Server::Conn::Conn(int fd) : conn(fd)
 {
 }
 
 Server::Server(int listen_fd, Config cfg)
-	: listen_fd_(listen_fd)
-	, cfg_(std::move(cfg))
+	: listen_fd_(listen_fd), cfg_(std::move(cfg))
 {
 }
 
@@ -338,7 +322,7 @@ Server::poll_read(int fd)
 		case Connection::Status::NeedMore:
 			return;
 		case Connection::Status::Frame: {
-			std::vector<std::byte> payload;
+			vector<byte> payload;
 			if (!c->conn.take_payload(payload) ||
 				!handle_payload(*c, payload)) {
 				drop(fd);
@@ -394,10 +378,10 @@ Server::drop(int fd)
 bool
 Server::write_frame(Conn &c, const instance::Frame &frame)
 {
-	std::vector<std::byte> buf;
+	vector<byte> buf;
 	if (!encode_frame(frame, buf) || !c.conn.write_payload(buf))
 		return false;
-	(void)c.conn.flush();
+	(void) c.conn.flush();
 	if (!c.conn.ok())
 		return false;
 	if (cfg_.watch_write)
@@ -406,7 +390,7 @@ Server::write_frame(Conn &c, const instance::Frame &frame)
 }
 
 bool
-Server::handle_payload(Conn &c, std::span<const std::byte> payload)
+Server::handle_payload(Conn &c, span<const byte> payload)
 {
 	Decoder dec(payload);
 	instance::FrameView view{};
@@ -415,8 +399,7 @@ Server::handle_payload(Conn &c, std::span<const std::byte> payload)
 
 	if (!c.handshake_done) {
 		const auto *hello =
-			std::get_if<instance::PayloadHelloView>(
-				&view.payload.value);
+			get_if<instance::PayloadHelloView>(&view.payload.value);
 		if (!hello)
 			return false;
 
@@ -425,8 +408,7 @@ Server::handle_payload(Conn &c, std::span<const std::byte> payload)
 		if (h.protocol_version != cfg_.protocol_version ||
 			h.build_id != cfg_.build_id) {
 			instance::HelloReplyVersionMismatch mismatch;
-			mismatch.server_protocol_version =
-				cfg_.protocol_version;
+			mismatch.server_protocol_version = cfg_.protocol_version;
 			reply.payload.value = instance::PayloadHelloReply{
 				instance::HelloReply{mismatch},
 			};
@@ -458,12 +440,11 @@ Server::handle_payload(Conn &c, std::span<const std::byte> payload)
 		return true;
 	}
 
-	if (std::holds_alternative<instance::PayloadCancelView>(
-		view.payload.value))
+	if (holds_alternative<instance::PayloadCancelView>(view.payload.value))
 		return true;
 
-	const auto *preq = std::get_if<instance::PayloadRequestView>(
-		&view.payload.value);
+	const auto *preq =
+		get_if<instance::PayloadRequestView>(&view.payload.value);
 	if (!preq)
 		return false;
 
@@ -476,8 +457,7 @@ Server::handle_payload(Conn &c, std::span<const std::byte> payload)
 		cfg_.on_request(preq->request, response);
 
 	instance::Frame out;
-	out.payload.value =
-		instance::PayloadResponse{std::move(response)};
+	out.payload.value = instance::PayloadResponse{std::move(response)};
 	return write_frame(c, out);
 }
 

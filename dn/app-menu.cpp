@@ -577,8 +577,7 @@ MenuItem::paint(Kit &kit) const
 	}
 	if (this->sub) {
 		emit_icon(kit, this->r.x + this->r.w - pad - chev, iy, kIconPx,
-			"go-next-symbolic",
-			col(kit.ink_, this->enabled_ ? 1.0f : 0.375f));
+			"go-next-symbolic", col(kit.ink_, this->enabled_ ? 1.0f : 0.375f));
 	}
 }
 

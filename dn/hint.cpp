@@ -362,7 +362,8 @@ Hint::fire(Kit &kit, Target t)
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
 		return;
 	browser->select_file(browser->files_[size_t(file_i)].path);
-	if (browser->page_ && browser->page_->host && browser->page_->host->activate)
+	if (browser->page_ && browser->page_->host &&
+		browser->page_->host->activate)
 		browser->page_->host->activate(browser->files_[size_t(file_i)].path);
 }
 

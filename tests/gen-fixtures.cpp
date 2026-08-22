@@ -18,7 +18,7 @@
 #include <zlib.h>
 
 using namespace std;
-namespace fs = std::filesystem;
+namespace fs = filesystem;
 
 namespace
 {

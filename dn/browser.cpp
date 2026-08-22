@@ -1492,7 +1492,7 @@ bool
 dir_ent_less(const BrowseSetup &setup, const DirEnt &a, const DirEnt &c)
 {
 	return browse_cmp(setup, QString::fromStdString(a.name), a.mtime,
-		QString::fromStdString(c.name), c.mtime) < 0;
+			   QString::fromStdString(c.name), c.mtime) < 0;
 }
 
 vector<string>
@@ -1673,9 +1673,8 @@ scan_dir(Browser &b)
 
 	sort(files.begin(), files.end(),
 		[&](const Browser::File &a, const Browser::File &bfile) {
-			return browse_cmp(b.setup_, QString::fromStdString(a.name),
-				a.mtime, QString::fromStdString(bfile.name),
-				bfile.mtime) < 0;
+			return browse_cmp(b.setup_, QString::fromStdString(a.name), a.mtime,
+					   QString::fromStdString(bfile.name), bfile.mtime) < 0;
 		});
 
 	for (Browser::File &f : files) {
@@ -2083,7 +2082,7 @@ fill_places(Browser &b)
 	}
 	if (!restore_path.empty()) {
 		b.kit_.focus_ = nullptr;
-		for (size_t i = b.place_items_.size(); i--; ) {
+		for (size_t i = b.place_items_.size(); i--;) {
 			const auto &item = b.place_items_.at(i);
 			if (item.path == restore_path) {
 				b.kit_.focus_ = item.button;
@@ -2146,8 +2145,7 @@ apply_action(Browser &b, Action action)
 	case Action::DirPrev: {
 		if (b.dir_path_.isEmpty())
 			return true;
-		const string p =
-			tree_prev_dir(b.dir_path_.toStdString(), b.setup_);
+		const string p = tree_prev_dir(b.dir_path_.toStdString(), b.setup_);
 		if (!p.empty())
 			open_directory(b, QString::fromStdString(p));
 		return true;
@@ -2155,8 +2153,7 @@ apply_action(Browser &b, Action action)
 	case Action::DirNext: {
 		if (b.dir_path_.isEmpty())
 			return true;
-		const string p =
-			tree_next_dir(b.dir_path_.toStdString(), b.setup_);
+		const string p = tree_next_dir(b.dir_path_.toStdString(), b.setup_);
 		if (!p.empty())
 			open_directory(b, QString::fromStdString(p));
 		return true;

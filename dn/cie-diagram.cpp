@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace std;
+
 namespace dn
 {
 namespace
@@ -52,10 +54,10 @@ plot_rect(Rect r, float dpr)
 	const float aspect = kXMax / kYMax;
 	const float nw = float(kRasterW) / dpr;
 	const float nh = float(kRasterH) / dpr;
-	float w = std::min(r.w, nw);
+	float w = min(r.w, nw);
 	float h = w / aspect;
 	if (h > r.h || h > nh) {
-		h = std::min(r.h, nh);
+		h = min(r.h, nh);
 		w = h * aspect;
 	}
 	return {r.x + (r.w - w) * 0.5f, r.y, w, h};
@@ -98,7 +100,7 @@ srgb_encode8(double u)
 		return 255;
 	if (u <= 0.0031308)
 		return int(12.92 * u * 255.0 + 0.5);
-	return int((1.055 * std::pow(u, 1.0 / 2.4) - 0.055) * 255.0 + 0.5);
+	return int((1.055 * pow(u, 1.0 / 2.4) - 0.055) * 255.0 + 0.5);
 }
 
 QRgb
@@ -230,11 +232,11 @@ void
 CieDiagram::measure(Kit &kit, float max_w, float max_h)
 {
 	const float cap = caption_h(kit);
-	const float plot_h = std::max(0.0f, max_h - cap);
+	const float plot_h = max(0.0f, max_h - cap);
 	const Rect fit = plot_rect({0, 0, max_w, plot_h}, kit.dpr_);
 	const float labs = kit.text_width(kSourceLab, false) + 8. +
 		kit.text_width(kTargetLab, false);
-	this->r.w = std::max(fit.w, labs);
+	this->r.w = max(fit.w, labs);
 	this->r.h = fit.h + cap;
 }
 
@@ -251,9 +253,9 @@ CieDiagram::prepare(Kit &kit)
 	kit.cache_text(kTargetLab, false);
 
 	const float cap = caption_h(kit);
-	const Rect plot = plot_rect(
-		{this->r.x, this->r.y, this->r.w, std::max(0.0f, this->r.h - cap)},
-		kit.dpr_);
+	const Rect plot =
+		plot_rect({this->r.x, this->r.y, this->r.w, max(0.0f, this->r.h - cap)},
+			kit.dpr_);
 	if (plot.w < 8.0f || plot.h < 8.0f)
 		return;
 
@@ -286,9 +288,9 @@ void
 CieDiagram::paint(Kit &kit) const
 {
 	const float cap = caption_h(kit);
-	const Rect plot = plot_rect(
-		{this->r.x, this->r.y, this->r.w, std::max(0.0f, this->r.h - cap)},
-		kit.dpr_);
+	const Rect plot =
+		plot_rect({this->r.x, this->r.y, this->r.w, max(0.0f, this->r.h - cap)},
+			kit.dpr_);
 	const float x0 = plot.x > 0.0f ? plot.x : this->r.x;
 	const float cap_y0 = plot.h >= 8.0f ? plot.y + plot.h : this->r.y;
 	const float y = cap_y0 + kCapGap;

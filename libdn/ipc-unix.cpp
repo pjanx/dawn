@@ -18,9 +18,14 @@
 
 #include <string>
 
-namespace dn {
-namespace ipc {
-namespace {
+using namespace std;
+
+namespace dn
+{
+namespace ipc
+{
+namespace
+{
 
 int
 unix_socket(int extra_fl)
@@ -44,14 +49,14 @@ unix_socket(int extra_fl)
 }
 
 bool
-fill_addr(std::string_view service, sockaddr_un &addr, socklen_t &len)
+fill_addr(string_view service, sockaddr_un &addr, socklen_t &len)
 {
-	const std::string n = Endpoint::name(service);
+	const string n = Endpoint::name(service);
 	if (n.empty() || n.size() > sizeof(addr.sun_path))
 		return false;
 	addr = {};
 	addr.sun_family = AF_UNIX;
-	std::memcpy(addr.sun_path, n.data(), n.size());
+	memcpy(addr.sun_path, n.data(), n.size());
 	len = socklen_t(offsetof(sockaddr_un, sun_path) + n.size());
 	return true;
 }
@@ -80,21 +85,20 @@ peer_uid_ok(int fd)
 }
 
 }  // namespace
-
-std::string
-Endpoint::name(std::string_view service)
+string
+Endpoint::name(string_view service)
 {
-	std::string n;
+	string n;
 	n.push_back('\0');
 	n += "dawn-";
-	n += std::to_string(::getuid());
+	n += to_string(::getuid());
 	n += '-';
 	n.append(service);
 	return n;
 }
 
 Endpoint::Listen
-Endpoint::listen(std::string_view service)
+Endpoint::listen(string_view service)
 {
 	Listen out;
 	sockaddr_un addr{};
@@ -133,7 +137,7 @@ Endpoint::listen(std::string_view service)
 }
 
 Endpoint::Connect
-Endpoint::connect(std::string_view service)
+Endpoint::connect(string_view service)
 {
 	Connect out;
 	sockaddr_un addr{};
@@ -146,8 +150,7 @@ Endpoint::connect(std::string_view service)
 		return out;
 
 	for (;;) {
-		if (::connect(fd, reinterpret_cast<sockaddr *>(&addr),
-			len) == 0)
+		if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), len) == 0)
 			break;
 		if (errno == EINTR)
 			continue;

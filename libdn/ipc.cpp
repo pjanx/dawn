@@ -17,11 +17,14 @@
 
 #include <utility>
 
-namespace dn {
-namespace ipc {
+using namespace std;
 
-Encoder::Encoder(std::vector<std::byte> &buf)
-	: buf_(buf)
+namespace dn
+{
+namespace ipc
+{
+
+Encoder::Encoder(vector<byte> &buf) : buf_(buf)
 {
 }
 
@@ -31,7 +34,7 @@ Encoder::put_be(uint64_t v, size_t width)
 	if (!ok_)
 		return;
 	for (size_t i = width; i > 0; --i)
-		buf_.push_back(std::byte((v >> ((i - 1) * 8)) & 0xff));
+		buf_.push_back(byte((v >> ((i - 1) * 8)) & 0xff));
 }
 
 void
@@ -89,19 +92,19 @@ Encoder::boolean(bool v)
 }
 
 void
-Encoder::string(std::string_view s)
+Encoder::string(string_view s)
 {
 	if (s.size() > UINT32_MAX) {
 		ok_ = false;
 		return;
 	}
 	u32(uint32_t(s.size()));
-	const auto *p = reinterpret_cast<const std::byte *>(s.data());
+	const auto *p = reinterpret_cast<const byte *>(s.data());
 	buf_.insert(buf_.end(), p, p + s.size());
 }
 
 void
-Encoder::bytes(std::span<const std::byte> s)
+Encoder::bytes(span<const byte> s)
 {
 	if (!ok_)
 		return;
@@ -109,16 +112,15 @@ Encoder::bytes(std::span<const std::byte> s)
 }
 
 void
-Encoder::i8s(std::span<const int8_t> s)
+Encoder::i8s(span<const int8_t> s)
 {
 	if (!ok_)
 		return;
-	const auto *p = reinterpret_cast<const std::byte *>(s.data());
+	const auto *p = reinterpret_cast<const byte *>(s.data());
 	buf_.insert(buf_.end(), p, p + s.size());
 }
 
-Decoder::Decoder(std::span<const std::byte> in)
-	: in_(in)
+Decoder::Decoder(span<const byte> in) : in_(in)
 {
 }
 
@@ -247,7 +249,7 @@ Decoder::boolean(bool &out)
 }
 
 bool
-Decoder::string(std::string_view &out)
+Decoder::string(string_view &out)
 {
 	uint32_t n = 0;
 	if (!u32(n))
@@ -256,8 +258,7 @@ Decoder::string(std::string_view &out)
 		return fail(DecodeError::Truncated);
 	if (n > kMaxElements)
 		return fail(DecodeError::Limit);
-	auto sv = std::string_view(
-		reinterpret_cast<const char *>(in_.data() + off_), n);
+	auto sv = string_view(reinterpret_cast<const char *>(in_.data() + off_), n);
 	if (!utf8_validate(sv))
 		return fail(DecodeError::InvalidUtf8);
 	out = sv;
@@ -266,7 +267,7 @@ Decoder::string(std::string_view &out)
 }
 
 bool
-Decoder::bytes(std::span<const std::byte> &out, size_t count)
+Decoder::bytes(span<const byte> &out, size_t count)
 {
 	if (!take_raw(count))
 		return false;
@@ -276,18 +277,18 @@ Decoder::bytes(std::span<const std::byte> &out, size_t count)
 }
 
 bool
-Decoder::i8s(std::span<const int8_t> &out, size_t count)
+Decoder::i8s(span<const int8_t> &out, size_t count)
 {
 	if (!take_raw(count))
 		return false;
-	out = std::span<const int8_t>(
+	out = span<const int8_t>(
 		reinterpret_cast<const int8_t *>(in_.data() + off_), count);
 	off_ += count;
 	return true;
 }
 
 bool
-utf8_validate(std::string_view s)
+utf8_validate(string_view s)
 {
 	const auto *p = reinterpret_cast<const uint8_t *>(s.data());
 	const auto *end = p + s.size();
@@ -324,16 +325,14 @@ utf8_validate(std::string_view s)
 			cp = (cp << 6) | (*p & 0x3F);
 			++p;
 		}
-		if (cp < min_cp || cp > 0x10FFFF ||
-			(cp >= 0xD800 && cp <= 0xDFFF))
+		if (cp < min_cp || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
 			return false;
 	}
 	return true;
 }
 
 #ifndef _WIN32
-Connection::Connection(int fd)
-	: fd_(fd)
+Connection::Connection(int fd) : fd_(fd)
 {
 	if (fd_ < 0)
 		return;
@@ -424,8 +423,8 @@ Connection::read()
 
 	for (;;) {
 		if (read_state_ == ReadState::Length) {
-			const ssize_t n = ::read(fd_,
-				length_buf_ + length_got_, 4 - length_got_);
+			const ssize_t n =
+				::read(fd_, length_buf_ + length_got_, 4 - length_got_);
 			if (n < 0) {
 				if (errno == EINTR)
 					continue;
@@ -446,11 +445,9 @@ Connection::read()
 			length_got_ += size_t(n);
 			if (length_got_ < 4)
 				return Status::NeedMore;
-			const uint32_t size =
-				(uint32_t(length_buf_[0]) << 24) |
+			const uint32_t size = (uint32_t(length_buf_[0]) << 24) |
 				(uint32_t(length_buf_[1]) << 16) |
-				(uint32_t(length_buf_[2]) << 8) |
-				uint32_t(length_buf_[3]);
+				(uint32_t(length_buf_[2]) << 8) | uint32_t(length_buf_[3]);
 			if (size == 0 || size > kMaxPayload) {
 				fail();
 				return Status::Error;
@@ -485,7 +482,7 @@ Connection::read()
 }
 
 bool
-Connection::take_payload(std::vector<std::byte> &out)
+Connection::take_payload(vector<byte> &out)
 {
 	if (!have_frame_)
 		return false;
@@ -496,7 +493,7 @@ Connection::take_payload(std::vector<std::byte> &out)
 }
 
 bool
-Connection::write_payload(std::span<const std::byte> payload)
+Connection::write_payload(span<const byte> payload)
 {
 	if (!ok_ || fd_ < 0)
 		return false;
@@ -505,21 +502,19 @@ Connection::write_payload(std::span<const std::byte> payload)
 		return false;
 	}
 	if (write_off_ > 0) {
-		write_q_.erase(write_q_.begin(),
-			write_q_.begin() + write_off_);
+		write_q_.erase(write_q_.begin(), write_q_.begin() + write_off_);
 		write_off_ = 0;
 	}
 	const size_t add = 4 + payload.size();
-	if (add > kMaxWriteQueue ||
-		write_q_.size() > kMaxWriteQueue - add) {
+	if (add > kMaxWriteQueue || write_q_.size() > kMaxWriteQueue - add) {
 		fail();
 		return false;
 	}
 	const uint32_t n = uint32_t(payload.size());
-	write_q_.push_back(std::byte((n >> 24) & 0xff));
-	write_q_.push_back(std::byte((n >> 16) & 0xff));
-	write_q_.push_back(std::byte((n >> 8) & 0xff));
-	write_q_.push_back(std::byte(n & 0xff));
+	write_q_.push_back(byte((n >> 24) & 0xff));
+	write_q_.push_back(byte((n >> 16) & 0xff));
+	write_q_.push_back(byte((n >> 8) & 0xff));
+	write_q_.push_back(byte(n & 0xff));
 	write_q_.insert(write_q_.end(), payload.begin(), payload.end());
 	return true;
 }
@@ -530,8 +525,8 @@ Connection::flush()
 	if (!ok_ || fd_ < 0)
 		return false;
 	while (write_off_ < write_q_.size()) {
-		const ssize_t n = ::write(fd_, write_q_.data() + write_off_,
-			write_q_.size() - write_off_);
+		const ssize_t n = ::write(
+			fd_, write_q_.data() + write_off_, write_q_.size() - write_off_);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -555,26 +550,27 @@ Connection::flush()
 }  // namespace ipc
 }  // namespace dn
 
-namespace {
+namespace
+{
 
 [[maybe_unused]] void
 compile_check_instance_lxdr()
 {
 	dn::ipc::instance::Hello hello{};
-	std::vector<std::byte> hello_buf;
+	vector<byte> hello_buf;
 	dn::ipc::Encoder hello_enc(hello_buf);
 	encode(hello, hello_enc);
 	dn::ipc::Decoder hello_dec(hello_buf);
 	dn::ipc::instance::HelloView view{};
-	(void)decode(hello_dec, view);
+	(void) decode(hello_dec, view);
 
 	dn::ipc::instance::OpenRequest open{};
-	std::vector<std::byte> open_buf;
+	vector<byte> open_buf;
 	dn::ipc::Encoder open_enc(open_buf);
 	encode(open, open_enc);
 	dn::ipc::Decoder open_dec(open_buf);
 	dn::ipc::instance::OpenRequestView open_view{};
-	(void)decode(open_dec, open_view);
+	(void) decode(open_dec, open_view);
 }
 
 [[maybe_unused]] auto *const kCompileCheckInstanceLxdr =

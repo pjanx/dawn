@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <resvg.h>
 
@@ -25,7 +25,7 @@ namespace dn
 namespace
 {
 
-namespace fs = std::filesystem;
+namespace fs = filesystem;
 
 // resvg documents share the project pixmap dimension limit.
 constexpr double kMaxDimension = double(dn::kMaxDimension);

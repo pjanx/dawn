@@ -145,8 +145,8 @@ webp_metadata(const QByteArray &bytes, Metadata *meta)
 		return false;
 	WebPChunkIterator chunk{};
 	const bool found = WebPDemuxGetChunk(demux, "THUM", 1, &chunk);
-	const bool ok = found && parse_metadata(
-		chunk.chunk.bytes, chunk.chunk.size, meta);
+	const bool ok =
+		found && parse_metadata(chunk.chunk.bytes, chunk.chunk.size, meta);
 	if (found)
 		WebPDemuxReleaseChunkIterator(&chunk);
 	WebPDemuxDelete(demux);
@@ -157,16 +157,17 @@ ImagePtr
 decode_webp(const QByteArray &bytes, Cmm &cmm, Profile *source, Profile *target)
 {
 	int width = 0, height = 0;
-	uint8_t *bgra = WebPDecodeBGRA(
-		reinterpret_cast<const uint8_t *>(bytes.constData()), size_t(bytes.size()),
-		&width, &height);
+	uint8_t *bgra =
+		WebPDecodeBGRA(reinterpret_cast<const uint8_t *>(bytes.constData()),
+			size_t(bytes.size()), &width, &height);
 	if (!bgra || width <= 0 || height <= 0) {
 		WebPFree(bgra);
 		return {};
 	}
 	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
-	if (image && !cmm.transform_bgra8_to_bgra16(bgra, image->data.data(),
-			image->width, image->height, source, target, true))
+	if (image &&
+		!cmm.transform_bgra8_to_bgra16(bgra, image->data.data(), image->width,
+			image->height, source, target, true))
 		image.reset();
 	WebPFree(bgra);
 	return image;
@@ -193,8 +194,8 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	hit.height = image->height;
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
 	for (uint32_t y = 0; y < hit.height; ++y)
-		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4, row_u16(*image, y),
-			size_t(hit.width) * kBytesPerPixel);
+		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
+			row_u16(*image, y), size_t(hit.width) * kBytesPerPixel);
 	hit.tier = tier;
 	hit.interim = !p3 || tier < desired_tier;
 	read_image_dimensions(meta, &hit);
@@ -215,7 +216,8 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	ctx.first_frame_only = true;
 	Error error;
 	ImagePtr image = open_from_data(
-		span(reinterpret_cast<const uint8_t *>(bytes.constData()), size_t(bytes.size())),
+		span(reinterpret_cast<const uint8_t *>(bytes.constData()),
+			size_t(bytes.size())),
 		ctx, &error);
 	if (!image)
 		return hit;
@@ -231,8 +233,8 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	hit.height = image->height;
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
 	for (uint32_t y = 0; y < hit.height; ++y)
-		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4, row_u16(*image, y),
-			size_t(hit.width) * kBytesPerPixel);
+		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
+			row_u16(*image, y), size_t(hit.width) * kBytesPerPixel);
 	hit.tier = tier;
 	hit.interim = true;
 	read_image_dimensions(meta, &hit);
@@ -245,9 +247,9 @@ cache_path(const ThumbnailSource &source, int tier, bool wide)
 	if (tier < 0 || tier >= int(kNames.size()))
 		return {};
 	const QString dir = QString::fromLatin1(wide ? "wide-%1" : "%1")
-		.arg(QString::fromLatin1(kNames[size_t(tier)]));
-	return QDir(QDir(thumbnail_cache_root()).filePath(dir)).filePath(
-		QString::fromLatin1(source.hash) + (wide ? ".webp" : ".png"));
+							.arg(QString::fromLatin1(kNames[size_t(tier)]));
+	return QDir(QDir(thumbnail_cache_root()).filePath(dir))
+		.filePath(QString::fromLatin1(source.hash) + (wide ? ".webp" : ".png"));
 }
 
 void
@@ -260,8 +262,8 @@ append_field(QByteArray &out, const char *key, const QByteArray &value)
 }
 
 QByteArray
-make_metadata(const ThumbnailSource &source, uint32_t image_width,
-	uint32_t image_height)
+make_metadata(
+	const ThumbnailSource &source, uint32_t image_width, uint32_t image_height)
 {
 	QByteArray out;
 	append_field(out, kUri, source.uri);
@@ -300,8 +302,8 @@ thumbnail_source(const QString &path, int64_t mtime_ms, uint64_t size)
 	ThumbnailSource source;
 	source.path = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
 	source.uri = QUrl::fromLocalFile(source.path).toEncoded(QUrl::FullyEncoded);
-	source.hash = QCryptographicHash::hash(source.uri, QCryptographicHash::Md5)
-		.toHex();
+	source.hash =
+		QCryptographicHash::hash(source.uri, QCryptographicHash::Md5).toHex();
 	source.mtime = mtime_ms / 1000;
 	source.size = size;
 	return source;
@@ -316,10 +318,11 @@ thumbnail_cache_contains(const QString &path)
 	return !root.isEmpty() &&
 		(clean == root || clean.startsWith(root + QDir::separator()));
 #else
-	const QStringList parts = QDir::fromNativeSeparators(clean).split(
-		u'/', Qt::SkipEmptyParts);
+	const QStringList parts =
+		QDir::fromNativeSeparators(clean).split(u'/', Qt::SkipEmptyParts);
 	for (const QString &part : parts)
-		if (part.compare(QStringLiteral("thumbnails"), Qt::CaseInsensitive) == 0)
+		if (part.compare(QStringLiteral("thumbnails"), Qt::CaseInsensitive) ==
+			0)
 			return true;
 	return false;
 #endif
@@ -346,20 +349,20 @@ ThumbnailHit
 thumbnail_cache_lookup(const ThumbnailSource &source, int desired_tier,
 	const shared_ptr<Cmm> &cmm, Profile *screen_profile)
 {
-	if (thumbnail_cache_root().isEmpty() || thumbnail_cache_contains(source.path))
+	if (thumbnail_cache_root().isEmpty() ||
+		thumbnail_cache_contains(source.path))
 		return {};
 	desired_tier = clamp(desired_tier, 0, int(kNames.size()) - 1);
 	for (int i = 0; i < int(kNames.size()); ++i) {
 		int tier = desired_tier + i;
 		if (tier >= int(kNames.size()))
 			tier = int(kNames.size()) - 1 - i;
-		ThumbnailHit hit = read_wide(
-			cache_path(source, tier, true), source, tier, desired_tier, cmm,
-			screen_profile);
+		ThumbnailHit hit = read_wide(cache_path(source, tier, true), source,
+			tier, desired_tier, cmm, screen_profile);
 		if (!hit.pixels.empty())
 			return hit;
-		hit = read_png(cache_path(source, tier, false), source, tier, cmm,
-			screen_profile);
+		hit = read_png(
+			cache_path(source, tier, false), source, tier, cmm, screen_profile);
 		if (!hit.pixels.empty())
 			return hit;
 	}
@@ -373,8 +376,9 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 {
 	if (error)
 		error->clear();
-	if (!pixels || !width || !height || tier < 0 || tier >= int(kNames.size()) ||
-		thumbnail_cache_root().isEmpty() || thumbnail_cache_contains(source.path))
+	if (!pixels || !width || !height || tier < 0 ||
+		tier >= int(kNames.size()) || thumbnail_cache_root().isEmpty() ||
+		thumbnail_cache_contains(source.path))
 		return false;
 	vector<uint8_t> bgra(size_t(width) * height * 4);
 	for (size_t i = 0, n = size_t(width) * height; i < n; ++i) {
@@ -382,8 +386,9 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 		bgra[i * 4 + 3] = uint8_t((a + 128) / 257);
 		for (int c = 0; c < 3; ++c) {
 			const uint32_t straight = a
-				? min(65535u, uint32_t((uint64_t(pixels[i * 4 + c]) * 65535u +
-					 a / 2) / a))
+				? min(65535u,
+					  uint32_t(
+						  (uint64_t(pixels[i * 4 + c]) * 65535u + a / 2) / a))
 				: 0;
 			bgra[i * 4 + c] = uint8_t((straight + 128) / 257);
 		}
@@ -413,8 +418,10 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	if (ok) {
 		mux = WebPMuxNew();
 		const WebPData image{writer.mem, writer.size};
-		const QByteArray metadata = make_metadata(source, image_width, image_height);
-		const WebPData thum{reinterpret_cast<const uint8_t *>(metadata.constData()),
+		const QByteArray metadata =
+			make_metadata(source, image_width, image_height);
+		const WebPData thum{
+			reinterpret_cast<const uint8_t *>(metadata.constData()),
 			size_t(metadata.size())};
 		ok = mux && WebPMuxSetImage(mux, &image, 1) == WEBP_MUX_OK &&
 			WebPMuxSetChunk(mux, "THUM", &thum, 1) == WEBP_MUX_OK &&
@@ -440,9 +447,11 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 		return false;
 	}
 	QFile::setPermissions(thumbnail_cache_root(),
-		QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+		QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+			QFileDevice::ExeOwner);
 	QFile::setPermissions(dir,
-		QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+		QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+			QFileDevice::ExeOwner);
 	QSaveFile file(path);
 	if (!file.open(QIODevice::WriteOnly)) {
 		WebPDataClear(&assembled);
@@ -452,8 +461,9 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	}
 	file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 	const size_t assembled_size = assembled.size;
-	const qint64 written = file.write(
-		reinterpret_cast<const char *>(assembled.bytes), qint64(assembled_size));
+	const qint64 written =
+		file.write(reinterpret_cast<const char *>(assembled.bytes),
+			qint64(assembled_size));
 	WebPDataClear(&assembled);
 	if (written < 0 || uint64_t(written) != assembled_size || !file.commit()) {
 		if (error)
@@ -485,19 +495,22 @@ thumbnail_cache_invalidate()
 			const QString path = it.next();
 			Metadata meta;
 			if (!webp_metadata(read_file(path), &meta)) {
-				remove_thumbnail(path, QStringLiteral("invalid thumbnail metadata"));
+				remove_thumbnail(
+					path, QStringLiteral("invalid thumbnail metadata"));
 				continue;
 			}
 			const string *uri_text = value(meta, kUri);
 			const string *mtime_text = value(meta, kMtime);
 			uint64_t mtime = 0, size = 0;
 			if (!uri_text || !mtime_text || !number(*mtime_text, &mtime)) {
-				remove_thumbnail(path, QStringLiteral("missing thumbnail identity"));
+				remove_thumbnail(
+					path, QStringLiteral("missing thumbnail identity"));
 				continue;
 			}
 			const QByteArray uri(uri_text->data(), qsizetype(uri_text->size()));
-			const QByteArray expected = QCryptographicHash::hash(
-				uri, QCryptographicHash::Md5).toHex() + ".webp";
+			const QByteArray expected =
+				QCryptographicHash::hash(uri, QCryptographicHash::Md5).toHex() +
+				".webp";
 			if (QFileInfo(path).fileName().toLatin1() != expected) {
 				remove_thumbnail(path, QStringLiteral("URI checksum mismatch"));
 				continue;
@@ -510,20 +523,25 @@ thumbnail_cache_invalidate()
 			}
 			const QFileInfo target(url.toLocalFile());
 			if (!target.exists()) {
-				remove_thumbnail(path, QStringLiteral("source no longer exists"));
+				remove_thumbnail(
+					path, QStringLiteral("source no longer exists"));
 				continue;
 			}
 			if (!target.isReadable()) {
-				fprintf(stderr, "%s: source is not readable\n", qUtf8Printable(path));
+				fprintf(stderr, "%s: source is not readable\n",
+					qUtf8Printable(path));
 				continue;
 			}
 			if (target.lastModified().toSecsSinceEpoch() != qint64(mtime)) {
-				remove_thumbnail(path, QStringLiteral("modification time mismatch"));
+				remove_thumbnail(
+					path, QStringLiteral("modification time mismatch"));
 				continue;
 			}
 			if (const string *size_text = value(meta, kSize)) {
-				if (!number(*size_text, &size) || uint64_t(target.size()) != size)
-					remove_thumbnail(path, QStringLiteral("file size mismatch"));
+				if (!number(*size_text, &size) ||
+					uint64_t(target.size()) != size)
+					remove_thumbnail(
+						path, QStringLiteral("file size mismatch"));
 			}
 		}
 	}

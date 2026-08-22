@@ -217,8 +217,8 @@ on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 	auto *src = static_cast<ColordSource *>(data);
 	g_autoptr(GError) error = nullptr;
 	if (!cd_client_connect_finish(CD_CLIENT(source), res, &error)) {
-		fprintf(stderr, "colord: connect: %s\n",
-			error ? error->message : "failed");
+		fprintf(
+			stderr, "colord: connect: %s\n", error ? error->message : "failed");
 		return;
 	}
 	src->hook_signals();
@@ -300,8 +300,7 @@ ColordSource::start(function<void()> fn)
 		this->hook_signals();
 		return;
 	}
-	fprintf(stderr, "colord: connect: %s\n",
-		error ? error->message : "failed");
+	fprintf(stderr, "colord: connect: %s\n", error ? error->message : "failed");
 	this->watch_name();
 }
 

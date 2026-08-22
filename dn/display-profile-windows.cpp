@@ -21,6 +21,8 @@
 #include <utility>
 #include <vector>
 
+using namespace std;
+
 namespace dn
 {
 namespace
@@ -56,7 +58,7 @@ load_display_profile(QScreen *screen)
 
 	DWORD length = 0;
 	GetICMProfileW(dc, &length, nullptr);
-	std::vector<wchar_t> path(length ? length : 1);
+	vector<wchar_t> path(length ? length : 1);
 	const bool found = length && GetICMProfileW(dc, &length, path.data());
 	DeleteDC(dc);
 	if (!found)
@@ -82,15 +84,12 @@ load_display_profile(QScreen *screen)
 struct Watch {
 	HKEY key = nullptr;
 	HANDLE event = nullptr;
-	std::unique_ptr<QWinEventNotifier> notifier;
+	unique_ptr<QWinEventNotifier> notifier;
 
 	Watch() = default;
 	Watch(const Watch &) = delete;
 	Watch &operator=(const Watch &) = delete;
-	~Watch()
-	{
-		this->close();
-	}
+	~Watch() { this->close(); }
 	void close();
 	bool open(HKEY root, const wchar_t *path);
 	bool arm();
@@ -126,17 +125,17 @@ Watch::arm()
 	if (!this->key || !this->event)
 		return false;
 	return RegNotifyChangeKeyValue(this->key, TRUE,
-		REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET |
-			REG_NOTIFY_THREAD_AGNOSTIC,
-		this->event, TRUE) == ERROR_SUCCESS;
+			   REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET |
+				   REG_NOTIFY_THREAD_AGNOSTIC,
+			   this->event, TRUE) == ERROR_SUCCESS;
 }
 
 struct WcsSource final : DisplayProfileSource {
-	std::function<void()> on_change;
+	function<void()> on_change;
 	Watch system;
 	Watch user;
 
-	void start(std::function<void()> fn) override;
+	void start(function<void()> fn) override;
 	DisplayProfile load(QScreen *screen) override;
 	bool bind(Watch &watch, HKEY root, const wchar_t *path);
 };
@@ -148,7 +147,7 @@ WcsSource::bind(Watch &watch, HKEY root, const wchar_t *path)
 		watch.close();
 		return false;
 	}
-	watch.notifier = std::make_unique<QWinEventNotifier>(watch.event);
+	watch.notifier = make_unique<QWinEventNotifier>(watch.event);
 	QObject::connect(watch.notifier.get(), &QWinEventNotifier::activated,
 		[this, &watch](HANDLE) {
 			ResetEvent(watch.event);
@@ -160,18 +159,18 @@ WcsSource::bind(Watch &watch, HKEY root, const wchar_t *path)
 }
 
 void
-WcsSource::start(std::function<void()> fn)
+WcsSource::start(function<void()> fn)
 {
 	this->on_change = std::move(fn);
 	if (this->system.notifier || this->user.notifier)
 		return;
 	if (!this->bind(this->system, HKEY_LOCAL_MACHINE, kSystemClass))
-		fprintf(stderr,
-			"Windows ICM: cannot watch system profile associations\n");
+		fprintf(
+			stderr, "Windows ICM: cannot watch system profile associations\n");
 	if (!this->bind(this->user, HKEY_CURRENT_USER, kUserLeaf) &&
 		!this->bind(this->user, HKEY_CURRENT_USER, kUserParent))
-		fprintf(stderr,
-			"Windows ICM: cannot watch user profile associations\n");
+		fprintf(
+			stderr, "Windows ICM: cannot watch user profile associations\n");
 }
 
 DisplayProfile
@@ -181,11 +180,10 @@ WcsSource::load(QScreen *screen)
 }
 
 }  // namespace
-
-std::unique_ptr<DisplayProfileSource>
+unique_ptr<DisplayProfileSource>
 make_display_profile_source()
 {
-	return std::make_unique<WcsSource>();
+	return make_unique<WcsSource>();
 }
 
 }  // namespace dn

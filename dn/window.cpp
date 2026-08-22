@@ -125,8 +125,8 @@ help_document_path()
 {
 	const QString app_dir = QCoreApplication::applicationDirPath();
 #if defined(Q_OS_WIN)
-	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("share/doc/dn/dn.html")));
+	return QDir::cleanPath(
+		QDir(app_dir).absoluteFilePath(QStringLiteral("share/doc/dn/dn.html")));
 #elif defined(Q_OS_MACOS)
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
 		QStringLiteral("../Resources/share/doc/dn/dn.html")));
@@ -144,9 +144,8 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	setVulkanInstance(this->app_->vulkan_instance());
 	setTitle(QStringLiteral("dn"));
 	resize(kWindowWidth, kWindowHeight);
-	connect(this, &QWindow::screenChanged, this, [this](QScreen *new_screen) {
-		handle_screen_change(new_screen);
-	});
+	connect(this, &QWindow::screenChanged, this,
+		[this](QScreen *new_screen) { handle_screen_change(new_screen); });
 	this->ui_wake_.setSingleShot(true);
 	connect(
 		&this->ui_wake_, &QTimer::timeout, this, [this] { request_render(); });
@@ -218,13 +217,12 @@ Window::initialize(const QString &path, BrowseSetup setup)
 
 	this->cmm_ = dn::Cmm::get_default();
 	refresh_screen_profile(screen());
-	this->app_->display_profiles().listen(this, [this] {
-		handle_screen_change(screen());
-	});
+	this->app_->display_profiles().listen(
+		this, [this] { handle_screen_change(screen()); });
 	this->kit_.init(host_dpr(*this));
 	this->kit_.renderer_ = &this->renderer_;
-	this->browser_ui_ = make_browser_page(this->kit_, this->host_,
-		this->app_->thumbnailer(), &this->browser_);
+	this->browser_ui_ = make_browser_page(
+		this->kit_, this->host_, this->app_->thumbnailer(), &this->browser_);
 	this->viewer_ui_ =
 		make_viewer_page(this->kit_, this->host_, &this->viewer_);
 	if (this->viewer_)
@@ -306,9 +304,8 @@ Window::bind_host()
 			Page *ui = active_ui();
 			if (!ui || !ui->modal)
 				break;
-			ui->modal->set_kind(this->kit_, a == Action::About
-					? AppOverlay::About
-					: AppOverlay::Shortcuts);
+			ui->modal->set_kind(this->kit_,
+				a == Action::About ? AppOverlay::About : AppOverlay::Shortcuts);
 			request_render();
 			break;
 		}
@@ -354,8 +351,8 @@ Window::bind_host()
 			setup = this->browser_->browse_setup();
 		this->app_->open(QString::fromStdString(std::move(path)), {}, setup);
 	};
-	this->host_.launch_exiftool =
-		[this](QString path) { launch_exiftool(path); };
+	this->host_.launch_exiftool = [this](
+									  QString path) { launch_exiftool(path); };
 	this->host_.trash = [this](string path) {
 		trash_path(QString::fromStdString(std::move(path)));
 	};
@@ -432,7 +429,8 @@ Window::launch_exiftool(const QString &path)
 	auto *report = new QTemporaryFile(
 		QDir::tempPath() + QStringLiteral("/dn-exiftool-XXXXXX.txt"), qGuiApp);
 	if (!report->open()) {
-		show_error(QStringLiteral("Could not create a temporary ExifTool report: ") +
+		show_error(
+			QStringLiteral("Could not create a temporary ExifTool report: ") +
 			report->errorString());
 		report->deleteLater();
 		return;
@@ -451,10 +449,10 @@ Window::launch_exiftool(const QString &path)
 #else
 	process->setProgram(QStringLiteral("exiftool"));
 #endif
-	arguments.append({QStringLiteral("-groupNames"),
-		QStringLiteral("-duplicates"), QStringLiteral("-extractEmbedded"),
-		QStringLiteral("--binary"), QStringLiteral("-quiet"),
-		QStringLiteral("--"), path});
+	arguments.append(
+		{QStringLiteral("-groupNames"), QStringLiteral("-duplicates"),
+			QStringLiteral("-extractEmbedded"), QStringLiteral("--binary"),
+			QStringLiteral("-quiet"), QStringLiteral("--"), path});
 	process->setArguments(arguments);
 
 	auto finished = make_shared<bool>(false);
@@ -468,8 +466,8 @@ Window::launch_exiftool(const QString &path)
 			report->deleteLater();
 			process->deleteLater();
 		});
-	connect(process,
-		qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process,
+	connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
+		process,
 		[process, report, report_path, finished, show_error](
 			int exit_code, QProcess::ExitStatus exit_status) {
 			if (*finished)
@@ -480,17 +478,18 @@ Window::launch_exiftool(const QString &path)
 				if (exit_status == QProcess::CrashExit) {
 					output.write("\nExifTool terminated abnormally.\n");
 				} else if (exit_code != 0) {
-					output.write(QStringLiteral("\nExifTool exited with status %1.\n")
-						.arg(exit_code)
-						.toUtf8());
+					output.write(
+						QStringLiteral("\nExifTool exited with status %1.\n")
+							.arg(exit_code)
+							.toUtf8());
 				} else if (output.size() == 0) {
 					output.write("ExifTool produced no output.\n");
 				}
 				output.close();
 			}
 			if (!QDesktopServices::openUrl(QUrl::fromLocalFile(report_path)))
-				show_error(QStringLiteral(
-					"Could not open the ExifTool report through a .txt association."));
+				show_error(QStringLiteral("Could not open the ExifTool report "
+										  "through a .txt association."));
 			process->deleteLater();
 		});
 	process->start();
@@ -658,7 +657,7 @@ Window::viewer_file_index(const QString &path) const
 	for (int n = 0; n < int(this->browser_->files_.size()); ++n) {
 		const QString candidate = QFileInfo(
 			QString::fromStdString(this->browser_->files_[size_t(n)].path))
-								 .absoluteFilePath();
+									  .absoluteFilePath();
 		if (candidate == current)
 			return n;
 	}
@@ -697,8 +696,7 @@ Window::open_sibling(int delta)
 		j += n;
 	if (j == i)
 		return;
-	open_viewer(
-		QString::fromStdString(this->browser_->files_[size_t(j)].path));
+	open_viewer(QString::fromStdString(this->browser_->files_[size_t(j)].path));
 	set_mode(Mode::View);
 	request_render();
 }

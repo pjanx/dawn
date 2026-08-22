@@ -20,6 +20,8 @@
 #include <span>
 #include <vector>
 
+using namespace std;
+
 namespace
 {
 
@@ -139,7 +141,7 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 }
 
 const dn::MenuNode *
-find_section(std::span<const dn::MenuNode> tree, NSString *title)
+find_section(span<const dn::MenuNode> tree, NSString *title)
 {
 	const QString want = QString::fromNSString(title);
 	for (const dn::MenuNode &n : tree) {
@@ -167,7 +169,7 @@ top_item(NSMenu *menu)
 }
 
 void
-sync_hidden(NSMenu *main, id delegate, std::span<const dn::MenuNode> tree)
+sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 {
 	for (NSMenuItem *top in main.itemArray) {
 		if (top.submenu.delegate != delegate)
@@ -222,8 +224,8 @@ sync_hidden(NSMenu *main, id delegate, std::span<const dn::MenuNode> tree)
 - (void)menuNeedsUpdate:(NSMenu *)menu
 {
 	dn::Window *w = [self window];
-	const std::span<const dn::MenuNode> tree =
-		w ? w->active_menu() : std::span<const dn::MenuNode>{};
+	const span<const dn::MenuNode> tree =
+		w ? w->active_menu() : span<const dn::MenuNode>{};
 	const dn::Actor *actor = w ? w->active_actor() : nullptr;
 	sync_hidden([NSApp mainMenu], self, tree);
 
@@ -251,23 +253,21 @@ sync_hidden(NSMenu *main, id delegate, std::span<const dn::MenuNode> tree)
 			pending_sep = false;
 		}
 		const dn::ActionDef &def = dn::action_def(n.action);
-		const bool checked = actor && actor->checked &&
-			actor->checked(n.action);
-		const QString title =
-			dn::menu_label(dn::action_label(def, checked));
+		const bool checked =
+			actor && actor->checked && actor->checked(n.action);
+		const QString title = dn::menu_label(dn::action_label(def, checked));
 		NSString *key = @"";
 		NSEventModifierFlags mods = 0;
 		if (!(def.accel && def.keys[0].key == 0))
 			key = ns_equiv(def.keys[0], &mods);
 		NSMenuItem *it = [[[NSMenuItem alloc] initWithTitle:title.toNSString()
-							     action:@selector(invoke:)
-						      keyEquivalent:key]
-			autorelease];
+													 action:@selector(invoke:)
+											  keyEquivalent:key] autorelease];
 		it.tag = NSInteger(n.action);
 		it.target = self;
 		it.keyEquivalentModifierMask = mods;
-		const bool on = (def.flags & dn::ActionToggle) &&
-			!def.label[1] && checked;
+		const bool on =
+			(def.flags & dn::ActionToggle) && !def.label[1] && checked;
 		it.state = on ? NSControlStateValueOn : NSControlStateValueOff;
 		[menu addItem:it];
 		any = true;
@@ -299,8 +299,8 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 	if (has_menu(main, title))
 		return;
 	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:title
-						      action:nil
-					       keyEquivalent:@""] autorelease];
+												  action:nil
+										   keyEquivalent:@""] autorelease];
 	NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
 	sub.delegate = delegate;
 	top.submenu = sub;
@@ -355,9 +355,8 @@ install_macos_app_menu(App *app)
 		if (NSMenu *app_menu = first.submenu)
 			retarget_about(app_menu, delegate);
 	}
-
-	std::vector<QString> titles;
-	auto consider = [&](std::span<const MenuNode> tree) {
+	vector<QString> titles;
+	auto consider = [&](span<const MenuNode> tree) {
 		for (const MenuNode &n : tree) {
 			const QString t = menu_label(n.title);
 			if (t.isEmpty())

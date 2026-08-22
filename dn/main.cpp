@@ -27,6 +27,8 @@
 #include <cstdio>
 #include <cstring>
 
+using namespace std;
+
 #if DN_WITH_SINGLE_INSTANCE
 namespace
 {
@@ -38,16 +40,15 @@ instance_session()
 	if (session.isEmpty())
 		session = qEnvironmentVariable("DISPLAY");
 	if (session.isEmpty()) {
-		session = QStringLiteral("none-%1").arg(
-			QCoreApplication::applicationPid());
+		session =
+			QStringLiteral("none-%1").arg(QCoreApplication::applicationPid());
 	}
 	return session;
 }
-
-std::vector<std::string>
+vector<string>
 paths_utf8(const QStringList &paths)
 {
-	std::vector<std::string> out;
+	vector<string> out;
 	out.reserve(size_t(paths.size()));
 	for (const QString &path : paths)
 		out.push_back(path.toUtf8().toStdString());
@@ -75,10 +76,8 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 bool
 handoff_open(dn::ipc::BlockingClient &client, const QStringList &paths)
 {
-	const std::string token =
-		qEnvironmentVariable("XDG_ACTIVATION_TOKEN")
-			.toUtf8()
-			.toStdString();
+	const string token =
+		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
 	dn::ipc::instance::Error error;
 	if (client.open(paths_utf8(paths), token, &error))
 		return true;
@@ -90,24 +89,21 @@ handoff_open(dn::ipc::BlockingClient &client, const QStringList &paths)
 }
 
 void
-report_mismatch(dn::ipc::BlockingClient::HelloStatus status,
-	bool &reported)
+report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
 	if (reported)
 		return;
 	if (status == HelloStatus::VersionMismatch) {
-		fprintf(stderr,
-			"dn: running isolated (version mismatch)\n");
+		fprintf(stderr, "dn: running isolated (version mismatch)\n");
 		reported = true;
 	} else if (status == HelloStatus::SessionMismatch) {
-		fprintf(stderr,
-			"dn: running isolated (session mismatch)\n");
+		fprintf(stderr, "dn: running isolated (session mismatch)\n");
 		reported = true;
 	}
 }
 
-enum class Remote : std::uint8_t { Done, Failed, Isolated };
+enum class Remote : uint8_t { Done, Failed, Isolated };
 
 Remote
 try_remote_open(const QString &build_id, const QString &session,
@@ -115,9 +111,9 @@ try_remote_open(const QString &build_id, const QString &session,
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
 	HelloStatus status = HelloStatus::Unavailable;
-	auto client = dn::ipc::BlockingClient::connect(
-		build_id.toUtf8().toStdString(),
-		session.toUtf8().toStdString(), &status);
+	auto client =
+		dn::ipc::BlockingClient::connect(build_id.toUtf8().toStdString(),
+			session.toUtf8().toStdString(), &status);
 	if (client) {
 		if (handoff_open(*client, paths))
 			return Remote::Done;
@@ -148,12 +144,12 @@ main(int argc, char **argv)
 	QCommandLineParser parser;
 	parser.setApplicationDescription(QStringLiteral(
 		"Display images or browse directories. Esc switches or quits; "
-		"q quits; wheel or +/- zooms; left- or middle-drag pans; Ctrl+middle-drag zooms; Alt+middle-drag rotates; pinch or Alt+wheel rotates."));
+		"q quits; wheel or +/- zooms; left- or middle-drag pans; "
+		"Ctrl+middle-drag zooms; Alt+middle-drag rotates; pinch or Alt+wheel "
+		"rotates."));
 	parser.addHelpOption();
-	const QCommandLineOption new_instance_opt(
-		QStringLiteral("new-instance"),
-		QStringLiteral(
-			"Do not connect to a running dn; start a new process."));
+	const QCommandLineOption new_instance_opt(QStringLiteral("new-instance"),
+		QStringLiteral("Do not connect to a running dn; start a new process."));
 	parser.addOption(new_instance_opt);
 	parser.addOption({QStringLiteral("invalidate-cache"),
 		QStringLiteral("Remove invalid wide thumbnails and exit.")});
@@ -177,15 +173,14 @@ main(int argc, char **argv)
 
 	dn::App app;
 #if DN_WITH_SINGLE_INSTANCE
-	std::unique_ptr<dn::InstanceHost> host;
+	unique_ptr<dn::InstanceHost> host;
 	const bool new_instance = parser.isSet(new_instance_opt);
 	if (!new_instance) {
-		const QString build_id =
-			QString::fromUtf8(DN_IPC_BUILD_ID);
+		const QString build_id = QString::fromUtf8(DN_IPC_BUILD_ID);
 		const QString session = instance_session();
 		bool reported_mismatch = false;
-		switch (try_remote_open(
-			build_id, session, to_open, reported_mismatch)) {
+		switch (
+			try_remote_open(build_id, session, to_open, reported_mismatch)) {
 		case Remote::Done:
 			return 0;
 		case Remote::Failed:
@@ -194,12 +189,10 @@ main(int argc, char **argv)
 			break;
 		}
 
-		const auto listen =
-			dn::ipc::Endpoint::listen("instance");
-		if (listen.status ==
-			dn::ipc::Endpoint::ListenStatus::InUse) {
-			switch (try_remote_open(build_id, session,
-				to_open, reported_mismatch)) {
+		const auto listen = dn::ipc::Endpoint::listen("instance");
+		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
+			switch (try_remote_open(
+				build_id, session, to_open, reported_mismatch)) {
 			case Remote::Done:
 				return 0;
 			case Remote::Failed:
@@ -207,12 +200,11 @@ main(int argc, char **argv)
 			case Remote::Isolated:
 				break;
 			}
-		} else if (listen.status ==
-			dn::ipc::Endpoint::ListenStatus::Ok) {
+		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in
 			// exec(). A Hello during init may time out
 			// (250ms) and isolate.
-			host = std::make_unique<dn::InstanceHost>(
+			host = make_unique<dn::InstanceHost>(
 				listen.fd, app, build_id, session);
 		}
 	}

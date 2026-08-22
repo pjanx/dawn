@@ -140,7 +140,7 @@ locale_candidates()
 
 	vector<QString> out;
 	auto add = [&](const QString &s) {
-		if (!s.isEmpty() && std::find(out.begin(), out.end(), s) == out.end())
+		if (!s.isEmpty() && find(out.begin(), out.end(), s) == out.end())
 			out.push_back(s);
 	};
 	for (QString loc : raw) {
@@ -293,7 +293,7 @@ append_unique(vector<QString> &list, const QString &id)
 {
 	if (id.isEmpty())
 		return;
-	if (std::find(list.begin(), list.end(), id) != list.end())
+	if (find(list.begin(), list.end(), id) != list.end())
 		return;
 	list.push_back(id);
 }
@@ -314,7 +314,7 @@ apply_mimeapps(AssocSets &acc, const IniFile &ini, const QString &type)
 		} else if (group.name == QLatin1String("Removed Associations")) {
 			for (const QString &id : split_semicolons(ini_get(group, type))) {
 				const QString nid = normalize_desktop_id(id);
-				if (std::find(acc.added.begin(), acc.added.end(), nid) ==
+				if (find(acc.added.begin(), acc.added.end(), nid) ==
 					acc.added.end())
 					acc.removed.insert(nid);
 			}
@@ -440,7 +440,7 @@ shown_on_desktop(const Desktop &d)
 	if (!d.only_show_in.empty()) {
 		bool ok = false;
 		for (const QString &desk : desks) {
-			if (std::find(d.only_show_in.begin(), d.only_show_in.end(), desk) !=
+			if (find(d.only_show_in.begin(), d.only_show_in.end(), desk) !=
 				d.only_show_in.end()) {
 				ok = true;
 				break;
@@ -450,7 +450,7 @@ shown_on_desktop(const Desktop &d)
 			return false;
 	}
 	for (const QString &desk : desks) {
-		if (std::find(d.not_show_in.begin(), d.not_show_in.end(), desk) !=
+		if (find(d.not_show_in.begin(), d.not_show_in.end(), desk) !=
 			d.not_show_in.end())
 			return false;
 	}
@@ -532,8 +532,8 @@ vector<QString>
 filename_types(const QString &path)
 {
 	// Content sniff (mime/magic / QMimeDatabase::mimeTypeForFile) is a later
-	// follow-up. Directories are inode/directory from stat (GIO get_content_type).
-	// Regular files use filename globs only.
+	// follow-up. Directories are inode/directory from stat (GIO
+	// get_content_type). Regular files use filename globs only.
 	if (QFileInfo(path).isDir())
 		return {QStringLiteral("inode/directory")};
 	return types_for_filename(path);
@@ -549,7 +549,7 @@ ancestor_types(const vector<QString> &types)
 		if (!mt.isValid())
 			continue;
 		for (const QString &a : mt.allAncestors()) {
-			if (std::find(types.begin(), types.end(), a) != types.end())
+			if (find(types.begin(), types.end(), a) != types.end())
 				continue;
 			append_unique(ancestors, a);
 		}
@@ -842,10 +842,10 @@ set_last_used(const Handler &app, const QString &path)
 			value += u';';
 		}
 		if (value.isEmpty()) {
-			group.keys.erase(std::remove_if(group.keys.begin(), group.keys.end(),
-								  [&](const QPair<QString, QString> &kv) {
-									  return kv.first == type;
-								  }),
+			group.keys.erase(remove_if(group.keys.begin(), group.keys.end(),
+								 [&](const QPair<QString, QString> &kv) {
+									 return kv.first == type;
+								 }),
 				group.keys.end());
 		} else {
 			ini_set(group, type, value);

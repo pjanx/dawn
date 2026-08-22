@@ -19,6 +19,8 @@
 #include <cstdlib>
 #include <cstring>
 
+using namespace std;
+
 namespace dn
 {
 namespace
@@ -67,7 +69,7 @@ snap_fb(float v, float s)
 {
 	if (s <= 0.0f)
 		s = 1.0f;
-	return std::round(v * s) / s;
+	return round(v * s) / s;
 }
 
 }  // namespace
@@ -124,10 +126,10 @@ OverlayList::push_clip(float x0, float y0, float x1, float y1)
 {
 	const Clip &prev = this->clip_stack_.back();
 	Clip next{
-		std::max(prev.x0, x0),
-		std::max(prev.y0, y0),
-		std::min(prev.x1, x1),
-		std::min(prev.y1, y1),
+		max(prev.x0, x0),
+		max(prev.y0, y0),
+		min(prev.x1, x1),
+		min(prev.y1, y1),
 	};
 	const float s = this->mesh_.fb_scale;
 	next.x0 = snap_fb(next.x0, s);
@@ -200,19 +202,19 @@ OverlayList::add_line(
 	this->tex_ = kOverlayTexFont;
 	const float dx = x1 - x0;
 	const float dy = y1 - y0;
-	const float len = std::sqrt(dx * dx + dy * dy);
+	const float len = sqrt(dx * dx + dy * dy);
 	if (len <= 0.0f || thickness <= 0.0f)
 		return;
 	const float s = this->mesh_.fb_scale > 0.0f ? this->mesh_.fb_scale : 1.0f;
-	const float th = std::max(1.0f, std::round(thickness * s)) / s;
-	if (std::abs(dy) * s < 0.5f) {
+	const float th = max(1.0f, round(thickness * s)) / s;
+	if (abs(dy) * s < 0.5f) {
 		x0 = snap_fb(x0, s);
 		x1 = snap_fb(x1, s);
-		y0 = y1 = (std::floor(y0 * s) + 0.5f) / s;
-	} else if (std::abs(dx) * s < 0.5f) {
+		y0 = y1 = (floor(y0 * s) + 0.5f) / s;
+	} else if (abs(dx) * s < 0.5f) {
 		y0 = snap_fb(y0, s);
 		y1 = snap_fb(y1, s);
-		x0 = x1 = (std::floor(x0 * s) + 0.5f) / s;
+		x0 = x1 = (floor(x0 * s) + 0.5f) / s;
 	}
 	const float hx = (-dy / len) * (th * 0.5f);
 	const float hy = (dx / len) * (th * 0.5f);
@@ -519,7 +521,7 @@ OverlayVulkan::create_pipeline()
 
 void
 OverlayVulkan::set_swapchain(
-	const std::vector<VkImageView> &views, VkExtent2D extent)
+	const vector<VkImageView> &views, VkExtent2D extent)
 {
 	destroy_swapchain();
 	this->extent_ = extent;
@@ -559,9 +561,9 @@ OverlayVulkan::compute_thumb_atlas_max()
 			VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, 0,
 			&fmt) == VK_SUCCESS) {
 		if (fmt.maxExtent.width)
-			dim = std::min(dim, fmt.maxExtent.width);
+			dim = min(dim, fmt.maxExtent.width);
 		if (fmt.maxExtent.height)
-			dim = std::min(dim, fmt.maxExtent.height);
+			dim = min(dim, fmt.maxExtent.height);
 		max_resource = fmt.maxResourceSize;
 	}
 
@@ -580,7 +582,7 @@ OverlayVulkan::compute_thumb_atlas_max()
 				&heap) == UINT32_MAX ||
 			(max_resource && requirements.size > max_resource) ||
 			requirements.size >
-				std::min(kThumbAtlasBudgetCap, heap / kThumbAtlasHeapFrac))
+				min(kThumbAtlasBudgetCap, heap / kThumbAtlasHeapFrac))
 			break;
 		best = side;
 		if (side > dim / 2)

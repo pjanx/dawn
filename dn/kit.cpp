@@ -1497,7 +1497,7 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	const float hair = 1.0f / std::max(this->dpr_, 0.01f);
+	const float hair = 1.0f / max(this->dpr_, 0.01f);
 	const Rect g = snap_rect(w.inset(hair, hair));
 	this->list_.add_rect_stroke(
 		g.x, g.y, g.x + g.w - hair, g.y + g.h - hair, col(this->ink_));

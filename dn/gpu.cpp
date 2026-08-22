@@ -27,9 +27,9 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 		return false;
 	string err;
 	if (!vk_create_graphics_device(this->instance_, surface,
-		    std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
-		    &this->phys_, &this->device_, &this->queue_,
-		    &this->queue_family_, &err)) {
+			std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
+			&this->phys_, &this->device_, &this->queue_, &this->queue_family_,
+			&err)) {
 		fprintf(stderr, "%s\n", err.c_str());
 		return false;
 	}

@@ -10,6 +10,8 @@
 #include <QFileInfo>
 #include <QUrl>
 
+using namespace std;
+
 #import <AppKit/AppKit.h>
 #import <CoreServices/CoreServices.h>
 
@@ -118,8 +120,7 @@ default_for(const QString &path)
 	CFRelease(app);
 	return a;
 }
-
-std::vector<Handler>
+vector<Handler>
 recommended_for(const QString &path)
 {
 	NSURL *url = file_url(path);
@@ -132,7 +133,7 @@ recommended_for(const QString &path)
 		return {};
 
 	const Handler def = default_for(path);
-	std::vector<Handler> out;
+	vector<Handler> out;
 	const CFIndex n = CFArrayGetCount(handlers);
 	for (CFIndex i = 0; i < n; ++i) {
 		NSString *bid =
@@ -152,8 +153,7 @@ recommended_for(const QString &path)
 	CFRelease(handlers);
 	return out;
 }
-
-std::vector<Handler>
+vector<Handler>
 fallback_for(const QString &)
 {
 	return {};

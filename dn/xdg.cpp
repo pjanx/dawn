@@ -198,11 +198,12 @@ xdg_data_dirs()
 		const QString app_dir = QCoreApplication::applicationDirPath();
 		if (!app_dir.isEmpty()) {
 #if defined(Q_OS_MACOS)
-			append_unique(dirs, QDir(app_dir).absoluteFilePath(
-				QStringLiteral("../Resources/share")));
-#else
 			append_unique(dirs,
-				QDir(app_dir).absoluteFilePath(QStringLiteral("share")));
+				QDir(app_dir).absoluteFilePath(
+					QStringLiteral("../Resources/share")));
+#else
+			append_unique(
+				dirs, QDir(app_dir).absoluteFilePath(QStringLiteral("share")));
 #endif
 		}
 	}
@@ -211,8 +212,8 @@ xdg_data_dirs()
 	QString data_dirs = qEnvironmentVariable("XDG_DATA_DIRS");
 	if (data_dirs.isEmpty()) {
 #if defined(Q_OS_MACOS)
-		data_dirs = QStringLiteral(
-			"/opt/homebrew/share:/usr/local/share:/usr/share");
+		data_dirs =
+			QStringLiteral("/opt/homebrew/share:/usr/local/share:/usr/share");
 #else
 		data_dirs = QStringLiteral("/usr/local/share:/usr/share");
 #endif
@@ -308,7 +309,7 @@ types_for_filename(const QString &path)
 	out.reserve(size_t(best_weight.size()));
 	for (auto it = best_weight.constBegin(); it != best_weight.constEnd(); ++it)
 		out.push_back(it.key());
-	std::sort(out.begin(), out.end(), [&](const QString &a, const QString &b) {
+	sort(out.begin(), out.end(), [&](const QString &a, const QString &b) {
 		const int wa = best_weight.value(a);
 		const int wb = best_weight.value(b);
 		if (wa != wb)

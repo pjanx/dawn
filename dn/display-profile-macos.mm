@@ -17,6 +17,8 @@
 #include <functional>
 #include <utility>
 
+using namespace std;
+
 namespace dn
 {
 namespace
@@ -57,11 +59,11 @@ load_display_profile(QScreen *screen)
 }
 
 struct CocoaSource final : DisplayProfileSource {
-	std::function<void()> on_change;
+	function<void()> on_change;
 	id observer = nil;
 
 	~CocoaSource() override;
-	void start(std::function<void()> fn) override;
+	void start(function<void()> fn) override;
 	DisplayProfile load(QScreen *screen) override
 	{
 		return load_display_profile(screen);
@@ -77,26 +79,25 @@ CocoaSource::~CocoaSource()
 }
 
 void
-CocoaSource::start(std::function<void()> fn)
+CocoaSource::start(function<void()> fn)
 {
 	this->on_change = std::move(fn);
 	if (this->observer)
 		return;
 	this->observer = [[[NSNotificationCenter defaultCenter]
 		addObserverForName:NSWindowDidChangeBackingPropertiesNotification
-			object:nil
-			queue:nil
-			usingBlock:^(NSNotification *) {
-				this->on_change();
-			}] retain];
+					object:nil
+					 queue:nil
+				usingBlock:^(NSNotification *) {
+				  this->on_change();
+				}] retain];
 }
 
 }  // namespace
-
-std::unique_ptr<DisplayProfileSource>
+unique_ptr<DisplayProfileSource>
 make_display_profile_source()
 {
-	return std::make_unique<CocoaSource>();
+	return make_unique<CocoaSource>();
 }
 
 }  // namespace dn

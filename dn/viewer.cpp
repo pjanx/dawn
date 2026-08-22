@@ -283,33 +283,32 @@ fill_info_texts(Viewer &v, const Image *im)
 
 struct OpenJob {
 	uint64_t epoch = 0;
-	std::string path;
-	std::string uri;
-	std::vector<uint8_t> screen_icc;
+	string path;
+	string uri;
+	vector<uint8_t> screen_icc;
 	int dpi = 96;
 	bool enable_cms = true;
 };
 
 struct OpenLoad {
 	uint64_t epoch = 0;
-	std::string path;
+	string path;
 	ImagePtr image;
-	std::string message;
+	string message;
 };
 
 struct ScaleJob {
 	uint64_t gen = 0;
 	ImagePtr page;
 	float scale = 1.0f;
-	std::vector<uint8_t> screen_icc;
+	vector<uint8_t> screen_icc;
 	bool enable_cms = true;
 };
-
-std::string
-join_load_text(const std::vector<std::string> &warnings, const Error &error,
+string
+join_load_text(const vector<string> &warnings, const Error &error,
 	bool no_image, bool empty_image)
 {
-	std::vector<std::string> parts = warnings;
+	vector<string> parts = warnings;
 	if (error) {
 		if (!error.message.empty())
 			parts.push_back(error.message);
@@ -320,7 +319,7 @@ join_load_text(const std::vector<std::string> &warnings, const Error &error,
 		parts.push_back("cannot load");
 	else if (empty_image && parts.empty())
 		parts.push_back("empty image");
-	std::string out;
+	string out;
 	for (size_t i = 0; i < parts.size(); ++i) {
 		if (i)
 			out += '\n';
@@ -328,9 +327,8 @@ join_load_text(const std::vector<std::string> &warnings, const Error &error,
 	}
 	return out;
 }
-
-std::shared_ptr<Profile>
-profile_from_icc(Cmm &cmm, const std::vector<uint8_t> &icc)
+shared_ptr<Profile>
+profile_from_icc(Cmm &cmm, const vector<uint8_t> &icc)
 {
 	if (!icc.empty()) {
 		if (auto profile = cmm.get_profile(icc))
@@ -342,22 +340,21 @@ profile_from_icc(Cmm &cmm, const std::vector<uint8_t> &icc)
 }  // namespace
 
 struct Viewer::Worker {
-	using OpenKey = std::pair<uint64_t, std::string>;
-
-	std::mutex mu;
-	std::condition_variable cv;
+	using OpenKey = pair<uint64_t, string>;
+	mutex mu;
+	condition_variable cv;
 	bool stop = false;
 	uint64_t epoch = 1;
-	std::array<std::string, 3> desired;
+	array<string, 3> desired;
 	bool current_ready = false;
 	bool detached = false;
-	std::optional<OpenJob> pending_open;
-	std::optional<ScaleJob> pending_scale;
-	std::vector<OpenJob> pending_preloads;
-	std::optional<OpenKey> active_open;
-	std::vector<OpenKey> active_preloads;
-	std::thread foreground;
-	std::array<std::thread, 2> preloads;
+	optional<OpenJob> pending_open;
+	optional<ScaleJob> pending_scale;
+	vector<OpenJob> pending_preloads;
+	optional<OpenKey> active_open;
+	vector<OpenKey> active_preloads;
+	thread foreground;
+	array<thread, 2> preloads;
 };
 
 static void
@@ -570,7 +567,7 @@ stop_worker(Viewer &v)
 		return;
 	++v.load_epoch_;
 	{
-		std::lock_guard<std::mutex> lock(v.worker_->mu);
+		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->stop = true;
 		v.worker_->epoch = v.load_epoch_;
 		v.worker_->detached = false;
@@ -713,7 +710,7 @@ sync_ui(Viewer &v, Page &ui)
 			const bool assumed = im && im->profile_assumed;
 			Chromaticities img = profile_chromaticities(src);
 			bool image_dashed = assumed || !src || !img.have_primaries;
-			std::shared_ptr<Profile> srgb;
+			shared_ptr<Profile> srgb;
 			if (!img.have_primaries) {
 				auto cmm = v.cmm_ ? v.cmm_ : Cmm::get_default();
 				srgb = cmm->get_profile_sRGB();
@@ -869,8 +866,8 @@ apply_open_result(Viewer &v, OpenLoad result)
 			return entry.path == result.path;
 		});
 	if (found == v.open_cache_.end()) {
-		v.open_cache_.push_back({result.path, std::move(result.image),
-			std::move(result.message)});
+		v.open_cache_.push_back(
+			{result.path, std::move(result.image), std::move(result.message)});
 		found = prev(v.open_cache_.end());
 	} else {
 		found->image = std::move(result.image);
@@ -892,9 +889,8 @@ decode_open(const OpenJob &open, const shared_ptr<Cmm> &cmm)
 	OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
-	ctx.screen_profile = open.enable_cms
-		? profile_from_icc(*cmm, open.screen_icc)
-		: nullptr;
+	ctx.screen_profile =
+		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
 	ctx.screen_dpi = open.dpi;
 	vector<string> warnings;
 	ctx.warnings = &warnings;
@@ -926,7 +922,7 @@ desired(const Viewer::Worker &worker, const OpenJob &job)
 {
 	return job.epoch == worker.epoch &&
 		find(worker.desired.begin(), worker.desired.end(), job.path) !=
-			worker.desired.end();
+		worker.desired.end();
 }
 
 static bool
@@ -1026,7 +1022,7 @@ start_worker(Viewer &v)
 {
 	if (v.worker_ && v.worker_->foreground.joinable())
 		return;
-	v.worker_ = std::make_unique<Viewer::Worker>();
+	v.worker_ = make_unique<Viewer::Worker>();
 	v.worker_->epoch = v.load_epoch_;
 	v.worker_->foreground = thread([&v] { worker_loop(v, true); });
 	for (thread &preload : v.worker_->preloads)
@@ -1040,8 +1036,8 @@ make_open_job(const Viewer &v, const string &path)
 	job.epoch = v.load_epoch_;
 	job.path = path;
 	job.uri = QUrl::fromLocalFile(QString::fromStdString(path))
-			  .toEncoded()
-			  .toStdString();
+				  .toEncoded()
+				  .toStdString();
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? screen_icc_bytes(v) : vector<uint8_t>{};
@@ -1065,7 +1061,7 @@ job_active(const Viewer::Worker &worker, uint64_t epoch, const string &path)
 	if (worker.active_open == key)
 		return true;
 	return find(worker.active_preloads.begin(), worker.active_preloads.end(),
-		key) != worker.active_preloads.end();
+			   key) != worker.active_preloads.end();
 }
 
 static void
@@ -1092,10 +1088,10 @@ start_open(Viewer &v, bool invalidate)
 		v.worker_->detached = false;
 		v.worker_->desired[0] = path;
 		v.worker_->current_ready = cached;
-		v.worker_->pending_preloads.erase(remove_if(
-			v.worker_->pending_preloads.begin(),
-			v.worker_->pending_preloads.end(),
-			[&](const OpenJob &job) { return job.path == path; }),
+		v.worker_->pending_preloads.erase(
+			remove_if(v.worker_->pending_preloads.begin(),
+				v.worker_->pending_preloads.end(),
+				[&](const OpenJob &job) { return job.path == path; }),
 			v.worker_->pending_preloads.end());
 		if (invalidate)
 			v.worker_->pending_preloads.clear();
@@ -1120,15 +1116,18 @@ schedule_preloads(Viewer &v)
 			(path == v.previous_path_ || path == v.next_path_);
 	};
 	v.open_cache_.erase(remove_if(v.open_cache_.begin(), v.open_cache_.end(),
-		[&](const Viewer::CachedOpen &entry) {
-			return entry.path != current && !wanted(entry.path);
-		}), v.open_cache_.end());
+							[&](const Viewer::CachedOpen &entry) {
+								return entry.path != current &&
+									!wanted(entry.path);
+							}),
+		v.open_cache_.end());
 	if (!v.worker_)
 		return;
 	vector<string> missing;
 	for (const string *path : {&v.previous_path_, &v.next_path_}) {
-		if (!wanted(*path) || find(missing.begin(), missing.end(), *path) !=
-				missing.end() || find_cached(v, *path))
+		if (!wanted(*path) ||
+			find(missing.begin(), missing.end(), *path) != missing.end() ||
+			find_cached(v, *path))
 			continue;
 		missing.push_back(*path);
 	}
@@ -1142,10 +1141,10 @@ schedule_preloads(Viewer &v)
 		auto desired_job = [&](const OpenJob &job) {
 			return job.epoch == v.load_epoch_ && wanted(job.path);
 		};
-		v.worker_->pending_preloads.erase(remove_if(
-			v.worker_->pending_preloads.begin(),
-			v.worker_->pending_preloads.end(),
-			[&](const OpenJob &job) { return !desired_job(job); }),
+		v.worker_->pending_preloads.erase(
+			remove_if(v.worker_->pending_preloads.begin(),
+				v.worker_->pending_preloads.end(),
+				[&](const OpenJob &job) { return !desired_job(job); }),
 			v.worker_->pending_preloads.end());
 		for (const string &path : missing) {
 			const bool pending = any_of(v.worker_->pending_preloads.begin(),
@@ -1186,7 +1185,7 @@ post_scale(Viewer &v)
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? screen_icc_bytes(v) : vector<uint8_t>{};
 	{
-		std::lock_guard<std::mutex> lock(v.worker_->mu);
+		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale = std::move(job);
 	}
 	v.worker_->cv.notify_one();
@@ -1203,7 +1202,7 @@ ensure_vector_frame(Viewer &v)
 			++v.scale_gen_;
 			v.scale_job_pending_ = false;
 			if (v.worker_) {
-				std::lock_guard<std::mutex> lock(v.worker_->mu);
+				lock_guard<mutex> lock(v.worker_->mu);
 				v.worker_->pending_scale.reset();
 			}
 		}
@@ -1519,7 +1518,7 @@ cancel_scale(Viewer &v)
 	v.scale_failed_ = false;
 	v.page_scaled_.reset();
 	if (v.worker_) {
-		std::lock_guard<std::mutex> lock(v.worker_->mu);
+		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale.reset();
 	}
 }
@@ -1807,8 +1806,8 @@ apply_view(const Viewer &v)
 Actor
 make_actor(Viewer &v, const HostActions &host)
 {
-	return chain_actor(host,
-		[&v](Action a) { return apply_action(v, a); },
+	return chain_actor(
+		host, [&v](Action a) { return apply_action(v, a); },
 		[&v](Action a) { return spec_enabled(v, a); },
 		[&v](Action a) { return spec_active(v, a); });
 }

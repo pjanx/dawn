@@ -90,8 +90,8 @@ apply_activation_token(const QString &token)
 }
 
 OpenResult
-App::open(const QString &path, const QString &activation_token,
-	BrowseSetup setup)
+App::open(
+	const QString &path, const QString &activation_token, BrowseSetup setup)
 {
 	const QString resolved = path.isEmpty() ? QDir::currentPath() : path;
 	const QFileInfo info(resolved);

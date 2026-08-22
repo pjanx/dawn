@@ -12,6 +12,8 @@
 
 #include <utility>
 
+using namespace std;
+
 namespace dn
 {
 
@@ -35,7 +37,7 @@ DisplayProfileWatch::load(QScreen *screen)
 }
 
 void
-DisplayProfileWatch::listen(void *key, std::function<void()> fn)
+DisplayProfileWatch::listen(void *key, function<void()> fn)
 {
 	unlisten(key);
 	this->listeners_.emplace_back(key, std::move(fn));
@@ -44,7 +46,7 @@ DisplayProfileWatch::listen(void *key, std::function<void()> fn)
 void
 DisplayProfileWatch::unlisten(const void *key)
 {
-	std::erase_if(this->listeners_,
+	erase_if(this->listeners_,
 		[key](const auto &item) { return item.first == key; });
 }
 

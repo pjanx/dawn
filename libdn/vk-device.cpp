@@ -202,7 +202,7 @@ vk_add_bundled_driver_files()
 	wchar_t *slash = wcsrchr(path, L'\\');
 	if (!slash)
 		return;
-	std::wcscpy(slash + 1, L"vk_swiftshader_icd.json");
+	wcscpy(slash + 1, L"vk_swiftshader_icd.json");
 	SetEnvironmentVariableW(L"VK_ADD_DRIVER_FILES", path);
 #elif defined(__APPLE__)
 	// This library sits in Contents/Frameworks, the manifest in Resources.

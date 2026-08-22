@@ -369,7 +369,7 @@ accel_label(const Accel &a)
 	if (!a.key)
 		return {};
 	QString s = QKeySequence(int(a.mods) | int(a.key))
-		.toString(QKeySequence::NativeText);
+					.toString(QKeySequence::NativeText);
 	s.replace(QLatin1Char('-'), QChar(0x2212));
 	return s;
 }

@@ -124,8 +124,8 @@ pick_surface_format(const vector<VkSurfaceFormatKHR> &formats)
 }
 
 VkPresentModeKHR
-pick_present_mode(VkPhysicalDevice phys, VkSurfaceKHR surface,
-	VkPresentModeKHR preferred)
+pick_present_mode(
+	VkPhysicalDevice phys, VkSurfaceKHR surface, VkPresentModeKHR preferred)
 {
 	uint32_t count = 0;
 	check_vk(vkGetPhysicalDeviceSurfacePresentModesKHR(
@@ -159,7 +159,8 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	this->queue_ = gpu.queue();
 	this->queue_family_ = gpu.queue_family();
 	// TODO: Validate device_ and surface_ before querying their present modes.
-	// Current callers guarantee both, but Renderer::init should not rely on that.
+	// Current callers guarantee both, but Renderer::init should not rely on
+	// that.
 	this->present_mode_ =
 		pick_present_mode(this->phys_, this->surface_, preferred_present_mode);
 	this->present_about_to_queue_ = std::move(present_about_to_queue);
@@ -568,8 +569,8 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	// A hidden Wayland surface has no guaranteed presentation progress, so an
 	// infinite acquire timeout is invalid. Keep the latest frame dirty and let
 	// Window retry later when no image is immediately available.
-	VkResult acquire = vkAcquireNextImageKHR(this->device_, this->swapchain_,
-		0, this->image_available_, VK_NULL_HANDLE, &index);
+	VkResult acquire = vkAcquireNextImageKHR(this->device_, this->swapchain_, 0,
+		this->image_available_, VK_NULL_HANDLE, &index);
 	if (acquire == VK_NOT_READY || acquire == VK_TIMEOUT)
 		return false;
 	if (acquire == VK_ERROR_OUT_OF_DATE_KHR) {

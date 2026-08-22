@@ -26,11 +26,13 @@
 
 #include <cstdio>
 
+using namespace std;
+
 namespace dn
 {
 WaylandWindow::WaylandWindow(App *app)
 	: app_(app), backing_store_(this), content_(app, this),
-	  color_bridge_(std::make_unique<WaylandColorBridge>())
+	  color_bridge_(make_unique<WaylandColorBridge>())
 {
 	setSurfaceType(QSurface::RasterSurface);
 	setTitle(QStringLiteral("dn"));
