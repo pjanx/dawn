@@ -22,8 +22,8 @@
 using namespace std;
 namespace fs = filesystem;
 
-#ifndef DN_TEST_FIXTURES_DIR
-#error DN_TEST_FIXTURES_DIR must be defined
+#ifndef DAWN_TEST_FIXTURES_DIR
+#error DAWN_TEST_FIXTURES_DIR must be defined
 #endif
 
 namespace
@@ -80,7 +80,7 @@ expect_bgra(const char *label, Pixel p, uint16_t b, uint16_t g, uint16_t r,
 dn::ImagePtr
 load_fixture(const string &name)
 {
-	fs::path path = fs::path(DN_TEST_FIXTURES_DIR) / name;
+	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / name;
 	dn::OpenContext ctx;
 	ctx.uri = path.string();
 	ctx.first_frame_only = true;
@@ -219,7 +219,7 @@ test_jpeg_cms_8_to_16()
 	ctx.cmm = cmm;
 	ctx.screen_profile = srgb;
 	ctx.first_frame_only = true;
-	ctx.uri = (fs::path(DN_TEST_FIXTURES_DIR) / "blue.jpg").string();
+	ctx.uri = (fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg").string();
 	dn::Error error;
 	dn::ImagePtr img = dn::open(ctx, &error);
 	if (!img) {
@@ -237,7 +237,7 @@ test_cmyk_cms_opaque()
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
-	const fs::path icc = fs::path(DN_TEST_FIXTURES_DIR) / "cmyk-lab.icc";
+	const fs::path icc = fs::path(DAWN_TEST_FIXTURES_DIR) / "cmyk-lab.icc";
 	ifstream input(icc, ios::binary);
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
@@ -327,7 +327,7 @@ void
 test_large_icc_and_p3_red()
 {
 	const fs::path path =
-		fs::path(DN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
+		fs::path(DAWN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
 	ifstream input(path, ios::binary);
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
@@ -481,7 +481,7 @@ test_chromaticities()
 	}
 
 	const fs::path p3 =
-		fs::path(DN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
+		fs::path(DAWN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
 	ifstream input(p3, ios::binary);
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
@@ -509,7 +509,7 @@ test_chromaticities()
 void
 test_png_text_after_idat()
 {
-	fs::path path = fs::path(DN_TEST_FIXTURES_DIR) / "text-after-idat.png";
+	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / "text-after-idat.png";
 	ifstream input(path, ios::binary);
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});

@@ -1,65 +1,64 @@
 add_executable(gen_fixtures gen-fixtures.cpp)
 target_link_libraries(gen_fixtures PRIVATE
 	PkgConfig::ZLIB
-	${DN_LCMS2_TARGET}
+	${DAWN_LCMS2_TARGET}
 )
 
-
-set(DN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
-set(DN_TEST_FIXTURE_FILES
-	"${DN_TEST_FIXTURES_DIR}/black.png"
-	"${DN_TEST_FIXTURES_DIR}/cmyk-lab.icc"
-	"${DN_TEST_FIXTURES_DIR}/blue.bmp"
-	"${DN_TEST_FIXTURES_DIR}/blue.jpg"
-	"${DN_TEST_FIXTURES_DIR}/blue.png"
-	"${DN_TEST_FIXTURES_DIR}/blue.svg"
-	"${DN_TEST_FIXTURES_DIR}/blue.tga"
-	"${DN_TEST_FIXTURES_DIR}/blue.tif"
-	"${DN_TEST_FIXTURES_DIR}/blue.webp"
-	"${DN_TEST_FIXTURES_DIR}/blue16.png"
-	"${DN_TEST_FIXTURES_DIR}/display-p3-red_vs_srgb-red.png"
-	"${DN_TEST_FIXTURES_DIR}/green.bmp"
-	"${DN_TEST_FIXTURES_DIR}/green.jpg"
-	"${DN_TEST_FIXTURES_DIR}/green.png"
-	"${DN_TEST_FIXTURES_DIR}/green.svg"
-	"${DN_TEST_FIXTURES_DIR}/green.tga"
-	"${DN_TEST_FIXTURES_DIR}/green.tif"
-	"${DN_TEST_FIXTURES_DIR}/green.webp"
-	"${DN_TEST_FIXTURES_DIR}/green16.png"
-	"${DN_TEST_FIXTURES_DIR}/red.bmp"
-	"${DN_TEST_FIXTURES_DIR}/red.jpg"
-	"${DN_TEST_FIXTURES_DIR}/red.png"
-	"${DN_TEST_FIXTURES_DIR}/red.svg"
-	"${DN_TEST_FIXTURES_DIR}/red.tga"
-	"${DN_TEST_FIXTURES_DIR}/red.tif"
-	"${DN_TEST_FIXTURES_DIR}/red.webp"
-	"${DN_TEST_FIXTURES_DIR}/red16.png"
-	"${DN_TEST_FIXTURES_DIR}/red_a128.png"
-	"${DN_TEST_FIXTURES_DIR}/text-after-idat.png"
-	"${DN_TEST_FIXTURES_DIR}/red_a128.svg"
-	"${DN_TEST_FIXTURES_DIR}/rgbw_2x2.png"
-	"${DN_TEST_FIXTURES_DIR}/rgbw_2x2.svg"
-	"${DN_TEST_FIXTURES_DIR}/white.png"
+set(DAWN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
+set(DAWN_TEST_FIXTURE_FILES
+	"${DAWN_TEST_FIXTURES_DIR}/black.png"
+	"${DAWN_TEST_FIXTURES_DIR}/cmyk-lab.icc"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.bmp"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.png"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.svg"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.tga"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.tif"
+	"${DAWN_TEST_FIXTURES_DIR}/blue.webp"
+	"${DAWN_TEST_FIXTURES_DIR}/blue16.png"
+	"${DAWN_TEST_FIXTURES_DIR}/display-p3-red_vs_srgb-red.png"
+	"${DAWN_TEST_FIXTURES_DIR}/green.bmp"
+	"${DAWN_TEST_FIXTURES_DIR}/green.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/green.png"
+	"${DAWN_TEST_FIXTURES_DIR}/green.svg"
+	"${DAWN_TEST_FIXTURES_DIR}/green.tga"
+	"${DAWN_TEST_FIXTURES_DIR}/green.tif"
+	"${DAWN_TEST_FIXTURES_DIR}/green.webp"
+	"${DAWN_TEST_FIXTURES_DIR}/green16.png"
+	"${DAWN_TEST_FIXTURES_DIR}/red.bmp"
+	"${DAWN_TEST_FIXTURES_DIR}/red.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/red.png"
+	"${DAWN_TEST_FIXTURES_DIR}/red.svg"
+	"${DAWN_TEST_FIXTURES_DIR}/red.tga"
+	"${DAWN_TEST_FIXTURES_DIR}/red.tif"
+	"${DAWN_TEST_FIXTURES_DIR}/red.webp"
+	"${DAWN_TEST_FIXTURES_DIR}/red16.png"
+	"${DAWN_TEST_FIXTURES_DIR}/red_a128.png"
+	"${DAWN_TEST_FIXTURES_DIR}/text-after-idat.png"
+	"${DAWN_TEST_FIXTURES_DIR}/red_a128.svg"
+	"${DAWN_TEST_FIXTURES_DIR}/rgbw_2x2.png"
+	"${DAWN_TEST_FIXTURES_DIR}/rgbw_2x2.svg"
+	"${DAWN_TEST_FIXTURES_DIR}/white.png"
 )
 add_custom_command(
-	OUTPUT ${DN_TEST_FIXTURE_FILES}
-	COMMAND "$<TARGET_FILE:gen_fixtures>" "${DN_TEST_FIXTURES_DIR}"
+	OUTPUT ${DAWN_TEST_FIXTURE_FILES}
+	COMMAND "$<TARGET_FILE:gen_fixtures>" "${DAWN_TEST_FIXTURES_DIR}"
 	DEPENDS gen_fixtures
 	COMMENT "Generating test fixtures in the build tree"
 	VERBATIM
 )
-add_custom_target(test_fixtures DEPENDS ${DN_TEST_FIXTURE_FILES})
+add_custom_target(test-fixtures DEPENDS ${DAWN_TEST_FIXTURE_FILES})
 
-add_executable(test_channels test-channels.cpp)
+add_executable(test-channels test-channels.cpp)
 if(NOT CMAKE_CROSSCOMPILING)
-	add_dependencies(test_channels test_fixtures)
+	add_dependencies(test-channels test-fixtures)
 endif()
-target_link_libraries(test_channels PRIVATE dawn::libdn)
-target_compile_definitions(test_channels PRIVATE
-	DN_TEST_FIXTURES_DIR="${DN_TEST_FIXTURES_DIR}"
+target_link_libraries(test-channels PRIVATE dawn::libdn)
+target_compile_definitions(test-channels PRIVATE
+	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
 )
 
-add_test(NAME channels COMMAND test_channels)
+add_test(NAME channels COMMAND test-channels)
 set_tests_properties(channels PROPERTIES
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
@@ -67,45 +66,45 @@ set_tests_properties(channels PROPERTIES
 add_executable(bench_open bench-open.cpp)
 target_link_libraries(bench_open PRIVATE dawn::libdn)
 
-add_executable(test_xdg test-xdg.cpp "${PROJECT_SOURCE_DIR}/dn/xdg.cpp")
-target_include_directories(test_xdg PRIVATE
+add_executable(test-xdg test-xdg.cpp "${PROJECT_SOURCE_DIR}/dn/xdg.cpp")
+target_include_directories(test-xdg PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn"
 	"${PROJECT_BINARY_DIR}"
 )
-target_link_libraries(test_xdg PRIVATE Qt6::Gui)
-add_test(NAME xdg COMMAND test_xdg)
+target_link_libraries(test-xdg PRIVATE Qt6::Gui)
+add_test(NAME xdg COMMAND test-xdg)
 
-add_executable(test_thumbnail_cache
+add_executable(test-thumbnail-cache
 	test-thumbnail-cache.cpp
 	"${PROJECT_SOURCE_DIR}/dn/thumbnail-cache.cpp")
-target_include_directories(test_thumbnail_cache PRIVATE
+target_include_directories(test-thumbnail-cache PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn")
-target_link_libraries(test_thumbnail_cache PRIVATE
+target_link_libraries(test-thumbnail-cache PRIVATE
 	dawn::libdn
 	Qt6::Gui
 	PkgConfig::WEBP
 	PkgConfig::WEBPDEMUX
 	PkgConfig::WEBPMUX)
-add_test(NAME thumbnail_cache COMMAND test_thumbnail_cache)
+add_test(NAME thumbnail_cache COMMAND test-thumbnail-cache)
 
-add_executable(test_thumbnailer
+add_executable(test-thumbnailer
 	test-thumbnailer.cpp
 	"${PROJECT_SOURCE_DIR}/dn/thumbnailer.cpp")
-target_include_directories(test_thumbnailer PRIVATE
+target_include_directories(test-thumbnailer PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn"
 	"${PROJECT_SOURCE_DIR}/libdn")
-target_link_libraries(test_thumbnailer PRIVATE
+target_link_libraries(test-thumbnailer PRIVATE
 	dawn::libdn
 	Qt6::Gui
 	Threads::Threads)
-add_test(NAME thumbnailer COMMAND test_thumbnailer)
+add_test(NAME thumbnailer COMMAND test-thumbnailer)
 
-add_executable(test_lxdr test-lxdr.cpp)
-target_link_libraries(test_lxdr PRIVATE dawn::libdn)
-add_test(NAME lxdr COMMAND test_lxdr)
+add_executable(test-lxdr test-lxdr.cpp)
+target_link_libraries(test-lxdr PRIVATE dawn::libdn)
+add_test(NAME lxdr COMMAND test-lxdr)
 
 if(NOT WIN32 AND NOT APPLE)
-	add_executable(test_ipc test-ipc.cpp)
-	target_link_libraries(test_ipc PRIVATE dawn::libdn)
-	add_test(NAME ipc COMMAND test_ipc)
+	add_executable(test-ipc test-ipc.cpp)
+	target_link_libraries(test-ipc PRIVATE dawn::libdn)
+	add_test(NAME ipc COMMAND test-ipc)
 endif()

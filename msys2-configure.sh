@@ -118,8 +118,7 @@ resvg() {
 	src=$PWD/tmp
 	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
 
-	# Native rustc cannot load upstream rust-std; compile std from rust-src.
-	# TODO(p): Recheck what specifically happens.
+	# We must cross-compile Rust std from rust-src.
 	# Vendor config replaces crates-io; -Zbuild-std needs hashbrown etc.
 	rm -f $src/.cargo/config
 

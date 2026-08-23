@@ -21,23 +21,20 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(WIN32 AND CMAKE_CROSSCOMPILING)
-	set(DN_MSYS2_PREFIX "${PROJECT_SOURCE_DIR}/ucrt64")
-	list(APPEND CMAKE_PREFIX_PATH "${DN_MSYS2_PREFIX}")
-	list(APPEND CMAKE_FIND_ROOT_PATH "${DN_MSYS2_PREFIX}")
+	set(DAWN_MSYS2_PREFIX "${PROJECT_SOURCE_DIR}/ucrt64")
+	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
+	list(APPEND CMAKE_FIND_ROOT_PATH "${DAWN_MSYS2_PREFIX}")
 
 	# Relativize prefixes, and bar pkg-config from looking up host libraries
 	set(ENV{PKG_CONFIG_SYSROOT_DIR} "${PROJECT_SOURCE_DIR}")
-	set(DN_MSYS2_PCPATH
-		"${DN_MSYS2_PREFIX}/share/pkgconfig:${DN_MSYS2_PREFIX}/lib/pkgconfig")
-	set(ENV{PKG_CONFIG_PATH} "${DN_MSYS2_PCPATH}")
-	set(ENV{PKG_CONFIG_LIBDIR} "${DN_MSYS2_PCPATH}")
+	set(DAWN_MSYS2_PCPATH
+		"${DAWN_MSYS2_PREFIX}/share/pkgconfig:${DAWN_MSYS2_PREFIX}/lib/pkgconfig")
+	set(ENV{PKG_CONFIG_PATH} "${DAWN_MSYS2_PCPATH}")
+	set(ENV{PKG_CONFIG_LIBDIR} "${DAWN_MSYS2_PCPATH}")
 
 	# Qt tries to find qtpaths without an .exe file extension
 	# (see Qt6CoreMacros.cmake).  This ultimately means broken windeployqt.
 	set(QT_NO_QTPATHS_DEPLOYMENT_WARNING ON)
-
-	# You may need to set WINEPATH because the MSYS2 rcc.exe may be executed.
-	# Potentially set AUTORCC_EXECUTABLE manually to something usable.
 endif()
 
 if(APPLE)
@@ -79,7 +76,7 @@ pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
 # Qt6 SVG cannot render our icons correctly, so we hard depend on resvg.
 pkg_check_modules(RESVG REQUIRED IMPORTED_TARGET resvg)
 
-macro(dn_optional_pkg stem doc module)
+macro(dawn_optional_pkg stem doc module)
 	pkg_check_modules(${stem} IMPORTED_TARGET ${module})
 	option(DN_WITH_${stem} "${doc}" ${${stem}_FOUND})
 	if(DN_WITH_${stem} AND NOT ${stem}_FOUND)
@@ -87,12 +84,12 @@ macro(dn_optional_pkg stem doc module)
 	endif()
 endmacro()
 
-dn_optional_pkg(LIBRSVG "SVG via librsvg" librsvg-2.0)
-dn_optional_pkg(XCURSOR "Xcursor support" xcursor)
-dn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
-dn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
-dn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
-dn_optional_pkg(LIBRAW "LibRaw support" libraw)
+dawn_optional_pkg(LIBRSVG "SVG via librsvg" librsvg-2.0)
+dawn_optional_pkg(XCURSOR "Xcursor support" xcursor)
+dawn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
+dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
+dawn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
+dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 
 include(FetchContent)
 
@@ -102,11 +99,11 @@ option(DN_BUNDLED_LCMS2 "Use a fast bundled lcms2 instead of the system one" ON)
 set(DN_WITH_LCMS2_FAST_FLOAT FALSE)
 set(DN_WITH_LCMS2_THREADED FALSE)
 
-add_library(dn_lcms2 INTERFACE)
-set(DN_LCMS2_TARGET dn_lcms2)
+add_library(dawn-lcms2 INTERFACE)
+set(DAWN_LCMS2_TARGET dawn-lcms2)
 if(NOT DN_BUNDLED_LCMS2)
 	pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET lcms2)
-	target_link_libraries(dn_lcms2 INTERFACE PkgConfig::LCMS2)
+	target_link_libraries(dawn-lcms2 INTERFACE PkgConfig::LCMS2)
 
 	# Either lcms2 has been built to include the plugin, or it hasn't.
 	find_path(LCMS2_FAST_FLOAT_INCLUDE_DIR lcms2_fast_float.h
@@ -121,9 +118,9 @@ if(NOT DN_BUNDLED_LCMS2)
 		REQUIRED_VARS LCMS2_FAST_FLOAT_LIB LCMS2_FAST_FLOAT_INCLUDE_DIR)
 	if(Lcms2FastFloat_FOUND)
 		set(DN_WITH_LCMS2_FAST_FLOAT TRUE)
-		target_link_libraries(dn_lcms2 INTERFACE
+		target_link_libraries(dawn-lcms2 INTERFACE
 			"${LCMS2_FAST_FLOAT_LIB}")
-		target_include_directories(dn_lcms2 INTERFACE
+		target_include_directories(dawn-lcms2 INTERFACE
 			"${LCMS2_FAST_FLOAT_INCLUDE_DIR}")
 	endif()
 else()
@@ -151,8 +148,11 @@ else()
 		$<BUILD_INTERFACE:${lcms2_SOURCE_DIR}/plugins/fast_float/include>)
 	target_include_directories(lcms2_threaded PUBLIC
 		$<BUILD_INTERFACE:${lcms2_SOURCE_DIR}/plugins/threaded/include>)
-	target_link_libraries(dn_lcms2 INTERFACE
+	target_link_libraries(dawn-lcms2 INTERFACE
 		lcms2 lcms2_fast_float lcms2_threaded)
+
+	# Have CTest not fail.
+	set_target_properties(testcms PROPERTIES EXCLUDE_FROM_ALL FALSE)
 endif()
 
 option(DN_WITH_JPEG_QS "Bundled JPEG Quant Smooth" ON)
@@ -202,7 +202,7 @@ add_subdirectory(dn)
 if(WIN32)
 	install(TARGETS dn libdn dnthumbd
 		RUNTIME DESTINATION .)
-	install(DIRECTORY "${DN_MSYS2_PREFIX}/bin/"
+	install(DIRECTORY "${DAWN_MSYS2_PREFIX}/bin/"
 		DESTINATION .
 		FILES_MATCHING
 			PATTERN "*.dll"
@@ -211,22 +211,22 @@ if(WIN32)
 		RUNTIME DESTINATION platforms
 		LIBRARY DESTINATION platforms)
 	install(FILES
-		"${DN_MSYS2_PREFIX}/share/mime/globs2"
-		"${DN_MSYS2_PREFIX}/share/mime/subclasses"
+		"${DAWN_MSYS2_PREFIX}/share/mime/globs2"
+		"${DAWN_MSYS2_PREFIX}/share/mime/subclasses"
 		DESTINATION share/mime)
 
 	install(FILES
-		"${DN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"
+		"${DAWN_MSYS2_PREFIX}/bin/vk_swiftshader_icd.json"
 		DESTINATION .)
 
 	# This installation is pretty big, with a ton of files, thus it's optional.
 	install(FILES
-		"${DN_MSYS2_PREFIX}/bin/wperl.exe"
-		"${DN_MSYS2_PREFIX}/bin/exiftool"
+		"${DAWN_MSYS2_PREFIX}/bin/wperl.exe"
+		"${DAWN_MSYS2_PREFIX}/bin/exiftool"
 		DESTINATION .
 		OPTIONAL)
 	install(DIRECTORY
-		"${DN_MSYS2_PREFIX}/lib/perl5/"
+		"${DAWN_MSYS2_PREFIX}/lib/perl5/"
 		DESTINATION lib/perl5
 		OPTIONAL)
 

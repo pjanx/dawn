@@ -53,9 +53,9 @@ add_custom_command(
 	COMMENT "Generate CIE 1931 2° 1 nm CMF header"
 	VERBATIM
 )
-add_custom_target(dn_cmf_header
+add_custom_target(dn-cmf-header
 	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h)
-add_dependencies(dn dn_cmf_header)
+add_dependencies(dn dn-cmf-header)
 
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
@@ -230,8 +230,8 @@ else()
 endif()
 
 if(BUILD_TESTING)
-	add_test(NAME dn_help COMMAND dn --help)
-	set_tests_properties(dn_help PROPERTIES
+	add_test(NAME dn-help COMMAND dn --help)
+	set_tests_properties(dn-help PROPERTIES
 		ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 	)
 endif()

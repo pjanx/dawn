@@ -4,19 +4,18 @@
 # Copyright The dawn Authors
 # SPDX-License-Identifier: MPL-2.0
 #
-# dn_lxdr_generate(<out_header> <namespace> <prefix_camel> <lxdr>...)
+# lxdr_generate(<out_header> <namespace> <prefix_camel> <lxdr>...)
 #
-# Writes <out_header> (typically
-# ${CMAKE_BINARY_DIR}/generated/ipc/<name>.lxdr.hpp) from the listed
+# Writes <out_header> (typically .../<name>.lxdr.hpp) from the listed
 # .lxdr files.  Does not attach the header to any compile target.
 #
 
-function(dn_lxdr_generate out_header namespace prefix_camel)
+function(lxdr_generate out_header namespace prefix_camel)
 	if(NOT AWK)
-		message(FATAL_ERROR "dn_lxdr_generate requires AWK")
+		message(FATAL_ERROR "lxdr_generate requires AWK")
 	endif()
 	if(NOT ARGN)
-		message(FATAL_ERROR "dn_lxdr_generate: no .lxdr inputs")
+		message(FATAL_ERROR "lxdr_generate: no .lxdr inputs")
 	endif()
 
 	set(lxdrgen "${PROJECT_SOURCE_DIR}/submodules/liberty/tools/lxdrgen.awk")
@@ -47,5 +46,5 @@ function(dn_lxdr_generate out_header namespace prefix_camel)
 		COMMENT "Generating ${out_name}"
 		VERBATIM
 	)
-	add_custom_target(dn_lxdr_${out_ident} DEPENDS "${out_header}")
+	add_custom_target(lxdr-${out_ident} DEPENDS "${out_header}")
 endfunction()
