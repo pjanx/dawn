@@ -1,8 +1,17 @@
-add_executable(gen_fixtures gen-fixtures.cpp)
-target_link_libraries(gen_fixtures PRIVATE
+add_executable(gen-fixtures gen-fixtures.cpp)
+target_link_libraries(gen-fixtures PRIVATE
 	PkgConfig::ZLIB
 	${DAWN_LCMS2_TARGET}
 )
+
+pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
+if (LIBPNG_FOUND)
+	add_executable(gen-sample gen-sample.c)
+	target_link_libraries(gen-sample PRIVATE
+		PkgConfig::LIBPNG
+		${DAWN_LCMS2_TARGET}
+	)
+endif()
 
 set(DAWN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
 set(DAWN_TEST_FIXTURE_FILES
@@ -42,8 +51,8 @@ set(DAWN_TEST_FIXTURE_FILES
 )
 add_custom_command(
 	OUTPUT ${DAWN_TEST_FIXTURE_FILES}
-	COMMAND "$<TARGET_FILE:gen_fixtures>" "${DAWN_TEST_FIXTURES_DIR}"
-	DEPENDS gen_fixtures
+	COMMAND "$<TARGET_FILE:gen-fixtures>" "${DAWN_TEST_FIXTURES_DIR}"
+	DEPENDS gen-fixtures
 	COMMENT "Generating test fixtures in the build tree"
 	VERBATIM
 )
@@ -63,8 +72,8 @@ set_tests_properties(channels PROPERTIES
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-add_executable(bench_open bench-open.cpp)
-target_link_libraries(bench_open PRIVATE dawn::libdn)
+add_executable(bench-open bench-open.cpp)
+target_link_libraries(bench-open PRIVATE dawn::libdn)
 
 add_executable(test-xdg test-xdg.cpp "${PROJECT_SOURCE_DIR}/dn/xdg.cpp")
 target_include_directories(test-xdg PRIVATE
