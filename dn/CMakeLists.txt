@@ -137,6 +137,7 @@ else()
 		target_sources(dn PRIVATE "${DN_ICON_RC}")
 	else()
 		add_custom_target(icons ALL DEPENDS ${DN_ICON_PNG_LIST})
+
 		include(GNUInstallDirs)
 		install(FILES "${DN_ICON_SVG}"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")

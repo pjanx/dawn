@@ -229,6 +229,12 @@ if (WIN32)
 	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/msys2-cleanup.cmake")
 elseif (APPLE)
 	include(cmake/macos-install.cmake)
+else()
+	include(GNUInstallDirs)
+	install(TARGETS dn dnthumbd
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+	install(TARGETS libdn
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif()
 
 include(CTest)
