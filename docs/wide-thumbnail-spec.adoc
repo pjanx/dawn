@@ -1,7 +1,7 @@
 Wide Thumbnail Managing Standard
 ================================
 Přemysl Eric Janouch <p@janouch.name>
-v0.2, 2026-08-20: Cross-platform cache locations
+v0.2, 2026-08-23: Cross-platform cache locations
 :description: Wide-format thumbnail managment specification
 
 Introduction
@@ -35,15 +35,15 @@ Storage
 -------
 The user-specific base directory for thumbnails is:
 
- - on systems following the XDG Base Directory Specification,
-   _$XDG_CACHE_HOME/thumbnails_, defaulting to _~/.cache/thumbnails_,
  - on macOS, _~/Library/Caches/thumbnails_,
- - on Windows, _%LOCALAPPDATA%/cache/thumbnails_.
+ - on Windows, _%LOCALAPPDATA%/cache/thumbnails_,
+ - other systems follow the XDG Base Directory Specification:
+   _$XDG_CACHE_HOME/thumbnails_, defaulting to _~/.cache/thumbnails_.
 
-The list of subdirectories is similar to the original specification, but a
-`wide-` prefix is added, turning `large` into `wide-large`, and so on.  The
-`fail` directory does not constitute an exception to this rule, and is also
-duplicated, if necessary.
+The list of subdirectories is similar to the original specification,
+but a `wide-` prefix is added, turning `large` into `wide-large`, and so on.
+The `fail` directory does not constitute an exception to this rule,
+and is also duplicated, if necessary.
 
 The dimensions differ like so: the original _height_ for the respective sizes is
 kept, but a factor of 2 is applied to the _width_:
@@ -102,6 +102,9 @@ unspecified color spaces.  The full list of allowed values is:
 | `Display P3` | sRGB with DCI-P3 primaries, as used by Apple.
 |===
 
+If converting, you should pick the color space in such a way as to not crop
+the original gamut unnecessarily.
+
 Interactions
 ------------
 Programs may fall back to picking up and rescaling a square-sized thumbnail if
@@ -128,8 +131,9 @@ References
 
 Change history
 --------------
-v0.2, 2026-08-20, Přemysl Eric Janouch::
-	Define cache roots for macOS and Windows in addition to XDG systems.
+v0.2, 2026-08-23, Přemysl Eric Janouch::
+	Define special cache roots for macOS and Windows.
+	Suggest wider color gamuts.
 
 v0.1, 2021-12-29, Přemysl Eric Janouch::
 	Preliminary draft.

@@ -1,0 +1,88 @@
+Functional specification
+========================
+
+The fate of this document is uncertain, it might make more sense to put
+notes like these in the source code.
+
+Test environments
+-----------------
+At minimum, run the tests pre-release.  Automation is a bit tough.
+Also see link:configuring-your-system.adoc[about configuring a system].
+
+ - Wayland: headless Weston
+    * Use for automated tests.
+    * No server-side decorations: check client-side decorations.
+      Weston crops our shadow, may add its own.
+
+ - Wayland: GNOME's Hell (Mutter)
+    * A major Linux desktop environment.
+    * No server-side decorations: check client-side decorations.
+      Mutter doesn't crop our shadow.
+    * Check if colour management works.
+    * CSD: must invoke the right cursor on mouse move.
+    * CSD: right clicks must invoke the compositor's context menu.
+    * CSD: double click to maximise/restore must return
+      to the original window positioning.
+
+ - Wayland: Sway (wlroots)
+    * Check if colour management works.
+    * Have thumbnailing run in one window, send a new _dn_ window to another
+      workspace, go to that workspace: _dn_ must not stall.
+
+ - X11: i3 + picom
+    * Check if colour management works.
+    * Keep the window inactive, go to another workspace, go back:
+      the window stays mapped the whole time, _dn_ must render on the expose.
+
+ - macOS
+    * Check if colour management works.
+    * Watch idle CPU usage: we've had a situation with too frequent presents.
+
+ - Windows
+    * A major operating system.
+    * Check if colour management works.
+
+ - Linux + Wine
+
+Weston
+~~~~~~
+The `gl` renderer has been observed to render upside-down while `headless`.
+This can be fixed with `--transform` but it hints at unreliability.
+
+The `desktop` shell is useful for CSD testing, and the  `kiosk` shell is useful
+for not having to manage the window position.
+
+```
+unset DISPLAY QT_QPA_PLATFORM
+XDG_RUNTIME_DIR=$PWD weston --backend=headless \
+  --renderer=vulkan --width=1600 --height=1200 \
+  --socket=wayland-0 \
+  --idle-time=0 \
+  --debug
+XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 ./bin/dn
+XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 weston-screenshooter
+XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 weston-debug scene-graph
+```
+
+Other Weston backends seem to be useful for interactive testing.
+
+Thumbnails
+----------
+When loading a directory, retrieve thumbnails as fast as possible:
+
+ - First, rescale already loaded thumbnails from a different nominal size.
+ - Then try to fetch existing thumbnails, in this order:
+    * _wide-thumbnail-spec_
+    * XDG _thumbnail-spec_
+ - The nominal size is attempted first, then smaller sizes, then larger ones.
+
+The wide thumbnail view is only happy _wide-thumbnail-spec_ images
+of the nominal size, with a declared gamut.
+
+The square thumbnail view is also happy with nominal size _wide-thumbnail-spec_
+images rescaled to fit the square.
+
+If happiness is not achieved, create a new thumbnail, and try to save it.
+
+While creating a thumbnail, fetching the thumbnail size itself first before data
+helps stabilise layout.  As of writing, there is no mechanism to pass this.

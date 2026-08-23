@@ -111,13 +111,15 @@ extract() {
 	#rm -rf Image-ExifTool-*
 }
 
-# Native rustc cannot load upstream rust-std; compile std from rust-src.
 # TODO(p): Try to push this bullshit directly to MSYS2.
 resvg() {
 	status Building resvg
 	mkdir -p tmp include/resvg bin lib/pkgconfig
 	src=$PWD/tmp
 	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
+
+	# Native rustc cannot load upstream rust-std; compile std from rust-src.
+	# TODO(p): Recheck what specifically happens.
 	# Vendor config replaces crates-io; -Zbuild-std needs hashbrown etc.
 	rm -f $src/.cargo/config
 

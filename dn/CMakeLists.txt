@@ -195,16 +195,16 @@ if(DN_WITH_WAYLAND)
 	target_link_libraries(dn PRIVATE PkgConfig::DN_WAYLAND)
 endif()
 
-# User guide: build tree at share/doc/dn (../share from bin/), installed
-# next to the application on each platform.
+# User guide: build tree at share/docs/dn (../share from bin/),
+# installed next to the application on each platform.
 set(DN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dn")
 file(MAKE_DIRECTORY "${DN_HELP_DIR}")
 configure_file(
-	"${PROJECT_SOURCE_DIR}/doc/dn.html.in"
+	"${PROJECT_SOURCE_DIR}/docs/dn.html.in"
 	"${DN_HELP_DIR}/dn.html"
 	@ONLY)
 configure_file(
-	"${PROJECT_SOURCE_DIR}/doc/stylesheet.css"
+	"${PROJECT_SOURCE_DIR}/docs/stylesheet.css"
 	"${DN_HELP_DIR}/stylesheet.css"
 	COPYONLY)
 

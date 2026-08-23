@@ -5,7 +5,7 @@ Dawn
 'Dawn' is a multiplatform colour-managed image browser, with very high standards
 for fidelity and responsivity.
 
-image::doc/dn.webp["Screenshot of both the browser and the viewer"]
+image::docs/dn.webp["Screenshot of both the browser and the viewer"]
 
 Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
@@ -14,8 +14,8 @@ Right now, we've mostly reached our first milestone, and we're cleaning up
 AI-accelerated mess before we can afford to continue making large steps.
 
 The project comes with a promise of basic maintenance.
-Also see link:doc/plan.adoc[Plan],
-and a detailed link:doc/rationale.adoc[Rationale].
+Also see link:docs/plan.adoc[Plan],
+and a detailed link:docs/rationale.adoc[Rationale].
 
 Features
 --------
@@ -48,7 +48,8 @@ Packages
 --------
 Regular releases are sporadic.  git master should be stable enough.
 
-https://janouch.name/cd[Windows packages can be found here].
+https://janouch.name/cd[Windows packages can be found here],
+and they work in Wine.
 
 On Windows, if your account is '`high integrity`' and you have no true Vulkan
 backend installed, manually rename 'vk_swiftshader.dll' to 'vulkan-1.dll'.
@@ -82,12 +83,12 @@ $ cmake --build build-msys2 -- package
 
 Configuration
 -------------
-See link:doc/configuring-your-system.adoc[Configuring your system].
+See link:docs/configuring-your-system.adoc[Configuring your system].
 If everything goes beautifully, the following test image will exercise your
 display's true gamut, and you'll be able to see the finer steps.
 The bottom row should look more like '`linear 188`' (a popular bug).
 
-image::doc/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
+image::docs/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
 
 Note that 'Dawn' currently implements Bayer dithering, so you might not
 be able to distinguish an 8-bit swapchain.

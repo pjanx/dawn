@@ -6,7 +6,7 @@ General
  * 'dawn' is the name of the project, 'dn' is the name of the GUI application.
    This influences naming.
  * The general naming convention for files and directories is
-   _lower-case-with-dashes_.  CMake has an exception for `FindPackage`.
+   _lower-case-with-hyphens_.  CMake has an exception for `FindPackage`.
 
 C++
 ---
@@ -50,3 +50,4 @@ CMake
 -----
  * Local variables are spelled out in lowercase.
  * Prefer `PROJECT_` over `CMAKE_` where applicable.
+ * Targets split words using hyphens, not underscores.

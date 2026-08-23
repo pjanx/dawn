@@ -38,7 +38,7 @@ $ colormgr device-add-profile xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d289
 $ colormgr device-make-profile-default xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
 ```
 
-'dawn' will eventually get a manual override option as a cheap alternative.
+'Dawn' will eventually get a manual override option as a cheap alternative.
 
 *nix/X11
 --------
@@ -84,7 +84,7 @@ gdctl set -L -M DP-1 --color-mode sdr-native
 
 The compositor will ignore anything you've configured and read the monitor's
 native profile from its EDID.  Hopefully, it will be close enough for sRGB
-content.  'dawn' will read the actual profile from 'colord'.
+content.  'Dawn' will read the actual profile from 'colord'.
 
 *Sway/wlroots:* In _~/.config/sway/config_, put the following snippet:
 

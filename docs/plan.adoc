@@ -24,10 +24,12 @@ Features not thoroughly tested are assumed to be broken.
 Milestones
 ----------
  - [x] Plain out replace https://git.janouch.name/p/fiv[fiv]
-       (excluding GVfs, printing, wide thumbnails)
+       (excluding GVfs, printing, reverse search, JPEG cropper)
     * [ ] Debug, clean up, branch a stable version
  - [ ] Integrate filesystem scanning, automatic tagging, browsing from
        https://git.janouch.name/p/gallery[gallery]
+    * This will replace _wide-thumbnail-spec_ with an internal database,
+      plus platform-based thumbnailers as backup.
     * [ ] Debug, clean up, branch a stable version
  - [ ] Replace GNOME Files (including GVfs integration or equivalent abilities)
     * [ ] Debug, clean up, branch a stable version

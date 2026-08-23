@@ -184,6 +184,9 @@ a reasonable ratio, such as 2:1.  To show them at an appropriate quality,
 you must also store them as such.  See link:wide-thumbnail-spec.adoc[
 the specification] I've put together.
 
+For the second milestone, wide thumbnails will move into a database, and abandon
+trying to follow a specification.  Instead, we will try to reuse platform tools.
+
 Due to quality requirements and performance constraints, scaling source image
 data for thumbnails must be done on a GPU.  The GPU is a bottleneck,
 and a special data path.  The solution has grown an entire thumbnail scheduler.
