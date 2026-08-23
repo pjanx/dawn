@@ -1,0 +1,58 @@
+dn(1)
+=====
+:doctype: manpage
+:manmanual: Dawn Manual
+:mansource: Dawn {release-version}
+
+Name
+----
+dn - Image browser and viewer
+
+Synopsis
+--------
+*dn* [_OPTION_]... [_PATH_ | _URI_]...
+
+Description
+-----------
+*dn* is a general-purpose image browser and viewer: pass it a directory path
+or URI to open it for browsing, or pass an image to open it for viewing.
+In case that multiple arguments are passed, they'll be opened in
+separate windows.
+
+For more information concerning usage, press *F1* in the application to open
+the _User Guide_.
+
+// TODO(p): Try to merge the two, though this one focuses on command line usage.
+
+Options
+-------
+*--browse*::
+	When an image is passed, start in browsing mode, and preselect that
+	image in its containing directory.  This is used by *dn*'s inode/directory
+	handler to implement the "Open Containing Folder" feature of certain
+	applications.
+
+*--invalidate-cache*::
+	Invalidate the wide thumbnail cache, removing thumbnails for files that can
+	no longer be found.
+
+*--list-supported-media-types*::
+	Output supported media types and exit.  This is used by a script to update
+	the list of MIME types within *dn*'s desktop file when the list
+	of GdkPixbuf loaders changes.
+
+*-V*, *--version*::
+	Output version information and exit.
+
+Reporting bugs
+--------------
+Use https://git.janouch.name/p/dawn to report bugs, request features,
+or submit pull requests.
+
+See also
+--------
+_Desktop Entry Specification_,
+https://specifications.freedesktop.org/desktop-entry-spec/latest/[].
+
+_Thumbnail Managing Standard_,
+https://specifications.freedesktop.org/thumbnail-spec/thumbnail-spec-latest.html[].

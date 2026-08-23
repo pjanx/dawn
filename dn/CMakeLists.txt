@@ -62,7 +62,7 @@ dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
 dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
 dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
 
-if(WIN32)
+if (WIN32)
 	target_sources(dn PRIVATE
 		display-profile-windows.cpp
 		assoc-windows.cpp
@@ -70,7 +70,7 @@ if(WIN32)
 	target_link_libraries(dn PRIVATE gdi32 shell32 shlwapi ole32 advapi32)
 	set_target_properties(dn PROPERTIES
 		WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
-elseif(APPLE)
+elseif (APPLE)
 	enable_language(OBJCXX)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
 	find_library(DN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
@@ -98,7 +98,7 @@ endif()
 # Application icon: SVG → PNG/ICO (xT) on non-Apple; Swift squircle ICNS (xM)
 # on Darwin. Qt looks up IDI_ICON1 and nothing else.
 set(DN_ICON_SVG "${CMAKE_CURRENT_SOURCE_DIR}/dn.svg")
-if(APPLE)
+if (APPLE)
 	find_program(DN_SWIFT_EXECUTABLE swift REQUIRED)
 	set(MACOSX_BUNDLE_ICON_FILE dn.icns)
 	set(DN_ICON_ICNS "${CMAKE_CURRENT_BINARY_DIR}/${MACOSX_BUNDLE_ICON_FILE}")
@@ -116,13 +116,13 @@ else()
 	include(IconUtils)
 	set(DN_ICON_BASE "${PROJECT_BINARY_DIR}/icons")
 	set(DN_ICON_PNG_LIST)
-	foreach(DN_ICON_SIZE 16 32 48 256)
+	foreach (DN_ICON_SIZE 16 32 48 256)
 		icon_to_png(dn "${DN_ICON_SVG}" ${DN_ICON_SIZE}
 			"${DN_ICON_BASE}" DN_ICON_PNG)
 		list(APPEND DN_ICON_PNG_LIST "${DN_ICON_PNG}")
 	endforeach()
 
-	if(WIN32)
+	if (WIN32)
 		list(REMOVE_ITEM DN_ICON_PNG_LIST "${DN_ICON_PNG}")
 		set(DN_ICON_ICO "${CMAKE_CURRENT_BINARY_DIR}/dn.ico")
 		icon_for_win32("${DN_ICON_ICO}" "${DN_ICON_PNG_LIST}" "${DN_ICON_PNG}")
@@ -149,14 +149,14 @@ else()
 	endif()
 endif()
 
-if(DN_WITH_WAYLAND)
+if (DN_WITH_WAYLAND)
 	pkg_get_variable(DN_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
-	if(NOT DN_WAYLAND_PROTOCOLS_DIR)
+	if (NOT DN_WAYLAND_PROTOCOLS_DIR)
 		message(FATAL_ERROR "wayland-protocols pkgdatadir not found")
 	endif()
 
 	pkg_get_variable(DN_WAYLAND_SCANNER wayland-scanner wayland_scanner)
-	if(NOT DN_WAYLAND_SCANNER)
+	if (NOT DN_WAYLAND_SCANNER)
 		find_program(DN_WAYLAND_SCANNER wayland-scanner REQUIRED)
 	endif()
 
@@ -195,41 +195,62 @@ if(DN_WITH_WAYLAND)
 	target_link_libraries(dn PRIVATE PkgConfig::DN_WAYLAND)
 endif()
 
-# User guide: build tree at share/docs/dn (../share from bin/),
+# User guide: build tree at share/docs/dawnn (../share from bin/),
 # installed next to the application on each platform.
-set(DN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dn")
-file(MAKE_DIRECTORY "${DN_HELP_DIR}")
+set(DAWN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dawn")
+file(MAKE_DIRECTORY "${DAWN_HELP_DIR}")
 configure_file(
 	"${PROJECT_SOURCE_DIR}/docs/dn.html.in"
-	"${DN_HELP_DIR}/dn.html"
+	"${DAWN_HELP_DIR}/dn.html"
 	@ONLY)
 configure_file(
 	"${PROJECT_SOURCE_DIR}/docs/stylesheet.css"
-	"${DN_HELP_DIR}/stylesheet.css"
+	"${DAWN_HELP_DIR}/stylesheet.css"
 	COPYONLY)
 
-if(APPLE)
+if (APPLE)
 	set_source_files_properties(
-		"${DN_HELP_DIR}/dn.html"
-		"${DN_HELP_DIR}/stylesheet.css"
-		PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/share/doc/dn")
+		"${DAWN_HELP_DIR}/dn.html"
+		"${DAWN_HELP_DIR}/stylesheet.css"
+		PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/share/doc/dawn")
 	target_sources(dn PRIVATE
-		"${DN_HELP_DIR}/dn.html"
-		"${DN_HELP_DIR}/stylesheet.css")
-elseif(WIN32)
+		"${DAWN_HELP_DIR}/dn.html"
+		"${DAWN_HELP_DIR}/stylesheet.css")
+elseif (WIN32)
 	install(FILES
-		"${DN_HELP_DIR}/dn.html"
-		"${DN_HELP_DIR}/stylesheet.css"
-		DESTINATION share/doc/dn)
+		"${DAWN_HELP_DIR}/dn.html"
+		"${DAWN_HELP_DIR}/stylesheet.css"
+		DESTINATION share/doc/dawn)
 else()
 	include(GNUInstallDirs)
 	install(FILES
-		"${DN_HELP_DIR}/dn.html"
-		"${DN_HELP_DIR}/stylesheet.css"
-		DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/dn")
+		"${DAWN_HELP_DIR}/dn.html"
+		"${DAWN_HELP_DIR}/stylesheet.css"
+		DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/dawn")
+
+	# This manual page generator should be good enough.
+	set(ASCIIMAN "${PROJECT_SOURCE_DIR}/submodules/liberty/tools/asciiman.awk")
+	foreach (page dn)
+		set(page_output "${CMAKE_CURRENT_BINARY_DIR}/${page}.1")
+		list(APPEND project_MAN_PAGES "${page_output}")
+		add_custom_command(OUTPUT ${page_output}
+			COMMAND env LC_ALL=C asciidoc-release-version=${PROJECT_VERSION}
+				${AWK} -f ${ASCIIMAN} "${PROJECT_SOURCE_DIR}/docs/${page}.adoc"
+				> ${page_output}
+			DEPENDS "${PROJECT_SOURCE_DIR}/docs/${page}.adoc" ${ASCIIMAN}
+			COMMENT "Generating man page for ${page}" VERBATIM)
+	endforeach()
+
+	add_custom_target(docs ALL DEPENDS ${project_MAN_PAGES})
+
+	foreach (page ${project_MAN_PAGES})
+		string(REGEX MATCH "\\.([0-9])$" manpage_suffix "${page}")
+		install(FILES "${page}"
+			DESTINATION "${CMAKE_INSTALL_MANDIR}/man${CMAKE_MATCH_1}")
+	endforeach()
 endif()
 
-if(BUILD_TESTING)
+if (BUILD_TESTING)
 	add_test(NAME dn-help COMMAND dn --help)
 	set_tests_properties(dn-help PROPERTIES
 		ENVIRONMENT "QT_QPA_PLATFORM=offscreen"

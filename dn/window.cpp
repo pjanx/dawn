@@ -132,14 +132,14 @@ help_document_path()
 {
 	const QString app_dir = QCoreApplication::applicationDirPath();
 #if defined(Q_OS_WIN)
-	return QDir::cleanPath(
-		QDir(app_dir).absoluteFilePath(QStringLiteral("share/doc/dn/dn.html")));
+	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
+		QStringLiteral("share/doc/dawn/dn.html")));
 #elif defined(Q_OS_MACOS)
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("../Resources/share/doc/dn/dn.html")));
+		QStringLiteral("../Resources/share/doc/dawn/dn.html")));
 #else
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("../share/doc/dn/dn.html")));
+		QStringLiteral("../share/doc/dawn/dn.html")));
 #endif
 }
 
@@ -1438,6 +1438,7 @@ Window::handle_touch(QTouchEvent *event)
 	const float oang = atan2f(ody, odx);
 	const float nang = atan2f(ndy, ndx);
 	float dangle = nang - oang;
+	// TODO(p): Pretty sure there is a constant for this somewhere.
 	if (dangle > 3.14159265358979323846f)
 		dangle -= 2.0f * 3.14159265358979323846f;
 	if (dangle < -3.14159265358979323846f)

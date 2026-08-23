@@ -15,12 +15,12 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	add_compile_options(-Wall -Wextra -Wpedantic
 		-Wno-unused-parameter -Wno-missing-field-initializers)
 endif()
 
-if(WIN32 AND CMAKE_CROSSCOMPILING)
+if (WIN32 AND CMAKE_CROSSCOMPILING)
 	set(DAWN_MSYS2_PREFIX "${PROJECT_BINARY_DIR}/ucrt64")
 	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
 	list(APPEND CMAKE_FIND_ROOT_PATH "${DAWN_MSYS2_PREFIX}")
@@ -37,7 +37,7 @@ if(WIN32 AND CMAKE_CROSSCOMPILING)
 	set(QT_NO_QTPATHS_DEPLOYMENT_WARNING ON)
 endif()
 
-if(APPLE)
+if (APPLE)
 	# Build tree: bin/dn.app/Contents/MacOS vs bin/libdn.dylib.
 	# Install: MacOS/dn, Frameworks/libdn.dylib (macdeployqt leaves
 	# @rpath/libdn.dylib; Homebrew dylibs become @executable_path).
@@ -101,7 +101,7 @@ set(DAWN_WITH_LCMS2_THREADED FALSE)
 
 add_library(dawn-lcms2 INTERFACE)
 set(DAWN_LCMS2_TARGET dawn-lcms2)
-if(NOT DN_BUNDLED_LCMS2)
+if (NOT DN_BUNDLED_LCMS2)
 	pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET lcms2)
 	target_link_libraries(dawn-lcms2 INTERFACE PkgConfig::LCMS2)
 
@@ -116,7 +116,7 @@ if(NOT DN_BUNDLED_LCMS2)
 	include(FindPackageHandleStandardArgs)
 	find_package_handle_standard_args(Lcms2FastFloat
 		REQUIRED_VARS LCMS2_FAST_FLOAT_LIB LCMS2_FAST_FLOAT_INCLUDE_DIR)
-	if(Lcms2FastFloat_FOUND)
+	if (Lcms2FastFloat_FOUND)
 		set(DAWN_WITH_LCMS2_FAST_FLOAT TRUE)
 		target_link_libraries(dawn-lcms2 INTERFACE
 			"${LCMS2_FAST_FLOAT_LIB}")
@@ -156,7 +156,7 @@ else()
 endif()
 
 option(DAWN_WITH_JPEG_QS "Bundled JPEG Quant Smooth" ON)
-if(DAWN_WITH_JPEG_QS)
+if (DAWN_WITH_JPEG_QS)
 	FetchContent_Declare(jpegqs
 		URL https://github.com/ilyakurdyukov/jpeg-quantsmooth/archive/refs/tags/1.20260122.tar.gz
 		URL_HASH SHA256=7dcbaa7d994511a03dba845aa218a25f9c8e70c0bcb0800ff61ae3d92dd50c3d
@@ -171,13 +171,13 @@ if(DAWN_WITH_JPEG_QS)
 				<SOURCE_DIR>/include
 	)
 	FetchContent_MakeAvailable(jpegqs)
-	if(NOT TARGET jpegqs)
+	if (NOT TARGET jpegqs)
 		message(FATAL_ERROR "Bundled jpegqs did not create target 'jpegqs'")
 	endif()
 endif()
 
 # TODO(p): This will want to be single instance everywhere.
-if(UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE)
 	set(DN_WITH_SINGLE_INSTANCE TRUE)
 else()
 	set(DN_WITH_SINGLE_INSTANCE FALSE)
@@ -199,7 +199,7 @@ add_subdirectory(libdn)
 add_subdirectory(dnthumbd)
 add_subdirectory(dn)
 
-if(WIN32)
+if (WIN32)
 	install(TARGETS dn libdn dnthumbd
 		RUNTIME DESTINATION .)
 	install(DIRECTORY "${DAWN_MSYS2_PREFIX}/bin/"
@@ -232,13 +232,12 @@ if(WIN32)
 
 	# Prune unused libraries.
 	install(SCRIPT "${PROJECT_SOURCE_DIR}/cmake/msys2-cleanup.cmake")
-endif()
-if(APPLE)
+elseif (APPLE)
 	include(cmake/macos-install.cmake)
 endif()
 
 include(CTest)
-if(BUILD_TESTING)
+if (BUILD_TESTING)
 	add_subdirectory(tests)
 endif()
 

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>dn: User Guide</title>
+<title>Dawn: User Guide</title>
 <link rel="stylesheet" href="stylesheet.css">
 <style>
 q:lang(en):before { content: "‘"; }
@@ -11,7 +11,7 @@ q:lang(en):after { content: "’"; }
 </head>
 <body>
 
-<h1>dn: User Guide</h1>
+<h1>Dawn: User Guide</h1>
 
 <p class="details">
 <span id="author">Přemysl Eric Janouch</span><br>
@@ -20,8 +20,8 @@ q:lang(en):after { content: "’"; }
 
 <h2>Introduction</h2>
 
-<p><i>dn</i> is a colour-managed image browser and viewer. This document is a
-compact overview of the application as it stands. Press
+<p><i>Dawn</i> is a colour-managed image browser and viewer. This document is
+a compact overview of the application as it stands. Press
 <kbd>Ctrl</kbd>&#8239;+&#8239;<kbd>?</kbd> in the program for the current
 keyboard shortcut list.
 
@@ -39,7 +39,7 @@ middle-drag pans an image; <kbd>Ctrl</kbd>&#8239;+&#8239;middle-drag zooms;
 
 <h2>Browser</h2>
 
-<p><i>dn</i> starts in a directory browser unless you open a file. The left
+<p><i>Dawn</i> starts in a directory browser unless you open a file. The left
 sidebar lists Computer, Home, Pictures when that folder exists, then
 breadcrumbs to the current directory and its children. The toolbar changes
 thumbnail size, tiled or grid layout, filename captions, whether unsupported
@@ -73,7 +73,7 @@ ships ExifTool; elsewhere it must be on the search path.
 
 <h2>Thumbnails</h2>
 
-<p><i>dn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
+<p><i>Dawn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
 cache, typically <i>~/.cache/thumbnails</i>. To drop entries that no longer
 match a file, run:
 
@@ -83,7 +83,7 @@ dn --invalidate-cache
 
 <h2>Configuration</h2>
 
-<p><i>dn</i> uses the display colour profile provided by the operating system:
+<p><i>Dawn</i> uses the display colour profile provided by the operating system:
 colord on Linux, the profile assigned in Windows Colour Management, or the
 profile on the display in macOS System Settings. Assign the profile that
 matches the monitor if colours look wrong.
