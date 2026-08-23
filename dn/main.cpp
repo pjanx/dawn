@@ -109,14 +109,13 @@ report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 enum class Remote : uint8_t { Done, Failed, Isolated };
 
 Remote
-try_remote_open(const QString &build_id, const QString &session,
-	const QStringList &paths, bool &reported_mismatch)
+try_remote_open(const QString &session, const QStringList &paths,
+	bool &reported_mismatch)
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
 	HelloStatus status = HelloStatus::Unavailable;
-	auto client =
-		dn::ipc::BlockingClient::connect(build_id.toUtf8().toStdString(),
-			session.toUtf8().toStdString(), &status);
+	auto client = dn::ipc::BlockingClient::connect(
+		session.toUtf8().toStdString(), &status);
 	if (client) {
 		if (handoff_open(*client, paths))
 			return Remote::Done;
@@ -200,11 +199,10 @@ main(int argc, char **argv)
 #if DN_WITH_SINGLE_INSTANCE
 	unique_ptr<dn::InstanceHost> host;
 	if (parser.isSet(new_instance_opt)) {
-		const QString build_id = QString::fromUtf8(DN_IPC_BUILD_ID);
 		const QString session = instance_session();
 		bool reported_mismatch = false;
 		switch (
-			try_remote_open(build_id, session, to_open, reported_mismatch)) {
+			try_remote_open(session, to_open, reported_mismatch)) {
 		case Remote::Done:
 			return 0;
 		case Remote::Failed:
@@ -215,8 +213,7 @@ main(int argc, char **argv)
 
 		const auto listen = dn::ipc::Endpoint::listen("instance");
 		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
-			switch (try_remote_open(
-				build_id, session, to_open, reported_mismatch)) {
+			switch (try_remote_open(session, to_open, reported_mismatch)) {
 			case Remote::Done:
 				return 0;
 			case Remote::Failed:
@@ -227,8 +224,7 @@ main(int argc, char **argv)
 		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in exec().
 			// A Hello during init may time out (250ms) and isolate.
-			host = make_unique<dn::InstanceHost>(
-				listen.fd, app, build_id, session);
+			host = make_unique<dn::InstanceHost>(listen.fd, app, session);
 		}
 	}
 #endif

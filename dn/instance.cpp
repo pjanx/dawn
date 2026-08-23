@@ -50,8 +50,7 @@ map_open_error(OpenResult r)
 }  // namespace
 
 struct InstanceHost::Impl {
-	Impl(int listen_fd, App &app, const QString &build_id,
-		const QString &session, InstanceHost *host);
+	Impl(int listen_fd, App &app, const QString &session, InstanceHost *host);
 	void watch_read(int fd);
 	void watch_write(int fd, bool enable);
 	void unwatch(int fd);
@@ -65,12 +64,11 @@ struct InstanceHost::Impl {
 	unique_ptr<ipc::Server> server_;
 };
 
-InstanceHost::Impl::Impl(int listen_fd, App &app, const QString &build_id,
-	const QString &session, InstanceHost *host)
+InstanceHost::Impl::Impl(int listen_fd, App &app, const QString &session,
+	InstanceHost *host)
 	: app_(app), host_(host)
 {
 	ipc::Server::Config cfg;
-	cfg.build_id = build_id.toUtf8().toStdString();
 	cfg.session = session.toUtf8().toStdString();
 	cfg.on_request = [this](const ipc::instance::RequestView &req,
 						 ipc::instance::Response &response) {
@@ -159,9 +157,9 @@ InstanceHost::Impl::on_request(
 }
 
 InstanceHost::InstanceHost(
-	int listen_fd, App &app, QString build_id, QString session, QObject *parent)
+	int listen_fd, App &app, QString session, QObject *parent)
 	: QObject(parent),
-	  impl_(make_unique<Impl>(listen_fd, app, build_id, session, this))
+	  impl_(make_unique<Impl>(listen_fd, app, session, this))
 {
 }
 

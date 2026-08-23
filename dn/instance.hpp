@@ -22,8 +22,8 @@ class InstanceHost : public QObject {
 public:
 	// Takes ownership of listen_fd. Forwards Open requests to
 	// app.open.
-	InstanceHost(int listen_fd, App &app, QString build_id,
-		QString session, QObject *parent = nullptr);
+	InstanceHost(int listen_fd, App &app, QString session,
+		QObject *parent = nullptr);
 	~InstanceHost() override;
 
 private:

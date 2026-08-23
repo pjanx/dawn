@@ -183,13 +183,6 @@ else()
 	set(DN_WITH_SINGLE_INSTANCE FALSE)
 endif()
 
-# TODO(p): Comments shouldn't change the signature.
-file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/common.lxdr" DN_IPC_LXDR_H1)
-file(SHA256 "${PROJECT_SOURCE_DIR}/ipc/instance.lxdr" DN_IPC_LXDR_H2)
-string(SHA256 DN_IPC_LXDR_COMBINED "${DN_IPC_LXDR_H1}${DN_IPC_LXDR_H2}")
-string(SUBSTRING "${DN_IPC_LXDR_COMBINED}" 0 12 DN_IPC_LXDR_PREFIX)
-set(DN_IPC_BUILD_ID "dawn ${PROJECT_VERSION} ${DN_IPC_LXDR_PREFIX}")
-
 configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dawn-config.h"

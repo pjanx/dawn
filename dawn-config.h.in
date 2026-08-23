@@ -21,4 +21,3 @@
 
 #cmakedefine01 DN_WITH_WAYLAND
 #cmakedefine01 DN_WITH_SINGLE_INSTANCE
-#define DN_IPC_BUILD_ID "@DN_IPC_BUILD_ID@"

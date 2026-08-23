@@ -153,8 +153,8 @@ BlockingClient::BlockingClient(BlockingClient &&) noexcept = default;
 BlockingClient &BlockingClient::operator=(BlockingClient &&) noexcept = default;
 BlockingClient::~BlockingClient() = default;
 optional<BlockingClient>
-BlockingClient::connect(string_view build_id, string_view session,
-	HelloStatus *status, chrono::milliseconds timeout)
+BlockingClient::connect(string_view session, HelloStatus *status,
+	chrono::milliseconds timeout)
 {
 	using clock = chrono::steady_clock;
 	chrono::milliseconds left = timeout;
@@ -174,7 +174,6 @@ BlockingClient::connect(string_view build_id, string_view session,
 
 	instance::Hello hello;
 	hello.protocol_version = uint32_t(instance::kInstanceProtocolVersion);
-	hello.build_id = string(build_id);
 	hello.session = string(session);
 
 	instance::Frame hello_frame;
@@ -405,8 +404,7 @@ Server::handle_payload(Conn &c, span<const byte> payload)
 
 		instance::Frame reply;
 		const instance::HelloView &h = hello->hello;
-		if (h.protocol_version != cfg_.protocol_version ||
-			h.build_id != cfg_.build_id) {
+		if (h.protocol_version != cfg_.protocol_version) {
 			instance::HelloReplyVersionMismatch mismatch;
 			mismatch.server_protocol_version = cfg_.protocol_version;
 			reply.payload.value = instance::PayloadHelloReply{

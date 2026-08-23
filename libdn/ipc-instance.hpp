@@ -37,12 +37,11 @@ public:
 
 	// Connect to the "instance" endpoint and complete Hello.
 	// protocol_version sent is kInstanceProtocolVersion.
-	// build_id and session are compared exactly by the server.
+	// The session is compared exactly by the server.
 	// timeout covers connect plus handshake (default kHelloTimeout).
 	// On failure returns nullopt and writes *status when non-null.
 	static std::optional<BlockingClient> connect(
-		std::string_view build_id, std::string_view session,
-		HelloStatus *status,
+		std::string_view session, HelloStatus *status,
 		std::chrono::milliseconds timeout = kHelloTimeout);
 
 	// Send one Open request (id = 1). Wait for a terminal Response
@@ -73,7 +72,6 @@ private:
 class Server {
 public:
 	struct Config {
-		std::string build_id;
 		std::string session;
 		uint32_t protocol_version =
 			instance::kInstanceProtocolVersion;
