@@ -46,7 +46,8 @@ Rejected
 
 Packages
 --------
-Regular releases are sporadic.  git master should be stable enough.
+Things are in flux.  Linux and macOS are currently too painful to provide
+portable packages for: the former needs labour, the latter money.
 
 https://janouch.name/cd[Windows packages can be found here],
 and they work in Wine.
