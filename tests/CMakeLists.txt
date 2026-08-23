@@ -4,7 +4,7 @@ target_link_libraries(gen-fixtures PRIVATE
 	${DAWN_LCMS2_TARGET}
 )
 
-pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
+pkg_check_modules(LIBPNG IMPORTED_TARGET libpng)
 if (LIBPNG_FOUND)
 	add_executable(gen-sample gen-sample.c)
 	target_link_libraries(gen-sample PRIVATE

@@ -406,6 +406,8 @@ load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 
 #endif
 
+#ifdef MAXJ12SAMPLE
+
 void
 load_libjpeg12_simple(jpeg_decompress_struct *cinfo, J12SAMPARRAY lines)
 {
@@ -416,6 +418,9 @@ load_libjpeg12_simple(jpeg_decompress_struct *cinfo, J12SAMPARRAY lines)
 	(void) jpeg_finish_decompress(cinfo);
 }
 
+#endif
+#ifdef MAXJ16SAMPLE
+
 void
 load_libjpeg16_simple(jpeg_decompress_struct *cinfo, J16SAMPARRAY lines)
 {
@@ -425,6 +430,8 @@ load_libjpeg16_simple(jpeg_decompress_struct *cinfo, J16SAMPARRAY lines)
 			cinfo->output_height - cinfo->output_scanline);
 	(void) jpeg_finish_decompress(cinfo);
 }
+
+#endif
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -607,6 +614,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		longjmp(jerr.buf, 1);
 	}
 
+#if defined MAXJ12SAMPLE || defined MAXJ16SAMPLE
 	if (high) {
 		// jpegqs / enhance only applies to the 8-bit path.
 		vector<uint16_t> samples;
@@ -635,7 +643,9 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		}
 		load_jpeg_finalize(image, use_cmyk, use_argb, precision, ctx, data,
 			nullptr, samples.data());
-	} else {
+	} else
+#endif
+	{
 		vector<uint8_t> pixels;
 		{
 			detail::StageClock clk(&OpenTiming::alloc_ms);

@@ -54,7 +54,8 @@ set(CMAKE_MODULE_PATH
 
 find_package(PkgConfig REQUIRED)
 find_package(Vulkan REQUIRED)
-find_package(Qt6 6.11 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
+# Maybe we need a newer version, just not to build.
+find_package(Qt6 6.8 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
 find_program(AWK NAMES awk REQUIRED)
 include(lxdr-generate)
 find_program(GLSLANG_VALIDATOR
@@ -95,13 +96,14 @@ include(FetchContent)
 
 # The GPL fast float plugin improves performance a ton,
 # but distributions usually omit it.
-option(DN_BUNDLED_LCMS2 "Use a fast bundled lcms2 instead of the system one" ON)
+option(DAWN_BUNDLED_LCMS2
+	"Use a fast bundled lcms2 instead of the system one" ON)
 set(DAWN_WITH_LCMS2_FAST_FLOAT FALSE)
 set(DAWN_WITH_LCMS2_THREADED FALSE)
 
 add_library(dawn-lcms2 INTERFACE)
 set(DAWN_LCMS2_TARGET dawn-lcms2)
-if (NOT DN_BUNDLED_LCMS2)
+if (NOT DAWN_BUNDLED_LCMS2)
 	pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET lcms2)
 	target_link_libraries(dawn-lcms2 INTERFACE PkgConfig::LCMS2)
 

@@ -57,18 +57,25 @@ You will obtain software rendering.
 
 Building
 --------
-Build-only dependencies: CMake >= 3.28, a C++20 compiler, pkg-config, awk,
- glslang, wayland-protocols + wayland-scanner (Wayland),
- rsvg-convert (*nix/Windows), icoutils (Windows) +
-Runtime dependencies: Qt6Gui >= 6.11, vulkan, lcms2 (bundled by default),
- libjpeg, libwebp, libwebpdemux, resvg, zlib +
-*nix: colord, shared-mime-info, Qt6WaylandClient + wayland-client (optional) +
-Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
- gdk-pixbuf-2.0
+Debian 13 Trixie instructions, which you may derive as appropriate:
 
-```
-$ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDAWN_BUNDLED_LCMS2=ON
-$ cmake --build build
+```sh
+# Required dependencies
+apt install build-essential cmake qt6-base-dev glslang-tools librsvg2-bin libwebp-dev libjpeg-dev libcolord-dev shared-mime-info
+# Optional dependencies
+apt install librsvg2-dev libxcursor-dev libheif-dev libtiff-dev libraw-dev libgdk-pixbuf-2.0-dev qt6-wayland-dev wayland-protocols
+
+# libresvg-dev is required but not often packaged, thus you may need to build it
+apt install cargo cargo-c
+ver=$(sed -n 's/.*resvg-\([0-9.]*\)\.tar.*/\1/p' msys2-configure.sh)
+archive=resvg-$ver.tar.xz
+curl -#LO https://github.com/linebender/resvg/releases/download/v$ver/$archive
+tar xJf $archive
+cargo cinstall --release --prefix $PWD/resvg-prefix --manifest-path resvg-$ver/crates/c-api/Cargo.toml
+
+# The application will run much faster if you allow bundling Little CMS
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDAWN_BUNDLED_LCMS2=ON -DCMAKE_PREFIX_PATH=$PWD/resvg-prefix
+cmake --build build
 ```
 
 macOS successfully produces a portable application bundle with Homebrew,
@@ -76,9 +83,9 @@ however there is currently no one to sign these packages.
 
 Windows is cross-compiled in CI:
 
-```
-$ sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
-$ cmake --build build-msys2 -- package
+```sh
+sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
+cmake --build build-msys2 -- package
 ```
 
 Configuration
