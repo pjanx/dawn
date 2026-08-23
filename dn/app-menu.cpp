@@ -762,9 +762,8 @@ Modal::fill_dialog(Kit &kit)
 	auto col = make_unique<Column>();
 	col->gap = 8.0f;
 	if (this->kind == AppOverlay::About) {
-		QString name = QCoreApplication::applicationName();
-		if (name.isEmpty())
-			name = QStringLiteral("dn");
+		// TODO(p): Use a macro for this.
+		QString name = QStringLiteral("Dawn");
 		col->add_child(dialog_label(name, true));
 		col->add_child(dialog_label(
 			QStringLiteral("Colour-managed image browser and viewer."), false,

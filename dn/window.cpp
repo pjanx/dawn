@@ -149,7 +149,8 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 {
 	setSurfaceType(QSurface::VulkanSurface);
 	setVulkanInstance(this->app_->vulkan_instance());
-	setTitle(QStringLiteral("dn"));
+	// TODO(p): Use a macro for this.
+	setTitle(QStringLiteral("Dawn"));
 	resize(kWindowWidth, kWindowHeight);
 	connect(this, &QWindow::screenChanged, this,
 		[this](QScreen *new_screen) { handle_screen_change(new_screen); });
@@ -547,7 +548,8 @@ Window::sync_title()
 		path = this->viewer_->path_;
 	else if (this->browser_ && !this->browser_->dir_path_.isEmpty())
 		path = this->browser_->dir_path_;
-	const QString app = QCoreApplication::applicationName();
+	// TODO(p): Use a macro for this.
+	const QString app = QStringLiteral("Dawn");
 	const QString title = path.isEmpty()
 		? app
 		: parse_name(path) + QStringLiteral(" \u2014 ") + app;

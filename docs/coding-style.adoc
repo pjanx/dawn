@@ -13,8 +13,8 @@ C++
 The coding style is largely defined by _.clang-format_ configuration, which may
 be applied strictly.  On top of that, these additional rules keep authors sane:
 
- * Source files (.cpp) state `using namespace std`.  This namespace is used
-   unqualified, except for `std::move`.
+ * Source files (.cpp) state `using namespace std`.
+   This namespace is used unqualified, except for `std::move`.
 
  * Within methods, distinguish class fields either by naming them with
    an appended underscore, or by using `this`.  Do not use `m_`.
@@ -49,5 +49,6 @@ banners, for example:
 CMake
 -----
  * Local variables are spelled out in lowercase.
- * Prefer `PROJECT_` over `CMAKE_` where applicable.
+ * Prefer `PROJECT_` over `CMAKE_`, as the latter is usually wrong.
+   (`CMAKE_CURRENT_` does not have this problem.)
  * Targets split words using hyphens, not underscores.
