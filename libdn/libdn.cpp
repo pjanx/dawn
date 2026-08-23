@@ -10,10 +10,10 @@
 #include "libdn-loaders.h"
 
 #include <lcms2.h>
-#if DN_WITH_LCMS2_FAST_FLOAT
+#if DAWN_WITH_LCMS2_FAST_FLOAT
 #include <lcms2_fast_float.h>
 #endif
-#if DN_WITH_LCMS2_THREADED
+#if DAWN_WITH_LCMS2_THREADED
 #include <lcms2_threaded.h>
 #endif
 
@@ -107,7 +107,7 @@ constexpr cmsUInt32Number kTransformFlags = cmsFLAGS_COPY_ALPHA;
 // One cmsHTRANSFORM is not thread-safe. The lcms2 threaded plugin (when built)
 // wraps DoTransform and slices internally — do not nest our own pool on top.
 // Without the plugin, create one transform per worker on this thread.
-#if !DN_WITH_LCMS2_THREADED
+#if !DAWN_WITH_LCMS2_THREADED
 constexpr uint64_t kCmsMinPixels = 256ull * 256ull;
 
 unsigned
@@ -130,7 +130,7 @@ transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 			INTENT_PERCEPTUAL, kTransformFlags);
 	};
 
-#if DN_WITH_LCMS2_THREADED
+#if DAWN_WITH_LCMS2_THREADED
 	cmsHTRANSFORM xform = create();
 	if (!xform)
 		return false;
@@ -853,11 +853,11 @@ profile_transfer(const Profile *profile)
 Cmm::Cmm()
 {
 	context_ = cmsCreateContext(nullptr, this);
-#if DN_WITH_LCMS2_FAST_FLOAT
+#if DAWN_WITH_LCMS2_FAST_FLOAT
 	if (cmsPluginTHR(cmsContext(context_), cmsFastFloatExtensions()))
 		broken_premul_ = LCMS_VERSION <= 2160;
 #endif
-#if DN_WITH_LCMS2_THREADED
+#if DAWN_WITH_LCMS2_THREADED
 	// After fast_float: the parallelization plugin wraps whatever xform the
 	// transform factory installed.
 	(void) cmsPluginTHR(cmsContext(context_),
@@ -1408,7 +1408,8 @@ exif_orientation(span<const uint8_t> exif)
 
 // --- Open --------------------------------------------------------------------
 
-#if !DN_WITH_LIBRAW
+// FIXME: Repeating these preprocessor defines is just stupid.
+#if !DAWN_WITH_LIBRAW
 ImagePtr
 detail::load_libraw(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1416,7 +1417,7 @@ detail::load_libraw(span<const uint8_t>, const OpenContext &, Error *error)
 	return nullptr;
 }
 #endif
-#if !DN_WITH_LIBRSVG
+#if !DAWN_WITH_LIBRSVG
 ImagePtr
 detail::load_librsvg(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1424,7 +1425,7 @@ detail::load_librsvg(span<const uint8_t>, const OpenContext &, Error *error)
 	return nullptr;
 }
 #endif
-#if !DN_WITH_XCURSOR
+#if !DAWN_WITH_XCURSOR
 ImagePtr
 detail::load_xcursor(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1432,7 +1433,7 @@ detail::load_xcursor(span<const uint8_t>, const OpenContext &, Error *error)
 	return nullptr;
 }
 #endif
-#if !DN_WITH_LIBHEIF
+#if !DAWN_WITH_LIBHEIF
 ImagePtr
 detail::load_heif(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1440,7 +1441,7 @@ detail::load_heif(span<const uint8_t>, const OpenContext &, Error *error)
 	return nullptr;
 }
 #endif
-#if !DN_WITH_LIBTIFF
+#if !DAWN_WITH_LIBTIFF
 ImagePtr
 detail::load_tiff(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1448,7 +1449,7 @@ detail::load_tiff(span<const uint8_t>, const OpenContext &, Error *error)
 	return nullptr;
 }
 #endif
-#if !DN_WITH_GDKPIXBUF
+#if !DAWN_WITH_GDKPIXBUF
 ImagePtr
 detail::load_gdkpixbuf(span<const uint8_t>, const OpenContext &, Error *error)
 {
@@ -1501,27 +1502,27 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				image = try_loader(fn, data, ctx, error);
 		};
 
-#if DN_WITH_LIBRAW
+#if DAWN_WITH_LIBRAW
 	if (!ctx.enhance)
 #endif
 		try_next(detail::load_tiff_ep);
-#if DN_WITH_LIBRAW
+#if DAWN_WITH_LIBRAW
 	try_next(detail::load_libraw);
 #endif
 	try_next(detail::load_resvg);
-#if DN_WITH_LIBRSVG
+#if DAWN_WITH_LIBRSVG
 	try_next(detail::load_librsvg);
 #endif
-#if DN_WITH_XCURSOR
+#if DAWN_WITH_XCURSOR
 	try_next(detail::load_xcursor);
 #endif
-#if DN_WITH_LIBHEIF
+#if DAWN_WITH_LIBHEIF
 	try_next(detail::load_heif);
 #endif
-#if DN_WITH_LIBTIFF
+#if DAWN_WITH_LIBTIFF
 	try_next(detail::load_tiff);
 #endif
-#if DN_WITH_GDKPIXBUF
+#if DAWN_WITH_GDKPIXBUF
 	try_next(detail::load_gdkpixbuf);
 #endif
 

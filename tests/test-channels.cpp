@@ -187,7 +187,7 @@ test_loaders_solid()
 	test_solid("green.webp", 0, 65535, 0, exact);
 	test_solid("blue.webp", 65535, 0, 0, exact);
 
-#if DN_WITH_LIBTIFF
+#if DAWN_WITH_LIBTIFF
 	test_solid("red.tif", 0, 0, 65535, exact);
 	test_solid("green.tif", 0, 65535, 0, exact);
 	test_solid("blue.tif", 65535, 0, 0, exact);

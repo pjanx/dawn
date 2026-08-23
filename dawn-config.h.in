@@ -7,15 +7,15 @@
 
 #pragma once
 
-#cmakedefine01 DN_WITH_LCMS2_FAST_FLOAT
-#cmakedefine01 DN_WITH_LCMS2_THREADED
-#cmakedefine01 DN_WITH_JPEG_QS
-#cmakedefine01 DN_WITH_LIBRAW
-#cmakedefine01 DN_WITH_LIBRSVG
-#cmakedefine01 DN_WITH_XCURSOR
-#cmakedefine01 DN_WITH_LIBHEIF
-#cmakedefine01 DN_WITH_LIBTIFF
-#cmakedefine01 DN_WITH_GDKPIXBUF
+#cmakedefine01 DAWN_WITH_LCMS2_FAST_FLOAT
+#cmakedefine01 DAWN_WITH_LCMS2_THREADED
+#cmakedefine01 DAWN_WITH_JPEG_QS
+#cmakedefine01 DAWN_WITH_LIBRAW
+#cmakedefine01 DAWN_WITH_LIBRSVG
+#cmakedefine01 DAWN_WITH_XCURSOR
+#cmakedefine01 DAWN_WITH_LIBHEIF
+#cmakedefine01 DAWN_WITH_LIBTIFF
+#cmakedefine01 DAWN_WITH_GDKPIXBUF
 #cmakedefine01 DN_WITH_WAYLAND
 #cmakedefine01 DN_WITH_SINGLE_INSTANCE
 #define DN_IPC_BUILD_ID "@DN_IPC_BUILD_ID@"

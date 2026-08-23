@@ -9,7 +9,7 @@
 #include "libdn.h"
 #include "libdn-loaders.h"
 
-#if DN_WITH_LIBHEIF
+#if DAWN_WITH_LIBHEIF
 #include <libheif/heif.h>
 
 #include <algorithm>
@@ -241,4 +241,4 @@ detail::load_heif(
 
 }  // namespace dn
 
-#endif  // DN_WITH_LIBHEIF
+#endif  // DAWN_WITH_LIBHEIF

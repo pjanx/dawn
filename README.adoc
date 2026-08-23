@@ -67,7 +67,7 @@ Optional dependencies: librsvg-2.0, xcursor, libheif, libtiff-4, libraw,
  gdk-pixbuf-2.0
 
 ```
-$ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDN_BUNDLED_LCMS2=ON
+$ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DDAWN_BUNDLED_LCMS2=ON
 $ cmake --build build
 ```
 

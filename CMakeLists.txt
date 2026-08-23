@@ -78,9 +78,9 @@ pkg_check_modules(RESVG REQUIRED IMPORTED_TARGET resvg)
 
 macro(dawn_optional_pkg stem doc module)
 	pkg_check_modules(${stem} IMPORTED_TARGET ${module})
-	option(DN_WITH_${stem} "${doc}" ${${stem}_FOUND})
-	if(DN_WITH_${stem} AND NOT ${stem}_FOUND)
-		message(FATAL_ERROR "DN_WITH_${stem}=ON but ${module} was not found")
+	option(DAWN_WITH_${stem} "${doc}" ${${stem}_FOUND})
+	if(DAWN_WITH_${stem} AND NOT ${stem}_FOUND)
+		message(FATAL_ERROR "DAWN_WITH_${stem}=ON but ${module} was not found")
 	endif()
 endmacro()
 
@@ -96,8 +96,8 @@ include(FetchContent)
 # The GPL fast float plugin improves performance a ton,
 # but distributions usually omit it.
 option(DN_BUNDLED_LCMS2 "Use a fast bundled lcms2 instead of the system one" ON)
-set(DN_WITH_LCMS2_FAST_FLOAT FALSE)
-set(DN_WITH_LCMS2_THREADED FALSE)
+set(DAWN_WITH_LCMS2_FAST_FLOAT FALSE)
+set(DAWN_WITH_LCMS2_THREADED FALSE)
 
 add_library(dawn-lcms2 INTERFACE)
 set(DAWN_LCMS2_TARGET dawn-lcms2)
@@ -117,7 +117,7 @@ if(NOT DN_BUNDLED_LCMS2)
 	find_package_handle_standard_args(Lcms2FastFloat
 		REQUIRED_VARS LCMS2_FAST_FLOAT_LIB LCMS2_FAST_FLOAT_INCLUDE_DIR)
 	if(Lcms2FastFloat_FOUND)
-		set(DN_WITH_LCMS2_FAST_FLOAT TRUE)
+		set(DAWN_WITH_LCMS2_FAST_FLOAT TRUE)
 		target_link_libraries(dawn-lcms2 INTERFACE
 			"${LCMS2_FAST_FLOAT_LIB}")
 		target_include_directories(dawn-lcms2 INTERFACE
@@ -139,8 +139,8 @@ else()
 	)
 	FetchContent_MakeAvailable(lcms2)
 
-	set(DN_WITH_LCMS2_FAST_FLOAT TRUE)
-	set(DN_WITH_LCMS2_THREADED TRUE)
+	set(DAWN_WITH_LCMS2_FAST_FLOAT TRUE)
+	set(DAWN_WITH_LCMS2_THREADED TRUE)
 	set_target_properties(lcms2 lcms2_fast_float lcms2_threaded PROPERTIES
 		POSITION_INDEPENDENT_CODE ON)
 	# Upstream keeps plugin includes PRIVATE.
@@ -155,8 +155,8 @@ else()
 	set_target_properties(testcms PROPERTIES EXCLUDE_FROM_ALL FALSE)
 endif()
 
-option(DN_WITH_JPEG_QS "Bundled JPEG Quant Smooth" ON)
-if(DN_WITH_JPEG_QS)
+option(DAWN_WITH_JPEG_QS "Bundled JPEG Quant Smooth" ON)
+if(DAWN_WITH_JPEG_QS)
 	FetchContent_Declare(jpegqs
 		URL https://github.com/ilyakurdyukov/jpeg-quantsmooth/archive/refs/tags/1.20260122.tar.gz
 		URL_HASH SHA256=7dcbaa7d994511a03dba845aa218a25f9c8e70c0bcb0800ff61ae3d92dd50c3d

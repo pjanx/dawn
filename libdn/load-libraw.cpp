@@ -9,7 +9,7 @@
 #include "libdn.h"
 #include "libdn-loaders.h"
 
-#if DN_WITH_LIBRAW
+#if DAWN_WITH_LIBRAW
 #include <libraw.h>
 
 #include <cstdint>
@@ -130,4 +130,4 @@ detail::load_libraw(
 
 }  // namespace dn
 
-#endif  // DN_WITH_LIBRAW
+#endif  // DAWN_WITH_LIBRAW

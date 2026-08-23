@@ -10,7 +10,7 @@
 #include "libdn-loaders.h"
 
 #include <jpeglib.h>
-#if DN_WITH_JPEG_QS
+#if DAWN_WITH_JPEG_QS
 #include <libjpegqs.h>
 #endif
 
@@ -19,7 +19,7 @@
 #include <csetjmp>
 #include <cstring>
 #include <vector>
-#if DN_WITH_JPEG_QS
+#if DAWN_WITH_JPEG_QS
 #include <thread>
 #endif
 
@@ -373,7 +373,7 @@ load_libjpeg_simple(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 	(void) jpeg_finish_decompress(cinfo);
 }
 
-#if DN_WITH_JPEG_QS
+#if DAWN_WITH_JPEG_QS
 
 void
 load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)

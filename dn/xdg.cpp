@@ -240,6 +240,7 @@ xdg_config_dirs()
 vector<QString>
 supported_media_types()
 {
+	// TODO(p): This must go to libdn as a function.
 	vector<QString> types = {
 		QStringLiteral("image/bmp"),
 		QStringLiteral("image/gif"),
@@ -249,18 +250,18 @@ supported_media_types()
 		QStringLiteral("image/webp"),
 		QStringLiteral("image/svg+xml"),
 	};
-#if DN_WITH_LIBRAW
+#if DAWN_WITH_LIBRAW
 	types.push_back(QStringLiteral("image/x-dcraw"));
 #endif
-#if DN_WITH_XCURSOR
+#if DAWN_WITH_XCURSOR
 	types.push_back(QStringLiteral("image/x-xcursor"));
 #endif
-#if DN_WITH_LIBHEIF
+#if DAWN_WITH_LIBHEIF
 	types.push_back(QStringLiteral("image/heic"));
 	types.push_back(QStringLiteral("image/heif"));
 	types.push_back(QStringLiteral("image/avif"));
 #endif
-#if DN_WITH_LIBTIFF
+#if DAWN_WITH_LIBTIFF
 	types.push_back(QStringLiteral("image/tiff"));
 #endif
 	return types;
