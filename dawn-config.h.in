@@ -7,6 +7,8 @@
 
 #pragma once
 
+#define DAWN_VERSION "@PROJECT_VERSION@"
+
 #cmakedefine01 DAWN_WITH_LCMS2_FAST_FLOAT
 #cmakedefine01 DAWN_WITH_LCMS2_THREADED
 #cmakedefine01 DAWN_WITH_JPEG_QS
@@ -16,6 +18,7 @@
 #cmakedefine01 DAWN_WITH_LIBHEIF
 #cmakedefine01 DAWN_WITH_LIBTIFF
 #cmakedefine01 DAWN_WITH_GDKPIXBUF
+
 #cmakedefine01 DN_WITH_WAYLAND
 #cmakedefine01 DN_WITH_SINGLE_INSTANCE
 #define DN_IPC_BUILD_ID "@DN_IPC_BUILD_ID@"

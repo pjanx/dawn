@@ -23,6 +23,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QGuiApplication>
+#include <QUrl>
+#include <qcommandlineoption.h>
 
 #include <cstdio>
 #include <cstring>
@@ -45,6 +47,7 @@ instance_session()
 	}
 	return session;
 }
+
 vector<string>
 paths_utf8(const QStringList &paths)
 {
@@ -129,53 +132,74 @@ try_remote_open(const QString &build_id, const QString &session,
 int
 main(int argc, char **argv)
 {
-	for (int i = 1; i < argc; ++i) {
-		if (strcmp(argv[i], "--invalidate-cache") != 0)
-			continue;
-		QCoreApplication application(argc, argv);
-		QCoreApplication::setApplicationName(QStringLiteral("dn"));
-		dn::thumbnail_cache_invalidate();
-		return 0;
-	}
-	QGuiApplication application(argc, argv);
 	QCoreApplication::setApplicationName(QStringLiteral("dn"));
+	QCoreApplication::setApplicationVersion(QStringLiteral(DAWN_VERSION));
 	QGuiApplication::setDesktopFileName(QStringLiteral("dn"));
 
 	QCommandLineParser parser;
 	parser.setApplicationDescription(QStringLiteral(
-		"Display images or browse directories. Esc switches or quits; "
-		"q quits; wheel or +/- zooms; left- or middle-drag pans; "
-		"Ctrl+middle-drag zooms; Alt+middle-drag rotates; pinch or Alt+wheel "
-		"rotates."));
+		"Display images or browse directories."));
 	parser.addHelpOption();
+	parser.addVersionOption();
+
 	const QCommandLineOption new_instance_opt(QStringLiteral("new-instance"),
 		QStringLiteral("Do not connect to a running dn; start a new process."));
 	parser.addOption(new_instance_opt);
-	parser.addOption({QStringLiteral("invalidate-cache"),
-		QStringLiteral("Remove invalid wide thumbnails and exit.")});
-	parser.addPositionalArgument(QStringLiteral("path"),
+
+	const QCommandLineOption invalidate_opt(QStringLiteral("invalidate-cache"),
+		QStringLiteral("Remove invalid wide thumbnails and exit."));
+	parser.addOption(invalidate_opt);
+
+	const QCommandLineOption browse_opt(QStringLiteral("browse"),
+		QStringLiteral("Start in filesystem browsing mode."));
+	parser.addOption(browse_opt);
+
+	const QCommandLineOption list_supported_opt(
+		QStringLiteral("list-supported-media-types"),
+		QStringLiteral("Output supported media types and exit."));
+	parser.addOption(list_supported_opt);
+
+	parser.addPositionalArgument(QStringLiteral("path | URI"),
 		QStringLiteral(
 			"Image file or directory. Repeat to open multiple windows. "
 			"Defaults to the current directory."),
-		QStringLiteral("[path...]"));
-	parser.process(application);
+		QStringLiteral("[path | URI]..."));
 
+	// I suppose this could very well be passed a QStringList; this is shorter.
+	parser.process(QCoreApplication(argc, argv));
+
+	if (parser.isSet(invalidate_opt)) {
+		dn::thumbnail_cache_invalidate();
+		return 0;
+	}
+	if (parser.isSet(list_supported_opt)) {
+		// TODO(p): --list-supported-media-types
+		return 0;
+	}
+
+	QGuiApplication application(argc, argv);
 	const QStringList raw = parser.positionalArguments();
 	const QDir cwd = QDir::current();
+
 	QStringList to_open;
-	if (raw.isEmpty())
-		to_open.append(cwd.absoluteFilePath(QStringLiteral(".")));
-	else {
-		to_open.reserve(raw.size());
-		for (const QString &path : raw)
-			to_open.append(cwd.absoluteFilePath(path));
+	if (raw.isEmpty()) {
+		to_open.append(QUrl::fromUserInput(".",
+			{}, QUrl::AssumeLocalFile).toString());
+	} else {
+		for (const QString &arg : raw) {
+			auto url = QUrl::fromUserInput(arg, {}, QUrl::AssumeLocalFile);
+			if (!url.isValid())
+				url = QUrl::fromLocalFile(arg);
+			to_open.append(url.toString());
+		}
 	}
+
+	// TODO(p): Process browse_opt: pass through IPC, or to this instance.
 
 	dn::App app;
 #if DN_WITH_SINGLE_INSTANCE
 	unique_ptr<dn::InstanceHost> host;
-	const bool new_instance = parser.isSet(new_instance_opt);
-	if (!new_instance) {
+	if (parser.isSet(new_instance_opt)) {
 		const QString build_id = QString::fromUtf8(DN_IPC_BUILD_ID);
 		const QString session = instance_session();
 		bool reported_mismatch = false;
@@ -201,9 +225,8 @@ main(int argc, char **argv)
 				break;
 			}
 		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
-			// Notifiers armed; Qt delivers them only in
-			// exec(). A Hello during init may time out
-			// (250ms) and isolate.
+			// Notifiers armed; Qt delivers them only in exec().
+			// A Hello during init may time out (250ms) and isolate.
 			host = make_unique<dn::InstanceHost>(
 				listen.fd, app, build_id, session);
 		}

@@ -146,7 +146,7 @@ InstanceHost::Impl::on_request(
 	}
 
 	const QString token = from_utf8(open_body->open.activation_token);
-	for (const string_view path : open_body->open.paths) {
+	for (const string_view path : open_body->open.urls) {
 		const OpenResult r = this->app_.open(from_utf8(path), token);
 		if (r != OpenResult::Ok) {
 			response.result.value = ipc::instance::ResultError{

@@ -210,7 +210,7 @@ BlockingClient::connect(string_view build_id, string_view session,
 }
 
 bool
-BlockingClient::open(const vector<string> &paths, string_view activation_token,
+BlockingClient::open(const vector<string> &urls, string_view activation_token,
 	instance::Error *error, chrono::milliseconds timeout)
 {
 	if (!conn_.ok()) {
@@ -222,7 +222,7 @@ BlockingClient::open(const vector<string> &paths, string_view activation_token,
 		left = chrono::milliseconds{0};
 
 	instance::OpenRequest open_req;
-	open_req.paths = paths;
+	open_req.urls = urls;
 	open_req.activation_token = string(activation_token);
 
 	instance::Request req;

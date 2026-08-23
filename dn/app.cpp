@@ -23,6 +23,7 @@
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QVersionNumber>
+#include <QUrl>
 
 #include <cstdio>
 
@@ -93,9 +94,14 @@ apply_activation_token(const QString &token)
 
 OpenResult
 App::open(
-	const QString &path, const QString &activation_token, BrowseSetup setup)
+	const QUrl &url, const QString &activation_token, BrowseSetup setup)
 {
-	const QString resolved = path.isEmpty() ? QDir::currentPath() : path;
+	fprintf(stderr, "opening %s\n", url.toString().toStdString().c_str());
+	// XXX: Any good way of rejecting at this point?
+	const QString resolved = url.isLocalFile()
+		? url.path()
+		: QDir::currentPath();
+
 	const QFileInfo info(resolved);
 	if (!info.exists()) {
 		fprintf(stderr, "%s: not found\n", qUtf8Printable(resolved));

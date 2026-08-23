@@ -14,7 +14,7 @@ struct Request {
 	} kind) {
 	case OPEN:
 		struct OpenRequest {
-			string paths<>;
+			string urls<>;
 			string activation_token;
 		} open;
 	} body;

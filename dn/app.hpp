@@ -15,6 +15,7 @@
 #include <QString>
 #include <QVulkanInstance>
 #include <QWindow>
+#include <QUrl>
 
 #include <cstdint>
 #include <memory>
@@ -37,7 +38,7 @@ class App
 {
 public:
 	bool init();
-	OpenResult open(const QString &path, const QString &activation_token = {},
+	OpenResult open(const QUrl &path, const QString &activation_token = {},
 		BrowseSetup setup = {});
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);

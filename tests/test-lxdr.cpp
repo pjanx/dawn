@@ -157,16 +157,16 @@ test_round_trip_frames()
 	}
 	{
 		inst::OpenRequest open;
-		open.paths = {"/one", "/two"};
+		open.urls = {"/one", "/two"};
 		open.activation_token = "tok";
 		const vector<byte> buf = encoded(open);
 		dn::ipc::Decoder dec(buf);
 		inst::OpenRequestView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
-		CHECK(view.paths.size() == 2);
-		CHECK(view.paths[0] == "/one");
-		CHECK(view.paths[1] == "/two");
+		CHECK(view.urls.size() == 2);
+		CHECK(view.urls[0] == "/one");
+		CHECK(view.urls[1] == "/two");
 		CHECK(view.activation_token == "tok");
 	}
 
@@ -204,7 +204,7 @@ test_round_trip_frames()
 	}
 	{
 		inst::OpenRequest open;
-		open.paths = {"/p", "/q"};
+		open.urls = {"/p", "/q"};
 		open.activation_token = "";
 		inst::Request req;
 		req.id = 7;
@@ -222,9 +222,9 @@ test_round_trip_frames()
 		CHECK(r.id == 7);
 		CHECK(holds_alternative<inst::RequestBodyOpenView>(r.body.value));
 		const auto &o = get<inst::RequestBodyOpenView>(r.body.value).open;
-		CHECK(o.paths.size() == 2);
-		CHECK(o.paths[0] == "/p");
-		CHECK(o.paths[1] == "/q");
+		CHECK(o.urls.size() == 2);
+		CHECK(o.urls[0] == "/p");
+		CHECK(o.urls[1] == "/q");
 	}
 	{
 		inst::Response resp;

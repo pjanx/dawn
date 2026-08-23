@@ -28,9 +28,9 @@ keyboard shortcut list.
 <h2>Controls</h2>
 
 <p>Most commands are on the keyboard. <kbd>F1</kbd> opens this guide in your
-web browser. <kbd>F10</kbd> opens the menu, <kbd>F6</kbd> moves between the
-sidebar and the main view, and <kbd>F</kbd> shows Vimium-style hints for
-on-screen controls.
+web browser. <kbd>F10</kbd> opens the menu, <kbd>F6</kbd> moves between
+the toolbar, any sidebar, and the main view, and <kbd>F</kbd> shows Vimium-style
+hints for on-screen controls.
 
 <p>Mice with dedicated back and forward buttons work as in a web browser.
 The pointer wheel zooms in the viewer and scrolls the browser. Left- or
@@ -72,6 +72,8 @@ through your default handler for <code>.txt</code> files. The Windows package
 ships ExifTool; elsewhere it must be on the search path.
 
 <h2>Thumbnails</h2>
+
+<!-- TODO(p): The path is slighlty different on macOS and Windows. -->
 
 <p><i>Dawn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
 cache, typically <i>~/.cache/thumbnails</i>. To drop entries that no longer
