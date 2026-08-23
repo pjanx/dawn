@@ -77,7 +77,7 @@ however there is currently no one to sign these packages.
 Windows is cross-compiled in CI:
 
 ```
-$ sh -e msys2-configure.sh -DCMAKE_BUILD_TYPE=Release -B build-msys2
+$ sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
 $ cmake --build build-msys2 -- package
 ```
 

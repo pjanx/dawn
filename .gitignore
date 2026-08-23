@@ -2,4 +2,3 @@
 /build-*/
 compile_commands.json
 .cache/
-/ucrt64
