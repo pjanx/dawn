@@ -2044,19 +2044,19 @@ Kit::bake_colours(Cmm *cmm, Profile *target)
 		this->frame_ = bake_grey(cmm, target, 0x00);
 		this->panel_ = bake_grey(cmm, target, 0x28);
 		this->hint_ = bake_rgb(cmm, target, 0x88, 0x77, 0x00);
-		return;
+	} else {
+		this->well_ = bake_grey(cmm, target, 0xf8);
+		this->toolbar_top_ = bake_grey(cmm, target, 0xe8);
+		this->toolbar_bottom_ = bake_grey(cmm, target, 0xf0);
+		this->hover_ = bake_grey(cmm, target, 0xe4);
+		this->press_ = bake_grey(cmm, target, 0xd0);
+		this->divider_ = bake_grey(cmm, target, 0xc0);
+		this->busy_ = bake_rgb(cmm, target, 0x8b, 0x00, 0x00);
+		this->ink_ = bake_grey(cmm, target, 0x00);
+		this->frame_ = bake_grey(cmm, target, 0xff);
+		this->panel_ = bake_grey(cmm, target, 0xf0);
+		this->hint_ = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 	}
-	this->well_ = bake_grey(cmm, target, 0xf8);
-	this->toolbar_top_ = bake_grey(cmm, target, 0xe8);
-	this->toolbar_bottom_ = bake_grey(cmm, target, 0xf0);
-	this->hover_ = bake_grey(cmm, target, 0xe4);
-	this->press_ = bake_grey(cmm, target, 0xd0);
-	this->divider_ = bake_grey(cmm, target, 0xc0);
-	this->busy_ = bake_rgb(cmm, target, 0x8b, 0x00, 0x00);
-	this->ink_ = bake_grey(cmm, target, 0x00);
-	this->frame_ = bake_grey(cmm, target, 0xff);
-	this->panel_ = bake_grey(cmm, target, 0xf0);
-	this->hint_ = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 }
 
 void

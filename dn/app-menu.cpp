@@ -525,7 +525,7 @@ MenuItem::measure(Kit &kit, float, float)
 		this->label_col > 0.0f ? this->label_col : label_width(kit);
 	const float aw =
 		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
-	float width = kFramePadX + kIconPx + kFramePadX + lw + kFramePadX + aw;
+	float width = kFramePadX + kIconPx + kFramePadX + lw + 2 * kFramePadX + aw;
 	if (this->sub)
 		width += kIconPx;
 	width += kFramePadX;
@@ -552,10 +552,10 @@ MenuItem::paint(Kit &kit) const
 	const float pad = kFramePadX;
 	const float aw =
 		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
-	const float chev = this->sub ? kIconPx : 0.0f;
+	const float chevron = this->sub ? kIconPx : 0.0f;
 	const float lead_x = this->r.x + pad;
 	const float label_x = lead_x + kIconPx + pad;
-	const float accel_x = this->r.x + this->r.w - pad - chev - aw;
+	const float accel_x = this->r.x + this->r.w - pad - chevron - aw;
 	const float th = this->text.isEmpty()
 		? 0.0f
 		: kit.text_height(this->text, 0.0f, false);
@@ -588,7 +588,7 @@ MenuItem::paint(Kit &kit) const
 			col(kit.ink_, 0.5f), false);
 	}
 	if (this->sub) {
-		emit_icon(kit, this->r.x + this->r.w - pad - chev, iy, kIconPx,
+		emit_icon(kit, this->r.x + this->r.w - pad - chevron, iy, kIconPx,
 			"go-next-symbolic", col(kit.ink_, this->enabled_ ? 1.0f : 0.375f));
 	}
 }
