@@ -114,7 +114,7 @@ if (NOT DAWN_BUNDLED_LCMS2)
 	find_library(LCMS2_FAST_FLOAT_LIB NAMES lcms2_fast_float
 		HINTS ${LCMS2_LIBRARY_DIRS}
 		NO_DEFAULT_PATH)
-	
+
 	include(FindPackageHandleStandardArgs)
 	find_package_handle_standard_args(Lcms2FastFloat
 		REQUIRED_VARS LCMS2_FAST_FLOAT_LIB LCMS2_FAST_FLOAT_INCLUDE_DIR)
@@ -235,6 +235,26 @@ else()
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 	install(TARGETS libdn
 		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+	# Only meaningful once dn is in place, hence here rather than in dn/,
+	# which is processed before the rules above.  A staged install cannot run
+	# the binary it just staged, so packages ship the updater to run later.
+	string(CONFIGURE [[
+	if (NOT "$ENV{DESTDIR}" STREQUAL "")
+		message(STATUS "Staged install: run dn-update-desktop-files on target")
+	else()
+		message(STATUS "Updating desktop file media types")
+		execute_process(
+			COMMAND "@DN_DESKTOP_UPDATER@"
+			RESULT_VARIABLE dn_desktop_result)
+		if (NOT dn_desktop_result EQUAL 0)
+			message(WARNING "dn-update-desktop-files: ${dn_desktop_result}")
+		endif()
+	endif()
+	]] dn_desktop_hook @ONLY)
+	if (DN_DESKTOP_UPDATER AND NOT CMAKE_CROSSCOMPILING)
+		install(CODE "${dn_desktop_hook}")
+	endif()
 endif()
 
 include(CTest)

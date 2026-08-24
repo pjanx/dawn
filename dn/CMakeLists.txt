@@ -147,6 +147,17 @@ else()
 			"${CMAKE_CURRENT_SOURCE_DIR}/dn.desktop"
 			"${CMAKE_CURRENT_SOURCE_DIR}/dn-browse.desktop"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+
+		# dn.desktop's MimeType= cannot be filled in at build time: it depends
+		# on the gdk-pixbuf loaders installed on the target.  The parent list
+		# runs this after dn itself is installed.
+		set(DN_DESKTOP_UPDATER
+			"${CMAKE_CURRENT_BINARY_DIR}/dn-update-desktop-files")
+		configure_file(dn-update-desktop-files.in
+			"${DN_DESKTOP_UPDATER}" @ONLY)
+		install(PROGRAMS "${DN_DESKTOP_UPDATER}"
+			DESTINATION "${CMAKE_INSTALL_BINDIR}")
+		set(DN_DESKTOP_UPDATER "${DN_DESKTOP_UPDATER}" PARENT_SCOPE)
 	endif()
 endif()
 

@@ -117,3 +117,12 @@ if(NOT WIN32 AND NOT APPLE)
 	target_link_libraries(test-ipc PRIVATE dawn::libdn)
 	add_test(NAME ipc COMMAND test-ipc)
 endif()
+
+# dn.desktop is rewritten by dn-update-desktop-files on install.
+find_program(DAWN_DESKTOP_FILE_VALIDATE desktop-file-validate)
+if(DAWN_DESKTOP_FILE_VALIDATE)
+	foreach(desktop dn.desktop dn-browse.desktop)
+		add_test(NAME ${desktop} COMMAND "${DAWN_DESKTOP_FILE_VALIDATE}"
+			"${PROJECT_SOURCE_DIR}/dn/${desktop}")
+	endforeach()
+endif()

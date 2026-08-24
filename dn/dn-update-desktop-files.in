@@ -1,0 +1,20 @@
+#!/bin/sh -e
+# Point the installed dn.desktop's MimeType= at what dn can actually open.
+#
+# The list is only partly fixed at build time: gdk-pixbuf contributes whatever
+# loaders are installed on this machine.  Package managers want to run this
+# after unpacking, and again whenever those modules change.
+dn='@CMAKE_INSTALL_FULL_BINDIR@/dn'
+desktop='@CMAKE_INSTALL_FULL_DATADIR@/applications/dn.desktop'
+
+types=$("$dn" --list-supported-media-types | tr '\n' ';')
+if [ -z "$types" ]
+then
+	echo "$0: $dn reported no media types" >&2
+	exit 1
+fi
+
+tmp=$desktop.$$
+trap 'rm -f "$tmp"' EXIT
+sed "s|^MimeType=.*|MimeType=$types|" "$desktop" >"$tmp"
+mv "$tmp" "$desktop"
