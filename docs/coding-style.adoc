@@ -27,6 +27,10 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
 
  * Never use `static_cast<T>(x)`.  Prefer `T(x)`, or `(T)(x)`.
 
+ * The preprocessor's `defined` is an operator, not a function.  No parentheses.
+
+ * `sizeof` on objects is an operator, not a function.  No parentheses.
+
  * Avoid using non-STL templates and default arguments.
 
  * Avoid using declarations.  Between class definitions and method definitions,

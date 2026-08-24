@@ -34,6 +34,83 @@
 #include <unordered_set>
 #include <vector>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+
+static bool
+is_drive_ssd(wchar_t letter)
+{
+	wchar_t path[] = {L'\\', L'\\', L'.', L'\\', letter, L':', 0};
+
+	HANDLE h = CreateFileW(
+		path,
+		0, // no access rights needed
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		nullptr, OPEN_EXISTING, 0, nullptr);
+	if (h == INVALID_HANDLE_VALUE)
+		return false;
+
+	STORAGE_PROPERTY_QUERY query = {};
+	query.PropertyId = StorageDeviceSeekPenaltyProperty;
+	query.QueryType  = PropertyStandardQuery;
+
+	DEVICE_SEEK_PENALTY_DESCRIPTOR result = {};
+	DWORD bytesReturned = 0;
+
+	BOOL ok = DeviceIoControl(
+		h,
+		IOCTL_STORAGE_QUERY_PROPERTY,
+		&query, sizeof query,
+		&result, sizeof result,
+		&bytesReturned, nullptr);
+	CloseHandle(h);
+
+	return ok && bytesReturned >= sizeof result && !result.IncursSeekPenalty;
+}
+
+// It's not entirely clear how to map here, so we'll do our best.
+//
+// x drive-harddisk.svg          HDD        DRIVE_FIXED, default
+// x drive-optical.svg           CD/DVD     DRIVE_CDROM
+//   drive-multidisk.svg         RAID/NAS?  BusType?
+// x drive-removable-media.svg   pen drive  DRIVE_REMOVABLE
+// x drive-ssd.svg               SSD        DRIVE_FIXED + seek penalty
+//   memory.svg                  ramdisk    DRIVE_RAMDISK (rare!)
+// x network-server.svg          remote     DRIVE_REMOTE
+//
+// This will eventually need to be part of the VFS API.
+static const char *
+get_drive_icon(wchar_t letter)
+{
+	wchar_t root[] = {letter, ':', '\\', 0};
+	switch (GetDriveTypeW(root)) {
+	case DRIVE_CDROM:
+		return "drive-optical-symbolic";
+	case DRIVE_REMOVABLE:
+		return "drive-removable-media-symbolic";
+	case DRIVE_REMOTE:
+		return "network-server-symbolic";
+	case DRIVE_FIXED:
+		if (is_drive_ssd(letter))
+			return "drive-ssd-symbolic";
+		// Fall-through
+	default:
+		return "drive-harddisk-symbolic";
+	}
+}
+
+static std::wstring
+get_drive_label(const wchar_t *root)
+{
+	wchar_t buf[33] = {};
+    if (!GetVolumeInformationW(root, buf, sizeof buf / sizeof *buf,
+			nullptr, nullptr, nullptr, nullptr, 0) || !*buf)
+		return root;
+	return buf;
+}
+
+#endif
+
 using namespace std;
 
 namespace dn
@@ -1721,7 +1798,29 @@ scan_dir(Browser &b)
 		}
 	}
 
+#ifdef Q_OS_WIN
+	auto narrow = [](const wstring &w) -> string {
+		return QString::fromStdWString(w).toStdString();
+	};
+
+	// TODO(p): Set up a watch so that we reload on drive change.
+	// The window should receive WM_DEVICECHANGE:
+	// respond to DBT_DEVICEARRIVAL, DBT_DEVICEREMOVECOMPLETE,
+	// and/or maybe just DBT_DEVNODES_CHANGED (trivially reload here).
+	DWORD mask = GetLogicalDrives();
+	for (int i = 0; i < 26; ++i) {
+		wchar_t letter = L'A' + i;
+		if (!(mask & (1 << i)))
+			continue;
+
+		wchar_t drive[] = {letter, L':', L'\\', 0};
+		push_place(b, root, narrow(drive),
+			narrow(get_drive_label(drive)).c_str(), get_drive_icon(letter));
+	}
+#else
 	push_place(b, root, "/", "Computer", "computer-symbolic");
+#endif
+
 	push_place(
 		b, root, QDir::homePath().toStdString(), "Home", "go-home-symbolic");
 	{
@@ -1893,6 +1992,11 @@ pack_toolbar_icons(Browser &b)
 	b.kit_.pack_icon("go-down-symbolic", px);
 	b.kit_.pack_icon("dot-large-symbolic", px);
 	b.kit_.pack_icon("computer-symbolic", px);
+	b.kit_.pack_icon("drive-optical-symbolic", px);
+	b.kit_.pack_icon("drive-removable-media-symbolic", px);
+	b.kit_.pack_icon("network-server-symbolic", px);
+	b.kit_.pack_icon("drive-ssd-symbolic", px);
+	b.kit_.pack_icon("drive-harddisk-symbolic", px);
 	b.kit_.pack_icon("go-home-symbolic", px);
 	b.kit_.pack_icon("image-symbolic", px);
 	b.kit_.pack_icon("open-menu-symbolic", px);
@@ -2051,6 +2155,7 @@ fill_places(Browser &b)
 	auto *list = b.places_;
 	if (!list)
 		return;
+
 	string restore_path;
 	for (const auto &item : b.place_items_) {
 		if (item.button == b.kit_.focus_) {
@@ -2069,6 +2174,7 @@ fill_places(Browser &b)
 			b.place_items_.push_back({});
 			continue;
 		}
+
 		auto row = make_unique<SideRow>();
 		SideRow *item = row.get();
 		row->path = d.path;

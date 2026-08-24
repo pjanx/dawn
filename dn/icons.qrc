@@ -11,6 +11,11 @@
 		<file alias="info-outline-symbolic.svg">../icons/info-outline-symbolic.svg</file>
 		<file alias="font-symbolic.svg">../icons/font-symbolic.svg</file>
 		<file alias="filter-symbolic.svg">../icons/filter-symbolic.svg</file>
+		<file alias="drive-optical-symbolic.svg">../icons/drive-optical-symbolic.svg</file>
+		<file alias="drive-removable-media-symbolic.svg">../icons/drive-removable-media-symbolic.svg</file>
+		<file alias="network-server-symbolic.svg">../icons/network-server-symbolic.svg</file>
+		<file alias="drive-ssd-symbolic.svg">../icons/drive-ssd-symbolic.svg</file>
+		<file alias="drive-harddisk-symbolic.svg">../icons/drive-harddisk-symbolic.svg</file>
 		<file alias="blocks-symbolic.svg">../icons/blocks-symbolic.svg</file>
 		<file alias="color-symbolic.svg">../icons/color-symbolic.svg</file>
 		<file alias="computer-symbolic.svg">../icons/computer-symbolic.svg</file>

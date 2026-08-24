@@ -193,11 +193,11 @@ xdg_data_dirs()
 	append_unique(dirs, xdg_home_dir("XDG_DATA_HOME", ".local/share"));
 
 	// One package-relative datadir ahead of XDG_DATA_DIRS.
-#if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+#if defined Q_OS_MACOS || defined Q_OS_WIN
 	if (QCoreApplication::instance()) {
 		const QString app_dir = QCoreApplication::applicationDirPath();
 		if (!app_dir.isEmpty()) {
-#if defined(Q_OS_MACOS)
+#if defined Q_OS_MACOS
 			append_unique(dirs,
 				QDir(app_dir).absoluteFilePath(
 					QStringLiteral("../Resources/share")));
@@ -211,7 +211,7 @@ xdg_data_dirs()
 
 	QString data_dirs = qEnvironmentVariable("XDG_DATA_DIRS");
 	if (data_dirs.isEmpty()) {
-#if defined(Q_OS_MACOS)
+#ifdef Q_OS_MACOS
 		data_dirs =
 			QStringLiteral("/opt/homebrew/share:/usr/local/share:/usr/share");
 #else

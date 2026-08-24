@@ -131,10 +131,10 @@ QString
 help_document_path()
 {
 	const QString app_dir = QCoreApplication::applicationDirPath();
-#if defined(Q_OS_WIN)
+#if defined Q_OS_WIN
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
 		QStringLiteral("share/doc/dawn/dn.html")));
-#elif defined(Q_OS_MACOS)
+#elif defined Q_OS_MACOS
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
 		QStringLiteral("../Resources/share/doc/dawn/dn.html")));
 #else
@@ -1308,7 +1308,7 @@ Window::wheelEvent(QWheelEvent *event)
 		event->accept();
 		return;
 	}
-#if defined(Q_OS_MACOS)
+#if defined Q_OS_MACOS
 	// Cocoa provides pixelDelta even for a detented mouse wheel. Qt classifies
 	// precise scrolling devices (trackpads and Magic Mouse) as TouchPad; only
 	// those should pan, while a real wheel falls through to discrete zooming.
