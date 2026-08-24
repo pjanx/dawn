@@ -7,7 +7,6 @@
 
 struct Hello {
 	u32 protocol_version;
-	string build_id;
 	string session;
 };
 

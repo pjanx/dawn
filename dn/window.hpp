@@ -62,7 +62,7 @@ class Window final : public QWindow
 	void show_viewer_error(const QString &message);
 	void show_help();
 	int viewer_file_index(const QString &path) const;
-	void open_any(const QString &path);
+	void open_any(const QString &path, bool browse = false);
 	void open_sibling(int delta);
 	Page *active_ui();
 	const Page *active_ui() const;
@@ -130,7 +130,8 @@ public:
 	explicit Window(App *app, QWindow *parent = nullptr);
 	~Window() override;
 
-	bool initialize(const QString &path, BrowseSetup setup = {});
+	bool initialize(
+		const QString &path, BrowseSetup setup = {}, bool browse = false);
 	void shutdown();
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }

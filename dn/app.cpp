@@ -93,8 +93,8 @@ apply_activation_token(const QString &token)
 }
 
 OpenResult
-App::open(
-	const QUrl &url, const QString &activation_token, BrowseSetup setup)
+App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
+	bool browse)
 {
 	fprintf(stderr, "opening %s\n", url.toString().toStdString().c_str());
 	// XXX: Any good way of rejecting at this point?
@@ -115,7 +115,7 @@ App::open(
 #if DN_WITH_WAYLAND
 	if (QGuiApplication::platformName() == QStringLiteral("wayland")) {
 		auto window = make_unique<WaylandWindow>(this);
-		if (!window->initialize(resolved, setup))
+		if (!window->initialize(resolved, setup, browse))
 			return OpenResult::Internal;
 		apply_activation_token(activation_token);
 		window->show();
@@ -125,7 +125,7 @@ App::open(
 #endif
 
 	auto window = make_unique<Window>(this);
-	if (!window->initialize(resolved, setup))
+	if (!window->initialize(resolved, setup, browse))
 		return OpenResult::Internal;
 	apply_activation_token(activation_token);
 	window->show();

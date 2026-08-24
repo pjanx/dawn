@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-const INSTANCE_PROTOCOL_VERSION = 1;
+const INSTANCE_PROTOCOL_VERSION = 2;
 
 struct Request {
 	u64 id;
@@ -16,6 +16,9 @@ struct Request {
 		struct OpenRequest {
 			string urls<>;
 			string activation_token;
+			// Route a file argument to its parent directory,
+			// with the file selected, rather than to the viewer.
+			bool browse;
 		} open;
 	} body;
 };

@@ -78,12 +78,13 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 }
 
 bool
-handoff_open(dn::ipc::BlockingClient &client, const QStringList &paths)
+handoff_open(
+	dn::ipc::BlockingClient &client, const QStringList &paths, bool browse)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
 	dn::ipc::instance::Error error;
-	if (client.open(paths_utf8(paths), token, &error))
+	if (client.open(paths_utf8(paths), token, browse, &error))
 		return true;
 	if (!error.message.empty())
 		fprintf(stderr, "dn: %s\n", error.message.c_str());
@@ -110,7 +111,7 @@ report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 enum class Remote : uint8_t { Done, Failed, Isolated };
 
 Remote
-try_remote_open(const QString &session, const QStringList &paths,
+try_remote_open(const QString &session, const QStringList &paths, bool browse,
 	bool &reported_mismatch)
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
@@ -118,7 +119,7 @@ try_remote_open(const QString &session, const QStringList &paths,
 	auto client = dn::ipc::BlockingClient::connect(
 		session.toUtf8().toStdString(), &status);
 	if (client) {
-		if (handoff_open(*client, paths))
+		if (handoff_open(*client, paths, browse))
 			return Remote::Done;
 		return Remote::Failed;
 	}
@@ -195,7 +196,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	// TODO(p): Process browse_opt: pass through IPC, or to this instance.
+	const bool browse = parser.isSet(browse_opt);
 
 	dn::App app;
 #if DN_WITH_SINGLE_INSTANCE
@@ -204,7 +205,7 @@ main(int argc, char **argv)
 		const QString session = instance_session();
 		bool reported_mismatch = false;
 		switch (
-			try_remote_open(session, to_open, reported_mismatch)) {
+			try_remote_open(session, to_open, browse, reported_mismatch)) {
 		case Remote::Done:
 			return 0;
 		case Remote::Failed:
@@ -215,7 +216,8 @@ main(int argc, char **argv)
 
 		const auto listen = dn::ipc::Endpoint::listen("instance");
 		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
-			switch (try_remote_open(session, to_open, reported_mismatch)) {
+			switch (
+				try_remote_open(session, to_open, browse, reported_mismatch)) {
 			case Remote::Done:
 				return 0;
 			case Remote::Failed:
@@ -233,7 +235,7 @@ main(int argc, char **argv)
 	if (!app.init())
 		return 1;
 	for (const QString &path : to_open) {
-		if (app.open(path) != dn::OpenResult::Ok)
+		if (app.open(path, {}, {}, browse) != dn::OpenResult::Ok)
 			return 1;
 	}
 	return application.exec();

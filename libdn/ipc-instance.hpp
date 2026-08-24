@@ -45,8 +45,9 @@ public:
 		std::chrono::milliseconds timeout = kHelloTimeout);
 
 	// Send one Open request (id = 1). Wait for a terminal Response
-	// (DONE or ERROR) with the same id. timeout defaults to
-	// kRequestTimeout.
+	// (DONE or ERROR) with the same id. browse routes file arguments
+	// to their parent directory instead of the viewer. timeout
+	// defaults to kRequestTimeout.
 	// On DONE: return true.
 	// On ERROR: fill *error if non-null, return false.
 	// On timeout, protocol, or I/O failure: return false and, if
@@ -54,7 +55,7 @@ public:
 	// Do not retry; after the request is sent the server may already
 	// have opened windows.
 	bool open(const std::vector<std::string> &paths,
-		std::string_view activation_token,
+		std::string_view activation_token, bool browse,
 		instance::Error *error = nullptr,
 		std::chrono::milliseconds timeout = kRequestTimeout);
 

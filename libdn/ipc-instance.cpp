@@ -210,7 +210,7 @@ BlockingClient::connect(string_view session, HelloStatus *status,
 
 bool
 BlockingClient::open(const vector<string> &urls, string_view activation_token,
-	instance::Error *error, chrono::milliseconds timeout)
+	bool browse, instance::Error *error, chrono::milliseconds timeout)
 {
 	if (!conn_.ok()) {
 		set_internal(error);
@@ -223,6 +223,7 @@ BlockingClient::open(const vector<string> &urls, string_view activation_token,
 	instance::OpenRequest open_req;
 	open_req.urls = urls;
 	open_req.activation_token = string(activation_token);
+	open_req.browse = browse;
 
 	instance::Request req;
 	req.id = 1;

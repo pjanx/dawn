@@ -205,7 +205,7 @@ Window::pixel_size() const
 }
 
 bool
-Window::initialize(const QString &path, BrowseSetup setup)
+Window::initialize(const QString &path, BrowseSetup setup, bool browse)
 {
 	QVulkanInstance *const instance = this->app_->vulkan_instance();
 	create();
@@ -259,7 +259,7 @@ Window::initialize(const QString &path, BrowseSetup setup)
 	}
 
 	const QString open = path.isEmpty() ? QDir::currentPath() : path;
-	open_any(open);
+	open_any(open, browse);
 	return true;
 }
 
@@ -1112,12 +1112,22 @@ Window::apply_window(Action a)
 }
 
 void
-Window::open_any(const QString &path)
+Window::open_any(const QString &path, bool browse)
 {
 	const QFileInfo info(path);
 	if (info.isDir()) {
 		if (this->browser_)
 			this->browser_->open_dir(path);
+		cancel_viewer_loads();
+		set_mode(Mode::Browser);
+	} else if (browse) {
+		// A file with --browse is a request to point at it, not to view it:
+		// browse the parent and put the cursor on the file.
+		if (this->browser_) {
+			this->browser_->open_dir(info.absolutePath());
+			this->browser_->select_file(
+				info.absoluteFilePath().toStdString());
+		}
 		cancel_viewer_loads();
 		set_mode(Mode::Browser);
 	} else {

@@ -145,20 +145,20 @@ void
 test_round_trip_frames()
 {
 	{
-		inst::Hello hello{1, "build", "sess"};
+		inst::Hello hello{1, "sess"};
 		const vector<byte> buf = encoded(hello);
 		dn::ipc::Decoder dec(buf);
 		inst::HelloView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
 		CHECK(view.protocol_version == 1);
-		CHECK(view.build_id == "build");
 		CHECK(view.session == "sess");
 	}
 	{
 		inst::OpenRequest open;
 		open.urls = {"/one", "/two"};
 		open.activation_token = "tok";
+		open.browse = true;
 		const vector<byte> buf = encoded(open);
 		dn::ipc::Decoder dec(buf);
 		inst::OpenRequestView view{};
@@ -168,11 +168,12 @@ test_round_trip_frames()
 		CHECK(view.urls[0] == "/one");
 		CHECK(view.urls[1] == "/two");
 		CHECK(view.activation_token == "tok");
+		CHECK(view.browse);
 	}
 
 	{
 		inst::Frame own;
-		own.payload.value = inst::PayloadHello{inst::Hello{1, "a", "b"}};
+		own.payload.value = inst::PayloadHello{inst::Hello{1, "b"}};
 		const vector<byte> buf = encoded(own);
 		dn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
@@ -181,7 +182,6 @@ test_round_trip_frames()
 		CHECK(holds_alternative<inst::PayloadHelloView>(view.payload.value));
 		const auto &h = get<inst::PayloadHelloView>(view.payload.value).hello;
 		CHECK(h.protocol_version == 1);
-		CHECK(h.build_id == "a");
 		CHECK(h.session == "b");
 	}
 	{
@@ -225,6 +225,7 @@ test_round_trip_frames()
 		CHECK(o.urls.size() == 2);
 		CHECK(o.urls[0] == "/p");
 		CHECK(o.urls[1] == "/q");
+		CHECK(!o.browse);
 	}
 	{
 		inst::Response resp;
@@ -260,7 +261,7 @@ test_round_trip_frames()
 void
 test_goldens()
 {
-	// Hello{1, "a", "b"}: u32be version, u32be len+"a", u32be len+"b"
+	// Hello{1, "b"}: u32be version, u32be len+"b"
 	static constexpr uint8_t kHello[] = {
 		0x00,
 		0x00,
@@ -269,16 +270,10 @@ test_goldens()
 		0x00,
 		0x00,
 		0x00,
-		0x01,  // build_id length
-		0x61,  // 'a'
-		0x00,
-		0x00,
-		0x00,
 		0x01,  // session length
 		0x62,  // 'b'
 	};
-	check_golden(
-		"Hello{1,\"a\",\"b\"}", encoded(inst::Hello{1, "a", "b"}), kHello);
+	check_golden("Hello{1,\"b\"}", encoded(inst::Hello{1, "b"}), kHello);
 
 	// HelloReply SessionMismatch: tag i8 = 3, no payload
 	static constexpr uint8_t kSessionMismatch[] = {0x03};
@@ -303,7 +298,7 @@ test_goldens()
 void
 test_truncation()
 {
-	const vector<byte> full = encoded(inst::Hello{1, "a", "b"});
+	const vector<byte> full = encoded(inst::Hello{1, "b"});
 	CHECK(!full.empty());
 	for (size_t n = 0; n < full.size(); ++n) {
 		dn::ipc::Decoder dec(span<const byte>(full.data(), n));
@@ -318,14 +313,13 @@ test_truncation()
 	CHECK(dec.remaining() == 0);
 	CHECK(dec.error() == dn::ipc::DecodeError::Ok);
 	CHECK(view.protocol_version == 1);
-	CHECK(view.build_id == "a");
 	CHECK(view.session == "b");
 }
 
 void
 test_trailing_bytes()
 {
-	vector<byte> buf = encoded(inst::Hello{1, "a", "b"});
+	vector<byte> buf = encoded(inst::Hello{1, "b"});
 	buf.push_back(byte{0x00});
 	dn::ipc::Decoder dec(buf);
 	inst::HelloView view{};

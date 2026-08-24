@@ -38,8 +38,10 @@ class App
 {
 public:
 	bool init();
+	// browse routes a file argument to its parent directory, with the file
+	// selected, rather than to the viewer. Directories are unaffected.
 	OpenResult open(const QUrl &path, const QString &activation_token = {},
-		BrowseSetup setup = {});
+		BrowseSetup setup = {}, bool browse = false);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);
 	void quit();

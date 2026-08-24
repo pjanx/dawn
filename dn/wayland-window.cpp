@@ -97,11 +97,12 @@ WaylandWindow::~WaylandWindow()
 }
 
 bool
-WaylandWindow::initialize(const QString &path, BrowseSetup setup)
+WaylandWindow::initialize(
+	const QString &path, BrowseSetup setup, bool browse)
 {
 	create();
 	place_content();
-	if (!this->content_.initialize(path, setup))
+	if (!this->content_.initialize(path, setup, browse))
 		return false;
 	this->initialized_ = true;
 	attach_color_management(true);
