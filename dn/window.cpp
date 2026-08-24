@@ -383,7 +383,8 @@ Window::bind_host()
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
-		this->app_->open(QString::fromStdString(std::move(path)), {}, setup);
+		this->app_->open(QUrl::fromLocalFile(
+		    QString::fromStdString(std::move(path))), {}, setup);
 	};
 	this->host_.launch_exiftool = [this](
 									  QString path) { launch_exiftool(path); };

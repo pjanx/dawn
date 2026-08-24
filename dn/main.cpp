@@ -198,7 +198,7 @@ main(int argc, char **argv)
 	dn::App app;
 #if DN_WITH_SINGLE_INSTANCE
 	unique_ptr<dn::InstanceHost> host;
-	if (parser.isSet(new_instance_opt)) {
+	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
 		bool reported_mismatch = false;
 		switch (
