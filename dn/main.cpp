@@ -9,6 +9,7 @@
 #include "dawn-config.h"
 #include "libdn.h"
 #include "thumbnail-cache.hpp"
+#include "xdg.hpp"
 
 #if DN_WITH_SINGLE_INSTANCE
 #include "instance.hpp"
@@ -26,6 +27,7 @@
 #include <QGuiApplication>
 #include <QUrl>
 #include <qcommandlineoption.h>
+#include <qcoreapplication.h>
 
 #include <cstdio>
 #include <cstring>
@@ -160,14 +162,20 @@ main(int argc, char **argv)
 		QStringLiteral("Output supported media types and exit."));
 	parser.addOption(list_supported_opt);
 
+	const QCommandLineOption list_extensions_opt(
+		QStringLiteral("list-supported-extensions"),
+		QStringLiteral("Output supported filename globs and exit."));
+	parser.addOption(list_extensions_opt);
+
 	parser.addPositionalArgument(QStringLiteral("path | URI"),
 		QStringLiteral(
 			"Image file or directory. Repeat to open multiple windows. "
 			"Defaults to the current directory."),
 		QStringLiteral("[path | URI]..."));
 
-	// I suppose this could very well be passed a QStringList; this is shorter.
-	parser.process(QCoreApplication(argc, argv));
+	// xdg_data_dirs() invokes the static QCoreApplication::instance().
+	auto application = make_unique<QCoreApplication>(argc, argv);
+	parser.process(*application);
 
 	if (parser.isSet(invalidate_opt)) {
 		dn::thumbnail_cache_invalidate();
@@ -178,12 +186,21 @@ main(int argc, char **argv)
 			printf("%s\n", type.c_str());
 		return 0;
 	}
+	if (parser.isSet(list_extensions_opt)) {
+		vector<QString> types;
+		for (const string &type : dn::supported_media_types())
+			types.push_back(QString::fromStdString(type));
+		for (const QString &glob : dn::extract_mime_globs(types))
+			printf("%s\n", glob.toUtf8().constData());
+		return 0;
+	}
 
-	QGuiApplication application(argc, argv);
+	application.reset();
+	application = make_unique<QGuiApplication>(argc, argv);
 	const QStringList raw = parser.positionalArguments();
 
-	// Without the working directory, relative arguments do not resolve to a
-	// local file, and every one of them silently opens the CWD instead.
+	// Without the working directory, relative arguments do not resolve to
+	// a local file, and every one of them silently opens the CWD instead.
 	const QString cwd = QDir::currentPath();
 
 	QStringList to_open;
@@ -241,5 +258,5 @@ main(int argc, char **argv)
 		if (app.open(path, {}, {}, browse) != dn::OpenResult::Ok)
 			return 1;
 	}
-	return application.exec();
+	return application->exec();
 }
