@@ -14,6 +14,7 @@
 #include <windows.h>
 
 #include <initguid.h>
+#include <shellapi.h>
 #include <shlguid.h>
 #include <shlobj.h>
 #include <shlwapi.h>
@@ -144,6 +145,13 @@ Handler
 default_for(const QString &path)
 {
 	ensure_com();
+	if (QFileInfo(path).isDir()) {
+		Handler a;
+		a.id = QStringLiteral("explorer.exe");
+		// It's not quite clear how to get the localised, OS-appropriate name.
+		a.name = QStringLiteral("File Explorer");
+		return a;
+	}
 	const QString ext = extension_of(path);
 	if (ext.isEmpty())
 		return {};
@@ -208,6 +216,14 @@ launch(const Handler &app, const QString &path)
 	ensure_com();
 	if (app.id.isEmpty() || path.isEmpty())
 		return false;
+
+	if (QFileInfo(path).isDir()) {
+		const QString abs = QFileInfo(path).absoluteFilePath();
+		const wstring wpath = QDir::toNativeSeparators(abs).toStdWString();
+		return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, nullptr,
+			wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+	}
+
 	const QString ext = extension_of(path);
 	IAssocHandler *handler = find_handler(ext, app.id);
 	if (!handler)
