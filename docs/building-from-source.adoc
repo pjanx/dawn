@@ -1,0 +1,61 @@
+Building from source
+====================
+
+Debian 13 Trixie
+----------------
+This should generally apply to other Linux/BSD systems as well, after adjusting
+package names:
+
+.Required dependencies
+```sh
+apt install build-essential cmake qt6-base-dev glslang-tools librsvg2-bin \
+  libwebp-dev libjpeg-dev libcolord-dev shared-mime-info
+```
+
+.Optional dependencies
+```sh
+apt install librsvg2-dev libxcursor-dev libheif-dev libtiff-dev libraw-dev \
+  libgdk-pixbuf-2.0-dev qt6-wayland-dev wayland-protocols
+```
+
+.libresvg-dev is required but not often packaged, thus you may need to build it
+```sh
+apt install cargo cargo-c
+ver=$(sed -n 's/.*resvg-\([0-9.]*\)\.tar.*/\1/p' msys2-configure.sh)
+archive=resvg-$ver.tar.xz
+curl -#LO https://github.com/linebender/resvg/releases/download/v$ver/$archive
+tar xJf $archive
+cargo cinstall --release --prefix $PWD/resvg-prefix \
+  --manifest-path resvg-$ver/crates/c-api/Cargo.toml
+```
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+  -DDAWN_BUNDLED_LCMS2=ON -DCMAKE_PREFIX_PATH=$PWD/resvg-prefix
+(cd build && cpack -G DEB)
+```
+
+The application will run much faster if you allow bundling Little CMS.
+If you're not happy about this, you might be a distribution packager,
+in which case you should include the GPL plugins within normal Little CMS.
+
+macOS
+-----
+When built within a Homebrew environment, the project successfully produces
+a portable application bundle, however there is currently no one to sign
+these packages.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -- package
+```
+
+Windows
+-------
+Windows is cross-compiled in the CI pipeline, and while it can theoretically
+build from within an MSYS2 environment, this has not been attempted.
+
+```sh
+sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
+cmake --build build-msys2 -- package
+```
