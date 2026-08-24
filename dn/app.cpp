@@ -96,10 +96,9 @@ OpenResult
 App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	bool browse)
 {
-	fprintf(stderr, "opening %s\n", url.toString().toStdString().c_str());
 	// XXX: Any good way of rejecting at this point?
 	const QString resolved = url.isLocalFile()
-		? url.path()
+		? url.toLocalFile()
 		: QDir::currentPath();
 
 	const QFileInfo info(resolved);
