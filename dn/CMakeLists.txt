@@ -110,8 +110,53 @@ if (APPLE)
 	set_source_files_properties("${DN_ICON_ICNS}" PROPERTIES
 		MACOSX_PACKAGE_LOCATION Resources)
 	target_sources(dn PRIVATE "${DN_ICON_ICNS}")
+
+	# Mirrors supported_media_types(), restricted to macOS types.
+	set(utis
+		com.compuserve.gif
+		com.microsoft.bmp
+		com.truevision.tga-image
+		org.webmproject.webp
+		public.jpeg
+		public.png
+		public.svg-image)
+	if (DAWN_WITH_LIBTIFF)
+		list(APPEND utis public.tiff)
+	endif()
+	if (DAWN_WITH_LIBHEIF)
+		list(APPEND utis public.avif public.heic public.heif)
+	endif()
+	if (DAWN_WITH_LIBRAW)
+		# The abstract type the vendor formats conform to.
+		list(APPEND utis public.camera-raw-image)
+	endif()
+	if (DAWN_WITH_GDKPIXBUF)
+		list(APPEND utis
+			com.apple.icns
+			com.apple.quicktime-image
+			com.microsoft.ico
+			public.xbitmap-image)
+	endif()
+	list(SORT utis)
+
+	set(DN_MACOS_CONTENT_TYPES "")
+	foreach (uti IN LISTS utis)
+		string(APPEND DN_MACOS_CONTENT_TYPES
+			"\n\t\t\t\t<string>${uti}</string>")
+	endforeach()
+
+	# Still a template afterwards: CMake fills ${MACOSX_BUNDLE_*} at generate
+	# time, and Qt copies it once more in between.
+	set(plist "${CMAKE_CURRENT_BINARY_DIR}/Info.plist.in")
+	configure_file(Info.plist.in "${plist}" @ONLY)
+
 	set_target_properties(dn PROPERTIES
-		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}")
+		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}"
+		MACOSX_BUNDLE_INFO_PLIST "${plist}"
+		MACOSX_BUNDLE_BUNDLE_NAME "dn"
+		MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+		MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+		MACOSX_BUNDLE_COPYRIGHT "The dawn Authors")
 else()
 	include(IconUtils)
 	set(DN_ICON_BASE "${PROJECT_BINARY_DIR}/icons")
