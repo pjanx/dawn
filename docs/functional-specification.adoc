@@ -12,12 +12,12 @@ Also see link:configuring-your-system.adoc[about configuring a system].
  - Wayland: headless Weston
     * Use for automated tests.
     * No server-side decorations: check client-side decorations.
-      Weston crops our shadow, may add its own.
+      Window shadows are expected to be rendered.
 
  - Wayland: GNOME's Hell (Mutter)
     * A major Linux desktop environment.
     * No server-side decorations: check client-side decorations.
-      Mutter doesn't crop our shadow.
+      Window shadows are expected to be rendered.
     * Check if colour management works.
     * CSD: must invoke the right cursor on mouse move.
     * CSD: right clicks must invoke the compositor's context menu.
@@ -54,14 +54,14 @@ for not having to manage the window position.
 
 ```
 unset DISPLAY QT_QPA_PLATFORM
-XDG_RUNTIME_DIR=$PWD weston --backend=headless \
+weston --backend=headless \
   --renderer=vulkan --width=1600 --height=1200 \
-  --socket=wayland-0 \
+  --socket=wayland-dn \
   --idle-time=0 \
   --debug
-XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 ./bin/dn
-XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 weston-screenshooter
-XDG_RUNTIME_DIR=$PWD WAYLAND_DISPLAY=wayland-0 weston-debug scene-graph
+WAYLAND_DISPLAY=wayland-dn ./bin/dn
+WAYLAND_DISPLAY=wayland-dn weston-screenshooter
+WAYLAND_DISPLAY=wayland-dn weston-debug scene-graph
 ```
 
 Other Weston backends seem to be useful for interactive testing.
