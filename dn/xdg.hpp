@@ -14,7 +14,6 @@
 namespace dn
 {
 
-std::vector<QString> supported_media_types();
 std::vector<QString> extract_mime_globs(
 	const std::vector<QString> &media_types);
 

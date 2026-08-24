@@ -277,6 +277,10 @@ ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
+/// MIME types this build can load: base codecs, optional libraries, and
+/// whatever gdk-pixbuf modules are installed. Order is stable.
+std::vector<std::string> supported_media_types();
+
 void orientation_dimensions(
 	const Image &image, Orientation orientation, double *width, double *height);
 Matrix orientation_matrix(Orientation orientation, double width, double height);

@@ -1406,6 +1406,46 @@ exif_orientation(span<const uint8_t> exif)
 	return Orientation::Unknown;
 }
 
+// --- Supported media types ---------------------------------------------------
+
+// A subset of shared-mime-info, chiefly motivated by the suckiness of raw
+// photo formats: someone else will maintain the list of file extensions for us.
+std::vector<std::string>
+supported_media_types()
+{
+	vector<string> types = {
+		"image/bmp",
+		"image/gif",
+		"image/png",
+		"image/x-tga",
+		"image/jpeg",
+		"image/webp",
+		"image/svg+xml",  // resvg is a hard dependency
+	};
+#if DAWN_WITH_LIBRAW
+	types.push_back("image/x-dcraw");
+#endif
+#if DAWN_WITH_XCURSOR
+	types.push_back("image/x-xcursor");
+#endif
+#if DAWN_WITH_LIBHEIF
+	types.push_back("image/heic");
+	types.push_back("image/heif");
+	types.push_back("image/avif");
+#endif
+#if DAWN_WITH_LIBTIFF
+	types.push_back("image/tiff");
+#endif
+
+	// gdk-pixbuf loaders vary by installation; skip duplicates, keeping the
+	// first occurrence so that our own types win.
+	for (const string &type : detail::gdkpixbuf_media_types()) {
+		if (find(types.begin(), types.end(), type) == types.end())
+			types.push_back(type);
+	}
+	return types;
+}
+
 // --- Open --------------------------------------------------------------------
 
 // FIXME: Repeating these preprocessor defines is just stupid.
@@ -1455,6 +1495,12 @@ detail::load_gdkpixbuf(span<const uint8_t>, const OpenContext &, Error *error)
 {
 	set_error(error, "gdk-pixbuf support not built");
 	return nullptr;
+}
+
+vector<string>
+detail::gdkpixbuf_media_types()
+{
+	return {};
 }
 #endif
 

@@ -7,6 +7,7 @@
 
 #include "app.hpp"
 #include "dawn-config.h"
+#include "libdn.h"
 #include "thumbnail-cache.hpp"
 
 #if DN_WITH_SINGLE_INSTANCE
@@ -172,7 +173,8 @@ main(int argc, char **argv)
 		return 0;
 	}
 	if (parser.isSet(list_supported_opt)) {
-		// TODO(p): --list-supported-media-types
+		for (const string &type : dn::supported_media_types())
+			printf("%s\n", type.c_str());
 		return 0;
 	}
 

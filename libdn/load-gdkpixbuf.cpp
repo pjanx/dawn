@@ -87,6 +87,22 @@ load_gdkpixbuf_metadata(Image &image, GdkPixbuf *pixbuf)
 
 }  // namespace
 
+vector<string>
+detail::gdkpixbuf_media_types()
+{
+	vector<string> types;
+	GSList *formats = gdk_pixbuf_get_formats();
+	for (GSList *iter = formats; iter; iter = iter->next) {
+		gchar **mime_types = gdk_pixbuf_format_get_mime_types(
+			(GdkPixbufFormat *) iter->data);
+		for (gchar **p = mime_types; *p; p++)
+			types.push_back(*p);
+		g_strfreev(mime_types);
+	}
+	g_slist_free(formats);
+	return types;
+}
+
 ImagePtr
 detail::load_gdkpixbuf(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)

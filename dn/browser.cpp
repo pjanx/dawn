@@ -9,6 +9,7 @@
 
 #include "action.hpp"
 #include "chrome.hpp"
+#include "libdn.h"
 #include "renderer.hpp"
 #include "thumb-scaler.hpp"
 #include "thumbnail-cache.hpp"
@@ -179,8 +180,12 @@ hidden_name(const string &name)
 bool
 is_image_ext(const QString &name)
 {
-	static const vector<QString> globs =
-		extract_mime_globs(supported_media_types());
+	static const vector<QString> globs = [] {
+		vector<QString> out;
+		for (const string &type : supported_media_types())
+			out.push_back(QString::fromStdString(type));
+		return extract_mime_globs(out);
+	}();
 	const QString lower = QFileInfo(name).fileName().toLower();
 	for (const QString &glob : globs) {
 		if (QDir::match(glob, lower))

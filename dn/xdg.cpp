@@ -238,36 +238,6 @@ xdg_config_dirs()
 }
 
 vector<QString>
-supported_media_types()
-{
-	// TODO(p): This must go to libdn as a function.
-	vector<QString> types = {
-		QStringLiteral("image/bmp"),
-		QStringLiteral("image/gif"),
-		QStringLiteral("image/png"),
-		QStringLiteral("image/x-tga"),
-		QStringLiteral("image/jpeg"),
-		QStringLiteral("image/webp"),
-		QStringLiteral("image/svg+xml"),
-	};
-#if DAWN_WITH_LIBRAW
-	types.push_back(QStringLiteral("image/x-dcraw"));
-#endif
-#if DAWN_WITH_XCURSOR
-	types.push_back(QStringLiteral("image/x-xcursor"));
-#endif
-#if DAWN_WITH_LIBHEIF
-	types.push_back(QStringLiteral("image/heic"));
-	types.push_back(QStringLiteral("image/heif"));
-	types.push_back(QStringLiteral("image/avif"));
-#endif
-#if DAWN_WITH_LIBTIFF
-	types.push_back(QStringLiteral("image/tiff"));
-#endif
-	return types;
-}
-
-vector<QString>
 extract_mime_globs(const vector<QString> &media_types)
 {
 	const MimeDb &db = mime_db();
