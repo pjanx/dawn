@@ -181,17 +181,20 @@ main(int argc, char **argv)
 
 	QGuiApplication application(argc, argv);
 	const QStringList raw = parser.positionalArguments();
-	const QDir cwd = QDir::current();
+
+	// Without the working directory, relative arguments do not resolve to a
+	// local file, and every one of them silently opens the CWD instead.
+	const QString cwd = QDir::currentPath();
 
 	QStringList to_open;
 	if (raw.isEmpty()) {
-		to_open.append(QUrl::fromUserInput(".",
-			{}, QUrl::AssumeLocalFile).toString());
+		to_open.append(QUrl::fromUserInput(QStringLiteral("."),
+			cwd, QUrl::AssumeLocalFile).toString());
 	} else {
 		for (const QString &arg : raw) {
-			auto url = QUrl::fromUserInput(arg, {}, QUrl::AssumeLocalFile);
+			auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
 			if (!url.isValid())
-				url = QUrl::fromLocalFile(arg);
+				url = QUrl::fromLocalFile(QDir(cwd).absoluteFilePath(arg));
 			to_open.append(url.toString());
 		}
 	}
