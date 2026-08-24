@@ -44,6 +44,8 @@ Also see link:configuring-your-system.adoc[about configuring a system].
 
  - Linux + Wine
 
+Setting `QT_SCALE_FACTOR` to 0.5 or 1.5 should not cause any issues.
+
 Weston
 ~~~~~~
 The `gl` renderer has been observed to render upside-down while `headless`.
