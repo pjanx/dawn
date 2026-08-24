@@ -39,11 +39,15 @@ ensure_com()
 QString
 extension_of(const QString &path)
 {
+	// Windows doesn't really work this way.  We could use command-subkey verbs,
+	// though it's a lot of code for little gain.
 	if (QFileInfo(path).isDir())
-		return QStringLiteral("Directory");
+		return {};
+
 	const QString suffix = QFileInfo(path).suffix();
 	if (suffix.isEmpty())
 		return {};
+
 	return QStringLiteral(".") + suffix.toLower();
 }
 
