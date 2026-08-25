@@ -8,14 +8,14 @@ package names:
 
 .Required dependencies
 ```sh
-apt install build-essential cmake qt6-base-dev glslang-tools librsvg2-bin \
-  libwebp-dev libjpeg-dev libcolord-dev shared-mime-info
+apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
+  librsvg2-bin libwebp-dev libjpeg-dev libcolord-dev shared-mime-info
 ```
 
 .Optional dependencies
 ```sh
 apt install librsvg2-dev libxcursor-dev libheif-dev libtiff-dev libraw-dev \
-  libgdk-pixbuf-2.0-dev qt6-wayland-dev wayland-protocols
+  libgdk-pixbuf-2.0-dev
 ```
 
 .libresvg-dev is required but not often packaged, thus you may need to build it
@@ -57,5 +57,5 @@ build from within an MSYS2 environment, this has not been attempted.
 
 ```sh
 sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
-cmake --build build-msys2 -- package
+cmake --build build-msys2 -- package msi
 ```

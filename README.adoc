@@ -52,7 +52,9 @@ portable packages for: the former needs labour, the latter money.
 You can get a package with the latest development version using Arch Linux's
 https://aur.archlinux.org/packages/dn-git[AUR].
 
-https://janouch.name/cd[Windows packages can be found here],
+https://janouch.name/cd[Windows packages can be found here]
+(latest https://janouch.name/cd/dawn-latest-Windows-x86_64.zip[ZIP],
+https://janouch.name/cd/dawn-latest-x86_64.msi[installer]),
 and they work in Wine.
 
 On Windows, if your account is '`high integrity`' and you have no true Vulkan
