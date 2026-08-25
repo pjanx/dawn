@@ -3,7 +3,7 @@
 
 set(_dn_bundle "$<TARGET_BUNDLE_DIR_NAME:dn>")
 install(TARGETS dn BUNDLE DESTINATION .)
-install(TARGETS dnthumbd RUNTIME DESTINATION "${_dn_bundle}/Contents/MacOS")
+#install(TARGETS dnthumbd RUNTIME DESTINATION "${_dn_bundle}/Contents/MacOS")
 install(TARGETS libdn LIBRARY DESTINATION "${_dn_bundle}/Contents/Frameworks")
 
 set(_dn_mime_dir)

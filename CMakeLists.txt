@@ -195,7 +195,7 @@ add_subdirectory(dnthumbd)
 add_subdirectory(dn)
 
 if (WIN32)
-	install(TARGETS dn libdn dnthumbd
+	install(TARGETS dn libdn
 		RUNTIME DESTINATION .)
 	install(DIRECTORY "${DAWN_MSYS2_PREFIX}/bin/"
 		DESTINATION .
@@ -231,7 +231,7 @@ elseif (APPLE)
 	include(cmake/macos-install.cmake)
 else()
 	include(GNUInstallDirs)
-	install(TARGETS dn dnthumbd
+	install(TARGETS dn
 		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 	install(TARGETS libdn
 		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})

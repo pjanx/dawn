@@ -49,6 +49,9 @@ Packages
 Things are in flux.  Linux and macOS are currently too painful to provide
 portable packages for: the former needs labour, the latter money.
 
+You can get a package with the latest development version using Arch Linux's
+https://aur.archlinux.org/packages/dn-git[AUR].
+
 https://janouch.name/cd[Windows packages can be found here],
 and they work in Wine.
 
