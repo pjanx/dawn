@@ -17,6 +17,7 @@
 #cmakedefine01 DAWN_WITH_XCURSOR
 #cmakedefine01 DAWN_WITH_LIBHEIF
 #cmakedefine01 DAWN_WITH_LIBJXL
+#cmakedefine01 DAWN_WITH_OPENJPEG
 #cmakedefine01 DAWN_WITH_LIBTIFF
 #cmakedefine01 DAWN_WITH_GDKPIXBUF
 

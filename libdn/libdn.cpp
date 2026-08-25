@@ -1436,6 +1436,12 @@ supported_media_types()
 #if DAWN_WITH_LIBJXL
 	types.push_back("image/jxl");
 #endif
+#if DAWN_WITH_OPENJPEG
+	// Deliberately not image/jpx or image/jpm: OpenJPEG decodes neither
+	// JPX (Part 2) nor compound JPM, and claiming them would only fail later.
+	types.push_back("image/jp2");
+	types.push_back("image/x-jp2-codestream");
+#endif
 #if DAWN_WITH_LIBTIFF
 	types.push_back("image/tiff");
 #endif
@@ -1489,6 +1495,14 @@ ImagePtr
 detail::load_jxl(span<const uint8_t>, const OpenContext &, Error *error)
 {
 	set_error(error, "libjxl support not built");
+	return nullptr;
+}
+#endif
+#if !DAWN_WITH_OPENJPEG
+ImagePtr
+detail::load_openjpeg(span<const uint8_t>, const OpenContext &, Error *error)
+{
+	set_error(error, "OpenJPEG support not built");
 	return nullptr;
 }
 #endif
@@ -1580,6 +1594,9 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 #endif
 #if DAWN_WITH_LIBHEIF
 	try_next(detail::load_heif);
+#endif
+#if DAWN_WITH_OPENJPEG
+	try_next(detail::load_openjpeg);
 #endif
 #if DAWN_WITH_LIBTIFF
 	try_next(detail::load_tiff);
