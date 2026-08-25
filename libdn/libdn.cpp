@@ -1433,6 +1433,9 @@ supported_media_types()
 	types.push_back("image/heif");
 	types.push_back("image/avif");
 #endif
+#if DAWN_WITH_LIBJXL
+	types.push_back("image/jxl");
+#endif
 #if DAWN_WITH_LIBTIFF
 	types.push_back("image/tiff");
 #endif
@@ -1478,6 +1481,14 @@ ImagePtr
 detail::load_heif(span<const uint8_t>, const OpenContext &, Error *error)
 {
 	set_error(error, "libheif support not built");
+	return nullptr;
+}
+#endif
+#if !DAWN_WITH_LIBJXL
+ImagePtr
+detail::load_jxl(span<const uint8_t>, const OpenContext &, Error *error)
+{
+	set_error(error, "libjxl support not built");
 	return nullptr;
 }
 #endif
@@ -1561,6 +1572,11 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 #endif
 #if DAWN_WITH_XCURSOR
 	try_next(detail::load_xcursor);
+#endif
+	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
+	// not rely on libheif rejecting an unknown ftyp brand.
+#if DAWN_WITH_LIBJXL
+	try_next(detail::load_jxl);
 #endif
 #if DAWN_WITH_LIBHEIF
 	try_next(detail::load_heif);

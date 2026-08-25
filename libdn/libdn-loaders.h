@@ -57,6 +57,8 @@ ImagePtr load_xcursor(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 ImagePtr load_heif(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
+ImagePtr load_jxl(
+	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 ImagePtr load_tiff(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 ImagePtr load_gdkpixbuf(

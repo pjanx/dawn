@@ -171,7 +171,7 @@ cd "$builddir/ucrt64"
 
 dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
-	$pkg-libjpeg-turbo $pkg-libheif $pkg-libraw $pkg-zlib \
+	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-libraw $pkg-zlib \
 	$pkg-shared-mime-info $pkg-gcc-libs \
 	#$pkg-perl $pkg-perl-win32-api
 verify
