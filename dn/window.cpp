@@ -153,6 +153,12 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	resize(kWindowWidth, kWindowHeight);
 	connect(this, &QWindow::screenChanged, this,
 		[this](QScreen *new_screen) { handle_screen_change(new_screen); });
+	// setTitle() only fires this once real content differs from what a
+	// speculative default open set up, however that came about.
+	connect(this, &QWindow::windowTitleChanged, this, [this] {
+		if (this->app_ && this->app_->default_window() == this)
+			this->app_->default_window() = nullptr;
+	});
 	this->ui_wake_.setSingleShot(true);
 	connect(
 		&this->ui_wake_, &QTimer::timeout, this, [this] { request_render(); });

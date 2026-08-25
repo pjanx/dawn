@@ -111,6 +111,13 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 		return OpenResult::PermissionDenied;
 	}
 
+	if (Window *target = this->default_window_) {
+		this->default_window_ = nullptr;
+		target->open_any(resolved, browse);
+		apply_activation_token(activation_token);
+		return OpenResult::Ok;
+	}
+
 #if DN_WITH_WAYLAND
 	if (QGuiApplication::platformName() == QStringLiteral("wayland")) {
 		auto window = make_unique<WaylandWindow>(this);

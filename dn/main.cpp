@@ -9,6 +9,7 @@
 #include "dawn-config.h"
 #include "libdn.h"
 #include "thumbnail-cache.hpp"
+#include "window.hpp"
 #include "xdg.hpp"
 
 #if DN_WITH_SINGLE_INSTANCE
@@ -24,6 +25,8 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
+#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QUrl>
 #include <qcommandlineoption.h>
@@ -31,8 +34,42 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 using namespace std;
+
+namespace
+{
+
+// Finder launches (double-click, drag-and-drop, "Open With") do not pass
+// the document as an argument: they deliver it as a QFileOpenEvent once
+// the event loop is running, possibly after this process is already open.
+class GuiApplication : public QGuiApplication
+{
+	dn::App *app_ = nullptr;
+
+protected:
+	bool event(QEvent *event) override;
+
+public:
+	GuiApplication(int &argc, char **argv) : QGuiApplication(argc, argv) {}
+
+	// FileOpen cannot be delivered before exec(),
+	// and this always runs before it, so event() may assume app_ is set.
+	void attach(dn::App &app) { this->app_ = &app; }
+};
+
+bool
+GuiApplication::event(QEvent *event)
+{
+	if (event->type() == QEvent::FileOpen) {
+		this->app_->open(((QFileOpenEvent *) event)->url());
+		return true;
+	}
+	return QGuiApplication::event(event);
+}
+
+}  // namespace
 
 #if DN_WITH_SINGLE_INSTANCE
 namespace
@@ -196,7 +233,7 @@ main(int argc, char **argv)
 	}
 
 	application.reset();
-	application = make_unique<QGuiApplication>(argc, argv);
+	application = make_unique<GuiApplication>(argc, argv);
 	const QStringList raw = parser.positionalArguments();
 
 	// Without the working directory, relative arguments do not resolve to
@@ -258,5 +295,13 @@ main(int argc, char **argv)
 		if (app.open(path, {}, {}, browse) != dn::OpenResult::Ok)
 			return 1;
 	}
+	// A bare launch opened the CWD above on a guess: a Finder document may
+	// still be coming, as a QFileOpenEvent with no delivery deadline. Rather
+	// than wait, register that window so App::open() retargets it in place
+	// if one turns up.
+	if (raw.isEmpty())
+		app.default_window() = app.key_window();
+
+	((GuiApplication *) application.get())->attach(app);
 	return application->exec();
 }

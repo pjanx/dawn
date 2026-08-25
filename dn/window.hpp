@@ -62,7 +62,6 @@ class Window final : public QWindow
 	void show_viewer_error(const QString &message);
 	void show_help();
 	int viewer_file_index(const QString &path) const;
-	void open_any(const QString &path, bool browse = false);
 	void open_sibling(int delta);
 	Page *active_ui();
 	const Page *active_ui() const;
@@ -133,6 +132,10 @@ public:
 	bool initialize(
 		const QString &path, BrowseSetup setup = {}, bool browse = false);
 	void shutdown();
+	// Redirects an already-shown window to different content, tearing down
+	// nothing that initialize() set up. Used for drops onto a live window,
+	// and to retarget a window Finder's document turned out not to need.
+	void open_any(const QString &path, bool browse = false);
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }
 	[[nodiscard]] const Actor *active_actor() const;
