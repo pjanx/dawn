@@ -5,8 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "app-menu.hpp"
+#include <dawn-config.h>
+
 #include "action.hpp"
+#include "app-menu.hpp"
 #include "assoc.hpp"
 #include "chrome.hpp"
 
@@ -762,8 +764,7 @@ Modal::fill_dialog(Kit &kit)
 	auto col = make_unique<Column>();
 	col->gap = 8.0f;
 	if (this->kind == AppOverlay::About) {
-		// TODO(p): Use a macro for this.
-		QString name = QStringLiteral("Dawn");
+		QString name = QStringLiteral(DAWN_NAME);
 		col->add_child(dialog_label(name, true));
 		col->add_child(dialog_label(
 			QStringLiteral("Colour-managed image browser and viewer."), false,

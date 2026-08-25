@@ -3,7 +3,7 @@ Coding style
 
 General
 -------
- * 'dawn' is the name of the project, 'dn' is the name of the GUI application.
+ * 'Dawn' is the name of the project, 'dn' is the name of the GUI application.
    This influences naming.
  * The general naming convention for files and directories is
    _lower-case-with-hyphens_.  CMake has an exception for `FindPackage`.
@@ -30,6 +30,8 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
  * The preprocessor's `defined` is an operator, not a function.  No parentheses.
 
  * `sizeof` on objects is an operator, not a function.  No parentheses.
+
+ * Avoid deep nesting in functions.
 
  * Avoid using non-STL templates and default arguments.
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(dawn
+project(Dawn
 	VERSION 0.1.0
 	DESCRIPTION "Colour-managed image browser"
 	LANGUAGES C CXX
@@ -189,8 +189,7 @@ endif()
 
 configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
-	"${PROJECT_BINARY_DIR}/dawn-config.h"
-)
+	"${PROJECT_BINARY_DIR}/dawn-config.h")
 
 add_subdirectory(libdn)
 add_subdirectory(dnthumbd)

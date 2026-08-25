@@ -7,6 +7,7 @@
 
 #pragma once
 
+#define DAWN_NAME "@PROJECT_NAME@"
 #define DAWN_VERSION "@PROJECT_VERSION@"
 
 #cmakedefine01 DAWN_WITH_LCMS2_FAST_FLOAT

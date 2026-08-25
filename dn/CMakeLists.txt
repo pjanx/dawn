@@ -1,30 +1,26 @@
 qt_add_executable(dn
-	main.cpp
-	app.cpp
-	window.cpp
-	renderer.cpp
-	gpu.cpp
-	kit.cpp
-	chrome.cpp
-	app-menu.cpp
-	hint.cpp
 	action.cpp
-	viewer.cpp
+	app.cpp
+	app-menu.cpp
 	browser.cpp
-	thumbnailer.cpp
-	thumbnail-cache.cpp
-	overlay.cpp
+	chrome.cpp
 	cie-diagram.cpp
-	sheet.cpp
-	xdg.cpp
 	display-profile.cpp
+	gpu.cpp
+	hint.cpp
+	kit.cpp
+	main.cpp
+	overlay.cpp
+	renderer.cpp
+	sheet.cpp
+	thumbnail-cache.cpp
+	thumbnailer.cpp
+	viewer.cpp
+	window.cpp
+	xdg.cpp
 	icons.qrc
 )
-set_target_properties(dn PROPERTIES
-	AUTOMOC ON
-	AUTORCC ON
-	MACOSX_BUNDLE ON
-	MACOSX_BUNDLE_GUI_IDENTIFIER name.janouch.dn)
+set_target_properties(dn PROPERTIES AUTOMOC ON AUTORCC ON)
 target_include_directories(dn PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"${PROJECT_SOURCE_DIR}/libdn"
@@ -59,8 +55,8 @@ add_dependencies(dn dn-cmf-header)
 
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
-dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
 dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
+dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
 
 if (WIN32)
 	target_sources(dn PRIVATE
@@ -68,8 +64,7 @@ if (WIN32)
 		assoc-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE gdi32 shell32 shlwapi ole32 advapi32)
-	set_target_properties(dn PROPERTIES
-		WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
 	enable_language(OBJCXX)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
@@ -83,15 +78,13 @@ elseif (APPLE)
 	target_link_libraries(dn PRIVATE
 		"${DN_APPKIT_FRAMEWORK}"
 		"${DN_COREGRAPHICS_FRAMEWORK}"
-		"${DN_CORESERVICES_FRAMEWORK}"
-	)
+		"${DN_CORESERVICES_FRAMEWORK}")
 else()
 	pkg_check_modules(DN_COLORD REQUIRED IMPORTED_TARGET colord)
 	target_sources(dn PRIVATE
 		display-profile-linux.cpp
 		assoc-unix.cpp
-		instance.cpp
-	)
+		instance.cpp)
 	target_link_libraries(dn PRIVATE PkgConfig::DN_COLORD)
 endif()
 
@@ -119,7 +112,8 @@ if (APPLE)
 		org.webmproject.webp
 		public.jpeg
 		public.png
-		public.svg-image)
+		public.svg-image
+	)
 	if (DAWN_WITH_LIBTIFF)
 		list(APPEND utis public.tiff)
 	endif()
@@ -141,7 +135,8 @@ if (APPLE)
 			com.apple.icns
 			com.apple.quicktime-image
 			com.microsoft.ico
-			public.xbitmap-image)
+			public.xbitmap-image
+		)
 	endif()
 	list(SORT utis)
 
@@ -156,13 +151,18 @@ if (APPLE)
 	set(plist "${CMAKE_CURRENT_BINARY_DIR}/Info.plist.in")
 	configure_file(Info.plist.in "${plist}" @ONLY)
 
+	# XXX: I actually want to name the binary dn but the bundle Dawn.
 	set_target_properties(dn PROPERTIES
+		RUNTIME_OUTPUT_NAME "${PROJECT_NAME}"
+		MACOSX_BUNDLE ON
+		MACOSX_BUNDLE_GUI_IDENTIFIER name.janouch.dn
 		MACOSX_BUNDLE_ICON_FILE "${MACOSX_BUNDLE_ICON_FILE}"
 		MACOSX_BUNDLE_INFO_PLIST "${plist}"
-		MACOSX_BUNDLE_BUNDLE_NAME "dn"
+		MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}"
 		MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
 		MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-		MACOSX_BUNDLE_COPYRIGHT "The dawn Authors")
+		MACOSX_BUNDLE_COPYRIGHT "The dawn Authors"
+	)
 else()
 	include(IconUtils)
 	set(DN_ICON_BASE "${PROJECT_BINARY_DIR}/icons")
@@ -244,8 +244,7 @@ if (DN_WITH_WAYLAND)
 			"${DN_XDG_XML}" "${DN_XDG_HEADER}"
 		DEPENDS "${DN_COLOR_XML}" "${DN_XDG_XML}"
 		COMMENT "wayland-scanner protocols for dn"
-		VERBATIM
-	)
+		VERBATIM)
 
 	target_sources(dn PRIVATE
 		wayland-color-bridge.cpp
@@ -278,7 +277,8 @@ if (APPLE)
 		PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/share/doc/dawn")
 	target_sources(dn PRIVATE
 		"${DAWN_HELP_DIR}/dn.html"
-		"${DAWN_HELP_DIR}/stylesheet.css")
+		"${DAWN_HELP_DIR}/stylesheet.css"
+	)
 elseif (WIN32)
 	install(FILES
 		"${DAWN_HELP_DIR}/dn.html"
@@ -316,6 +316,5 @@ endif()
 if (BUILD_TESTING)
 	add_test(NAME dn-help COMMAND dn --help)
 	set_tests_properties(dn-help PROPERTIES
-		ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
-	)
+		ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endif()
