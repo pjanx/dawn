@@ -74,7 +74,7 @@ App::init()
 		{VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME});
 	if (!this->vulkan_instance.create()) {
 		qWarning("Qt Vulkan instance creation failed: VkResult %d",
-			static_cast<int>(this->vulkan_instance.errorCode()));
+			int(this->vulkan_instance.errorCode()));
 		return false;
 	}
 #ifdef Q_OS_MACOS

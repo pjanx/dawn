@@ -33,7 +33,9 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
 
  * Avoid deep nesting in functions.
 
- * Avoid using non-STL templates and default arguments.
+ * Avoid defining your own templates, and avoid default arguments.
+
+ * Avoid using Qt facilities where STL will do exactly as well.
 
  * Avoid using declarations.  Between class definitions and method definitions,
    the way to achieve this is to keep everything public, and to make methods

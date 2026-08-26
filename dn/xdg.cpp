@@ -13,10 +13,11 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QHash>
-#include <QSet>
 
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 using namespace std;
 
@@ -37,10 +38,10 @@ xdg_home_dir(const char *var, const char *default_rel)
 	return QDir::cleanPath(QDir(home).filePath(QString::fromUtf8(default_rel)));
 }
 
-QStringList
+vector<QString>
 split_search_path(const QString &value)
 {
-	QStringList out;
+	vector<QString> out;
 	const QChar sep =
 #ifdef Q_OS_WIN
 		u';';
@@ -88,7 +89,7 @@ struct MimeGlob {
 
 struct MimeDb {
 	// superclass → subclasses (is-a)
-	QHash<QString, QSet<QString>> subclasses;
+	unordered_map<QString, unordered_set<QString>> subclasses;
 	vector<MimeGlob> globs;
 };
 
@@ -171,17 +172,18 @@ mime_db()
 
 void
 add_applying_transitive_closure(const QString &element,
-	const QHash<QString, QSet<QString>> &relation, QSet<QString> &output)
+	const unordered_map<QString, unordered_set<QString>> &relation,
+	unordered_set<QString> &output)
 {
 	if (output.contains(element))
 		return;
 	output.insert(element);
 	// TODO(p): Iterate over all aliases of `element` in addition to
 	// any direct match (and rename this no-longer-generic function).
-	const auto it = relation.constFind(element);
-	if (it == relation.cend())
+	const auto it = relation.find(element);
+	if (it == relation.end())
 		return;
-	for (const QString &sub : *it)
+	for (const QString &sub : it->second)
 		add_applying_transitive_closure(sub, relation, output);
 }
 
@@ -242,17 +244,17 @@ vector<QString>
 extract_mime_globs(const vector<QString> &media_types)
 {
 	const MimeDb &db = mime_db();
-	QSet<QString> supported;
+	unordered_set<QString> supported;
 	for (const QString &type : media_types)
 		add_applying_transitive_closure(type, db.subclasses, supported);
 
-	QSet<QString> globs;
+	unordered_set<QString> globs;
 	for (const MimeGlob &g : db.globs) {
 		if (supported.contains(g.type))
 			globs.insert(g.glob);
 	}
 	vector<QString> out;
-	out.reserve(size_t(globs.size()));
+	out.reserve(globs.size());
 	for (const QString &g : globs)
 		out.push_back(g);
 	return out;
@@ -268,22 +270,24 @@ types_for_filename(const QString &path)
 		return {};
 
 	const MimeDb &db = mime_db();
-	QHash<QString, int> best_weight;
+	unordered_map<QString, int> best_weight;
 	for (const MimeGlob &g : db.globs) {
 		if (!QDir::match(g.glob, name))
 			continue;
 		auto it = best_weight.find(g.type);
-		if (it == best_weight.end() || g.weight > it.value())
-			best_weight.insert(g.type, g.weight);
+		if (it == best_weight.end())
+			best_weight.insert({g.type, g.weight});
+		else if (g.weight > it->second)
+			it->second = g.weight;
 	}
 
 	vector<QString> out;
-	out.reserve(size_t(best_weight.size()));
-	for (auto it = best_weight.constBegin(); it != best_weight.constEnd(); ++it)
-		out.push_back(it.key());
+	out.reserve(best_weight.size());
+	for (const auto &kv : best_weight)
+		out.push_back(kv.first);
 	sort(out.begin(), out.end(), [&](const QString &a, const QString &b) {
-		const int wa = best_weight.value(a);
-		const int wb = best_weight.value(b);
+		const int wa = best_weight.at(a);
+		const int wb = best_weight.at(b);
 		if (wa != wb)
 			return wa > wb;
 		return a < b;

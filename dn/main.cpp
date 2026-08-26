@@ -24,6 +24,7 @@
 #include <vector>
 #endif
 
+#include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
@@ -32,8 +33,6 @@
 #include <QGuiApplication>
 #include <QUrl>
 #include <QtLogging>
-#include <qcommandlineoption.h>
-#include <qcoreapplication.h>
 
 #include <cstdio>
 #include <cstring>
@@ -97,10 +96,10 @@ instance_session()
 }
 
 vector<string>
-urls_utf8(const QList<QUrl> &urls)
+urls_utf8(const vector<QUrl> &urls)
 {
 	vector<string> out;
-	out.reserve(size_t(urls.size()));
+	out.reserve(urls.size());
 	for (const QUrl &url : urls)
 		out.push_back(url.toEncoded().toStdString());
 	return out;
@@ -126,7 +125,7 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 
 bool
 handoff_open(
-	dn::ipc::BlockingClient &client, const QList<QUrl> &urls, bool browse)
+	dn::ipc::BlockingClient &client, const vector<QUrl> &urls, bool browse)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
@@ -165,7 +164,7 @@ report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 enum class Remote : uint8_t { Done, Failed, Isolated };
 
 Remote
-try_remote_open(const QString &session, const QList<QUrl> &urls, bool browse,
+try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
@@ -260,16 +259,16 @@ main(int argc, char **argv)
 	// a local file, and every one of them is rejected as a foreign scheme.
 	const QString cwd = QDir::currentPath();
 
-	QList<QUrl> to_open;
+	vector<QUrl> to_open;
 	if (raw.isEmpty()) {
-		to_open.append(dn::url_normalized(QUrl::fromUserInput(
+		to_open.push_back(dn::url_normalized(QUrl::fromUserInput(
 			QStringLiteral("."), cwd, QUrl::AssumeLocalFile)));
 	} else {
 		for (const QString &arg : raw) {
 			auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
 			if (!url.isValid())
 				url = dn::path_to_url(QDir(cwd).absoluteFilePath(arg));
-			to_open.append(dn::url_normalized(url));
+			to_open.push_back(dn::url_normalized(url));
 		}
 	}
 
@@ -281,8 +280,7 @@ main(int argc, char **argv)
 	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
 		bool reported_mismatch = false;
-		switch (
-			try_remote_open(session, to_open, browse, reported_mismatch)) {
+		switch (try_remote_open(session, to_open, browse, reported_mismatch)) {
 		case Remote::Done:
 			return 0;
 		case Remote::Failed:

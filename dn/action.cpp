@@ -9,7 +9,6 @@
 
 #include <QByteArray>
 #include <QClipboard>
-#include <QDataStream>
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -474,14 +473,12 @@ copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 
 	mime->setUrls(QList<QUrl>(urls.begin(), urls.end()));
 #ifdef Q_OS_WIN
-	QByteArray effect;
-	QDataStream ds(&effect, QIODevice::WriteOnly);
-	ds.setByteOrder(QDataStream::LittleEndian);
-	ds << quint32(cut ? 2u : 1u);
+	// A little-endian DWORD: DROPEFFECT_MOVE or DROPEFFECT_COPY.
 	mime->setData(
 		QStringLiteral(
 			"application/x-qt-windows-mime;value=\"Preferred DropEffect\""),
-		effect);
+		cut ? QByteArrayLiteral("\x02\x00\x00\x00")
+			: QByteArrayLiteral("\x01\x00\x00\x00"));
 #endif
 #if defined Q_OS_UNIX && !defined Q_OS_MACOS
 	QByteArray gnome;

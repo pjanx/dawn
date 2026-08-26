@@ -9,7 +9,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QSet>
 
 #include <windows.h>
 
@@ -21,6 +20,7 @@
 #include <shobjidl.h>
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using namespace std;
@@ -197,7 +197,7 @@ fallback_for(const QString &path)
 	ensure_com();
 	const QString ext = extension_of(path);
 	const vector<Handler> rec = enum_handlers(ext, ASSOC_FILTER_RECOMMENDED);
-	QSet<QString> seen;
+	unordered_set<QString> seen;
 	for (const Handler &a : rec)
 		seen.insert(a.id);
 	vector<Handler> out;

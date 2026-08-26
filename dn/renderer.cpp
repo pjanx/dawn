@@ -29,7 +29,7 @@ void
 check_vk(VkResult result, const char *what)
 {
 	if (result != VK_SUCCESS) {
-		qWarning("%s failed: VkResult %d", what, static_cast<int>(result));
+		qWarning("%s failed: VkResult %d", what, int(result));
 		exit(1);
 	}
 }

@@ -9,19 +9,21 @@
 
 #include "xdg.hpp"
 
+#include <QByteArray>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QHash>
-#include <QLocale>
 #include <QMimeDatabase>
 #include <QMimeType>
-#include <QPair>
 #include <QProcess>
-#include <QSet>
+#include <QSaveFile>
 #include <QUrl>
 
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 using namespace std;
 
@@ -53,10 +55,16 @@ write_text_file(const QString &path, const QString &text)
 	QFileInfo info(path);
 	if (!QDir().mkpath(info.absolutePath()))
 		return false;
-	QFile file(path);
-	if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+
+	// One file carries the user's associations for every application,
+	// so it must never be left truncated.
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly))
 		return false;
-	return file.write(text.toUtf8()) >= 0;
+	const QByteArray data = text.toUtf8();
+	if (file.write(data) != data.size())
+		return false;
+	return file.commit();
 }
 
 QString
@@ -136,10 +144,11 @@ locale_candidates()
 		for (const QString &part : language.split(u':', Qt::SkipEmptyParts))
 			raw.push_back(part);
 	}
+	// QLocale::system() has nothing but these three to go on here, and it
+	// discards the modifier, so it would only ever repeat one of them.
 	raw.push_back(qEnvironmentVariable("LC_ALL"));
 	raw.push_back(qEnvironmentVariable("LC_MESSAGES"));
 	raw.push_back(qEnvironmentVariable("LANG"));
-	raw.push_back(QLocale::system().name());
 
 	vector<QString> out;
 	auto add = [&](const QString &s) {
@@ -181,7 +190,7 @@ locale_candidates()
 
 struct IniGroup {
 	QString name;
-	vector<QPair<QString, QString>> keys;
+	vector<pair<QString, QString>> keys;
 };
 
 struct IniFile {
@@ -288,7 +297,7 @@ mimeapps_list_paths()
 struct AssocSets {
 	vector<QString> defaults;
 	vector<QString> added;
-	QSet<QString> removed;
+	unordered_set<QString> removed;
 };
 
 void
@@ -397,7 +406,7 @@ struct Desktop {
 QString
 localized_name(const IniGroup &entry)
 {
-	QHash<QString, QString> localized;
+	unordered_map<QString, QString> localized;
 	QString fallback;
 	for (const auto &kv : entry.keys) {
 		if (kv.first == QLatin1String("Name")) {
@@ -409,12 +418,12 @@ localized_name(const IniGroup &entry)
 			!kv.first.endsWith(u']'))
 			continue;
 		const QString loc = kv.first.mid(5, kv.first.size() - 6);
-		localized.insert(loc, unescape_desktop(kv.second));
+		localized.insert({loc, unescape_desktop(kv.second)});
 	}
 	for (const QString &loc : locale_candidates()) {
-		const auto it = localized.constFind(loc);
-		if (it != localized.cend())
-			return *it;
+		const auto it = localized.find(loc);
+		if (it != localized.end())
+			return it->second;
 	}
 	return fallback;
 }
@@ -496,15 +505,15 @@ load_desktop(const QString &id)
 const Desktop *
 desktop_by_id(const QString &id)
 {
-	static QHash<QString, Desktop> cache;
+	static unordered_map<QString, Desktop> cache;
 	if (id.isEmpty())
 		return nullptr;
 	auto it = cache.find(id);
 	if (it == cache.end())
-		it = cache.insert(id, load_desktop(id));
-	if (it->path.isEmpty() || !it->application)
+		it = cache.insert({id, load_desktop(id)}).first;
+	if (it->second.path.isEmpty() || !it->second.application)
 		return nullptr;
-	return &*it;
+	return &it->second;
 }
 
 bool
@@ -567,13 +576,13 @@ merge_assoc(AssocSets &into, const AssocSets &from)
 		append_unique(into.defaults, id);
 	for (const QString &id : from.added)
 		append_unique(into.added, id);
-	into.removed.unite(from.removed);
+	into.removed.insert(from.removed.begin(), from.removed.end());
 	for (const QString &id : into.added)
-		into.removed.remove(id);
+		into.removed.erase(id);
 }
 
 bool
-usable_id(const QString &id, const QSet<QString> &removed)
+usable_id(const QString &id, const unordered_set<QString> &removed)
 {
 	if (id.isEmpty() || id == kSelfDesktop || removed.contains(id))
 		return false;
@@ -742,7 +751,7 @@ recommended_for(const QString &path)
 
 	const Handler def = default_for(path);
 	vector<Handler> out;
-	QSet<QString> seen;
+	unordered_set<QString> seen;
 	if (!def.id.isEmpty())
 		seen.insert(def.id);
 	auto push = [&](const QString &id) {
@@ -769,7 +778,7 @@ fallback_for(const QString &path)
 	for (const QString &type : ancestors)
 		merge_assoc(acc, associations_for_type(type));
 
-	QSet<QString> seen;
+	unordered_set<QString> seen;
 	const Handler def = default_for(path);
 	if (!def.id.isEmpty())
 		seen.insert(def.id);
@@ -846,7 +855,7 @@ set_last_used(const Handler &app, const QString &path)
 		}
 		if (value.isEmpty()) {
 			group.keys.erase(remove_if(group.keys.begin(), group.keys.end(),
-								 [&](const QPair<QString, QString> &kv) {
+								 [&](const pair<QString, QString> &kv) {
 									 return kv.first == type;
 								 }),
 				group.keys.end());
