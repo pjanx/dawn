@@ -2058,8 +2058,10 @@ MenuItem::paint(Kit &kit) const
 {
 	if (!this->visible)
 		return;
-	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	if (this->enabled_ && (pressed || this->active || kit.focus_ == this))
+	// The selection is kit.focus_ alone: kit.pressed_ is just the capture,
+	// and it would stay lit behind the pointer when press-dragging through.
+	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
+	if (this->enabled_ && (this->active || kit.focus_ == this))
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
 
@@ -3128,7 +3130,11 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 		relayout_popups();
 		sync_focus();
 	}
-	for (Widget *w = hit(x, y); w; w = w->parent_) {
+	this->hot_ = hit(x, y);
+	// A press tracks the pointer just like a hover does, so that what a menu
+	// shows as selected is what the release will activate.
+	track_popups(x, y);
+	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (w->press(*this, x, y, button))
 			return true;
 	}
@@ -3176,12 +3182,21 @@ Kit::mouse_motion(float x, float y)
 		if (this->pressed_->motion(*this, x, y))
 			return true;
 	}
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
-		if (*it && (*it)->motion(*this, x, y))
-			return true;
-	}
+	if (track_popups(x, y))
+		return true;
 	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (w->motion(*this, x, y))
+			return true;
+	}
+	return false;
+}
+
+// Let the open popups, innermost first, move their selection to kit.hot_.
+bool
+Kit::track_popups(float x, float y)
+{
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+		if (*it && (*it)->motion(*this, x, y))
 			return true;
 	}
 	return false;

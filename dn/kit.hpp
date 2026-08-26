@@ -553,6 +553,7 @@ struct Kit {
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
 	Widget *hit(float x, float y);
+	bool track_popups(float x, float y);
 
 	// Client-side decorations. The host window is host_w_ by host_h_;
 	// under csd_shadow_ the window itself only fills the frame within it.
