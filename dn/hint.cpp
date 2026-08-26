@@ -162,23 +162,26 @@ Hint::paint(Kit &kit) const
 	if (!shown())
 		return;
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.ink_, 0.1f));
+		this->r.y + this->r.h, col(kit.colours_[ColourInk], 0.1f));
 	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, true);
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.w <= 0.0f)
 			continue;
 		const Rect c = t.chip;
-		kit.list_.add_rect_filled(c.x, c.y, c.x + c.w, c.y + c.h, kit.hint_);
-		kit.list_.add_rect_stroke(c.x, c.y, c.x + c.w, c.y + c.h, kit.ink_);
+		kit.list_.add_rect_filled(
+			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourHint]);
+		kit.list_.add_rect_stroke(
+			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourInk]);
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = c.x + kChipPadX;
 		const float ty = c.y + max(0.0f, (c.h - th) * 0.5f);
 		if (!this->typed_.isEmpty()) {
-			kit.emit_text(tx, ty, this->typed_, col(kit.ink_, 0.25f), true);
+			kit.emit_text(tx, ty, this->typed_,
+				col(kit.colours_[ColourInk], 0.25f), true);
 			tx += kit.text_width(this->typed_, true);
 		}
 		if (!rest.isEmpty())
-			kit.emit_text(tx, ty, rest, kit.ink_, true);
+			kit.emit_text(tx, ty, rest, kit.colours_[ColourInk], true);
 	}
 }
 

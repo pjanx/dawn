@@ -6,7 +6,6 @@
 //
 
 #include "kit.hpp"
-#include "app-menu.hpp"
 #include "renderer.hpp"
 
 #include <QFile>
@@ -236,6 +235,24 @@ layout_text(QTextLayout *layout, float dpr, float wrap_pts, bool center = false)
 		y += float(line.height());
 	}
 	layout->endLayout();
+}
+
+Qt::CursorShape
+resize_cursor(Qt::Edges edges)
+{
+	const bool l = edges & Qt::LeftEdge;
+	const bool r = edges & Qt::RightEdge;
+	const bool t = edges & Qt::TopEdge;
+	const bool b = edges & Qt::BottomEdge;
+	if ((l && t) || (r && b))
+		return Qt::SizeFDiagCursor;
+	if ((r && t) || (l && b))
+		return Qt::SizeBDiagCursor;
+	if (l || r)
+		return Qt::SizeHorCursor;
+	if (t || b)
+		return Qt::SizeVerCursor;
+	return Qt::ArrowCursor;
 }
 
 }  // namespace
@@ -676,22 +693,22 @@ Button::paint(Kit &kit) const
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if ((this->enabled_ && pressed) || this->active)
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.press_));
+			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
 	else if (this->enabled_ && hot)
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.hover_));
+			this->r.y + this->r.h, col(kit.colours_[ColourHover]));
 	const float px = kFramePadX + this->pad_x;
 	const float ink_a = (this->enabled_ ? 1.0f : 0.375f) *
 		(this->dim ? 0.5f : 1.0f) * kit.ink_alpha();
 	if (this->icon)
-		emit_icon(kit, this->r.x + px,
-			this->r.y + (this->r.h - kIconPx) * 0.5f, kIconPx, this->icon,
-			col(kit.ink_, ink_a));
+		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - kIconPx) * 0.5f,
+			kIconPx, this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const float tx = this->r.x + px + (this->icon ? kIconPx + 4.0f : 0.0f);
 		const float th = kit.text_height(this->text, 0.0f, false);
 		emit_text(kit, tx, this->r.y + (this->r.h - th) * 0.5f,
-			button_shown(kit, *this), col(kit.ink_, ink_a), false);
+			button_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
+			false);
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -807,8 +824,9 @@ Label::paint(Kit &kit) const
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - this->pad_y - th;
 	emit_text(kit, tx, ty, this->text,
-		col(kit.ink_, (this->dim ? 0.5f : 1.0f) * kit.ink_alpha()), this->bold,
-		wrap_w, wrap_center);
+		col(kit.colours_[ColourInk],
+			(this->dim ? 0.5f : 1.0f) * kit.ink_alpha()),
+		this->bold, wrap_w, wrap_center);
 }
 
 void
@@ -841,7 +859,7 @@ Sep::paint(Kit &kit) const
 {
 	if (!shown() || this->r.w <= 0.0f || this->r.h <= 0.0f)
 		return;
-	const Colour c = col(kit.divider_);
+	const Colour c = col(kit.colours_[ColourDivider]);
 	if (this->r.h > this->r.w)
 		kit.list_.add_line(this->r.x + this->r.w * 0.5f, this->r.y + 2.0f,
 			this->r.x + this->r.w * 0.5f, this->r.y + this->r.h - 2.0f, c);
@@ -870,8 +888,9 @@ Splitter::paint(Kit &kit) const
 	if (!shown())
 		return;
 	const float x = this->r.x + this->r.w * 0.5f;
-	const Colour &c =
-		(kit.hot_ == this || kit.pressed_ == this) ? kit.ink_ : kit.divider_;
+	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
+		? kit.colours_[ColourInk]
+		: kit.colours_[ColourDivider];
 	kit.list_.add_line(x, this->r.y, x, this->r.y + this->r.h, col(c));
 }
 
@@ -890,7 +909,7 @@ Splitter::motion(Kit &kit, float x, float)
 	if (kit.pressed_ != this)
 		return false;
 	if (this->on_drag)
-		this->on_drag(x);
+		this->on_drag(kit, x);
 	return true;
 }
 
@@ -1248,8 +1267,8 @@ Scroll::paint(Kit &kit, Rect viewport) const
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.w <= 0.0f || thumb.h <= 0.0f)
 		return;
-	kit.list_.add_rect_filled(
-		thumb.x, thumb.y, thumb.x + thumb.w, thumb.y + thumb.h, kit.divider_);
+	kit.list_.add_rect_filled(thumb.x, thumb.y, thumb.x + thumb.w,
+		thumb.y + thumb.h, kit.colours_[ColourDivider]);
 }
 
 void
@@ -1425,16 +1444,17 @@ Panel::paint(Kit &kit) const
 	switch (this->fill) {
 	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
-			this->r.x + this->r.w, this->r.y + this->r.h, col(kit.toolbar_top_),
-			col(kit.toolbar_bottom_));
+			this->r.x + this->r.w, this->r.y + this->r.h,
+			col(kit.colours_[ColourToolbarTop]),
+			col(kit.colours_[ColourToolbarBottom]));
 		break;
 	case Fill::Tooltip:
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.frame_));
+			this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
 		break;
 	case Fill::Panel:
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.panel_));
+			this->r.y + this->r.h, col(kit.colours_[ColourPanel]));
 		break;
 	case Fill::None:
 		break;
@@ -1444,12 +1464,13 @@ Panel::paint(Kit &kit) const
 	switch (this->stroke) {
 	case Stroke::All:
 		kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.divider_));
+			this->r.y + this->r.h, col(kit.colours_[ColourDivider]));
 		break;
 	case Stroke::Bottom:
 		kit.list_.add_line(this->r.x, this->r.y + this->r.h - hair,
 			this->r.x + this->r.w, this->r.y + this->r.h - hair,
-			col(this->busy ? kit.busy_ : kit.divider_));
+			col(this->busy ? kit.colours_[ColourBusy]
+						   : kit.colours_[ColourDivider]));
 		break;
 	case Stroke::None:
 		break;
@@ -1697,7 +1718,7 @@ Dialog::paint(Kit &kit) const
 		return;
 	// The same wash Hint lays over the window behind it.
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.ink_, 0.1f));
+		this->r.y + this->r.h, col(kit.colours_[ColourInk], 0.1f));
 	if (this->frame && this->frame->visible)
 		kit.draw_shadow(this->frame->r);
 	Panel::paint(kit);
@@ -1717,6 +1738,988 @@ Dialog::press(Kit &, float, float, Qt::MouseButton)
 bool
 Dialog::motion(Kit &, float, float)
 {
+	return true;
+}
+
+// --- Menus -------------------------------------------------------------------
+
+namespace
+{
+
+constexpr float kItemGap = 2.0f;
+constexpr float kMenuPad = 4.0f;
+constexpr float kMenuHoldMs = 500.0f;  // GTK MENU_SHELL_TIMEOUT
+
+unique_ptr<Sep>
+hsep()
+{
+	return make_unique<Sep>();
+}
+
+}  // namespace
+
+void
+MenuPopup::focus_item(Kit &kit, Widget *w, bool kbd) const
+{
+	kit.focus_ = w;
+	kit.focus_visible_ = kbd;
+	if (kbd)
+		kit.hot_ = nullptr;
+}
+
+void
+MenuPopup::reveal(Kit &kit, Widget *w)
+{
+	auto *item = dynamic_cast<MenuItem *>(w);
+	if (item && item->sub) {
+		if (!item->sub->visible)
+			item->sub->open_sub(kit, *this, *item);
+		kit.focus_ = item->sub;
+		kit.focus_visible_ = false;
+		return;
+	}
+	kit.close_above(this);
+	focus_item(kit, w, false);
+}
+
+bool
+MenuPopup::motion(Kit &kit, float, float)
+{
+	Widget *w = kit.hot_;
+	Widget *item = nullptr;
+	for (; w; w = w->parent_) {
+		if (w == this)
+			break;
+		if (dynamic_cast<const Popup *>(w) && w != this)
+			return false;
+		if (!item && w->focusable())
+			item = w;
+	}
+	if (w != this)
+		return false;
+	if (item)
+		reveal(kit, item);
+	return true;
+}
+
+bool
+MenuPopup::key(Kit &kit, int key, unsigned mods)
+{
+	if (Popup::key(kit, key, mods))
+		return true;
+	if (mods & unsigned(Qt::AltModifier))
+		return false;
+	if (key == Qt::Key_Up || key == Qt::Key_Down) {
+		kit.cycle_focus(this, key == Qt::Key_Up ? -1 : 1);
+		focus_item(kit, kit.focus_, true);
+		return true;
+	}
+	if (key == Qt::Key_Right || key == Qt::Key_Return || key == Qt::Key_Enter ||
+		key == Qt::Key_Space) {
+		if (auto *item = dynamic_cast<MenuItem *>(kit.focus_);
+			item && item->sub) {
+			item->activate(kit);
+			return true;
+		}
+		if (key == Qt::Key_Right)
+			return true;
+		return false;
+	}
+	if (key == Qt::Key_Left) {
+		if (this->parent_popup) {
+			Button *op = this->opener;
+			close(kit);
+			if (op) {
+				kit.focus_ = op;
+				kit.focus_visible_ = true;
+			}
+		}
+		return true;
+	}
+	return false;
+}
+
+bool
+MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton && button != Qt::RightButton)
+		return false;
+	Widget *hit = hit_at(x, y);
+	if (auto *b = dynamic_cast<Button *>(hit); b && hit != this) {
+		b->activate(kit);
+		if (auto *item = dynamic_cast<MenuItem *>(b);
+			item && item->sub && item->sub->visible)
+			return true;
+		if (this->visible)
+			close(kit);
+		return true;
+	}
+	const float elapsed = chrono::duration<float, milli>(
+		chrono::steady_clock::now() - kit.popup_at_)
+							  .count();
+	if (elapsed >= kMenuHoldMs)
+		kit.close_popups();
+	return true;
+}
+
+Overflow::Overflow()
+{
+	auto column = make_unique<Column>();
+	this->col = column.get();
+	this->col->gap = kItemGap;
+	this->pad_x = kMenuPad;
+	this->pad_y = kMenuPad;
+	this->fill = Fill::Panel;
+	this->stroke = Stroke::All;
+	this->hittable = true;
+	this->visible = false;
+	add_child(std::move(column));
+}
+
+void
+Overflow::place(Kit &kit)
+{
+	if (this->fill_items)
+		this->fill_items();
+	Popup::place(kit);
+}
+
+Menu::Menu()
+{
+	auto c = make_unique<Column>();
+	this->col = c.get();
+	this->pad_x = kMenuPad;
+	this->pad_y = kMenuPad;
+	this->fill = Fill::Panel;
+	this->stroke = Stroke::All;
+	this->hittable = true;
+	this->visible = false;
+	add_child(std::move(c));
+}
+
+MenuItem &
+Menu::add_item(const QString &text)
+{
+	auto item = make_unique<MenuItem>();
+	item->text = text;
+	MenuItem &ref = *item;
+	if (this->col)
+		this->col->add_child(std::move(item));
+	return ref;
+}
+
+void
+Menu::add_sep()
+{
+	if (this->col)
+		this->col->add_child(hsep());
+}
+
+void
+Menu::clear()
+{
+	this->subs_.clear();
+	if (this->col)
+		this->col->erase_children();
+}
+
+void
+Menu::build(span<const MenuNode> nodes, const Actor &a)
+{
+	this->actor = a;
+	clear();
+	if (!this->col)
+		return;
+	this->col->grow = false;
+	this->min_w = 200.0f;
+	for (const MenuNode &node : nodes) {
+		if (!node.items.empty()) {
+			auto child = make_unique<Menu>();
+			child->build(node.items, this->actor);
+			auto &item = add_item(menu_label(node.title));
+			item.mnemonic = mnemonic_index(node.title);
+			item.sub = child.get();
+			this->subs_.push_back(std::move(child));
+			continue;
+		}
+		if (!node.title && node.action == Action::None) {
+			add_sep();
+			continue;
+		}
+		const Action action = node.action;
+		const ActionDef &def = action_def(action);
+		auto &item = add_item(menu_label(action_label(def, false)));
+		item.action = action;
+		item.accel = accel_label(def);
+		item.mnemonic = mnemonic_index(def.label[0]);
+		item.checkable = (def.flags & ActionToggle) && !def.label[1];
+		item.on_click = [this, action](Kit &) {
+			if (this->actor.apply)
+				this->actor.apply(action);
+		};
+	}
+}
+
+void
+Menu::sync()
+{
+	if (this->col) {
+		for (auto &k : this->col->kids) {
+			auto *item = dynamic_cast<MenuItem *>(k.get());
+			if (!item || item->sub || item->action == Action::None)
+				continue;
+
+			const Action action = item->action;
+			item->enabled_ =
+				!this->actor.enabled || this->actor.enabled(action);
+			item->checked = this->actor.checked && this->actor.checked(action);
+			const ActionDef &def = action_def(action);
+			const char *label = action_label(def, item->checked);
+			item->text = menu_label(label);
+			item->mnemonic = mnemonic_index(label);
+			item->accel = accel_label(def);
+			item->checkable = (def.flags & ActionToggle) && !def.label[1];
+		}
+	}
+	for (auto &sub : this->subs_) {
+		if (sub)
+			sub->sync();
+	}
+}
+
+void
+Menu::measure(Kit &kit, float max_w, float max_h)
+{
+	if (this->col) {
+		float lw = 0.0f;
+		float aw = 0.0f;
+		for (const auto &k : this->col->kids) {
+			auto *item = dynamic_cast<MenuItem *>(k.get());
+			if (!item)
+				continue;
+			lw = max(lw, item->label_width(kit));
+			aw = max(aw, item->accel_width(kit));
+		}
+		for (auto &k : this->col->kids) {
+			if (auto *item = dynamic_cast<MenuItem *>(k.get())) {
+				item->label_col = lw;
+				item->accel_col = aw;
+			}
+		}
+	}
+	Panel::measure(kit, max_w, max_h);
+}
+
+bool
+Menu::key(Kit &kit, int key, unsigned mods)
+{
+	if (MenuPopup::key(kit, key, mods))
+		return true;
+	if (mods)
+		return false;
+	if (key < Qt::Key_A || key > Qt::Key_Z || !this->col)
+		return false;
+	const QChar letter = QChar(key).toLower();
+	for (const auto &k : this->col->kids) {
+		auto *item = dynamic_cast<MenuItem *>(k.get());
+		if (!item || item->mnemonic < 0 || item->mnemonic >= item->text.size())
+			continue;
+		if (item->text[item->mnemonic].toLower() == letter) {
+			item->activate(kit);
+			return true;
+		}
+	}
+	return false;
+}
+
+void
+MenuItem::measure(Kit &kit, float, float)
+{
+	const float lw =
+		this->label_col > 0.0f ? this->label_col : label_width(kit);
+	const float aw =
+		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
+	float width = kFramePadX + kIconPx + kFramePadX + lw + 2 * kFramePadX + aw;
+	if (this->sub)
+		width += kIconPx;
+	width += kFramePadX;
+	float ch = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
+	ch = max(ch, kIconPx);
+	if (!this->text.isEmpty())
+		ch = max(ch, kit.text_height(this->text, 0.0f, false));
+	if (!this->accel.isEmpty())
+		ch = max(ch, kit.text_height(this->accel, 0.0f, false));
+	this->r = {
+		0, 0, kit.snap_size(width), kit.snap_size(kFramePadY * 2.0f + ch)};
+}
+
+void
+MenuItem::paint(Kit &kit) const
+{
+	if (!this->visible)
+		return;
+	const bool pressed = kit.left_down_ && kit.pressed_ == this;
+	if (this->enabled_ && (pressed || this->active || kit.focus_ == this))
+		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
+			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
+
+	const float pad = kFramePadX;
+	const float aw =
+		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
+	const float chevron = this->sub ? kIconPx : 0.0f;
+	const float lead_x = this->r.x + pad;
+	const float label_x = lead_x + kIconPx + pad;
+	const float accel_x = this->r.x + this->r.w - pad - chevron - aw;
+	const float th =
+		this->text.isEmpty() ? 0.0f : kit.text_height(this->text, 0.0f, false);
+	const float ty = this->r.y + (this->r.h - th) * 0.5f;
+	const float iy = this->r.y + (this->r.h - kIconPx) * 0.5f;
+	const Colour label_c =
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.5f);
+
+	if (this->checkable && this->checked)
+		emit_icon(kit, lead_x, iy, kIconPx, "object-select-symbolic", label_c);
+	if (!this->text.isEmpty()) {
+		const float avail = max(1.0f, accel_x - pad - label_x);
+		const QString shown = kit.elide_lines(this->text, avail, 1, false);
+		kit.emit_text(label_x, ty, shown, label_c, false);
+		if (this->mnemonic >= 0 && this->mnemonic < shown.size() &&
+			this->mnemonic < this->text.size() &&
+			shown[this->mnemonic] == this->text[this->mnemonic]) {
+			const QString left = shown.left(this->mnemonic);
+			const QString ch = shown.mid(this->mnemonic, 1);
+			const float x0 = label_x + kit.text_width(left, false);
+			const float x1 = x0 + kit.text_width(ch, false);
+			const float uy = kit.snap(ty + kit.text_ascent(false) + 1.0f);
+			kit.list_.add_line(x0, uy, x1, uy, label_c);
+		}
+	}
+	if (!this->accel.isEmpty()) {
+		const float tw = kit.text_width(this->accel, false);
+		const float ath = kit.text_height(this->accel, 0.0f, false);
+		kit.emit_text(accel_x + aw - tw, this->r.y + (this->r.h - ath) * 0.5f,
+			this->accel, col(kit.colours_[ColourInk], 0.5f), false);
+	}
+	if (this->sub) {
+		emit_icon(kit, this->r.x + this->r.w - pad - chevron, iy, kIconPx,
+			"go-next-symbolic",
+			col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.375f));
+	}
+}
+
+void
+MenuItem::prepare(Kit &kit)
+{
+	if (this->sub)
+		kit.pack_icon("go-next-symbolic", int(kIconPx * kit.dpr_));
+	if (this->checkable)
+		kit.pack_icon("object-select-symbolic", int(kIconPx * kit.dpr_));
+	if (this->text.isEmpty())
+		return;
+	const float pad = kFramePadX;
+	const float aw =
+		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
+	const float chev = this->sub ? kIconPx : 0.0f;
+	const float label_x = pad + kIconPx + pad;
+	const float accel_x = this->r.w - pad - chev - aw;
+	const float avail = max(1.0f, accel_x - pad - label_x);
+	kit.cache_text(kit.elide_lines(this->text, avail, 1, false), false);
+	if (!this->accel.isEmpty())
+		kit.cache_text(this->accel, false);
+}
+
+bool
+MenuItem::activate(Kit &kit)
+{
+	if (!this->sub)
+		return Button::activate(kit);
+	Popup *owner = nullptr;
+	for (Widget *w = this->parent_; w; w = w->parent_) {
+		if (auto *p = dynamic_cast<Popup *>(w)) {
+			owner = p;
+			break;
+		}
+	}
+	if (!owner)
+		return false;
+	this->sub->open_sub(kit, *owner, *this);
+	kit.focus_first(this->sub);
+	return true;
+}
+
+float
+MenuItem::label_width(const Kit &kit) const
+{
+	return kit.text_width(this->text, false);
+}
+
+float
+MenuItem::accel_width(const Kit &kit) const
+{
+	return kit.text_width(this->accel, false);
+}
+
+// --- ToolbarSlot ------------------------------------------------------------
+
+namespace
+{
+
+constexpr float kWinPadX = 4.0f;
+constexpr float kWinPadY = 2.0f;
+
+void
+sync_overflow_proxy(Widget &source, Widget &proxy)
+{
+	Widget *parent = proxy.parent_;
+	const bool visible = proxy.visible;
+	const bool layout_visible = proxy.layout_visible;
+	if (auto *button = dynamic_cast<Button *>(&source))
+		static_cast<Button &>(proxy) = *button;
+	else if (auto *label = dynamic_cast<Label *>(&source))
+		static_cast<Label &>(proxy) = *label;
+	proxy.parent_ = parent;
+	proxy.visible = visible;
+	proxy.layout_visible = layout_visible;
+}
+
+unique_ptr<Widget>
+overflow_proxy(Widget &source)
+{
+	if (dynamic_cast<Button *>(&source))
+		return make_unique<Button>();
+	if (dynamic_cast<Label *>(&source))
+		return make_unique<Label>();
+	if (dynamic_cast<Sep *>(&source))
+		return make_unique<Sep>();
+	return nullptr;
+}
+
+void
+add_overflow_proxies(Overflow &overflow, ToolbarSlot *row)
+{
+	if (!row)
+		return;
+	const size_t end = row->item_count();
+	for (size_t i = 0; i < end; ++i) {
+		if (!row->kids[i])
+			continue;
+		auto proxy = overflow_proxy(*row->kids[i]);
+		if (!proxy)
+			continue;
+		sync_overflow_proxy(*row->kids[i], *proxy);
+		proxy->visible = false;
+		if (overflow.col) {
+			overflow.sources.push_back(row->kids[i].get());
+			overflow.col->add_child(std::move(proxy));
+		}
+	}
+}
+
+void
+fill_overflow_items(ToolbarSlot &row, Overflow &overflow)
+{
+	if (!overflow.col)
+		return;
+	for (auto &item : overflow.col->kids)
+		item->visible = false;
+	const size_t end = row.item_count();
+	size_t a = min(row.split_, end);
+	size_t b = end;
+	while (a < b && is_sep(row.kids[a].get()))
+		++a;
+	while (b > a && is_sep(row.kids[b - 1].get()))
+		--b;
+	for (size_t i = a; i < b; ++i) {
+		Widget *source = row.kids[i].get();
+		for (size_t j = 0; j < overflow.sources.size(); ++j) {
+			if (overflow.sources[j] != source)
+				continue;
+			Widget &proxy = *overflow.col->kids[j];
+			sync_overflow_proxy(*source, proxy);
+			proxy.visible = source->visible;
+			break;
+		}
+	}
+}
+}  // namespace
+
+ToolbarSlot::ToolbarSlot()
+{
+	auto button = make_unique<Button>();
+	button->visible = false;
+	button->icon = "disclose-arrow-down-symbolic";
+	button->tip_text = "More";
+	this->more = button.get();
+	Composite::add_child(std::move(button));
+}
+
+Widget *
+ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
+{
+	return Composite::add_child(std::move(item), min(at, item_count()));
+}
+
+size_t
+ToolbarSlot::item_count() const
+{
+	return this->more && !this->kids.empty() ? this->kids.size() - 1 : 0;
+}
+
+void
+ToolbarSlot::measure(Kit &kit, float max_w, float max_h)
+{
+	for (size_t i = 0; i < item_count(); ++i) {
+		if (this->kids[i])
+			this->kids[i]->layout_visible = true;
+	}
+	this->more->visible = false;
+	this->split_ = item_count();
+	Row::measure(kit, max_w, max_h);
+}
+
+void
+ToolbarSlot::arrange(Kit &kit, Rect alloc)
+{
+	if (!this->visible) {
+		this->r = {};
+		this->split_ = 0;
+		return;
+	}
+	const Rect in = kit.snap_rect(alloc).inset(this->pad_x, this->pad_y);
+	const size_t end = item_count();
+	measure(kit, kUnlim, alloc.h);
+	const float total = max(0.0f, this->r.w - this->pad_x * 2.0f);
+
+	this->split_ = end;
+	this->more->visible = false;
+	if (total > in.w) {
+		this->more->visible = true;
+		this->more->measure(kit, kUnlim, in.h);
+		const float budget = max(0.0f, in.w - this->more->r.w - this->gap);
+		float used = 0.0f;
+		int kept = 0;
+		bool full = false;
+		this->split_ = 0;
+		for (size_t i = 0; i < end; ++i) {
+			Widget *item = this->kids[i].get();
+			if (!item || !item->shown()) {
+				if (!full)
+					this->split_ = i + 1;
+				continue;
+			}
+			const float need = item->r.w + (kept ? this->gap : 0.0f);
+			if (full || used + need > budget) {
+				full = true;
+				continue;
+			}
+			used += need;
+			++kept;
+			this->split_ = i + 1;
+		}
+		while (this->split_ > 0 &&
+			(!this->kids[this->split_ - 1] ||
+				is_sep(this->kids[this->split_ - 1].get())))
+			--this->split_;
+		this->more->visible = this->split_ < end;
+	}
+	for (size_t i = this->split_; i < end; ++i) {
+		if (this->kids[i])
+			this->kids[i]->layout_visible = false;
+	}
+	Row::arrange(kit, alloc);
+}
+
+// --- Toolbar ---------------------------------------------------------------
+
+Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
+	unique_ptr<ToolbarSlot> mid_row, unique_ptr<ToolbarSlot> right_row)
+{
+	this->pad_x = kWinPadX;
+	this->pad_y = kWinPadY;
+	this->fill = Fill::Toolbar;
+	this->stroke = Stroke::Bottom;
+	this->hittable = true;
+
+	this->left = left_row.get();
+	if (left_row)
+		add_child(std::move(left_row));
+	this->mid = mid_row.get();
+	if (mid_row)
+		add_child(std::move(mid_row));
+	this->right = right_row.get();
+	if (right_row)
+		add_child(std::move(right_row));
+
+	this->overflow_owned_ = make_unique<Overflow>();
+	this->overflow_owned_->pad_y = kWinPadY;
+	this->overflow = this->overflow_owned_.get();
+	add_overflow_proxies(*this->overflow, this->left);
+	add_overflow_proxies(*this->overflow, this->mid);
+	add_overflow_proxies(*this->overflow, this->right);
+
+	this->overflow->fill_items = [this] {
+		if (Button *m = this->overflow->opener) {
+			if (ToolbarSlot *slot = slot_for_more(m))
+				fill_overflow_items(*slot, *this->overflow);
+		}
+	};
+
+	auto bind_more = [this](Button *m) {
+		if (!m)
+			return;
+		m->activate_on_press = true;
+		m->on_click = [this, m](Kit &kit) {
+			if (this->overflow->visible && this->overflow->opener == m)
+				this->overflow->close(kit);
+			else
+				this->overflow->open(kit, m);
+		};
+	};
+	bind_more(this->left ? this->left->more : nullptr);
+	bind_more(this->mid ? this->mid->more : nullptr);
+	bind_more(this->right ? this->right->more : nullptr);
+}
+
+void
+Toolbar::sync_buttons()
+{
+	auto apply = [this](Widget *w) {
+		auto *btn = dynamic_cast<Button *>(w);
+		if (!btn)
+			return;
+		if (btn->action == Action::None)
+			return;
+		const ActionDef &d = action_def(btn->action);
+		const bool on = this->actor.checked && this->actor.checked(btn->action);
+		btn->enabled_ =
+			!this->actor.enabled || this->actor.enabled(btn->action);
+		btn->active = on && btn->action != Action::SortDir;
+		btn->icon = action_icon(d, on);
+		btn->tip_text = action_tip(d, on);
+		btn->tip_accel = action_accel(d);
+	};
+	auto walk = [&apply](const ToolbarSlot *row) {
+		if (!row)
+			return;
+		for (auto &k : row->kids)
+			apply(k.get());
+	};
+	walk(this->left);
+	walk(this->mid);
+	walk(this->right);
+	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
+		if (slot && slot->more)
+			slot->more->active = this->overflow && this->overflow->visible &&
+				this->overflow->opener == slot->more;
+	}
+}
+
+void
+Toolbar::measure(Kit &kit, float avail_w, float avail_h)
+{
+	const float ih = max(0.0f, avail_h - this->pad_y * 2.0f);
+	float h = 0.0f;
+	auto slot = [&](Widget *w) {
+		if (!w)
+			return;
+		w->measure(kit, kUnlim, ih);
+		h = max(h, w->r.h);
+	};
+	slot(this->left);
+	slot(this->mid);
+	slot(this->right);
+	this->r.w = avail_w;
+	this->r.h = this->pad_y * 2.0f + h;
+	if (avail_h > 0.0f)
+		this->r.h = min(this->r.h, avail_h);
+}
+
+void
+Toolbar::arrange(Kit &kit, Rect alloc)
+{
+	if (!this->visible) {
+		this->r = {};
+		return;
+	}
+	this->r = kit.snap_rect(alloc);
+	place_slots(kit);
+}
+
+void
+Toolbar::place_slots(Kit &kit)
+{
+	if (this->r.w <= 0.0f)
+		return;
+	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
+	if (bar.w <= 0.0f)
+		return;
+	const float avail = bar.w;
+	const float h = bar.h;
+	const float x0 = bar.x;
+	const float y0 = bar.y;
+	auto nat = [&](Widget *w) {
+		if (!w)
+			return 0.0f;
+		w->measure(kit, kUnlim, h);
+		return w->r.w;
+	};
+	const float lw = nat(this->left);
+	const float mw = nat(this->mid);
+	const float rw = nat(this->right);
+	float mmin = 0.0f;
+	if (mw > 0.0f && this->mid && this->mid->more) {
+		this->mid->more->measure(kit, kUnlim, h);
+		mmin = min(mw, this->mid->more->r.w);
+	}
+	float left_w = lw;
+	float right_w = rw;
+	float mid_x;
+	if (lw + mw + rw <= avail) {
+		mid_x = x0 + clamp((avail - mw) * 0.5f, lw, avail - rw - mw);
+	} else {
+		const float keep = min(mmin, avail);
+		const float rest = max(0.0f, avail - keep);
+		left_w = min(lw, rest * 0.5f);
+		right_w = min(rw, rest - left_w);
+		left_w = min(lw, rest - right_w);
+		mid_x = x0 + left_w;
+	}
+	const float mid_w = x0 + avail - right_w - mid_x;
+	if (this->left)
+		this->left->arrange(kit, {x0, y0, left_w, h});
+	if (this->mid) {
+		this->mid->align = Align::Start;
+		this->mid->arrange(kit, {mid_x, y0, mid_w, h});
+	}
+	if (this->right)
+		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
+}
+
+ToolbarSlot *
+Toolbar::slot_for_more(const Button *more) const
+{
+	if (!more)
+		return nullptr;
+	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
+		if (slot && more == slot->more)
+			return slot;
+	}
+	return nullptr;
+}
+
+// --- Titlebar --------------------------------------------------------------
+
+namespace
+{
+
+// How far the pointer must travel before a titlebar press becomes a move.
+constexpr float kDragPx = 4.0f;
+
+unique_ptr<Button>
+make_title_button(Titlebar *bar, Action action, const char *icon)
+{
+	auto btn = make_unique<Button>();
+	btn->action = action;
+	btn->icon = icon;
+	const ActionDef &d = action_def(action);
+	btn->tip_text = action_tip(d, false);
+	btn->tip_accel = action_accel(d);
+	btn->on_click = [bar, action](Kit &) {
+		if (bar->actor.apply)
+			bar->actor.apply(action);
+	};
+	return btn;
+}
+
+}  // namespace
+
+Titlebar::Titlebar()
+{
+	this->pad_x = kWinPadX;
+	this->pad_y = kWinPadY;
+	this->fill = Fill::Toolbar;
+	this->stroke = Stroke::Bottom;
+	this->hittable = true;
+
+	auto label = make_unique<Label>();
+	label->align = Align::Center;
+	label->bold = true;
+	this->title = label.get();
+	add_child(std::move(label));
+
+	auto min = make_title_button(this, Action::Minimize, "window-minimize");
+	this->minimize = min.get();
+	add_child(std::move(min));
+	auto max = make_title_button(this, Action::Maximize, "window-maximize");
+	this->maximize = max.get();
+	add_child(std::move(max));
+	auto cls = make_title_button(this, Action::CloseWindow, "window-close");
+	this->close = cls.get();
+	add_child(std::move(cls));
+}
+
+void
+Titlebar::sync(Kit &kit)
+{
+	if (this->title)
+		this->title->text = this->text;
+	if (this->maximize) {
+		const ActionDef &d = action_def(Action::Maximize);
+		const bool on = kit.maximized_;
+		this->maximize->icon = on ? "window-restore" : "window-maximize";
+		this->maximize->tip_text = action_tip(d, on);
+		this->maximize->active = on;
+	}
+	auto apply = [this](Button *btn) {
+		if (!btn || btn->action == Action::None)
+			return;
+		btn->enabled_ =
+			!this->actor.enabled || this->actor.enabled(btn->action);
+	};
+	apply(this->minimize);
+	apply(this->maximize);
+	apply(this->close);
+}
+
+// Only the client draws its own decorations, and never over a fullscreen
+// window: this is the one widget that decides for itself whether it is there.
+void
+Titlebar::measure(Kit &kit, float avail_w, float)
+{
+	this->visible = kit.csd_ && !kit.fullscreen_;
+	if (!this->visible) {
+		this->r = {};
+		return;
+	}
+	float ih = 0.0f;
+	auto slot = [&](Button *b) {
+		if (!b)
+			return;
+		b->measure(kit, kUnlim, kUnlim);
+		ih = max(ih, b->r.h);
+	};
+	slot(this->minimize);
+	slot(this->maximize);
+	slot(this->close);
+	this->r.w = avail_w;
+	this->r.h = this->pad_y * 2.0f + ih;
+}
+
+void
+Titlebar::arrange(Kit &kit, Rect alloc)
+{
+	if (!this->visible) {
+		this->r = {};
+		return;
+	}
+	this->r = kit.snap_rect(alloc);
+	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
+	float x = bar.x + bar.w;
+	auto place = [&](Button *b) {
+		if (!b)
+			return;
+		b->measure(kit, kUnlim, bar.h);
+		x -= b->r.w;
+		b->arrange(kit, {x, bar.y, b->r.w, bar.h});
+	};
+	place(this->close);
+	place(this->maximize);
+	place(this->minimize);
+	if (this->title) {
+		const float left = bar.x;
+		const float right = x;
+		const float avail = max(0.0f, right - left);
+		this->title->text =
+			kit.elide_lines(this->text, avail, 1, this->title->bold);
+		this->title->measure(kit, avail, bar.h);
+		float tw = min(this->title->r.w, avail);
+		float tx = this->r.x + (this->r.w - tw) * 0.5f;
+		if (tx < left)
+			tx = left;
+		if (tx + tw > right)
+			tx = max(left, right - tw);
+		this->title->arrange(kit, {tx, bar.y, tw, bar.h});
+	}
+}
+
+void
+Titlebar::paint(Kit &kit) const
+{
+	Panel::paint(kit);
+}
+
+void
+Titlebar::prepare(Kit &kit)
+{
+	const int px = max(16, int(lround(double(kIconPx) * double(kit.dpr_))));
+	kit.pack_icon("window-minimize", px);
+	kit.pack_icon("window-maximize", px);
+	kit.pack_icon("window-restore", px);
+	kit.pack_icon("window-close", px);
+	if (this->title && !this->title->text.isEmpty())
+		kit.cache_text(this->title->text, this->title->bold);
+	Panel::prepare(kit);
+}
+
+bool
+Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button == Qt::RightButton) {
+		if (!kit.start_menu)
+			return false;
+		kit.start_menu(x, y);
+		return true;
+	}
+	if (button != Qt::LeftButton)
+		return false;
+	if (kit.start_resize_at(x, y))
+		return true;
+	if (!kit.start_move)
+		return false;
+	// Asking for the move on the press would leave a compositor grab open
+	// across the whole double click, and Mutter anchors an unmaximize to the
+	// pointer whenever one is: the window would land under the cursor rather
+	// than back where it was. Wait for the pointer to travel instead.
+	this->drag_x_ = x;
+	this->drag_y_ = y;
+	this->drag_armed_ = true;
+	kit.pressed_ = this;
+	return true;
+}
+
+bool
+Titlebar::release(Kit &, float, float, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	this->drag_armed_ = false;
+	return true;
+}
+
+bool
+Titlebar::motion(Kit &kit, float x, float y)
+{
+	if (!this->drag_armed_ || !kit.start_move)
+		return false;
+	const float dx = x - this->drag_x_;
+	const float dy = y - this->drag_y_;
+	if (dx * dx + dy * dy < kDragPx * kDragPx)
+		return false;
+	this->drag_armed_ = false;
+	kit.start_move();
+	return true;
+}
+
+bool
+Titlebar::double_click(
+	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	if (dynamic_cast<Button *>(kit.hit(x, y)))
+		return false;
+	if (this->actor.apply)
+		this->actor.apply(Action::Maximize);
 	return true;
 }
 
@@ -1812,8 +2815,8 @@ Kit::focus_ring(Rect w)
 {
 	const float hair = 1.0f / max(this->dpr_, 0.01f);
 	const Rect g = snap_rect(w.inset(hair, hair));
-	this->list_.add_rect_stroke(
-		g.x, g.y, g.x + g.w - hair, g.y + g.h - hair, col(this->ink_));
+	this->list_.add_rect_stroke(g.x, g.y, g.x + g.w - hair, g.y + g.h - hair,
+		col(this->colours_[ColourInk]));
 }
 
 void
@@ -2309,34 +3312,34 @@ void
 Kit::bake_colours(Cmm *cmm, Profile *target)
 {
 	if (this->dark_) {
-		this->well_ = bake_grey(cmm, target, 0x20);
-		this->toolbar_top_ = bake_grey(cmm, target, 0x34);
-		this->toolbar_bottom_ = bake_grey(cmm, target, 0x28);
-		this->hover_ = bake_grey(cmm, target, 0x34);
-		this->press_ = bake_grey(cmm, target, 0x48);
+		this->colours_[ColourWell] = bake_grey(cmm, target, 0x20);
+		this->colours_[ColourToolbarTop] = bake_grey(cmm, target, 0x34);
+		this->colours_[ColourToolbarBottom] = bake_grey(cmm, target, 0x28);
+		this->colours_[ColourHover] = bake_grey(cmm, target, 0x34);
+		this->colours_[ColourPress] = bake_grey(cmm, target, 0x48);
 #ifdef Q_OS_MACOS
 		// This is defined by the native window title bottom border.
-		this->divider_ = bake_grey(cmm, target, 0x00);
+		this->colours_[ColourDivider] = bake_grey(cmm, target, 0x00);
 #else
-		this->divider_ = bake_grey(cmm, target, 0x58);
+		this->colours_[ColourDivider] = bake_grey(cmm, target, 0x58);
 #endif
-		this->busy_ = bake_rgb(cmm, target, 0xc0, 0x00, 0x00);
-		this->ink_ = bake_grey(cmm, target, 0xff);
-		this->frame_ = bake_grey(cmm, target, 0x00);
-		this->panel_ = bake_grey(cmm, target, 0x28);
-		this->hint_ = bake_rgb(cmm, target, 0x88, 0x77, 0x00);
+		this->colours_[ColourBusy] = bake_rgb(cmm, target, 0xc0, 0x00, 0x00);
+		this->colours_[ColourInk] = bake_grey(cmm, target, 0xff);
+		this->colours_[ColourFrame] = bake_grey(cmm, target, 0x00);
+		this->colours_[ColourPanel] = bake_grey(cmm, target, 0x28);
+		this->colours_[ColourHint] = bake_rgb(cmm, target, 0x88, 0x77, 0x00);
 	} else {
-		this->well_ = bake_grey(cmm, target, 0xf8);
-		this->toolbar_top_ = bake_grey(cmm, target, 0xe8);
-		this->toolbar_bottom_ = bake_grey(cmm, target, 0xf0);
-		this->hover_ = bake_grey(cmm, target, 0xe4);
-		this->press_ = bake_grey(cmm, target, 0xd0);
-		this->divider_ = bake_grey(cmm, target, 0xc0);
-		this->busy_ = bake_rgb(cmm, target, 0x8b, 0x00, 0x00);
-		this->ink_ = bake_grey(cmm, target, 0x00);
-		this->frame_ = bake_grey(cmm, target, 0xff);
-		this->panel_ = bake_grey(cmm, target, 0xf0);
-		this->hint_ = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
+		this->colours_[ColourWell] = bake_grey(cmm, target, 0xf8);
+		this->colours_[ColourToolbarTop] = bake_grey(cmm, target, 0xe8);
+		this->colours_[ColourToolbarBottom] = bake_grey(cmm, target, 0xf0);
+		this->colours_[ColourHover] = bake_grey(cmm, target, 0xe4);
+		this->colours_[ColourPress] = bake_grey(cmm, target, 0xd0);
+		this->colours_[ColourDivider] = bake_grey(cmm, target, 0xc0);
+		this->colours_[ColourBusy] = bake_rgb(cmm, target, 0x8b, 0x00, 0x00);
+		this->colours_[ColourInk] = bake_grey(cmm, target, 0x00);
+		this->colours_[ColourFrame] = bake_grey(cmm, target, 0xff);
+		this->colours_[ColourPanel] = bake_grey(cmm, target, 0xf0);
+		this->colours_[ColourHint] = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 	}
 }
 
@@ -2579,6 +3582,63 @@ Kit::hit(float x, float y)
 	return this->root_ ? this->root_->hit_at(x, y) : nullptr;
 }
 
+Rect
+Kit::frame() const
+{
+	const Rect host = {0.0f, 0.0f, this->host_w_, this->host_h_};
+	if (!this->csd_shadow_)
+		return host;
+	return snap_rect(host.inset(kGlowPts, kGlowPts));
+}
+
+// The resize band straddles the frame's edge, and reaches outside it into
+// the shadow, which is the only thing a maximised window has none of.
+Qt::Edges
+Kit::resize_edges(float x, float y) const
+{
+	if (!this->csd_ || this->fullscreen_ || this->maximized_)
+		return {};
+	if (x < 0.0f || y < 0.0f || x >= this->host_w_ || y >= this->host_h_)
+		return {};
+	const Rect f = frame();
+	if (this->csd_shadow_ ? f.contains(x, y) : !f.contains(x, y))
+		return {};
+	const float band = kResizeBorderPts;
+	Qt::Edges e;
+	if (x < f.x + band)
+		e |= Qt::LeftEdge;
+	if (x >= f.x + f.w - band)
+		e |= Qt::RightEdge;
+	if (y < f.y + band)
+		e |= Qt::TopEdge;
+	if (y >= f.y + f.h - band)
+		e |= Qt::BottomEdge;
+	return e;
+}
+
+bool
+Kit::start_resize_at(float x, float y)
+{
+	const Qt::Edges edges = resize_edges(x, y);
+	if (!edges || !this->start_resize)
+		return false;
+	// A button that reaches into the band keeps its click.
+	if (dynamic_cast<Button *>(hit(x, y)))
+		return false;
+	this->start_resize(edges);
+	return true;
+}
+
+void
+Kit::sync_cursor()
+{
+	this->cursor_ = Qt::ArrowCursor;
+	if (dynamic_cast<Button *>(this->hot_))
+		return;
+	if (const Qt::Edges edges = resize_edges(this->mouse_x_, this->mouse_y_))
+		this->cursor_ = resize_cursor(edges);
+}
+
 void
 Kit::relayout_popups()
 {
@@ -2635,6 +3695,12 @@ Kit::paint()
 		(float(this->white_.y) + 0.5f) / float(max(this->atlas_.h, 1));
 	this->list_.begin(
 		this->host_w_, this->host_h_, this->dpr_, white_u, white_v);
+	if (this->csd_shadow_) {
+		const Rect f = frame();
+		if (f.w > 0.0f && f.h > 0.0f)
+			draw_glow(
+				f.x, f.y, f.w, f.h, {0, 0, 0, this->active_ ? 0.25f : 0.125f});
+	}
 	if (this->root_)
 		this->root_->paint(*this);
 	if (this->scrim_ && this->scrim_->visible)

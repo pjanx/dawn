@@ -8,17 +8,14 @@
 #pragma once
 
 #include "action.hpp"
-#include "app-menu.hpp"
 #include "hint.hpp"
 #include "kit.hpp"
-#include "types.hpp"
 
 #include <QUrl>
 
 #include <functional>
 #include <memory>
 #include <span>
-#include <string>
 
 namespace dn
 {
@@ -32,77 +29,21 @@ struct HostActions {
 	std::function<void(QUrl url)> launch_exiftool;
 };
 
-struct ToolbarSlot : Row {
-	Button *more = nullptr;
-	std::size_t split_ = 0;
+// The menu that a right click on a file opens: what this application knows
+// how to do with it, plus whatever the desktop can open it with.
+struct ContextMenu : Menu {
+	std::function<void(const QUrl &url)> on_new_window;
+	std::function<void(const QUrl &url)> on_trash;
 
-	ToolbarSlot();
-	Widget *add_item(
-		std::unique_ptr<Widget> item, std::size_t at = std::size_t(-1));
-	[[nodiscard]] std::size_t item_count() const;
-	void measure(Kit &kit, float max_w, float max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 
 private:
-	using Composite::add_child;
-	using Composite::erase_children;
+	void fill_items(const QUrl &url);
 };
 
-struct Toolbar : Panel {
-	Actor actor;
-	Button *app_menu_button = nullptr;
-	ToolbarSlot *left = nullptr;
-	ToolbarSlot *mid = nullptr;
-	ToolbarSlot *right = nullptr;
-	Overflow *overflow = nullptr;
-	Menu *app_menu = nullptr;
-
-	Toolbar(std::unique_ptr<ToolbarSlot> left_row,
-		std::unique_ptr<ToolbarSlot> mid_row,
-		std::unique_ptr<ToolbarSlot> right_row);
-	[[nodiscard]] std::unique_ptr<Overflow> take_overflow();
-	[[nodiscard]] std::unique_ptr<Menu> take_app_menu();
-	void open_app_menu(Kit &kit, bool kbd);
-	[[nodiscard]] bool app_menu_open() const
-	{
-		return this->app_menu && this->app_menu->visible;
-	}
-	void sync_buttons();
-
-	void measure(Kit &kit, float max_w, float max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
-
-private:
-	std::unique_ptr<Overflow> overflow_owned_;
-	std::unique_ptr<Menu> app_menu_owned_;
-	void place_slots(Kit &kit);
-	ToolbarSlot *slot_for_more(const Button *more) const;
-};
-
-struct Titlebar : Panel {
-	Label *title = nullptr;
-	Button *minimize = nullptr;
-	Button *maximize = nullptr;
-	Button *close = nullptr;
-	Actor actor;
-	QString text;
-	float drag_x_ = 0.0f;
-	float drag_y_ = 0.0f;
-	bool drag_armed_ = false;
-
-	Titlebar();
-	void sync(Kit &kit);
-
-	void measure(Kit &kit, float max_w, float max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
-	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
-};
+void dialog_about(Kit &kit, Dialog &dialog);
+void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
+	std::span<const Action> keys);
 
 struct Sidebar : Panel {
 	Widget *content = nullptr;
@@ -121,6 +62,8 @@ struct Page : Composite {
 	Dialog *dialog = nullptr;
 	Hint *hint = nullptr;
 	ContextMenu *context = nullptr;
+	Menu *app_menu = nullptr;
+	Button *app_menu_button = nullptr;
 	Actor actor;
 	const HostActions *host = nullptr;
 	std::span<const MenuNode> menu_tree = {};
@@ -134,30 +77,26 @@ struct Page : Composite {
 	Page(std::unique_ptr<Toolbar> tb, std::unique_ptr<Sidebar> sb, Side side,
 		std::unique_ptr<Widget> body);
 	void set_banner(std::unique_ptr<Widget> w);
+	void open_app_menu(Kit &kit, bool kbd);
+	void sync_app_menu();
+	[[nodiscard]] bool app_menu_open() const
+	{
+		return this->app_menu && this->app_menu->visible;
+	}
 
 	void measure(Kit &kit, float max_w, float max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
-	void paint(Kit &kit) const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, int key, unsigned mods) override;
 	std::size_t child_count() const override;
 	Widget *child(std::size_t i) const override;
-	void apply_csd_cursor(Kit &kit);
-	bool start_csd_resize(Kit &kit, float x, float y);
-
-	[[nodiscard]] float toolbar_h() const { return this->well_.y - this->r.y; }
-	[[nodiscard]] Rect well() const { return this->well_; }
-	[[nodiscard]] Rect frame() const { return this->frame_; }
 
 private:
 	std::unique_ptr<Widget> banner_owned_;
-	std::unique_ptr<Overflow> overflow_owned_;
 	std::unique_ptr<Menu> app_menu_owned_;
 	std::unique_ptr<Dialog> dialog_owned_;
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;
 	Rect well_{};
-	Rect frame_{};
 };
 
 Actor chain_actor(const HostActions &host, std::function<bool(Action)> apply,

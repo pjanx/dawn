@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -60,6 +61,23 @@ constexpr float kResizeBorderPts = 8.0f;
 constexpr float kScrollBarW = 8.0f;
 constexpr float kScrollStep = 32.0f;
 constexpr float kScrollHideMs = 1000.0f;
+
+// Indexes into Kit::colours_, which Kit::bake_colours fills in for the
+// current theme and display profile.
+enum : uint8_t {
+	ColourWell,
+	ColourToolbarTop,
+	ColourToolbarBottom,
+	ColourHover,
+	ColourPress,
+	ColourDivider,
+	ColourBusy,
+	ColourInk,
+	ColourFrame,
+	ColourPanel,
+	ColourHint,
+	ColourCount,
+};
 
 struct Kit;
 struct Scroll;
@@ -183,7 +201,7 @@ struct Sep : Widget {
 
 struct Splitter : Widget {
 	float min_w = 8.0f;
-	std::function<void(float mouse_x)> on_drag;
+	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
 	void measure(Kit &kit, float max_w, float max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
@@ -301,7 +319,7 @@ struct Panel : Composite {
 };
 
 // A panel that floats above the widget tree, on Kit's popup stack.
-// Menu behaviour is not here but in MenuPopup, which app-menu.hpp adds.
+// Menu behaviour is not here but in MenuPopup below.
 struct Popup : Panel {
 	Button *opener = nullptr;
 	Popup *parent_popup = nullptr;
@@ -335,6 +353,125 @@ struct Dialog : Popup {
 	bool motion(Kit &kit, float x, float y) override;
 };
 
+struct MenuItem;
+
+// A popup navigated like a menu: hovering moves the focus, arrows walk the
+// items, and a click anywhere else in the stack dismisses it.
+struct MenuPopup : Popup {
+	void focus_item(Kit &kit, Widget *w, bool kbd) const;
+	void reveal(Kit &kit, Widget *w);
+	bool motion(Kit &kit, float x, float y) override;
+	bool key(Kit &kit, int key, unsigned mods) override;
+	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+};
+
+// What a ToolbarSlot puts the items it could not fit into.
+struct Overflow : MenuPopup {
+	Column *col = nullptr;
+	std::vector<Widget *> sources;
+	std::function<void()> fill_items;
+
+	Overflow();
+	void place(Kit &kit) override;
+};
+
+struct Menu : MenuPopup {
+	Column *col = nullptr;
+	Actor actor;
+	std::vector<std::unique_ptr<Menu>> subs_;
+
+	Menu();
+	void build(std::span<const MenuNode> nodes, const Actor &actor);
+	void sync();
+	MenuItem &add_item(const QString &text);
+	void add_sep();
+	void clear();
+	void measure(Kit &kit, float max_w, float max_h) override;
+	bool key(Kit &kit, int key, unsigned mods) override;
+};
+
+struct MenuItem : Button {
+	QString accel;
+	// FIXME: This is an index into a label, it should at least be a unichar.
+	int mnemonic = -1;
+	Menu *sub = nullptr;
+	bool checked = false;
+	bool checkable = false;
+	float label_col = 0;
+	float accel_col = 0;
+
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool activate(Kit &kit) override;
+	float label_width(const Kit &kit) const;
+	float accel_width(const Kit &kit) const;
+};
+
+// One end of a toolbar. What does not fit goes behind the "more" button.
+struct ToolbarSlot : Row {
+	Button *more = nullptr;
+	std::size_t split_ = 0;
+
+	ToolbarSlot();
+	Widget *add_item(
+		std::unique_ptr<Widget> item, std::size_t at = std::size_t(-1));
+	[[nodiscard]] std::size_t item_count() const;
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+
+private:
+	using Composite::add_child;
+	using Composite::erase_children;
+};
+
+struct Toolbar : Panel {
+	Actor actor;
+	ToolbarSlot *left = nullptr;
+	ToolbarSlot *mid = nullptr;
+	ToolbarSlot *right = nullptr;
+	Overflow *overflow = nullptr;
+
+	Toolbar(std::unique_ptr<ToolbarSlot> left_row,
+		std::unique_ptr<ToolbarSlot> mid_row,
+		std::unique_ptr<ToolbarSlot> right_row);
+	void sync_buttons();
+
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+
+private:
+	std::unique_ptr<Overflow> overflow_owned_;
+	void place_slots(Kit &kit);
+	ToolbarSlot *slot_for_more(const Button *more) const;
+};
+
+// Client-side decorations: shown only while Kit::csd_ is on.
+struct Titlebar : Panel {
+	Label *title = nullptr;
+	Button *minimize = nullptr;
+	Button *maximize = nullptr;
+	Button *close = nullptr;
+	Actor actor;
+	QString text;
+	float drag_x_ = 0.0f;
+	float drag_y_ = 0.0f;
+	bool drag_armed_ = false;
+
+	Titlebar();
+	void sync(Kit &kit);
+
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, float x, float y) override;
+	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
+		unsigned mods) override;
+};
+
 struct Kit {
 	using Packed = Sheet::Packed;
 	struct Glyph {
@@ -360,17 +497,7 @@ struct Kit {
 	std::vector<QRawFont> fonts_;
 	OverlayList list_;
 
-	Colour well_{};
-	Colour toolbar_top_{};
-	Colour toolbar_bottom_{};
-	Colour hover_{};
-	Colour press_{};
-	Colour divider_{};
-	Colour busy_{};
-	Colour ink_{};
-	Colour frame_{};
-	Colour panel_{};
-	Colour hint_{};
+	Colour colours_[ColourCount]{};
 
 	Widget *root_ = nullptr;
 	Widget *focus_ = nullptr;
@@ -426,6 +553,14 @@ struct Kit {
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
 	Widget *hit(float x, float y);
+
+	// Client-side decorations. The host window is host_w_ by host_h_;
+	// under csd_shadow_ the window itself only fills the frame within it.
+	[[nodiscard]] Rect frame() const;
+	[[nodiscard]] Qt::Edges resize_edges(float x, float y) const;
+	bool start_resize_at(float x, float y);
+	void sync_cursor();
+
 	Widget *focus_scope() const;
 	void cycle_focus(int dir);
 	bool cycle_focus(Widget *scope, int dir, bool wrap = true);

@@ -689,6 +689,7 @@ sync_ui(Viewer &v, Page &ui)
 {
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
+	ui.sync_app_menu();
 	if (v.error_) {
 		v.error_->visible = !v.message_.empty() && !v.message_dismissed_;
 		v.error_->max_h = v.kit_.host_h_ * 0.4f;
@@ -1895,8 +1896,8 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 		page->titlebar->actor = page->actor;
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
-	if (page->toolbar && page->toolbar->app_menu)
-		page->toolbar->app_menu->build(page->menu_tree, page->actor);
+	if (page->app_menu)
+		page->app_menu->build(page->menu_tree, page->actor);
 	v->page_ = page.get();
 	if (out)
 		*out = v;
@@ -2029,8 +2030,8 @@ Viewer::set_screen_profile(
 	this->screen_profile_fallback_ = fallback;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.well_;
-		const Colour tile = this->kit_.toolbar_bottom_;
+		const Colour well = this->kit_.colours_[ColourWell];
+		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
 		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
 		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 		this->kit_.renderer_->set_transfer(this->enable_cms_

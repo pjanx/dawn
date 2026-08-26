@@ -1,678 +1,33 @@
 //
-// chrome.cpp: toolbar, sidebar, and page chrome widgets
+// chrome.cpp: page chrome, context menu, and application dialogs
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "chrome.hpp"
+#include <dawn-config.h>
 
+#include "assoc.hpp"
+#include "chrome.hpp"
+#include "url.hpp"
+
+#include <QFileInfo>
 #include <QKeyEvent>
 #include <QtGlobal>
 
 #include <algorithm>
-#include <cmath>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <span>
 #include <vector>
 
 using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-constexpr float kWinPadX = 4.0f;
-constexpr float kWinPadY = 2.0f;
-
-// How far the pointer must travel before a titlebar press becomes a move.
-constexpr float kDragPx = 4.0f;
-
-Qt::CursorShape
-resize_cursor(Qt::Edges edges)
-{
-	const bool l = edges & Qt::LeftEdge;
-	const bool r = edges & Qt::RightEdge;
-	const bool t = edges & Qt::TopEdge;
-	const bool b = edges & Qt::BottomEdge;
-	if ((l && t) || (r && b))
-		return Qt::SizeFDiagCursor;
-	if ((r && t) || (l && b))
-		return Qt::SizeBDiagCursor;
-	if (l || r)
-		return Qt::SizeHorCursor;
-	if (t || b)
-		return Qt::SizeVerCursor;
-	return Qt::ArrowCursor;
-}
-
-Qt::Edges
-resize_edges(const Kit &kit, Rect window, Rect frame, float x, float y)
-{
-	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
-		return {};
-	if (!window.contains(x, y))
-		return {};
-	if (kit.csd_shadow_ ? frame.contains(x, y) : !frame.contains(x, y))
-		return {};
-	const float band = kResizeBorderPts;
-	Qt::Edges e;
-	if (x < frame.x + band)
-		e |= Qt::LeftEdge;
-	if (x >= frame.x + frame.w - band)
-		e |= Qt::RightEdge;
-	if (y < frame.y + band)
-		e |= Qt::TopEdge;
-	if (y >= frame.y + frame.h - band)
-		e |= Qt::BottomEdge;
-	return e;
-}
-
-unique_ptr<Button>
-make_title_button(Titlebar *bar, Action action, const char *icon)
-{
-	auto btn = make_unique<Button>();
-	btn->action = action;
-	btn->icon = icon;
-	const ActionDef &d = action_def(action);
-	btn->tip_text = action_tip(d, false);
-	btn->tip_accel = action_accel(d);
-	btn->on_click = [bar, action](Kit &) {
-		if (bar->actor.apply)
-			bar->actor.apply(action);
-	};
-	return btn;
-}
-
-void
-sync_overflow_proxy(Widget &source, Widget &proxy)
-{
-	Widget *parent = proxy.parent_;
-	const bool visible = proxy.visible;
-	const bool layout_visible = proxy.layout_visible;
-	if (auto *button = dynamic_cast<Button *>(&source))
-		static_cast<Button &>(proxy) = *button;
-	else if (auto *label = dynamic_cast<Label *>(&source))
-		static_cast<Label &>(proxy) = *label;
-	proxy.parent_ = parent;
-	proxy.visible = visible;
-	proxy.layout_visible = layout_visible;
-}
-
-unique_ptr<Widget>
-overflow_proxy(Widget &source)
-{
-	if (dynamic_cast<Button *>(&source))
-		return make_unique<Button>();
-	if (dynamic_cast<Label *>(&source))
-		return make_unique<Label>();
-	if (dynamic_cast<Sep *>(&source))
-		return make_unique<Sep>();
-	return nullptr;
-}
-
-void
-add_overflow_proxies(Overflow &overflow, ToolbarSlot *row)
-{
-	if (!row)
-		return;
-	const size_t end = row->item_count();
-	for (size_t i = 0; i < end; ++i) {
-		if (!row->kids[i])
-			continue;
-		auto proxy = overflow_proxy(*row->kids[i]);
-		if (!proxy)
-			continue;
-		sync_overflow_proxy(*row->kids[i], *proxy);
-		proxy->visible = false;
-		if (overflow.col) {
-			overflow.sources.push_back(row->kids[i].get());
-			overflow.col->add_child(std::move(proxy));
-		}
-	}
-}
-
-void
-fill_overflow_items(ToolbarSlot &row, Overflow &overflow)
-{
-	if (!overflow.col)
-		return;
-	for (auto &item : overflow.col->kids)
-		item->visible = false;
-	const size_t end = row.item_count();
-	size_t a = min(row.split_, end);
-	size_t b = end;
-	while (a < b && is_sep(row.kids[a].get()))
-		++a;
-	while (b > a && is_sep(row.kids[b - 1].get()))
-		--b;
-	for (size_t i = a; i < b; ++i) {
-		Widget *source = row.kids[i].get();
-		for (size_t j = 0; j < overflow.sources.size(); ++j) {
-			if (overflow.sources[j] != source)
-				continue;
-			Widget &proxy = *overflow.col->kids[j];
-			sync_overflow_proxy(*source, proxy);
-			proxy.visible = source->visible;
-			break;
-		}
-	}
-}
-
-}  // namespace
-
-// --- ToolbarSlot ------------------------------------------------------------
-
-ToolbarSlot::ToolbarSlot()
-{
-	auto button = make_unique<Button>();
-	button->visible = false;
-	button->icon = "disclose-arrow-down-symbolic";
-	button->tip_text = "More";
-	this->more = button.get();
-	Composite::add_child(std::move(button));
-}
-
-Widget *
-ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
-{
-	return Composite::add_child(std::move(item), min(at, item_count()));
-}
-
-size_t
-ToolbarSlot::item_count() const
-{
-	return this->more && !this->kids.empty() ? this->kids.size() - 1 : 0;
-}
-
-void
-ToolbarSlot::measure(Kit &kit, float max_w, float max_h)
-{
-	for (size_t i = 0; i < item_count(); ++i) {
-		if (this->kids[i])
-			this->kids[i]->layout_visible = true;
-	}
-	this->more->visible = false;
-	this->split_ = item_count();
-	Row::measure(kit, max_w, max_h);
-}
-
-void
-ToolbarSlot::arrange(Kit &kit, Rect alloc)
-{
-	if (!this->visible) {
-		this->r = {};
-		this->split_ = 0;
-		return;
-	}
-	const Rect in = kit.snap_rect(alloc).inset(this->pad_x, this->pad_y);
-	const size_t end = item_count();
-	measure(kit, kUnlim, alloc.h);
-	const float total = max(0.0f, this->r.w - this->pad_x * 2.0f);
-
-	this->split_ = end;
-	this->more->visible = false;
-	if (total > in.w) {
-		this->more->visible = true;
-		this->more->measure(kit, kUnlim, in.h);
-		const float budget = max(0.0f, in.w - this->more->r.w - this->gap);
-		float used = 0.0f;
-		int kept = 0;
-		bool full = false;
-		this->split_ = 0;
-		for (size_t i = 0; i < end; ++i) {
-			Widget *item = this->kids[i].get();
-			if (!item || !item->shown()) {
-				if (!full)
-					this->split_ = i + 1;
-				continue;
-			}
-			const float need = item->r.w + (kept ? this->gap : 0.0f);
-			if (full || used + need > budget) {
-				full = true;
-				continue;
-			}
-			used += need;
-			++kept;
-			this->split_ = i + 1;
-		}
-		while (this->split_ > 0 &&
-			(!this->kids[this->split_ - 1] ||
-				is_sep(this->kids[this->split_ - 1].get())))
-			--this->split_;
-		this->more->visible = this->split_ < end;
-	}
-	for (size_t i = this->split_; i < end; ++i) {
-		if (this->kids[i])
-			this->kids[i]->layout_visible = false;
-	}
-	Row::arrange(kit, alloc);
-}
-
-// --- Toolbar ---------------------------------------------------------------
-
-Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
-	unique_ptr<ToolbarSlot> mid_row, unique_ptr<ToolbarSlot> right_row)
-{
-	this->pad_x = kWinPadX;
-	this->pad_y = kWinPadY;
-	this->fill = Fill::Toolbar;
-	this->stroke = Stroke::Bottom;
-	this->hittable = true;
-
-	this->left = left_row.get();
-	if (left_row)
-		add_child(std::move(left_row));
-	this->mid = mid_row.get();
-	if (mid_row)
-		add_child(std::move(mid_row));
-	this->right = right_row.get();
-	if (right_row)
-		add_child(std::move(right_row));
-
-#if !defined(Q_OS_MACOS)
-	if (this->left) {
-		auto app = make_unique<Button>();
-		app->icon = "open-menu-symbolic";
-		app->tip_text = "Menu";
-		this->app_menu_button = app.get();
-		this->left->add_item(make_unique<Sep>(), 0);
-		this->left->add_item(std::move(app), 0);
-	}
-#endif
-
-	this->overflow_owned_ = make_unique<Overflow>();
-	this->overflow_owned_->pad_y = kWinPadY;
-	this->overflow = this->overflow_owned_.get();
-	add_overflow_proxies(*this->overflow, this->left);
-	add_overflow_proxies(*this->overflow, this->mid);
-	add_overflow_proxies(*this->overflow, this->right);
-
-	this->app_menu_owned_ = make_unique<Menu>();
-	this->app_menu = this->app_menu_owned_.get();
-
-	this->overflow->fill_items = [this] {
-		if (Button *m = this->overflow->opener) {
-			if (ToolbarSlot *slot = slot_for_more(m))
-				fill_overflow_items(*slot, *this->overflow);
-		}
-	};
-
-	if (this->app_menu_button) {
-		this->app_menu_button->activate_on_press = true;
-		this->app_menu_button->on_click = [this](Kit &kit) {
-			open_app_menu(kit, false);
-		};
-	}
-	auto bind_more = [this](Button *m) {
-		if (!m)
-			return;
-		m->activate_on_press = true;
-		m->on_click = [this, m](Kit &kit) {
-			if (this->overflow->visible && this->overflow->opener == m)
-				this->overflow->close(kit);
-			else
-				this->overflow->open(kit, m);
-		};
-	};
-	bind_more(this->left ? this->left->more : nullptr);
-	bind_more(this->mid ? this->mid->more : nullptr);
-	bind_more(this->right ? this->right->more : nullptr);
-}
-
-unique_ptr<Overflow>
-Toolbar::take_overflow()
-{
-	return std::move(this->overflow_owned_);
-}
-
-unique_ptr<Menu>
-Toolbar::take_app_menu()
-{
-	return std::move(this->app_menu_owned_);
-}
-
-void
-Toolbar::open_app_menu(Kit &kit, bool kbd)
-{
-	if (!this->app_menu)
-		return;
-	if (this->app_menu->visible) {
-		this->app_menu->close(kit);
-		return;
-	}
-	if (!this->app_menu_button)
-		return;
-	Button *anchor = this->app_menu_button;
-	if (!anchor->shown() && this->left && this->left->more->shown())
-		anchor = this->left->more;
-	this->app_menu->open(kit, anchor);
-	if (kbd)
-		kit.focus_first(this->app_menu);
-}
-
-void
-Toolbar::sync_buttons()
-{
-	auto apply = [this](Widget *w) {
-		auto *btn = dynamic_cast<Button *>(w);
-		if (!btn)
-			return;
-		if (btn->action == Action::None)
-			return;
-		const ActionDef &d = action_def(btn->action);
-		const bool on = this->actor.checked && this->actor.checked(btn->action);
-		btn->enabled_ =
-			!this->actor.enabled || this->actor.enabled(btn->action);
-		btn->active = on && btn->action != Action::SortDir;
-		btn->icon = action_icon(d, on);
-		btn->tip_text = action_tip(d, on);
-		btn->tip_accel = action_accel(d);
-	};
-	auto walk = [&apply](const ToolbarSlot *row) {
-		if (!row)
-			return;
-		for (auto &k : row->kids)
-			apply(k.get());
-	};
-	walk(this->left);
-	walk(this->mid);
-	walk(this->right);
-	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (slot && slot->more)
-			slot->more->active = this->overflow && this->overflow->visible &&
-				this->overflow->opener == slot->more;
-	}
-	if (this->app_menu_button)
-		this->app_menu_button->active = app_menu_open();
-	if (this->app_menu)
-		this->app_menu->sync();
-}
-
-void
-Toolbar::measure(Kit &kit, float avail_w, float avail_h)
-{
-	const float ih = max(0.0f, avail_h - this->pad_y * 2.0f);
-	float h = 0.0f;
-	auto slot = [&](Widget *w) {
-		if (!w)
-			return;
-		w->measure(kit, kUnlim, ih);
-		h = max(h, w->r.h);
-	};
-	slot(this->left);
-	slot(this->mid);
-	slot(this->right);
-	this->r.w = avail_w;
-	this->r.h = this->pad_y * 2.0f + h;
-	if (avail_h > 0.0f)
-		this->r.h = min(this->r.h, avail_h);
-}
-
-void
-Toolbar::arrange(Kit &kit, Rect alloc)
-{
-	if (!this->visible) {
-		this->r = {};
-		return;
-	}
-	this->r = kit.snap_rect(alloc);
-	place_slots(kit);
-}
-
-void
-Toolbar::place_slots(Kit &kit)
-{
-	if (this->r.w <= 0.0f)
-		return;
-	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
-	if (bar.w <= 0.0f)
-		return;
-	const float avail = bar.w;
-	const float h = bar.h;
-	const float x0 = bar.x;
-	const float y0 = bar.y;
-	auto nat = [&](Widget *w) {
-		if (!w)
-			return 0.0f;
-		w->measure(kit, kUnlim, h);
-		return w->r.w;
-	};
-	const float lw = nat(this->left);
-	const float mw = nat(this->mid);
-	const float rw = nat(this->right);
-	float mmin = 0.0f;
-	if (mw > 0.0f && this->mid && this->mid->more) {
-		this->mid->more->measure(kit, kUnlim, h);
-		mmin = min(mw, this->mid->more->r.w);
-	}
-	float left_w = lw;
-	float right_w = rw;
-	float mid_x;
-	if (lw + mw + rw <= avail) {
-		mid_x = x0 + clamp((avail - mw) * 0.5f, lw, avail - rw - mw);
-	} else {
-		const float keep = min(mmin, avail);
-		const float rest = max(0.0f, avail - keep);
-		left_w = min(lw, rest * 0.5f);
-		right_w = min(rw, rest - left_w);
-		left_w = min(lw, rest - right_w);
-		mid_x = x0 + left_w;
-	}
-	const float mid_w = x0 + avail - right_w - mid_x;
-	if (this->left)
-		this->left->arrange(kit, {x0, y0, left_w, h});
-	if (this->mid) {
-		this->mid->align = Align::Start;
-		this->mid->arrange(kit, {mid_x, y0, mid_w, h});
-	}
-	if (this->right)
-		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
-}
-
-ToolbarSlot *
-Toolbar::slot_for_more(const Button *more) const
-{
-	if (!more)
-		return nullptr;
-	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (slot && more == slot->more)
-			return slot;
-	}
-	return nullptr;
-}
-
-// --- Titlebar --------------------------------------------------------------
-
-Titlebar::Titlebar()
-{
-	this->pad_x = kWinPadX;
-	this->pad_y = kWinPadY;
-	this->fill = Fill::Toolbar;
-	this->stroke = Stroke::Bottom;
-	this->hittable = true;
-
-	auto label = make_unique<Label>();
-	label->align = Align::Center;
-	label->bold = true;
-	this->title = label.get();
-	add_child(std::move(label));
-
-	auto min = make_title_button(this, Action::Minimize, "window-minimize");
-	this->minimize = min.get();
-	add_child(std::move(min));
-	auto max = make_title_button(this, Action::Maximize, "window-maximize");
-	this->maximize = max.get();
-	add_child(std::move(max));
-	auto cls = make_title_button(this, Action::CloseWindow, "window-close");
-	this->close = cls.get();
-	add_child(std::move(cls));
-}
-
-void
-Titlebar::sync(Kit &kit)
-{
-	if (this->title)
-		this->title->text = this->text;
-	if (this->maximize) {
-		const ActionDef &d = action_def(Action::Maximize);
-		const bool on = kit.maximized_;
-		this->maximize->icon = on ? "window-restore" : "window-maximize";
-		this->maximize->tip_text = action_tip(d, on);
-		this->maximize->active = on;
-	}
-	auto apply = [this](Button *btn) {
-		if (!btn || btn->action == Action::None)
-			return;
-		btn->enabled_ =
-			!this->actor.enabled || this->actor.enabled(btn->action);
-	};
-	apply(this->minimize);
-	apply(this->maximize);
-	apply(this->close);
-}
-
-void
-Titlebar::measure(Kit &kit, float avail_w, float)
-{
-	float ih = 0.0f;
-	auto slot = [&](Button *b) {
-		if (!b)
-			return;
-		b->measure(kit, kUnlim, kUnlim);
-		ih = max(ih, b->r.h);
-	};
-	slot(this->minimize);
-	slot(this->maximize);
-	slot(this->close);
-	this->r.w = avail_w;
-	this->r.h = this->pad_y * 2.0f + ih;
-}
-
-void
-Titlebar::arrange(Kit &kit, Rect alloc)
-{
-	if (!this->visible) {
-		this->r = {};
-		return;
-	}
-	this->r = kit.snap_rect(alloc);
-	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
-	float x = bar.x + bar.w;
-	auto place = [&](Button *b) {
-		if (!b)
-			return;
-		b->measure(kit, kUnlim, bar.h);
-		x -= b->r.w;
-		b->arrange(kit, {x, bar.y, b->r.w, bar.h});
-	};
-	place(this->close);
-	place(this->maximize);
-	place(this->minimize);
-	if (this->title) {
-		const float left = bar.x;
-		const float right = x;
-		const float avail = max(0.0f, right - left);
-		this->title->text =
-			kit.elide_lines(this->text, avail, 1, this->title->bold);
-		this->title->measure(kit, avail, bar.h);
-		float tw = min(this->title->r.w, avail);
-		float tx = this->r.x + (this->r.w - tw) * 0.5f;
-		if (tx < left)
-			tx = left;
-		if (tx + tw > right)
-			tx = max(left, right - tw);
-		this->title->arrange(kit, {tx, bar.y, tw, bar.h});
-	}
-}
-
-void
-Titlebar::paint(Kit &kit) const
-{
-	Panel::paint(kit);
-}
-
-void
-Titlebar::prepare(Kit &kit)
-{
-	const int px = max(16, int(lround(double(kIconPx) * double(kit.dpr_))));
-	kit.pack_icon("window-minimize", px);
-	kit.pack_icon("window-maximize", px);
-	kit.pack_icon("window-restore", px);
-	kit.pack_icon("window-close", px);
-	if (this->title && !this->title->text.isEmpty())
-		kit.cache_text(this->title->text, this->title->bold);
-	Panel::prepare(kit);
-}
-
-bool
-Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
-{
-	if (button == Qt::RightButton) {
-		if (!kit.start_menu)
-			return false;
-		kit.start_menu(x, y);
-		return true;
-	}
-	if (button != Qt::LeftButton)
-		return false;
-	if (Page *page = dynamic_cast<Page *>(this->parent_)) {
-		const Qt::Edges edges =
-			resize_edges(kit, page->r, page->frame(), x, y);
-		if (edges && kit.start_resize) {
-			kit.start_resize(edges);
-			return true;
-		}
-	}
-	if (!kit.start_move)
-		return false;
-	// Asking for the move on the press would leave a compositor grab open
-	// across the whole double click, and Mutter anchors an unmaximize to the
-	// pointer whenever one is: the window would land under the cursor rather
-	// than back where it was. Wait for the pointer to travel instead.
-	this->drag_x_ = x;
-	this->drag_y_ = y;
-	this->drag_armed_ = true;
-	kit.pressed_ = this;
-	return true;
-}
-
-bool
-Titlebar::release(Kit &, float, float, Qt::MouseButton button)
-{
-	if (button != Qt::LeftButton)
-		return false;
-	this->drag_armed_ = false;
-	return true;
-}
-
-bool
-Titlebar::motion(Kit &kit, float x, float y)
-{
-	if (!this->drag_armed_ || !kit.start_move)
-		return false;
-	const float dx = x - this->drag_x_;
-	const float dy = y - this->drag_y_;
-	if (dx * dx + dy * dy < kDragPx * kDragPx)
-		return false;
-	this->drag_armed_ = false;
-	kit.start_move();
-	return true;
-}
-
-bool
-Titlebar::double_click(
-	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
-{
-	if (button != Qt::LeftButton)
-		return false;
-	if (dynamic_cast<Button *>(kit.hit(x, y)))
-		return false;
-	if (this->actor.apply)
-		this->actor.apply(Action::Maximize);
-	return true;
-}
+// --- Sidebar -----------------------------------------------------------------
 
 Sidebar::Sidebar(unique_ptr<Widget> child)
 {
@@ -693,6 +48,259 @@ Sidebar::key(Kit &kit, int key, unsigned mods)
 		return false;
 	const int dir = key == Qt::Key_Up ? -1 : 1;
 	return kit.cycle_focus(this, dir, false);
+}
+
+// --- Context menu ------------------------------------------------------------
+
+void
+ContextMenu::fill_items(const QUrl &url)
+{
+	clear();
+	this->min_w = 200.0f;
+
+	// Open With and Move to Trash are filesystem operations on a real file.
+	const QString path = url_to_path(url);
+	const Handler def = default_for(path);
+	const vector<Handler> rec = recommended_for(path);
+	const vector<Handler> fall = fallback_for(path);
+
+	auto add_app = [&](const Handler &app) {
+		if (app.id.isEmpty())
+			return;
+		auto &item = add_item(app.name.isEmpty() ? app.id : app.name);
+		item.mnemonic = -1;
+		item.on_click = [app, path](Kit &) {
+			launch(app, path);
+			set_last_used(app, path);
+		};
+	};
+
+	bool need_sep = false;
+	auto flush_sep = [&] {
+		if (!need_sep)
+			return;
+		add_sep();
+		need_sep = false;
+	};
+
+	auto &new_win = add_item(menu_label("Open in New _Window"));
+	new_win.mnemonic = mnemonic_index("Open in New _Window");
+	new_win.on_click = [this, url](Kit &) {
+		if (this->on_new_window)
+			this->on_new_window(url);
+	};
+	need_sep = true;
+	if (!def.id.isEmpty()) {
+		flush_sep();
+		add_app(def);
+		need_sep = true;
+	}
+	if (!rec.empty()) {
+		flush_sep();
+		for (const Handler &app : rec)
+			add_app(app);
+		need_sep = true;
+	}
+	if (!fall.empty()) {
+		flush_sep();
+		for (const Handler &app : fall)
+			add_app(app);
+		need_sep = true;
+	}
+	if (QFileInfo(path).isFile() && this->on_trash) {
+		flush_sep();
+		auto &trash = add_item(menu_label("Move to _Trash"));
+		trash.mnemonic = mnemonic_index("Move to _Trash");
+		trash.accel = action_accel(action_def(Action::Trash));
+		trash.on_click = [this, url](Kit &) {
+			if (this->on_trash)
+				this->on_trash(url);
+		};
+	}
+}
+
+void
+ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
+{
+	kit.forget_tree(this);
+	fill_items(url);
+	bool any = false;
+	if (this->col) {
+		for (const auto &k : this->col->kids) {
+			if (k && !is_sep(k.get())) {
+				any = true;
+				break;
+			}
+		}
+	}
+	if (!any) {
+		if (this->visible)
+			close(kit);
+		return;
+	}
+	open_at(kit, anchor);
+	if (kbd)
+		kit.focus_first(this);
+}
+
+// --- Dialogs -----------------------------------------------------------------
+
+namespace
+{
+
+unique_ptr<Label>
+dialog_label(const QString &text, bool bold = false, bool wrap = false)
+{
+	auto label = make_unique<Label>();
+	label->text = text;
+	label->bold = bold;
+	label->wrap = wrap;
+	return label;
+}
+
+QString
+shortcut_accel(const ActionDef &def)
+{
+	if (def.accel)
+		return QString::fromUtf8(def.accel);
+	QString s;
+	for (const Accel &a : def.keys) {
+		const QString part = accel_label(a);
+		if (part.isEmpty())
+			continue;
+		if (!s.isEmpty())
+			s += QLatin1String(", ");
+		s += part;
+	}
+	return s;
+}
+
+bool
+has_shortcut(const ActionDef &def)
+{
+	return !shortcut_accel(def).isEmpty();
+}
+
+void
+for_leaves(span<const MenuNode> nodes, auto &&fn)
+{
+	for (const MenuNode &n : nodes) {
+		if (!n.items.empty())
+			for_leaves(n.items, fn);
+		else if (n.action != Action::None)
+			fn(n.action);
+	}
+}
+
+unique_ptr<Row>
+shortcut_row(const ActionDef &def, float accel_w)
+{
+	auto row = make_unique<Row>();
+	row->gap = 8.0f;
+	auto accel = dialog_label(shortcut_accel(def));
+	accel->min_w = accel_w;
+	accel->dim = true;
+	auto name = dialog_label(menu_label(def.label[0]));
+	row->add_child(std::move(accel));
+	row->add_child(std::move(name));
+	return row;
+}
+
+}  // namespace
+
+// The body takes its natural height, never stretched: it only knows to
+// scroll when what it holds is taller than it is.
+void
+dialog_about(Kit &kit, Dialog &dialog)
+{
+	auto col = make_unique<Column>();
+	col->gap = 8.0f;
+	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true));
+	col->add_child(
+		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
+			false, true));
+	dialog.show(kit, std::move(col), 360.0f);
+}
+
+void
+dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
+	span<const Action> keys)
+{
+	bool seen[size_t(Action::Count)] = {};
+	float accel_w = 120.0f;
+	auto consider = [&](Action action) {
+		const ActionDef &def = action_def(action);
+		if (!has_shortcut(def))
+			return;
+		accel_w = max(accel_w, kit.text_width(shortcut_accel(def), false));
+	};
+	for_leaves(tree, consider);
+	auto consider_other = [&](Action action) {
+		const ActionDef &def = action_def(action);
+		if ((def.flags & ActionInMenu) || !has_shortcut(def))
+			return;
+		consider(action);
+	};
+	bool viewer = false;
+	for (Action action : keys) {
+		if (action == Action::ZoomIn || action == Action::FitWidth) {
+			viewer = true;
+			break;
+		}
+	}
+	for (Action action : window_keys())
+		consider_other(action);
+	for (Action action : keys)
+		consider_other(action);
+	consider_other(Action::Cancel);
+	if (viewer)
+		consider_other(Action::ZoomLevel);
+
+	auto col = make_unique<Column>();
+	col->gap = 2.0f;
+	col->add_child(dialog_label(QStringLiteral("Keyboard Shortcuts"), true));
+	for (const MenuNode &section : tree) {
+		if (section.items.empty())
+			continue;
+		bool any = false;
+		for_leaves(section.items, [&](Action action) {
+			if (has_shortcut(action_def(action)))
+				any = true;
+		});
+		if (!any)
+			continue;
+		col->add_child(dialog_label(menu_label(section.title), true));
+		for_leaves(section.items, [&](Action action) {
+			const ActionDef &def = action_def(action);
+			if (!has_shortcut(def))
+				return;
+			seen[size_t(action)] = true;
+			col->add_child(shortcut_row(def, accel_w));
+		});
+	}
+	bool other = false;
+	auto emit_other = [&](Action action) {
+		const size_t i = size_t(action);
+		if (i >= size(seen) || seen[i])
+			return;
+		const ActionDef &def = action_def(action);
+		if ((def.flags & ActionInMenu) || !has_shortcut(def))
+			return;
+		if (!other) {
+			col->add_child(dialog_label(QStringLiteral("Other"), true));
+			other = true;
+		}
+		seen[i] = true;
+		col->add_child(shortcut_row(def, accel_w));
+	};
+	for (Action action : window_keys())
+		emit_other(action);
+	for (Action action : keys)
+		emit_other(action);
+	emit_other(Action::Cancel);
+	if (viewer)
+		emit_other(Action::ZoomLevel);
+	dialog.show(kit, std::move(col), 520.0f);
 }
 
 // --- Page -------------------------------------------------------------------
@@ -722,25 +330,38 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		split->min_w = kSplitW;
 		split->hittable = true;
 		this->splitter = split.get();
-		this->splitter->on_drag = [this](float mx) {
+		this->splitter->on_drag = [this](Kit &kit, float mx) {
 			if (!this->sidebar_open || this->sidebar_side == Side::None)
 				return;
-			const float max_side = max(kMinSide, this->frame_.w - kMinWell);
+			const Rect frame = kit.frame();
+			const float max_side = max(kMinSide, frame.w - kMinWell);
 			if (this->sidebar_side == Side::Right)
-				this->sidebar_w = clamp(
-					this->frame_.x + this->frame_.w - mx, kMinSide, max_side);
-			else
 				this->sidebar_w =
-					clamp(mx - this->frame_.x, kMinSide, max_side);
+					clamp(frame.x + frame.w - mx, kMinSide, max_side);
+			else
+				this->sidebar_w = clamp(mx - frame.x, kMinSide, max_side);
 		};
 		add_child(std::move(split));
 	}
 	this->content = body.get();
 	add_child(std::move(body));
-	if (this->toolbar) {
-		this->overflow_owned_ = this->toolbar->take_overflow();
-		this->app_menu_owned_ = this->toolbar->take_app_menu();
+
+	// macOS has a real menu bar for this; everywhere else it is a button
+	// at the far end of the toolbar.
+	this->app_menu_owned_ = make_unique<Menu>();
+	this->app_menu = this->app_menu_owned_.get();
+#if !defined(Q_OS_MACOS)
+	if (this->toolbar && this->toolbar->left) {
+		auto app = make_unique<Button>();
+		app->icon = "open-menu-symbolic";
+		app->tip_text = "Menu";
+		app->activate_on_press = true;
+		app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
+		this->app_menu_button = app.get();
+		this->toolbar->left->add_item(make_unique<Sep>(), 0);
+		this->toolbar->left->add_item(std::move(app), 0);
 	}
+#endif
 	this->dialog_owned_ = make_unique<Dialog>();
 	this->dialog = this->dialog_owned_.get();
 	this->hint_owned_ = make_unique<Hint>();
@@ -756,6 +377,37 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->sidebar_open = false;
 		this->sidebar_side = Side::None;
 	}
+}
+
+void
+Page::open_app_menu(Kit &kit, bool kbd)
+{
+	if (!this->app_menu)
+		return;
+	if (this->app_menu->visible) {
+		this->app_menu->close(kit);
+		return;
+	}
+	if (!this->app_menu_button)
+		return;
+	// Too narrow a window packs the button away into the overflow, which
+	// then anchors the menu instead.
+	Button *anchor = this->app_menu_button;
+	if (!anchor->shown() && this->toolbar && this->toolbar->left &&
+		this->toolbar->left->more->shown())
+		anchor = this->toolbar->left->more;
+	this->app_menu->open(kit, anchor);
+	if (kbd)
+		kit.focus_first(this->app_menu);
+}
+
+void
+Page::sync_app_menu()
+{
+	if (this->app_menu_button)
+		this->app_menu_button->active = app_menu_open();
+	if (this->app_menu)
+		this->app_menu->sync();
 }
 
 void
@@ -784,35 +436,31 @@ Page::arrange(Kit &kit, Rect alloc)
 		return;
 	}
 	this->r = kit.snap_rect(alloc);
-	this->frame_ = this->r;
-	if (kit.csd_shadow_)
-		this->frame_ = kit.snap_rect(this->r.inset(kGlowPts, kGlowPts));
-	if (this->titlebar)
-		this->titlebar->visible = kit.csd_ && !kit.fullscreen_;
-	float y = this->frame_.y;
-	if (this->titlebar && this->titlebar->visible) {
-		this->titlebar->measure(kit, this->frame_.w, this->frame_.h);
-		this->titlebar->arrange(
-			kit, {this->frame_.x, y, this->frame_.w, this->titlebar->r.h});
-		y += this->titlebar->r.h;
-	} else if (this->titlebar) {
-		this->titlebar->r = {};
+	// The window may only fill the frame within its surface, the rest
+	// belonging to the shadow that a client-side decorated window casts.
+	const Rect frame = kit.frame();
+	float y = frame.y;
+	if (this->titlebar) {
+		this->titlebar->measure(kit, frame.w, frame.h);
+		if (this->titlebar->visible) {
+			this->titlebar->arrange(
+				kit, {frame.x, y, frame.w, this->titlebar->r.h});
+			y += this->titlebar->r.h;
+		}
 	}
 	if (this->toolbar && this->toolbar->visible) {
-		this->toolbar->measure(kit, this->frame_.w, this->frame_.h);
-		this->toolbar->arrange(
-			kit, {this->frame_.x, y, this->frame_.w, this->toolbar->r.h});
+		this->toolbar->measure(kit, frame.w, frame.h);
+		this->toolbar->arrange(kit, {frame.x, y, frame.w, this->toolbar->r.h});
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
-		const float rest = max(0.0f, this->frame_.y + this->frame_.h - y);
-		this->banner->measure(kit, this->frame_.w, rest);
-		this->banner->arrange(
-			kit, {this->frame_.x, y, this->frame_.w, this->banner->r.h});
+		const float rest = max(0.0f, frame.y + frame.h - y);
+		this->banner->measure(kit, frame.w, rest);
+		this->banner->arrange(kit, {frame.x, y, frame.w, this->banner->r.h});
 		y += this->banner->r.h;
 	}
 	const float body_y = y;
-	const float body_h = max(0.0f, this->frame_.y + this->frame_.h - body_y);
+	const float body_h = max(0.0f, frame.y + frame.h - body_y);
 	float side_w = 0.0f;
 	if (this->sidebar) {
 		this->sidebar->visible =
@@ -821,17 +469,15 @@ Page::arrange(Kit &kit, Rect alloc)
 			side_w = max(0.0f, this->sidebar_w);
 			this->sidebar->min_w = side_w;
 			if (this->sidebar_side == Side::Left)
-				this->sidebar->arrange(
-					kit, {this->frame_.x, body_y, side_w, body_h});
+				this->sidebar->arrange(kit, {frame.x, body_y, side_w, body_h});
 			else
-				this->sidebar->arrange(kit, {this->frame_.x + this->frame_.w -
-						side_w,
-					body_y, side_w, body_h});
+				this->sidebar->arrange(
+					kit, {frame.x + frame.w - side_w, body_y, side_w, body_h});
 		} else {
 			this->sidebar->r = {};
 		}
 	}
-	this->well_ = {this->frame_.x, body_y, this->frame_.w, body_h};
+	this->well_ = {frame.x, body_y, frame.w, body_h};
 	if (this->sidebar && this->sidebar->visible) {
 		if (this->sidebar_side == Side::Left)
 			this->well_.x += side_w;
@@ -890,56 +536,6 @@ Page::key(Kit &kit, int key, unsigned mods)
 		return false;
 	const int dir = a == Action::PrevPane ? -1 : 1;
 	kit.focus_first(panes[(i + dir + n) % n]);
-	return true;
-}
-
-void
-Page::paint(Kit &kit) const
-{
-	if (!shown())
-		return;
-	if (kit.csd_shadow_ && this->frame_.w > 0.0f && this->frame_.h > 0.0f)
-		kit.draw_glow(this->frame_.x, this->frame_.y, this->frame_.w,
-			this->frame_.h, {0, 0, 0, kit.active_ ? 0.25f : 0.125f});
-	Widget::paint(kit);
-}
-
-bool
-Page::press(Kit &kit, float x, float y, Qt::MouseButton button)
-{
-	if (button != Qt::LeftButton)
-		return false;
-	const Qt::Edges edges = resize_edges(kit, this->r, this->frame_, x, y);
-	if (edges && kit.start_resize) {
-		kit.start_resize(edges);
-		return true;
-	}
-	return false;
-}
-
-void
-Page::apply_csd_cursor(Kit &kit)
-{
-	kit.cursor_ = Qt::ArrowCursor;
-	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
-		return;
-	if (dynamic_cast<Button *>(kit.hot_))
-		return;
-	const Qt::Edges edges =
-		resize_edges(kit, this->r, this->frame_, kit.mouse_x_, kit.mouse_y_);
-	if (edges)
-		kit.cursor_ = resize_cursor(edges);
-}
-
-bool
-Page::start_csd_resize(Kit &kit, float x, float y)
-{
-	if (dynamic_cast<Button *>(kit.hit(x, y)))
-		return false;
-	const Qt::Edges edges = resize_edges(kit, this->r, this->frame_, x, y);
-	if (!edges || !kit.start_resize)
-		return false;
-	kit.start_resize(edges);
 	return true;
 }
 

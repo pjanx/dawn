@@ -1499,8 +1499,8 @@ draw_checker(Kit &kit, const Rect &tile)
 	if (tile.w <= 0.0f || tile.h <= 0.0f)
 		return;
 	kit.list_.push_clip(tile.x, tile.y, tile.x + tile.w, tile.y + tile.h);
-	const Colour bg = kit.toolbar_bottom_;
-	const Colour fg = kit.well_;
+	const Colour bg = kit.colours_[ColourToolbarBottom];
+	const Colour fg = kit.colours_[ColourWell];
 	kit.list_.add_rect_filled(
 		tile.x, tile.y, tile.x + tile.w, tile.y + tile.h, bg);
 	const int nx = max(1, int(ceil(double(tile.w / kCheck))));
@@ -2243,6 +2243,7 @@ sync_ui(Browser &b, Page &ui)
 {
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
+	ui.sync_app_menu();
 	if (b.places_dirty_)
 		fill_places(b);
 	else {
@@ -2517,14 +2518,14 @@ Browser::paint(Kit &kit) const
 	kit.list_.push_clip(
 		this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, kit.well_);
+		this->r.y + this->r.h, kit.colours_[ColourWell]);
 	const float th = float(this->thumb_size_);
-	const Colour ink = kit.ink_;
+	const Colour ink = kit.colours_[ColourInk];
 	const float glow_a = kit.ink_alpha();
 	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
 	const Colour glow_idle = {
 		ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
-	const Colour frame = kit.frame_;
+	const Colour frame = kit.colours_[ColourFrame];
 	for (int i = 0; i < int(this->files_.size()); ++i) {
 		const File &f = this->files_[size_t(i)];
 		if (f.cell.w <= 0.0f)
@@ -2547,8 +2548,9 @@ Browser::paint(Kit &kit) const
 			this->sheet_.uv(f.gpu, &u0, &v0, &u1, &v1);
 			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1);
 		} else {
-			kit.list_.add_rect_filled(
-				tx, ty, tx + tw, ty + thp, focused ? kit.press_ : kit.hover_);
+			kit.list_.add_rect_filled(tx, ty, tx + tw, ty + thp,
+				focused ? kit.colours_[ColourPress]
+						: kit.colours_[ColourHover]);
 			const float sz = min(tw, thp) * 0.5f;
 			kit.draw_icon(tx + (tw - sz) * 0.5f, ty + (thp - sz) * 0.5f, sz,
 				f.failed ? kMissingIcon : kPendingIcon, ink);
@@ -2599,8 +2601,8 @@ make_browser_page(
 		page->titlebar->actor = page->actor;
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
-	if (page->toolbar && page->toolbar->app_menu)
-		page->toolbar->app_menu->build(page->menu_tree, page->actor);
+	if (page->app_menu)
+		page->app_menu->build(page->menu_tree, page->actor);
 	b->places_dirty_ = true;
 	b->page_ = page.get();
 	if (out)
@@ -2698,8 +2700,8 @@ Browser::set_screen_profile(shared_ptr<Cmm> cmm, shared_ptr<Profile> profile)
 	this->screen_profile_ = std::move(profile);
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.well_;
-		const Colour tile = this->kit_.toolbar_bottom_;
+		const Colour well = this->kit_.colours_[ColourWell];
+		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
 		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
 		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 		this->kit_.renderer_->set_transfer(

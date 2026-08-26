@@ -1,7 +1,6 @@
 qt_add_executable(dn
 	action.cpp
 	app.cpp
-	app-menu.cpp
 	browser.cpp
 	chrome.cpp
 	cie-diagram.cpp

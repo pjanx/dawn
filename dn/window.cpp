@@ -622,20 +622,19 @@ Window::shell()
 void
 Window::sync_csd()
 {
-	Page *ui = active_ui();
-	if (ui)
-		ui->apply_csd_cursor(this->kit_);
+	this->kit_.sync_cursor();
 	if (this->kit_.cursor_ != this->cursor_applied_) {
 		this->cursor_applied_ = this->kit_.cursor_;
 		setCursor(this->cursor_applied_);
 	}
 	const bool shadow = this->kit_.csd_shadow_;
-	const int glow = shadow ? int(lround(double(kGlowPts))) : 0;
-	const int band = shadow ? int(lround(double(kResizeBorderPts))) : 0;
 	QRegion mask;
 	if (shadow) {
-		const QRect frame(glow, glow, max(0, width() - 2 * glow),
-			max(0, height() - 2 * glow));
+		// Input still has to reach the resize band, which lies in the shadow.
+		const int band = int(lround(double(kResizeBorderPts)));
+		const Rect f = this->kit_.frame();
+		const QRect frame(int(lround(double(f.x))), int(lround(double(f.y))),
+			int(lround(double(f.w))), int(lround(double(f.h))));
 		mask = QRegion(frame.adjusted(-band, -band, band, band));
 	}
 	setMask(mask);
@@ -672,8 +671,8 @@ Window::apply_dark(bool dark)
 	this->kit_.dark_ = dark;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.well_;
-		const Colour tile = this->kit_.toolbar_bottom_;
+		const Colour well = this->kit_.colours_[ColourWell];
+		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
 		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
 		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 	}
@@ -1070,8 +1069,8 @@ void
 Window::apply_window(Action a)
 {
 	if (a == Action::Menu) {
-		if (Page *ui = active_ui(); ui && ui->toolbar)
-			ui->toolbar->open_app_menu(this->kit_, true);
+		if (Page *ui = active_ui())
+			ui->open_app_menu(this->kit_, true);
 		return;
 	}
 	if (Page *ui = active_ui(); ui && ui->actor.apply)
@@ -1200,13 +1199,10 @@ Window::mousePressEvent(QMouseEvent *event)
 	const float x = float(pos.x());
 	const float y = float(pos.y());
 	this->alt_armed_ = false;
-	if (this->kit_.csd_ && event->button() == Qt::LeftButton) {
-		if (Page *ui = active_ui();
-			ui && ui->start_csd_resize(this->kit_, x, y)) {
-			request_render();
-			event->accept();
-			return;
-		}
+	if (event->button() == Qt::LeftButton && this->kit_.start_resize_at(x, y)) {
+		request_render();
+		event->accept();
+		return;
 	}
 	if (event->button() == Qt::BackButton) {
 		apply_window(Action::Back);
