@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QKeyEvent>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -31,7 +32,9 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -272,15 +275,25 @@ hidden_name(const string &name)
 bool
 is_image_ext(const QString &name)
 {
-	static const vector<QString> globs = [] {
-		vector<QString> out;
+	// The MIME database is external data: the globs need not be mere
+	// extensions.  QDir::match() recompiles a QRegularExpression for every
+	// glob on every call, which dominates the cost of scanning a directory,
+	// so translate them the once, as fiv did with GPatternSpec.
+	static const vector<QRegularExpression> globs = [] {
+		vector<QString> types;
 		for (const string &type : supported_media_types())
-			out.push_back(QString::fromStdString(type));
-		return extract_mime_globs(out);
+			types.push_back(QString::fromStdString(type));
+		vector<QRegularExpression> out;
+		for (const QString &glob : extract_mime_globs(types)) {
+			out.push_back(
+				QRegularExpression::fromWildcard(glob, Qt::CaseInsensitive));
+			out.back().optimize();
+		}
+		return out;
 	}();
-	const QString lower = QFileInfo(name).fileName().toLower();
-	for (const QString &glob : globs) {
-		if (QDir::match(glob, lower))
+	const QString filename = QFileInfo(name).fileName();
+	for (const QRegularExpression &glob : globs) {
+		if (glob.match(filename).hasMatch())
 			return true;
 	}
 	return false;
@@ -1775,27 +1788,33 @@ scan_dir(Browser &b)
 					   QString::fromStdString(bfile.name), bfile.mtime) < 0;
 		});
 
+	// Paths within one directory share a long common prefix, so comparing
+	// them runs to near the end of both strings: a linear search through
+	// the previous listing is far more expensive than its O(n * m) looks.
+	unordered_map<string_view, size_t> previous;
+	previous.reserve(old.size());
+	for (size_t i = 0; i < old.size(); i++)
+		previous.emplace(old[i].path, i);
 	for (Browser::File &f : files) {
-		for (Browser::File &o : old) {
-			if (o.path != f.path)
-				continue;
-			if (o.mtime != f.mtime || o.size != f.size)
-				break;
-			f.image_w = o.image_w;
-			f.image_h = o.image_h;
-			f.ram = std::move(o.ram);
-			f.ram_w = o.ram_w;
-			f.ram_h = o.ram_h;
-			f.ram_interim = o.ram_interim;
-			f.ram_pending = o.ram_pending;
-			f.cache_bypass = o.cache_bypass;
-			f.regen_failed = o.regen_failed;
-			f.transfer = o.transfer;
-			f.gpu = o.gpu;
-			o.gpu = {};
-			f.failed = o.failed;
-			break;
-		}
+		const auto it = previous.find(f.path);
+		if (it == previous.end())
+			continue;
+		Browser::File &o = old[it->second];
+		if (o.mtime != f.mtime || o.size != f.size)
+			continue;
+		f.image_w = o.image_w;
+		f.image_h = o.image_h;
+		f.ram = std::move(o.ram);
+		f.ram_w = o.ram_w;
+		f.ram_h = o.ram_h;
+		f.ram_interim = o.ram_interim;
+		f.ram_pending = o.ram_pending;
+		f.cache_bypass = o.cache_bypass;
+		f.regen_failed = o.regen_failed;
+		f.transfer = o.transfer;
+		f.gpu = o.gpu;
+		o.gpu = {};
+		f.failed = o.failed;
 	}
 	for (Browser::File &o : old) {
 		if (!o.gpu.empty())
