@@ -241,12 +241,13 @@ xdg_config_dirs()
 }
 
 vector<QString>
-extract_mime_globs(const vector<QString> &media_types)
+extract_mime_globs(const vector<string> &media_types)
 {
 	const MimeDb &db = mime_db();
 	unordered_set<QString> supported;
-	for (const QString &type : media_types)
-		add_applying_transitive_closure(type, db.subclasses, supported);
+	for (const string &type : media_types)
+		add_applying_transitive_closure(
+			QString::fromStdString(type), db.subclasses, supported);
 
 	unordered_set<QString> globs;
 	for (const MimeGlob &g : db.globs) {

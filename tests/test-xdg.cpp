@@ -14,8 +14,7 @@ using namespace std;
 int
 main()
 {
-	const vector<QString> globs =
-		dn::extract_mime_globs({QStringLiteral("image/jpeg")});
+	const vector<QString> globs = dn::extract_mime_globs({"image/jpeg"});
 	bool jpg = false;
 	bool jpeg = false;
 	for (const QString &g : globs) {

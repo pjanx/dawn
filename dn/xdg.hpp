@@ -9,13 +9,14 @@
 
 #include <QString>
 
+#include <string>
 #include <vector>
 
 namespace dn
 {
 
 std::vector<QString> extract_mime_globs(
-	const std::vector<QString> &media_types);
+	const std::vector<std::string> &media_types);
 
 // MIME types whose shared-mime-info globs match the filename (suffix/glob).
 std::vector<QString> types_for_filename(const QString &path);

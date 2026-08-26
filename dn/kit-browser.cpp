@@ -281,11 +281,8 @@ is_image_ext(const QString &name)
 	// glob on every call, which dominates the cost of scanning a directory,
 	// so translate them the once, as fiv did with GPatternSpec.
 	static const vector<QRegularExpression> globs = [] {
-		vector<QString> types;
-		for (const string &type : supported_media_types())
-			types.push_back(QString::fromStdString(type));
 		vector<QRegularExpression> out;
-		for (const QString &glob : extract_mime_globs(types)) {
+		for (const QString &glob : extract_mime_globs(supported_media_types())) {
 			out.push_back(
 				QRegularExpression::fromWildcard(glob, Qt::CaseInsensitive));
 			out.back().optimize();

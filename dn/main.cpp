@@ -243,10 +243,8 @@ main(int argc, char **argv)
 		return 0;
 	}
 	if (parser.isSet(list_extensions_opt)) {
-		vector<QString> types;
-		for (const string &type : dn::supported_media_types())
-			types.push_back(QString::fromStdString(type));
-		for (const QString &glob : dn::extract_mime_globs(types))
+		for (const QString &glob :
+			dn::extract_mime_globs(dn::supported_media_types()))
 			printf("%s\n", glob.toUtf8().constData());
 		return 0;
 	}
