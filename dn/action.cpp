@@ -388,31 +388,24 @@ accel_label(const ActionDef &def)
 }
 
 QString
-menu_label(const char *label)
+menu_label(const char *label, int *mnemonic_index)
 {
+	if (mnemonic_index)
+		*mnemonic_index = -1;
 	if (!label)
 		return {};
 
 	QString s = QString::fromUtf8(label);
+	for (int i = 0; i + 1 < s.size(); i++) {
+		if (s[i] == QLatin1Char('_'))
+		{
+			if (mnemonic_index)
+				*mnemonic_index = i;
+			break;
+		}
+	}
 	s.remove(QLatin1Char('_'));
 	return s;
-}
-
-// TODO(p): Change to return a QChar
-int
-mnemonic_index(const char *label)
-{
-	if (!label)
-		return -1;
-
-	const QString s = QString::fromUtf8(label);
-	int i = 0;
-	for (int p = 0; p < s.size(); ++p) {
-		if (s[p] == QLatin1Char('_'))
-			return p + 1 < s.size() ? i : -1;
-		++i;
-	}
-	return -1;
 }
 
 const char *
@@ -434,7 +427,7 @@ action_icon(const ActionDef &def, bool checked)
 QString
 action_tip(const ActionDef &def, bool checked)
 {
-	return menu_label(action_label(def, checked));
+	return menu_label(action_label(def, checked), nullptr);
 }
 
 QString

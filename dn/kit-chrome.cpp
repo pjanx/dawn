@@ -83,8 +83,7 @@ ContextMenu::fill_items(const QUrl &url)
 		need_sep = false;
 	};
 
-	auto &new_win = add_item(menu_label("Open in New _Window"));
-	new_win.mnemonic = mnemonic_index("Open in New _Window");
+	auto &new_win = add_item_with_mnemonic("Open in New _Window");
 	new_win.on_click = [this, url](Kit &) {
 		if (this->on_new_window)
 			this->on_new_window(url);
@@ -109,8 +108,7 @@ ContextMenu::fill_items(const QUrl &url)
 	}
 	if (QFileInfo(path).isFile() && this->on_trash) {
 		flush_sep();
-		auto &trash = add_item(menu_label("Move to _Trash"));
-		trash.mnemonic = mnemonic_index("Move to _Trash");
+		auto &trash = add_item_with_mnemonic("Move to _Trash");
 		trash.accel = action_accel(action_def(Action::Trash));
 		trash.on_click = [this, url](Kit &) {
 			if (this->on_trash)
@@ -200,7 +198,7 @@ shortcut_row(const ActionDef &def, float accel_w)
 	auto accel = dialog_label(shortcut_accel(def));
 	accel->min_w = accel_w;
 	accel->dim = true;
-	auto name = dialog_label(menu_label(def.label[0]));
+	auto name = dialog_label(menu_label(def.label[0], nullptr));
 	row->add_child(std::move(accel));
 	row->add_child(std::move(name));
 	return row;
@@ -269,7 +267,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		});
 		if (!any)
 			continue;
-		col->add_child(dialog_label(menu_label(section.title), true));
+		col->add_child(dialog_label(menu_label(section.title, nullptr), true));
 		for_leaves(section.items, [&](Action action) {
 			const ActionDef &def = action_def(action);
 			if (!has_shortcut(def))
