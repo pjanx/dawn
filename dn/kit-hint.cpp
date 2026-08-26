@@ -23,8 +23,7 @@ namespace
 {
 
 constexpr char kChars[] = "SADFJKLEWCMPGH";
-// TODO(p): The fuck, derive it.
-constexpr int kNChars = 14;
+constexpr int kNChars = size(kChars) - 1;
 constexpr float kChipPadX = 4.0f;
 constexpr float kChipPadY = 2.0f;
 
