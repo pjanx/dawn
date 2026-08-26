@@ -1,14 +1,14 @@
 //
-// browser.cpp: directory browser (fiv-style masonry thumbs)
+// kit-browser.cpp: directory browser
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "browser.hpp"
+#include "kit-browser.hpp"
 
 #include "action.hpp"
-#include "chrome.hpp"
+#include "kit-chrome.hpp"
 #include "libdn.h"
 #include "renderer.hpp"
 #include "thumb-scaler.hpp"

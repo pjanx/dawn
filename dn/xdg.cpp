@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "xdg.hpp"
+#include <dawn-config.h>
 
-#include "dawn-config.h"
+#include "xdg.hpp"
 
 #include <QCoreApplication>
 #include <QDir>

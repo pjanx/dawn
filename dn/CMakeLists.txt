@@ -1,13 +1,14 @@
 qt_add_executable(dn
 	action.cpp
 	app.cpp
-	browser.cpp
-	chrome.cpp
-	cie-diagram.cpp
 	display-profile.cpp
 	gpu.cpp
-	hint.cpp
+	kit-browser.cpp
+	kit-chrome.cpp
+	kit-cie-diagram.cpp
 	kit.cpp
+	kit-hint.cpp
+	kit-viewer.cpp
 	main.cpp
 	overlay.cpp
 	renderer.cpp
@@ -15,7 +16,6 @@ qt_add_executable(dn
 	thumbnail-cache.cpp
 	thumbnailer.cpp
 	url.cpp
-	viewer.cpp
 	window.cpp
 	xdg.cpp
 	icons.qrc

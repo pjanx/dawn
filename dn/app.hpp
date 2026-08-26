@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include "browser.hpp"
 #include "display-profile.hpp"
 #include "gpu.hpp"
+#include "kit-browser.hpp"
 #include "thumbnailer.hpp"
 
 #include <QPointer>

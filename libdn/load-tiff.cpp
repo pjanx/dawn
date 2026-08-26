@@ -12,7 +12,8 @@
 // (and composite) whatever it finds, one image per directory.
 //
 
-#include "dawn-config.h"
+#include <dawn-config.h>
+
 #include "libdn.h"
 #include "libdn-loaders.h"
 

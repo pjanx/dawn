@@ -1,14 +1,14 @@
 //
-// hint.cpp: Vimperator-style f hint overlay
+// kit-hint.cpp: Vimperator-style f hint overlay
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "hint.hpp"
+#include "kit-hint.hpp"
 
-#include "browser.hpp"
-#include "chrome.hpp"
+#include "kit-browser.hpp"
+#include "kit-chrome.hpp"
 
 #include <QChar>
 #include <Qt>

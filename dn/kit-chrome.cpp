@@ -1,5 +1,5 @@
 //
-// chrome.cpp: page chrome, context menu, and application dialogs
+// kit-chrome.cpp: non-generic widgets
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "assoc.hpp"
-#include "chrome.hpp"
+#include "kit-chrome.hpp"
 #include "url.hpp"
 
 #include <QFileInfo>

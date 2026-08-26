@@ -7,11 +7,11 @@
 
 #pragma once
 
-#include "browser.hpp"
-#include "chrome.hpp"
 #include "kit.hpp"
+#include "kit-browser.hpp"
+#include "kit-chrome.hpp"
+#include "kit-viewer.hpp"
 #include "renderer.hpp"
-#include "viewer.hpp"
 
 #include <QString>
 #include <QTimer>

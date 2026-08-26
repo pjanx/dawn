@@ -1,5 +1,5 @@
 //
-// browser.hpp: directory browser (fiv-style masonry thumbs)
+// kit-browser.hpp: directory browser
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "chrome.hpp"
 #include "kit.hpp"
+#include "kit-chrome.hpp"
 #include "sheet.hpp"
 #include "thumbnailer.hpp"
 #include "types.hpp"

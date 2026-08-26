@@ -5,9 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include "app.hpp"
 
-#include "dawn-config.h"
 #include "url.hpp"
 #include "vk-device.hpp"
 #include "window.hpp"

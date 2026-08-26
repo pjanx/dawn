@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include "libdn.h"
-#include "dawn-config.h"
 #include "libdn-loaders.h"
 
 #include <lcms2.h>

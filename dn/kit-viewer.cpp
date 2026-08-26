@@ -1,16 +1,16 @@
 //
-// viewer.cpp: image view (document, overlay chrome, view input)
+// kit-viewer.cpp: image view (document, overlay chrome, view input)
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "viewer.hpp"
+#include "kit-viewer.hpp"
 
 #include "action.hpp"
-#include "chrome.hpp"
-#include "cie-diagram.hpp"
 #include "kit.hpp"
+#include "kit-chrome.hpp"
+#include "kit-cie-diagram.hpp"
 #include "renderer.hpp"
 #include "url.hpp"
 

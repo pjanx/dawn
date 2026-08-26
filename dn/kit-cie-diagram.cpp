@@ -1,11 +1,11 @@
 //
-// cie-diagram.cpp: CIE 1931 xy sidebar widget
+// kit-cie-diagram.cpp: CIE 1931 xy sidebar widget
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "cie-diagram.hpp"
+#include "kit-cie-diagram.hpp"
 
 #include "cmf-cie1931-2deg-1nm.h"
 

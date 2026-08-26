@@ -5,12 +5,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include "window.hpp"
 
 #include "action.hpp"
 #include "app-menu-macos.hpp"
 #include "app.hpp"
-#include "dawn-config.h"
 #include "display-profile.hpp"
 #include "url.hpp"
 #include "window-appearance-macos.hpp"

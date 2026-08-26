@@ -1,5 +1,5 @@
 //
-// viewer.hpp: image view (document, overlay chrome, view input)
+// kit-viewer.hpp: image view (document, overlay chrome, view input)
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "chrome.hpp"
+#include "kit-chrome.hpp"
 #include "types.hpp"
 
 #include <libdn.h>

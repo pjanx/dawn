@@ -1,5 +1,5 @@
 //
-// hint.hpp: Vimperator-style f hint overlay
+// kit-hint.hpp: Vimperator-style f hint overlay
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0

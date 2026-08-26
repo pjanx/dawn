@@ -1,5 +1,5 @@
 //
-// chrome.hpp: toolbar, sidebar, and page chrome widgets
+// kit-chrome.hpp: non-generic widgets
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -8,8 +8,8 @@
 #pragma once
 
 #include "action.hpp"
-#include "hint.hpp"
 #include "kit.hpp"
+#include "kit-hint.hpp"
 
 #include <QUrl>
 
