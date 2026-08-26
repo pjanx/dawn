@@ -51,7 +51,7 @@ App::init()
 	this->needs_csd_ = wayland_needs_csd();
 #endif
 	QGuiApplication::setQuitOnLastWindowClosed(false);
-#if defined(Q_OS_MACOS)
+#ifdef Q_OS_MACOS
 	// QNSView backs a VulkanSurface with QMetalLayer, which arbitrates
 	// presentation between Qt's display cycle and a Qt render thread through
 	// a display lock. We present the drawable ourselves from the GUI thread,
@@ -67,19 +67,19 @@ App::init()
 		}
 	}
 #endif
-	this->vulkan_instance_.setApiVersion(QVersionNumber(1, 1));
+	this->vulkan_instance.setApiVersion(QVersionNumber(1, 1));
 	vk_add_bundled_driver_files();
-	this->vulkan_instance_.setExtensions(
+	this->vulkan_instance.setExtensions(
 		{VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME});
-	if (!this->vulkan_instance_.create()) {
+	if (!this->vulkan_instance.create()) {
 		fprintf(stderr, "Qt Vulkan instance creation failed: VkResult %d\n",
-			static_cast<int>(this->vulkan_instance_.errorCode()));
+			static_cast<int>(this->vulkan_instance.errorCode()));
 		return false;
 	}
-#if defined(Q_OS_MACOS)
+#ifdef Q_OS_MACOS
 	install_macos_app_menu(this);
 #endif
-	this->display_profiles_.start();
+	this->display_profiles.start();
 	return true;
 }
 
@@ -111,11 +111,13 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 		return OpenResult::PermissionDenied;
 	}
 
-	if (Window *target = this->default_window_) {
-		this->default_window_ = nullptr;
-		target->open_any(resolved, browse);
-		apply_activation_token(activation_token);
-		return OpenResult::Ok;
+	if (Window *target = this->default_window) {
+		this->default_window = nullptr;
+		if (target->current_path() == QDir::currentPath()) {
+			target->open_any(resolved, browse);
+			apply_activation_token(activation_token);
+			return OpenResult::Ok;
+		}
 	}
 
 #if DN_WITH_WAYLAND
@@ -174,18 +176,6 @@ App::quit()
 			QCoreApplication::quit();
 		},
 		Qt::QueuedConnection);
-}
-
-GpuContext &
-App::gpu()
-{
-	return this->gpu_;
-}
-
-QVulkanInstance *
-App::vulkan_instance()
-{
-	return &this->vulkan_instance_;
 }
 
 Window *

@@ -41,22 +41,16 @@ using namespace std;
 namespace
 {
 
-// Finder launches (double-click, drag-and-drop, "Open With") do not pass
-// the document as an argument: they deliver it as a QFileOpenEvent once
-// the event loop is running, possibly after this process is already open.
-class GuiApplication : public QGuiApplication
+// Finder delivers a document to open as a QFileOpenEvent, not an argument;
+// app_ is set before exec(), which is the earliest this can be delivered.
+struct GuiApplication : public QGuiApplication
 {
 	dn::App *app_ = nullptr;
 
-protected:
-	bool event(QEvent *event) override;
-
-public:
 	GuiApplication(int &argc, char **argv) : QGuiApplication(argc, argv) {}
 
-	// FileOpen cannot be delivered before exec(),
-	// and this always runs before it, so event() may assume app_ is set.
-	void attach(dn::App &app) { this->app_ = &app; }
+protected:
+	bool event(QEvent *event) override;
 };
 
 bool
@@ -295,13 +289,10 @@ main(int argc, char **argv)
 		if (app.open(path, {}, {}, browse) != dn::OpenResult::Ok)
 			return 1;
 	}
-	// A bare launch opened the CWD above on a guess: a Finder document may
-	// still be coming, as a QFileOpenEvent with no delivery deadline. Rather
-	// than wait, register that window so App::open() retargets it in place
-	// if one turns up.
+	// A bare launch opened the CWD above on a guess; see default_window().
 	if (raw.isEmpty())
-		app.default_window() = app.key_window();
+		app.default_window = app.key_window();
 
-	((GuiApplication *) application.get())->attach(app);
+	((GuiApplication *) application.get())->app_ = &app;
 	return application->exec();
 }

@@ -132,10 +132,8 @@ public:
 	bool initialize(
 		const QString &path, BrowseSetup setup = {}, bool browse = false);
 	void shutdown();
-	// Redirects an already-shown window to different content, tearing down
-	// nothing that initialize() set up. Used for drops onto a live window,
-	// and to retarget a window Finder's document turned out not to need.
 	void open_any(const QString &path, bool browse = false);
+	[[nodiscard]] QString current_path() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }
 	[[nodiscard]] const Actor *active_actor() const;

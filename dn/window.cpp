@@ -148,17 +148,11 @@ help_document_path()
 Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 {
 	setSurfaceType(QSurface::VulkanSurface);
-	setVulkanInstance(this->app_->vulkan_instance());
+	setVulkanInstance(&this->app_->vulkan_instance);
 	setTitle(QStringLiteral(DAWN_NAME));
 	resize(kWindowWidth, kWindowHeight);
 	connect(this, &QWindow::screenChanged, this,
 		[this](QScreen *new_screen) { handle_screen_change(new_screen); });
-	// setTitle() only fires this once real content differs from what a
-	// speculative default open set up, however that came about.
-	connect(this, &QWindow::windowTitleChanged, this, [this] {
-		if (this->app_ && this->app_->default_window() == this)
-			this->app_->default_window() = nullptr;
-	});
 	this->ui_wake_.setSingleShot(true);
 	connect(
 		&this->ui_wake_, &QTimer::timeout, this, [this] { request_render(); });
@@ -188,14 +182,14 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 		wayland_show_window_menu(shell(), p.x(), p.y());
 	};
 #endif
-	this->csd_ = this->app_ && this->app_->needs_csd();
+	this->csd_ = this->app_ && this->app_->needs_csd;
 	bind_host();
 }
 
 Window::~Window()
 {
 	if (this->app_)
-		this->app_->display_profiles().unlisten(this);
+		this->app_->display_profiles.unlisten(this);
 	if (QGuiApplication *app = qGuiApp)
 		app->removeEventFilter(this);
 	shutdown();
@@ -212,24 +206,24 @@ Window::pixel_size() const
 bool
 Window::initialize(const QString &path, BrowseSetup setup, bool browse)
 {
-	QVulkanInstance *const instance = this->app_->vulkan_instance();
+	QVulkanInstance *const instance = &this->app_->vulkan_instance;
 	create();
 	this->surface_ = QVulkanInstance::surfaceForWindow(this);
 	if (!this->surface_) {
 		fprintf(stderr, "Qt failed to create a Vulkan window surface\n");
 		return false;
 	}
-	if (!this->app_->gpu().device()) {
-		if (!this->app_->gpu().init(instance->vkInstance(), this->surface_,
+	if (!this->app_->gpu.device()) {
+		if (!this->app_->gpu.init(instance->vkInstance(), this->surface_,
 				[this, instance](VkPhysicalDevice physical, uint32_t family) {
 					return instance->supportsPresent(physical, family, this);
 				}))
 			return false;
-	} else if (!this->app_->gpu().supports_present(this->surface_)) {
+	} else if (!this->app_->gpu.supports_present(this->surface_)) {
 		fprintf(stderr, "chosen GPU cannot present to this window surface\n");
 		return false;
 	}
-	if (!this->app_->thumbnailer().init(this->app_->gpu()))
+	if (!this->app_->thumbnailer.init(this->app_->gpu))
 		return false;
 	// A parent currently identifies the Vulkan subsurface owned by
 	// WaylandWindow. Prefer MAILBOX there because Mesa's legacy Wayland FIFO
@@ -238,7 +232,7 @@ Window::initialize(const QString &path, BrowseSetup setup, bool browse)
 	// using parenthood as this platform/role proxy.
 	this->renderer_.set_prefer_premultiplied(this->csd_);
 	if (!this->renderer_.init(
-			this->app_->gpu(), this->surface_, pixel_size(),
+			this->app_->gpu, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
 			[this, instance] { instance->presentAboutToBeQueued(this); },
 			[this, instance] { instance->presentQueued(this); }))
@@ -247,12 +241,12 @@ Window::initialize(const QString &path, BrowseSetup setup, bool browse)
 
 	this->cmm_ = dn::Cmm::get_default();
 	refresh_screen_profile(screen());
-	this->app_->display_profiles().listen(
+	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
 	this->kit_.init(host_dpr(*this));
 	this->kit_.renderer_ = &this->renderer_;
 	this->browser_ui_ = make_browser_page(
-		this->kit_, this->host_, this->app_->thumbnailer(), &this->browser_);
+		this->kit_, this->host_, this->app_->thumbnailer, &this->browser_);
 	this->viewer_ui_ =
 		make_viewer_page(this->kit_, this->host_, &this->viewer_);
 	if (this->viewer_)
@@ -376,15 +370,8 @@ Window::bind_host()
 		request_render();
 	};
 	this->host_.new_window = [this](string path) {
-		if (path.empty()) {
-			if (this->mode_ == Mode::View && this->viewer_ &&
-				!this->viewer_->path_.isEmpty())
-				path = this->viewer_->path_.toStdString();
-			else if (this->browser_ && !this->browser_->dir_path_.isEmpty())
-				path = this->browser_->dir_path_.toStdString();
-			else
-				path = QDir::currentPath().toStdString();
-		}
+		if (path.empty())
+			path = current_path().toStdString();
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
@@ -620,7 +607,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	if (!this->cmm_)
 		this->cmm_ = dn::Cmm::get_default();
 	DisplayProfile discovered =
-		this->app_->display_profiles().load(target_screen);
+		this->app_->display_profiles.load(target_screen);
 	shared_ptr<dn::Profile> next;
 	string label = "sRGB (fallback)";
 	string source = "srgb";
@@ -1113,6 +1100,17 @@ Window::apply_window(Action a)
 		ui->actor.apply(a);
 	else if (this->host_.apply)
 		this->host_.apply(a);
+}
+
+QString
+Window::current_path() const
+{
+	if (this->mode_ == Mode::View && this->viewer_ &&
+		!this->viewer_->path_.isEmpty())
+		return this->viewer_->path_;
+	if (this->browser_ && !this->browser_->dir_path_.isEmpty())
+		return this->browser_->dir_path_;
+	return QDir::currentPath();
 }
 
 void
