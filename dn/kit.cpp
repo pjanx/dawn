@@ -2034,11 +2034,16 @@ Kit::bake_colours(Cmm *cmm, Profile *target)
 {
 	if (this->dark_) {
 		this->well_ = bake_grey(cmm, target, 0x20);
-		this->toolbar_top_ = bake_grey(cmm, target, 0x38);
+		this->toolbar_top_ = bake_grey(cmm, target, 0x34);
 		this->toolbar_bottom_ = bake_grey(cmm, target, 0x28);
-		this->hover_ = bake_grey(cmm, target, 0x32);
+		this->hover_ = bake_grey(cmm, target, 0x34);
 		this->press_ = bake_grey(cmm, target, 0x48);
+#ifdef Q_OS_MACOS
+		// This is defined by the native window title bottom border.
+		this->divider_ = bake_grey(cmm, target, 0x00);
+#else
 		this->divider_ = bake_grey(cmm, target, 0x58);
+#endif
 		this->busy_ = bake_rgb(cmm, target, 0xc0, 0x00, 0x00);
 		this->ink_ = bake_grey(cmm, target, 0xff);
 		this->frame_ = bake_grey(cmm, target, 0x00);

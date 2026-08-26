@@ -53,6 +53,7 @@ class Window final : public QWindow
 	void go_back();
 	void go_forward();
 	void toggle_fullscreen();
+	void apply_dark(bool dark);
 	void toggle_dark();
 	void apply_window(Action a);
 	void open_viewer(const QUrl &url);

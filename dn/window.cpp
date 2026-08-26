@@ -13,6 +13,7 @@
 #include "dawn-config.h"
 #include "display-profile.hpp"
 #include "url.hpp"
+#include "window-appearance-macos.hpp"
 
 #if DN_WITH_WAYLAND
 #include "wayland-window.hpp"
@@ -41,6 +42,7 @@
 #include <QProcess>
 #include <QRegion>
 #include <QScreen>
+#include <QStyleHints>
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QTouchEvent>
@@ -157,6 +159,10 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 #endif
 	this->csd_ = this->app_ && this->app_->needs_csd;
+	if (qGuiApp) {
+		auto hints = qGuiApp->styleHints();
+		this->kit_.dark_ = hints->colorScheme() == Qt::ColorScheme::Dark;
+	}
 	bind_host();
 }
 
@@ -182,6 +188,9 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 {
 	QVulkanInstance *const instance = &this->app_->vulkan_instance;
 	create();
+#ifdef Q_OS_MACOS
+	sync_macos_window_appearance(this, this->kit_.dark_);
+#endif
 	this->surface_ = QVulkanInstance::surfaceForWindow(this);
 	if (!this->surface_) {
 		fprintf(stderr, "Qt failed to create a Vulkan window surface\n");
@@ -654,9 +663,9 @@ Window::toggle_fullscreen()
 }
 
 void
-Window::toggle_dark()
+Window::apply_dark(bool dark)
 {
-	this->kit_.dark_ = !this->kit_.dark_;
+	this->kit_.dark_ = dark;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	if (this->kit_.renderer_) {
 		const Colour well = this->kit_.well_;
@@ -664,7 +673,16 @@ Window::toggle_dark()
 		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
 		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 	}
+#ifdef Q_OS_MACOS
+	sync_macos_window_appearance(this, dark);
+#endif
 	request_render();
+}
+
+void
+Window::toggle_dark()
+{
+	apply_dark(!this->kit_.dark_);
 }
 
 void

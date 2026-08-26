@@ -75,6 +75,7 @@ elseif (APPLE)
 		display-profile-macos.mm
 		assoc-macos.mm
 		app-menu-macos.mm
+		window-appearance-macos.mm
 	)
 	target_link_libraries(dn PRIVATE
 		"${DN_APPKIT_FRAMEWORK}"
