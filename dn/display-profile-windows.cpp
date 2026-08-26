@@ -12,10 +12,10 @@
 #include <QScreen>
 #include <QWinEventNotifier>
 #include <QtGui/qscreen_platform.h>
+#include <QtLogging>
 
 #include <windows.h>
 
-#include <cstdio>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -67,8 +67,7 @@ load_display_profile(QScreen *screen)
 	const QString filename = QString::fromWCharArray(path.data());
 	QFile file(filename);
 	if (!file.open(QIODevice::ReadOnly)) {
-		fprintf(stderr, "Windows ICM: cannot read %s\n",
-			filename.toUtf8().constData());
+		qWarning("Windows ICM: cannot read %s", filename.toUtf8().constData());
 		return result;
 	}
 	const QByteArray bytes = file.readAll();
@@ -77,7 +76,7 @@ load_display_profile(QScreen *screen)
 		return {};
 	result.source = "Windows ICM";
 	result.label = filename.toUtf8().toStdString();
-	printf("ICC source: Windows ICM (%s)\n", result.label.c_str());
+	qInfo("ICC source: Windows ICM (%s)", result.label.c_str());
 	return result;
 }
 
@@ -165,12 +164,10 @@ WcsSource::start(function<void()> fn)
 	if (this->system.notifier || this->user.notifier)
 		return;
 	if (!this->bind(this->system, HKEY_LOCAL_MACHINE, kSystemClass))
-		fprintf(
-			stderr, "Windows ICM: cannot watch system profile associations\n");
+		qWarning("Windows ICM: cannot watch system profile associations");
 	if (!this->bind(this->user, HKEY_CURRENT_USER, kUserLeaf) &&
 		!this->bind(this->user, HKEY_CURRENT_USER, kUserParent))
-		fprintf(
-			stderr, "Windows ICM: cannot watch user profile associations\n");
+		qWarning("Windows ICM: cannot watch user profile associations");
 }
 
 DisplayProfile

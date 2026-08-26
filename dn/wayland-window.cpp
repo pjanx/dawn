@@ -25,11 +25,11 @@
 #include <QSurfaceFormat>
 #include <QTimer>
 #include <QtGui/qguiapplication_platform.h>
+#include <QtLogging>
 
 #include <vulkan/vulkan.h>
 
 #include <cmath>
-#include <cstdio>
 
 using namespace std;
 
@@ -207,9 +207,9 @@ WaylandWindow::attach_color_management(bool report_fallback)
 	} else {
 		this->color_bridge_->detach();
 		if (report_fallback) {
-			fprintf(stderr,
+			qWarning(
 				"Wayland CM identity unavailable: Vulkan PASS_THROUGH color "
-				"space not exposed; using compositor-managed sRGB\n");
+				"space not exposed; using compositor-managed sRGB");
 		}
 	}
 }

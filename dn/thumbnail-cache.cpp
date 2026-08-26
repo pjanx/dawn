@@ -15,6 +15,7 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QtLogging>
 
 #include <webp/decode.h>
 #include <webp/demux.h>
@@ -24,7 +25,6 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <unordered_map>
@@ -278,11 +278,10 @@ make_metadata(
 bool
 remove_thumbnail(const QString &path, const QString &reason)
 {
-	fprintf(stderr, "%s: deleting: %s\n", qUtf8Printable(path),
-		qUtf8Printable(reason));
+	qWarning("%s: deleting: %s", qUtf8Printable(path), qUtf8Printable(reason));
 	if (QFile::remove(path))
 		return true;
-	fprintf(stderr, "%s: cannot delete\n", qUtf8Printable(path));
+	qWarning("%s: cannot delete", qUtf8Printable(path));
 	return false;
 }
 
@@ -486,8 +485,8 @@ thumbnail_cache_invalidate()
 		if (!dir_info.exists())
 			continue;
 		if (!dir_info.isDir() || !dir_info.isReadable()) {
-			fprintf(stderr, "%s: cannot scan thumbnail directory\n",
-				qUtf8Printable(dir));
+			qWarning(
+				"%s: cannot scan thumbnail directory", qUtf8Printable(dir));
 			continue;
 		}
 		QDirIterator it(dir, {QStringLiteral("*.webp")}, QDir::Files);
@@ -517,8 +516,8 @@ thumbnail_cache_invalidate()
 			}
 			const QUrl url = QUrl::fromEncoded(uri);
 			if (!url.isLocalFile()) {
-				fprintf(stderr, "%s: cannot verify non-local URI\n",
-					qUtf8Printable(path));
+				qWarning(
+					"%s: cannot verify non-local URI", qUtf8Printable(path));
 				continue;
 			}
 			const QFileInfo target(url.toLocalFile());
@@ -528,8 +527,7 @@ thumbnail_cache_invalidate()
 				continue;
 			}
 			if (!target.isReadable()) {
-				fprintf(stderr, "%s: source is not readable\n",
-					qUtf8Printable(path));
+				qWarning("%s: source is not readable", qUtf8Printable(path));
 				continue;
 			}
 			if (target.lastModified().toSecsSinceEpoch() != qint64(mtime)) {

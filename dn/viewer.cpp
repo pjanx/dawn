@@ -23,6 +23,7 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QUrl>
+#include <QtLogging>
 
 #include <algorithm>
 #include <array>
@@ -33,6 +34,7 @@
 #include <cstdio>
 #include <memory>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <string>
@@ -57,7 +59,6 @@ constexpr float kRotateMinR = 8.0f;
 constexpr float kScaleMin = 0.0125f;
 constexpr float kScaleMax = 64.0f;
 constexpr float kAngleFast = 1e-5f;
-constexpr float kPi = 3.14159265358979323846f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 
 // The loader below is a local-filesystem reader, and keys its jobs by path.
@@ -802,8 +803,7 @@ apply_open(Viewer &v, uint64_t gen, ImagePtr image, string message)
 	v.open_done_ = true;
 	set_message(v, message);
 	if (!message.empty())
-		fprintf(stderr, "%s: %s\n",
-			qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
+		qWarning("%s: %s", qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
 			message.c_str());
 	if (!image || !image->width || !image->height) {
 		clear_image(v);
@@ -1288,10 +1288,10 @@ toggle_filter(Viewer &v)
 static float
 wrap_angle(float a)
 {
-	while (a > kPi)
-		a -= 2.0f * kPi;
-	while (a < -kPi)
-		a += 2.0f * kPi;
+	while (a > numbers::pi_v<float>)
+		a -= 2.0f * numbers::pi_v<float>;
+	while (a < -numbers::pi_v<float>)
+		a += 2.0f * numbers::pi_v<float>;
 	return a;
 }
 
@@ -1480,7 +1480,7 @@ snap_view(Viewer &v, SnapDir dir)
 static void
 rotate_locked(Viewer &v, float delta)
 {
-	constexpr float step = kPi * 0.5f;
+	constexpr float step = numbers::pi_v<float> * 0.5f;
 	v.drag_angle_ += delta;
 	while (v.drag_angle_ >= step * 0.5f) {
 		set_orientation(v, orientation_rotate_right(v.orientation_));

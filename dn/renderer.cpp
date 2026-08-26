@@ -11,8 +11,9 @@
 #include "fullscreen-vert-spv.h"
 #include "vk-device.hpp"
 
+#include <QtLogging>
+
 #include <algorithm>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <utility>
@@ -28,8 +29,7 @@ void
 check_vk(VkResult result, const char *what)
 {
 	if (result != VK_SUCCESS) {
-		fprintf(
-			stderr, "%s failed: VkResult %d\n", what, static_cast<int>(result));
+		qWarning("%s failed: VkResult %d", what, static_cast<int>(result));
 		exit(1);
 	}
 }
@@ -37,7 +37,7 @@ check_vk(VkResult result, const char *what)
 [[noreturn]] void
 die(const char *message)
 {
-	fprintf(stderr, "%s\n", message);
+	qWarning("%s", message);
 	exit(1);
 }
 
@@ -320,12 +320,11 @@ Renderer::create_swapchain()
 	this->format_ = picked.format;
 	this->color_space_ = picked.colorSpace;
 	if (this->format_ != old_format || this->color_space_ != old_color_space) {
-		printf("swapchain: %s + %s\n", vk_format_name(this->format_),
+		qInfo("swapchain: %s + %s", vk_format_name(this->format_),
 			vk_colorspace_name(this->color_space_));
 		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT)
-			fprintf(stderr,
-				"swapchain: PASS_THROUGH unavailable; "
-				"using compositor-managed sRGB\n");
+			qWarning("swapchain: PASS_THROUGH unavailable; "
+					 "using compositor-managed sRGB");
 	}
 	const bool dither = is_unorm8(this->format_);
 	const VkFormat dest_format =
@@ -348,8 +347,7 @@ Renderer::create_swapchain()
 			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
 			composite_alpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
 		else
-			fprintf(stderr,
-				"swapchain: PRE_MULTIPLIED composite alpha unavailable\n");
+			qWarning("swapchain: PRE_MULTIPLIED composite alpha unavailable");
 	}
 	if (composite_alpha == VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR &&
 		!(capabilities.supportedCompositeAlpha & composite_alpha)) {

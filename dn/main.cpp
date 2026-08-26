@@ -30,6 +30,7 @@
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QUrl>
+#include <QtLogging>
 #include <qcommandlineoption.h>
 #include <qcoreapplication.h>
 
@@ -139,9 +140,9 @@ handoff_open(
 	if (client.open(urls_utf8(urls), token, browse, &error))
 		return true;
 	if (!error.message.empty())
-		fprintf(stderr, "dn: %s\n", error.message.c_str());
+		qWarning("%s", error.message.c_str());
 	else
-		fprintf(stderr, "dn: %s\n", error_fallback(error.code));
+		qWarning("%s", error_fallback(error.code));
 	return false;
 }
 
@@ -152,10 +153,10 @@ report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 	if (reported)
 		return;
 	if (status == HelloStatus::VersionMismatch) {
-		fprintf(stderr, "dn: running isolated (version mismatch)\n");
+		qWarning("running isolated (version mismatch)");
 		reported = true;
 	} else if (status == HelloStatus::SessionMismatch) {
-		fprintf(stderr, "dn: running isolated (session mismatch)\n");
+		qWarning("running isolated (session mismatch)");
 		reported = true;
 	}
 }
@@ -188,6 +189,11 @@ main(int argc, char **argv)
 	QCoreApplication::setApplicationName(QStringLiteral("dn"));
 	QCoreApplication::setApplicationVersion(QStringLiteral(DAWN_VERSION));
 	QGuiApplication::setDesktopFileName(QStringLiteral("dn"));
+
+	// Qt logs bare messages by default, which is unhelpful in a terminal.
+	// QT_MESSAGE_PATTERN still overrides this.
+	qSetMessagePattern(QStringLiteral(
+		"%{appname}: %{if-category}%{category}: %{endif}%{message}"));
 
 	QCommandLineParser parser;
 	parser.setApplicationDescription(QStringLiteral(

@@ -12,8 +12,8 @@
 #include <QGuiApplication>
 #include <QWindow>
 #include <QtGui/qguiapplication_platform.h>
+#include <QtLogging>
 
-#include <cstdio>
 #include <cstring>
 
 using namespace std;
@@ -88,7 +88,7 @@ WaylandColorBridge::description_ready(wp_image_description_v1 *description)
 		description, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
 	wp_image_description_v1_destroy(description);
 	this->pending_description_ = nullptr;
-	printf("Wayland CM identity: preferred description applied\n");
+	qInfo("Wayland CM identity: preferred description applied");
 	if (this->window_)
 		QCoreApplication::postEvent(
 			this->window_, new QEvent(QEvent::UpdateRequest));
@@ -141,7 +141,7 @@ WaylandColorBridge::description_failed(void *data,
 	wp_image_description_v1 *description, uint32_t, const char *message)
 {
 	auto *self = static_cast<WaylandColorBridge *>(data);
-	fprintf(stderr, "Wayland CM identity: preferred description failed: %s\n",
+	qWarning("Wayland CM identity: preferred description failed: %s",
 		message ? message : "unknown failure");
 	if (self->pending_description_ == description)
 		self->pending_description_ = nullptr;

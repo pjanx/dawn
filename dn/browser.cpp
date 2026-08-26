@@ -24,6 +24,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QtLogging>
 
 #include <algorithm>
 #include <cctype>
@@ -700,7 +701,7 @@ cache_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	if (!thumbnail_cache_write(source, job.tier, job.pixels->data(), job.width,
 			job.height, job.image_w, job.image_h, &error) &&
 		!error.isEmpty())
-		fprintf(stderr, "%s: %s\n", job.path.c_str(), qUtf8Printable(error));
+		qWarning("%s: %s", job.path.c_str(), qUtf8Printable(error));
 
 	if (job.tier > 0) {
 		uint32_t ow = 1, oh = 1;

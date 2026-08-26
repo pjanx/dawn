@@ -12,8 +12,8 @@
 #include <lcms2.h>
 
 #include <QScreen>
+#include <QtLogging>
 
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -87,15 +87,14 @@ load_from_client(CdClient *client, const QScreen *screen)
 {
 	DisplayProfile result;
 	if (!screen) {
-		fprintf(stderr, "display profile: Qt has not assigned a screen yet\n");
+		qWarning("display profile: Qt has not assigned a screen yet");
 		return result;
 	}
 	if (!client || !cd_client_get_connected(client))
 		return result;
 	const string connector = screen->name().toStdString();
 	if (connector.empty()) {
-		fprintf(
-			stderr, "display profile: Qt screen has no connector name yet\n");
+		qWarning("display profile: Qt screen has no connector name yet");
 		return result;
 	}
 
@@ -103,7 +102,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 	g_autoptr(GPtrArray) devices = cd_client_get_devices_by_kind_sync(
 		client, CD_DEVICE_KIND_DISPLAY, nullptr, &error);
 	if (!devices) {
-		fprintf(stderr, "colord: get display devices: %s\n",
+		qWarning("colord: get display devices: %s",
 			error ? error->message : "failed");
 		return result;
 	}
@@ -140,22 +139,20 @@ load_from_client(CdClient *client, const QScreen *screen)
 		}
 	}
 	if (!matched) {
-		fprintf(
-			stderr, "colord: no device for connector %s\n", connector.c_str());
+		qWarning("colord: no device for connector %s", connector.c_str());
 		return result;
 	}
 
 	CdProfile *profile = cd_device_get_default_profile(matched);
 	if (!profile || !cd_profile_connect_sync(profile, nullptr, &error)) {
-		fprintf(stderr, "colord: display profile unavailable for %s\n",
-			connector.c_str());
+		qWarning(
+			"colord: display profile unavailable for %s", connector.c_str());
 		return result;
 	}
 	CdIcc *icc =
 		cd_profile_load_icc(profile, CD_ICC_LOAD_FLAGS_ALL, nullptr, &error);
 	if (!icc) {
-		fprintf(stderr, "colord: load ICC: %s\n",
-			error ? error->message : "failed");
+		qWarning("colord: load ICC: %s", error ? error->message : "failed");
 		return result;
 	}
 	result.icc =
@@ -170,7 +167,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 	result.label = filename && *filename
 		? filename
 		: (profile_id && *profile_id ? profile_id : "colord");
-	printf("ICC source: colord (connector=%s via %s, profile=%s)\n",
+	qInfo("ICC source: colord (connector=%s via %s, profile=%s)",
 		connector.c_str(), method.c_str(), result.label.c_str());
 	return result;
 }
@@ -217,8 +214,7 @@ on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 	auto *src = static_cast<ColordSource *>(data);
 	g_autoptr(GError) error = nullptr;
 	if (!cd_client_connect_finish(CD_CLIENT(source), res, &error)) {
-		fprintf(
-			stderr, "colord: connect: %s\n", error ? error->message : "failed");
+		qWarning("colord: connect: %s", error ? error->message : "failed");
 		return;
 	}
 	src->hook_signals();
@@ -300,7 +296,7 @@ ColordSource::start(function<void()> fn)
 		this->hook_signals();
 		return;
 	}
-	fprintf(stderr, "colord: connect: %s\n", error ? error->message : "failed");
+	qWarning("colord: connect: %s", error ? error->message : "failed");
 	this->watch_name();
 }
 

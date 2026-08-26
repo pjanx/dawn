@@ -50,11 +50,12 @@
 #include <QVulkanInstance>
 #include <QWheelEvent>
 #include <QWindowStateChangeEvent>
+#include <QtLogging>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <functional>
+#include <numbers>
 
 using namespace std;
 
@@ -193,7 +194,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 #endif
 	this->surface_ = QVulkanInstance::surfaceForWindow(this);
 	if (!this->surface_) {
-		fprintf(stderr, "Qt failed to create a Vulkan window surface\n");
+		qWarning("Qt failed to create a Vulkan window surface");
 		return false;
 	}
 	if (!this->app_->gpu.device()) {
@@ -203,7 +204,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 				}))
 			return false;
 	} else if (!this->app_->gpu.supports_present(this->surface_)) {
-		fprintf(stderr, "chosen GPU cannot present to this window surface\n");
+		qWarning("chosen GPU cannot present to this window surface");
 		return false;
 	}
 	if (!this->app_->thumbnailer.init(this->app_->gpu))
@@ -404,14 +405,14 @@ Window::show_help()
 	if (!QFile::exists(path)) {
 		const QString message =
 			QStringLiteral("Help document not found: ") + path;
-		fprintf(stderr, "dn: %s\n", qUtf8Printable(message));
+		qWarning("%s", qUtf8Printable(message));
 		show_viewer_error(message);
 		return;
 	}
 	if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
 		const QString message =
 			QStringLiteral("Could not open the help document: ") + path;
-		fprintf(stderr, "dn: %s\n", qUtf8Printable(message));
+		qWarning("%s", qUtf8Printable(message));
 		show_viewer_error(message);
 	}
 }
@@ -603,7 +604,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		!profiles_equal(this->screen_profile_.get(), next.get());
 	this->screen_profile_ = std::move(next);
 	if (changed)
-		printf("screen profile: %s\n", label.c_str());
+		qInfo("screen profile: %s", label.c_str());
 	return changed;
 }
 
@@ -1350,7 +1351,7 @@ Window::handle_native_gesture(QNativeGestureEvent *event)
 			ddeg = v - this->pinch_last_rot_;
 		if (fabs(v) >= 5.0f)
 			this->pinch_last_rot_ = v;
-		const float dangle = ddeg * (3.14159265358979323846f / 180.0f);
+		const float dangle = ddeg * (numbers::pi_v<float> / 180.0f);
 		if (dangle != 0.0f) {
 			this->kit_.gesture(x, y, 1.0f, dangle);
 			request_render();
@@ -1425,11 +1426,10 @@ Window::handle_touch(QTouchEvent *event)
 	const float oang = atan2f(ody, odx);
 	const float nang = atan2f(ndy, ndx);
 	float dangle = nang - oang;
-	// TODO(p): Pretty sure there is a constant for this somewhere.
-	if (dangle > 3.14159265358979323846f)
-		dangle -= 2.0f * 3.14159265358979323846f;
-	if (dangle < -3.14159265358979323846f)
-		dangle += 2.0f * 3.14159265358979323846f;
+	if (dangle > numbers::pi_v<float>)
+		dangle -= 2.0f * numbers::pi_v<float>;
+	if (dangle < -numbers::pi_v<float>)
+		dangle += 2.0f * numbers::pi_v<float>;
 	const float cx = 0.5f * (x0 + x1);
 	const float cy = 0.5f * (y0 + y1);
 	this->kit_.gesture(cx, cy, factor, dangle);

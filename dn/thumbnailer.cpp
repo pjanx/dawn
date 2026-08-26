@@ -10,11 +10,11 @@
 #include <QMetaObject>
 #include <QThread>
 #include <QTimer>
+#include <QtLogging>
 
 #include <array>
 #include <atomic>
 #include <condition_variable>
-#include <cstdio>
 #include <deque>
 #include <mutex>
 #include <optional>
@@ -363,7 +363,7 @@ Thumbnailer::init(const GpuContext &gpu)
 	string error;
 	if (!scaler->init(gpu.phys(), gpu.device(), gpu.queue(), gpu.queue_family(),
 			kThumbRingBytes, &error)) {
-		fprintf(stderr, "ThumbScaler init failed: %s\n", error.c_str());
+		qWarning("ThumbScaler init failed: %s", error.c_str());
 		return false;
 	}
 	impl_->scaler = std::move(scaler);

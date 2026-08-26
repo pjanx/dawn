@@ -8,7 +8,8 @@
 #include "gpu.hpp"
 #include "vk-device.hpp"
 
-#include <cstdio>
+#include <QtLogging>
+
 #include <string>
 #include <utility>
 
@@ -30,14 +31,13 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 			std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
 			&this->phys_, &this->device_, &this->queue_, &this->queue_family_,
 			&err)) {
-		fprintf(stderr, "%s\n", err.c_str());
+		qWarning("%s", err.c_str());
 		return false;
 	}
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties(this->phys_, &properties);
 	this->device_name_ = properties.deviceName;
-	printf("device: %s\n", this->device_name_.c_str());
-	fflush(stdout);
+	qInfo("device: %s", this->device_name_.c_str());
 	return true;
 }
 

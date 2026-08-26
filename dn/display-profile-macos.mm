@@ -9,11 +9,11 @@
 
 #include <QScreen>
 #include <QtGui/qscreen_platform.h>
+#include <QtLogging>
 
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
 
-#include <cstdio>
 #include <functional>
 #include <utility>
 
@@ -54,7 +54,7 @@ load_display_profile(QScreen *screen)
 
 	result.source = "ColorSync";
 	result.label = screen->name().toUtf8().toStdString();
-	printf("ICC source: ColorSync (%s)\n", result.label.c_str());
+	qInfo("ICC source: ColorSync (%s)", result.label.c_str());
 	return result;
 }
 

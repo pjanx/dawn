@@ -25,8 +25,7 @@
 #include <QMetaObject>
 #include <QVersionNumber>
 #include <QUrl>
-
-#include <cstdio>
+#include <QtLogging>
 
 #ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
@@ -73,7 +72,7 @@ App::init()
 	this->vulkan_instance.setExtensions(
 		{VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME});
 	if (!this->vulkan_instance.create()) {
-		fprintf(stderr, "Qt Vulkan instance creation failed: VkResult %d\n",
+		qWarning("Qt Vulkan instance creation failed: VkResult %d",
 			static_cast<int>(this->vulkan_instance.errorCode()));
 		return false;
 	}
@@ -113,18 +112,18 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	// Until there is a VFS, this is where anything but file:// stops.
 	const QString path = url_to_path(url);
 	if (path.isEmpty()) {
-		fprintf(stderr, "%s: unsupported location\n",
+		qWarning("%s: unsupported location",
 			qUtf8Printable(url.toString(QUrl::PrettyDecoded)));
 		return OpenResult::InvalidArgument;
 	}
 
 	const QFileInfo info(path);
 	if (!info.exists()) {
-		fprintf(stderr, "%s: not found\n", qUtf8Printable(path));
+		qWarning("%s: not found", qUtf8Printable(path));
 		return OpenResult::NotFound;
 	}
 	if (!info.isReadable()) {
-		fprintf(stderr, "%s: permission denied\n", qUtf8Printable(path));
+		qWarning("%s: permission denied", qUtf8Printable(path));
 		return OpenResult::PermissionDenied;
 	}
 

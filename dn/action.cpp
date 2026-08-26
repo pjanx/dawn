@@ -18,8 +18,7 @@
 #include <QList>
 #include <QMimeData>
 #include <QUrl>
-
-#include <cstdio>
+#include <QtLogging>
 
 using namespace std;
 
@@ -522,8 +521,8 @@ move_to_trash(const QString &abs_path)
 	if (file.moveToTrash())
 		return true;
 
-	fprintf(stderr, "%s: %s\n", qUtf8Printable(abs_path),
-		qUtf8Printable(file.errorString()));
+	qWarning(
+		"%s: %s", qUtf8Printable(abs_path), qUtf8Printable(file.errorString()));
 	return false;
 }
 

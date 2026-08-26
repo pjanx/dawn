@@ -11,11 +11,12 @@
 #include "dn-overlay-vert-spv.h"
 #include "vk-device.hpp"
 
+#include <QtLogging>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -53,8 +54,7 @@ void
 check_vk(VkResult result, const char *what)
 {
 	if (result != VK_SUCCESS) {
-		fprintf(
-			stderr, "%s failed: VkResult %d\n", what, static_cast<int>(result));
+		qWarning("%s failed: VkResult %d", what, static_cast<int>(result));
 		exit(1);
 	}
 }
