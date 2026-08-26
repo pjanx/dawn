@@ -13,7 +13,7 @@
 #include "window.hpp"
 #include "xdg.hpp"
 
-#if DN_WITH_SINGLE_INSTANCE
+#ifndef Q_OS_MACOS
 #include "instance.hpp"
 #include "ipc-instance.hpp"
 
@@ -66,13 +66,23 @@ GuiApplication::event(QEvent *event)
 
 }  // namespace
 
-#if DN_WITH_SINGLE_INSTANCE
+#ifndef Q_OS_MACOS
+#ifdef Q_OS_WIN
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 namespace
 {
 
 QString
 instance_session()
 {
+#ifdef Q_OS_WIN
+	// Endpoint names are already scoped to the Windows session, so there
+	// is nothing left here for the handshake to catch.
+	return {};
+#else
 	QString session = qEnvironmentVariable("WAYLAND_DISPLAY");
 	if (session.isEmpty())
 		session = qEnvironmentVariable("DISPLAY");
@@ -81,6 +91,7 @@ instance_session()
 			QStringLiteral("none-%1").arg(QCoreApplication::applicationPid());
 	}
 	return session;
+#endif
 }
 
 vector<string>
@@ -117,6 +128,13 @@ handoff_open(
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
+#ifdef Q_OS_WIN
+	// Windows only lets the foreground process pass that right on, and
+	// the shell just launched us. There is no token to send; the running
+	// instance raises its own window once it has the permission.
+	if (const uint32_t pid = client.server_pid())
+		AllowSetForegroundWindow(DWORD(pid));
+#endif
 	dn::ipc::instance::Error error;
 	if (client.open(urls_utf8(urls), token, browse, &error))
 		return true;
@@ -251,7 +269,7 @@ main(int argc, char **argv)
 	const bool browse = parser.isSet(browse_opt);
 
 	dn::App app;
-#if DN_WITH_SINGLE_INSTANCE
+#ifndef Q_OS_MACOS
 	unique_ptr<dn::InstanceHost> host;
 	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
@@ -266,7 +284,7 @@ main(int argc, char **argv)
 			break;
 		}
 
-		const auto listen = dn::ipc::Endpoint::listen("instance");
+		auto listen = dn::ipc::Endpoint::listen("instance");
 		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
 			switch (
 				try_remote_open(session, to_open, browse, reported_mismatch)) {
@@ -280,7 +298,8 @@ main(int argc, char **argv)
 		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in exec().
 			// A Hello during init may time out (250ms) and isolate.
-			host = make_unique<dn::InstanceHost>(listen.fd, app, session);
+			host = make_unique<dn::InstanceHost>(
+				std::move(listen.listener), app, session);
 		}
 	}
 #endif

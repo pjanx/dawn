@@ -1,5 +1,5 @@
 //
-// test-ipc.cpp: framed Connection over a Unix socketpair
+// test-ipc.cpp: framing, and the transport each platform provides
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -13,9 +13,12 @@
 #include <cstdio>
 #include <cstring>
 #include <span>
+#include <vector>
+
+#ifndef _WIN32
 #include <sys/socket.h>
 #include <unistd.h>
-#include <vector>
+#endif
 
 using namespace std;
 
@@ -33,6 +36,7 @@ int g_failures = 0;
 		}                                                                      \
 	} while (0)
 
+#ifndef _WIN32
 bool
 write_all(int fd, const void *p, size_t n)
 {
@@ -61,6 +65,8 @@ put_u32be(uint8_t *out, uint32_t n)
 	out[3] = uint8_t(n & 0xff);
 }
 
+#endif
+
 bool
 payload_eq(const vector<byte> &got, span<const uint8_t> want)
 {
@@ -73,6 +79,7 @@ payload_eq(const vector<byte> &got, span<const uint8_t> want)
 	return true;
 }
 
+#ifndef _WIN32
 void
 test_fragmented()
 {
@@ -203,17 +210,83 @@ test_write_read_pair()
 	CHECK(b.take_payload(got));
 	CHECK(payload_eq(got, kPayload));
 }
+#endif
+
+// --- Endpoint ----------------------------------------------------------------
+
+// Whatever the platform transport is, binding it has to arbitrate and a
+// frame has to survive the trip. This is what dn's single instance rests
+// on, and neither half is exercised by the loopback tests above.
+constexpr char kService[] = "test";
+
+void
+test_listen_arbitrates()
+{
+	auto first = dn::ipc::Endpoint::listen(kService);
+	CHECK(first.status == dn::ipc::Endpoint::ListenStatus::Ok);
+	CHECK(first.listener.ok());
+	if (first.status != dn::ipc::Endpoint::ListenStatus::Ok)
+		return;
+
+	const auto second = dn::ipc::Endpoint::listen(kService);
+	CHECK(second.status == dn::ipc::Endpoint::ListenStatus::InUse);
+}
+
+void
+test_endpoint_roundtrip()
+{
+	auto listen = dn::ipc::Endpoint::listen(kService);
+	CHECK(listen.status == dn::ipc::Endpoint::ListenStatus::Ok);
+	if (listen.status != dn::ipc::Endpoint::ListenStatus::Ok)
+		return;
+
+	auto connect = dn::ipc::Endpoint::connect(kService);
+	CHECK(connect.status == dn::ipc::Endpoint::ConnectStatus::Ok);
+	if (connect.status != dn::ipc::Endpoint::ConnectStatus::Ok)
+		return;
+
+	// The connect completion may not have been posted yet; an event loop
+	// would be woken by the listener instead of spinning like this.
+	dn::ipc::Connection server;
+	for (int i = 0; i < 100 && !server.ok(); ++i)
+		server = listen.listener.accept();
+	CHECK(server.ok());
+	if (!server.ok())
+		return;
+
+	static constexpr uint8_t kPayload[] = {9, 8, 7};
+	const auto payload = as_bytes(span(kPayload));
+	CHECK(connect.conn.write_payload(payload));
+	CHECK(connect.conn.flush());
+
+	while (server.read() == dn::ipc::Connection::Status::NeedMore) {
+		if (server.wait(dn::ipc::Connection::Direction::Read, 2000) !=
+			dn::ipc::Connection::Ready::Ok)
+			break;
+	}
+	vector<byte> got;
+	CHECK(server.take_payload(got));
+	CHECK(payload_eq(got, kPayload));
+
+	// The peer identity is what stands in for a same-user check.
+	CHECK(server.peer_pid() != 0);
+	CHECK(connect.conn.peer_pid() != 0);
+}
 
 }  // namespace
 
 int
 main()
 {
+#ifndef _WIN32
 	test_fragmented();
 	test_two_frames_one_write();
 	test_empty_payload();
 	test_oversize_length();
 	test_write_read_pair();
+#endif
+	test_listen_arbitrates();
+	test_endpoint_roundtrip();
 
 	if (g_failures) {
 		fprintf(stderr, "%d check(s) failed\n", g_failures);

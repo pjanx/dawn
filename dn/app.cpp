@@ -93,6 +93,19 @@ apply_activation_token(const QString &token)
 		qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
 }
 
+// Windows has no token to carry: the process that asked for the window
+// hands over its foreground right first, and only then does this work.
+// See AllowSetForegroundWindow in main.cpp.
+static void
+raise_window(Window *window)
+{
+#ifdef Q_OS_WIN
+	window->requestActivate();
+#else
+	(void) window;
+#endif
+}
+
 OpenResult
 App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	bool browse)
@@ -122,6 +135,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 		if (target->current_url() == path_to_url(QDir::currentPath())) {
 			target->open_any(resolved, browse);
 			apply_activation_token(activation_token);
+			raise_window(target);
 			return OpenResult::Ok;
 		}
 	}
@@ -143,6 +157,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 		return OpenResult::Internal;
 	apply_activation_token(activation_token);
 	window->show();
+	raise_window(window.get());
 	this->windows_.push_back(std::move(window));
 #if defined(Q_OS_MACOS)
 	sync_macos_app_menu(this);

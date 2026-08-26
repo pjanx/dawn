@@ -11,6 +11,7 @@
 #include "ipc/instance.lxdr.hpp"
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <span>
@@ -43,6 +44,10 @@ public:
 	static std::optional<BlockingClient> connect(
 		std::string_view session, HelloStatus *status,
 		std::chrono::milliseconds timeout = kHelloTimeout);
+
+	// The process ID behind the endpoint, or 0. Windows needs it to hand
+	// over the right to raise a window; it is never authentication.
+	[[nodiscard]] uint32_t server_pid() const;
 
 	// Send one Open request (id = 1). Wait for a terminal Response
 	// (DONE or ERROR) with the same id. browse routes file arguments
@@ -85,42 +90,44 @@ public:
 		std::function<void(const instance::RequestView &req,
 			instance::Response &response)>
 			on_request;
-		// Event-loop hooks. All optional except you need them
-		// to watch fds.
-		std::function<void(int fd)> watch_read;
-		std::function<void(int fd)> unwatch;
-		std::function<void(int fd, bool enable)> watch_write;
+		// Event-loop hooks. Connections are named by an opaque id;
+		// the Waitable is what the loop has to watch for it.
+		std::function<void(uint64_t id, Waitable w)> watch_read;
+		std::function<void(uint64_t id)> unwatch;
+		std::function<void(uint64_t id, Waitable w, bool enable)>
+			watch_write;
 	};
 
-	// Takes ownership of listen_fd (from Endpoint::listen).
-	Server(int listen_fd, Config cfg);
+	Server(Listener listener, Config cfg);
 	~Server();
 	Server(const Server &) = delete;
 	Server &operator=(const Server &) = delete;
 
-	[[nodiscard]] int listen_fd() const { return listen_fd_; }
+	[[nodiscard]] Waitable listen_waitable() const;
 
-	// Call when the listen fd is readable. Accepts until EAGAIN.
+	// Call when the listener signals. Accepts until nothing is pending.
 	void poll_listen();
-	// Call when a connection fd is readable / writable / hung up.
-	void poll_read(int fd);
-	void poll_write(int fd);
-	void drop(int fd);
+	// Call when a connection signals readable / writable / hung up.
+	void poll_read(uint64_t id);
+	void poll_write(uint64_t id);
+	void drop(uint64_t id);
 
 private:
 	struct Conn {
-		explicit Conn(int fd);
+		explicit Conn(Connection c);
 		Connection conn;
 		bool handshake_done = false;
 		bool drop_after_flush = false;
 	};
 
-	bool handle_payload(Conn &c, std::span<const std::byte> payload);
-	bool write_frame(Conn &c, const instance::Frame &frame);
+	bool handle_payload(
+		uint64_t id, Conn &c, std::span<const std::byte> payload);
+	bool write_frame(uint64_t id, Conn &c, const instance::Frame &frame);
 
-	int listen_fd_ = -1;
+	Listener listener_;
 	Config cfg_;
-	std::unordered_map<int, Conn> conns_;
+	uint64_t next_id_ = 0;
+	std::unordered_map<uint64_t, Conn> conns_;
 };
 
 }  // namespace ipc

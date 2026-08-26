@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -85,86 +86,168 @@ struct Received {
 	TView view;
 };
 
-// Two-state nonblocking reader: READ_LENGTH (4-byte prefix) then
-// READ_PAYLOAD into the final storage. One serialized write queue.
-#ifndef _WIN32
-class Connection {
+// --- Framing -----------------------------------------------------------------
+
+// Two-state frame codec: a big-endian u32 length prefix, then exactly that
+// many payload bytes. It performs no I/O of its own -- the transport asks
+// where to put arriving bytes and reports how many landed -- which suits
+// readiness-based and completion-based backends equally.
+class FrameReader {
 public:
 	static constexpr uint32_t kMaxPayload = 16 * 1024 * 1024;
-	static constexpr size_t kMaxWriteQueue = 64 * 1024 * 1024;
 
-	explicit Connection(int fd);
+	enum class Status { NeedMore, Frame, Error };
+
+	// Where to place the next bytes read; empty while a completed frame
+	// is waiting to be taken.
+	std::span<std::byte> buffer();
+	// Report bytes written into buffer(); n must be within its size.
+	Status advance(size_t n);
+	// True once a whole frame is available to take.
+	[[nodiscard]] bool ready() const;
+	// True at a frame boundary, the only place a peer may close cleanly.
+	[[nodiscard]] bool idle() const;
+	bool take_payload(std::vector<std::byte> &out);
+
+private:
+	enum class State { Length, Payload };
+
+	State state_ = State::Length;
+	bool have_frame_ = false;
+	std::byte length_[4]{};
+	size_t got_ = 0;
+	std::vector<std::byte> payload_;
+};
+
+// One serialized output queue. pending() stays valid until the next
+// consume() or push(), so a completion-based backend takes its own copy
+// of whatever it hands to the operating system.
+class FrameWriter {
+public:
+	static constexpr size_t kMaxQueue = 64 * 1024 * 1024;
+
+	// Prefix payload with its length and enqueue it.
+	bool push(std::span<const std::byte> payload);
+	[[nodiscard]] bool empty() const;
+	[[nodiscard]] std::span<const std::byte> pending() const;
+	void consume(size_t n);
+	void clear();
+
+private:
+	std::vector<std::byte> q_;
+	size_t off_ = 0;
+};
+
+// --- Transport ---------------------------------------------------------------
+
+// Set DN_IPC_DEBUG to have the transport explain itself on stderr.
+// Everything here fails by quietly running a second dn instead.
+void trace(const char *fmt, ...);
+
+// A file descriptor on POSIX, a HANDLE on Windows. Both compare equal to
+// -1 when invalid.
+using Handle = std::intptr_t;
+inline constexpr Handle kInvalidHandle = -1;
+
+// What an event loop waits on: the connection itself on POSIX, an
+// overlapped completion event on Windows.
+using Waitable = Handle;
+
+// A framed full-duplex byte stream. POSIX drives it from readiness on a
+// nonblocking Unix socket, Windows from completion of overlapped named
+// pipe I/O; both present this same polled interface.
+class Connection {
+public:
+	static constexpr uint32_t kMaxPayload = FrameReader::kMaxPayload;
+	static constexpr size_t kMaxWriteQueue = FrameWriter::kMaxQueue;
+
+	enum class Status { NeedMore, Frame, Error, Eof };
+	enum class Direction { Read, Write };
+	enum class Ready { Ok, Timeout, Fail };
+
+	Connection();
+	// Takes ownership of h and puts it in the mode the backend needs.
+	explicit Connection(Handle h);
 	~Connection();
 	Connection(Connection &&) noexcept;
 	Connection &operator=(Connection &&) noexcept;
 	Connection(const Connection &) = delete;
 	Connection &operator=(const Connection &) = delete;
 
-	[[nodiscard]] int fd() const { return fd_; }
-	[[nodiscard]] bool ok() const { return ok_; }
-	[[nodiscard]] bool wants_write() const
-	{
-		return ok_ && write_q_.size() > write_off_;
-	}
+	[[nodiscard]] bool ok() const;
+	[[nodiscard]] bool wants_write() const;
+	[[nodiscard]] Waitable read_waitable() const;
+	[[nodiscard]] Waitable write_waitable() const;
+	// Peer process ID as reported by the operating system, or 0.
+	// Diagnostics and window activation only; never authentication.
+	[[nodiscard]] uint32_t peer_pid() const;
 
-	enum class Status { NeedMore, Frame, Error, Eof };
+	// Harvest input. Frame means take_payload() will succeed.
 	Status read();
 	bool take_payload(std::vector<std::byte> &out);
 
+	// Queue one payload; it is written by flush(), which returns true
+	// once the queue has drained.
 	bool write_payload(std::span<const std::byte> payload);
 	bool flush();
 
+	// Block until the direction can make progress. For BlockingClient;
+	// an event loop waits on the waitables instead.
+	Ready wait(Direction dir, int timeout_ms);
 	void close();
 
 private:
-	enum class ReadState { Length, Payload };
+	friend class Endpoint;
+	friend class Listener;
 
-	void fail();
-	void steal(Connection &other) noexcept;
-
-	int fd_ = -1;
-	bool ok_ = false;
-	bool eof_ = false;
-	bool have_frame_ = false;
-	ReadState read_state_ = ReadState::Length;
-	uint8_t length_buf_[4]{};
-	size_t length_got_ = 0;
-	std::vector<std::byte> payload_;
-	size_t payload_got_ = 0;
-	std::vector<std::byte> write_q_;
-	size_t write_off_ = 0;
+	struct Impl;
+	std::unique_ptr<Impl> impl_;
 };
-#endif
 
-#if !defined(_WIN32) && !defined(__APPLE__)
+// A bound service endpoint. Binding it is what arbitrates between
+// instances starting simultaneously.
+class Listener {
+public:
+	Listener();
+	~Listener();
+	Listener(Listener &&) noexcept;
+	Listener &operator=(Listener &&) noexcept;
+	Listener(const Listener &) = delete;
+	Listener &operator=(const Listener &) = delete;
+
+	[[nodiscard]] bool ok() const;
+	[[nodiscard]] Waitable waitable() const;
+	// One accepted client, or a closed Connection when none is pending.
+	// Peers running as another user are rejected.
+	Connection accept();
+	void close();
+
+private:
+	friend class Endpoint;
+
+	struct Impl;
+	std::unique_ptr<Impl> impl_;
+};
+
 class Endpoint {
 public:
-	// Abstract name: "\0dawn-<uid>-<service>"
-	// service is a short token such as "instance".
-	static std::string name(std::string_view service);
-
 	enum class ListenStatus { Ok, InUse, Error };
 	struct Listen {
-		int fd = -1;  // owned listening socket, or -1
+		Listener listener;
 		ListenStatus status = ListenStatus::Error;
 	};
+
+	// service is a short token such as "instance". The name is private
+	// to the current user, and on Windows to the current session too.
 	static Listen listen(std::string_view service);
 
 	enum class ConnectStatus { Ok, Refused, Error };
 	struct Connect {
-		int fd = -1;  // owned connected socket, or -1
+		Connection conn;
 		ConnectStatus status = ConnectStatus::Error;
 	};
 	static Connect connect(std::string_view service);
-
-	// Accept one client on a listening fd from listen().
-	// EAGAIN/EWOULDBLOCK -> fd -1, not a failure of the listener.
-	// Other errors -> fd -1.
-	// On success the new fd is O_NONBLOCK|FD_CLOEXEC.
-	// SO_PEERCRED uid must equal getuid(); otherwise close and return -1.
-	static int accept(int listen_fd);
 };
-#endif
 
 }  // namespace ipc
 }  // namespace dn

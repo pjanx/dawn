@@ -180,13 +180,6 @@ if (DAWN_WITH_JPEG_QS)
 	endif()
 endif()
 
-# TODO(p): This will want to be single instance everywhere.
-if (UNIX AND NOT APPLE)
-	set(DN_WITH_SINGLE_INSTANCE TRUE)
-else()
-	set(DN_WITH_SINGLE_INSTANCE FALSE)
-endif()
-
 configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dawn-config.h")

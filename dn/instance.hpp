@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "ipc.hpp"
+
 #include <QObject>
 #include <QString>
 
@@ -19,9 +21,8 @@ class App;
 
 class InstanceHost : public QObject {
 public:
-	// Takes ownership of listen_fd. Forwards Open requests to
-	// app.open.
-	InstanceHost(int listen_fd, App &app, QString session,
+	// Takes over the bound listener. Forwards Open requests to app.open.
+	InstanceHost(ipc::Listener listener, App &app, QString session,
 		QObject *parent = nullptr);
 	~InstanceHost() override;
 

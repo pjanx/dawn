@@ -64,7 +64,8 @@ if (WIN32)
 		display-profile-windows.cpp
 		assoc-windows.cpp
 	)
-	target_link_libraries(dn PRIVATE gdi32 shell32 shlwapi ole32 advapi32)
+	target_link_libraries(dn PRIVATE
+		gdi32 shell32 shlwapi ole32 advapi32 user32)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
 	enable_language(OBJCXX)
@@ -85,9 +86,12 @@ else()
 	pkg_check_modules(DN_COLORD REQUIRED IMPORTED_TARGET colord)
 	target_sources(dn PRIVATE
 		display-profile-linux.cpp
-		assoc-unix.cpp
-		instance.cpp)
+		assoc-unix.cpp)
 	target_link_libraries(dn PRIVATE PkgConfig::DN_COLORD)
+endif()
+
+if (NOT APPLE)
+	target_sources(dn PRIVATE instance.cpp)
 endif()
 
 # Application icon: SVG → PNG/ICO (xT) on non-Apple; Swift squircle ICNS (xM)

@@ -23,4 +23,3 @@
 #cmakedefine01 DAWN_WITH_GDKPIXBUF
 
 #cmakedefine01 DN_WITH_WAYLAND
-#cmakedefine01 DN_WITH_SINGLE_INSTANCE

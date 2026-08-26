@@ -7,10 +7,7 @@
 
 #include "ipc-instance.hpp"
 
-#include <cerrno>
 #include <climits>
-#include <poll.h>
-#include <unistd.h>
 
 #include <utility>
 
@@ -37,39 +34,25 @@ consume_elapsed(chrono::milliseconds &left, chrono::milliseconds dt)
 }
 
 Wait
-wait_fd(int fd, short events, chrono::milliseconds &left)
+wait_conn(Connection &conn, Connection::Direction dir,
+	chrono::milliseconds &left)
 {
 	using clock = chrono::steady_clock;
-	if (fd < 0)
-		return Wait::Fail;
-	for (;;) {
-		if (left.count() < 0)
-			left = chrono::milliseconds{0};
-		pollfd pfd{};
-		pfd.fd = fd;
-		pfd.events = events;
-		int ms = 0;
-		if (left.count() > INT_MAX)
-			ms = INT_MAX;
-		else
-			ms = int(left.count());
-		const auto t0 = clock::now();
-		const int n = ::poll(&pfd, 1, ms);
-		consume_elapsed(left,
-			chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			return Wait::Fail;
-		}
-		if (n == 0)
-			return Wait::Timeout;
-		if (pfd.revents & (POLLERR | POLLNVAL))
-			return Wait::Fail;
-		if (pfd.revents & events)
-			return Wait::Ok;
-		if ((pfd.revents & POLLHUP) && (events & POLLIN))
-			return Wait::Ok;
+	if (left.count() < 0)
+		left = chrono::milliseconds{0};
+	const int ms =
+		left.count() > INT_MAX ? INT_MAX : int(left.count());
+
+	const auto t0 = clock::now();
+	const Connection::Ready r = conn.wait(dir, ms);
+	consume_elapsed(
+		left, chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
+	switch (r) {
+	case Connection::Ready::Ok:
+		return Wait::Ok;
+	case Connection::Ready::Timeout:
+		return Wait::Timeout;
+	default:
 		return Wait::Fail;
 	}
 }
@@ -82,7 +65,7 @@ flush_deadline(Connection &conn, chrono::milliseconds &left)
 	if (!conn.ok())
 		return false;
 	while (conn.wants_write()) {
-		if (wait_fd(conn.fd(), POLLOUT, left) != Wait::Ok)
+		if (wait_conn(conn, Connection::Direction::Write, left) != Wait::Ok)
 			return false;
 		if (conn.flush())
 			return true;
@@ -109,7 +92,7 @@ read_one_frame(Connection &conn, vector<byte> &out, chrono::milliseconds &left)
 		case Connection::Status::Frame:
 			return conn.take_payload(out);
 		case Connection::Status::NeedMore:
-			if (wait_fd(conn.fd(), POLLIN, left) != Wait::Ok)
+			if (wait_conn(conn, Connection::Direction::Read, left) != Wait::Ok)
 				return false;
 			break;
 		default:
@@ -136,8 +119,10 @@ set_internal(instance::Error *error)
 	error->message.clear();
 }
 optional<BlockingClient>
-fail_hello(BlockingClient::HelloStatus *status, BlockingClient::HelloStatus s)
+fail_hello(BlockingClient::HelloStatus *status, BlockingClient::HelloStatus s,
+	const char *where)
 {
+	trace("hello failed at %s", where);
 	if (status)
 		*status = s;
 	return nullopt;
@@ -152,6 +137,13 @@ BlockingClient::BlockingClient(Connection conn) : conn_(std::move(conn))
 BlockingClient::BlockingClient(BlockingClient &&) noexcept = default;
 BlockingClient &BlockingClient::operator=(BlockingClient &&) noexcept = default;
 BlockingClient::~BlockingClient() = default;
+
+uint32_t
+BlockingClient::server_pid() const
+{
+	return conn_.peer_pid();
+}
+
 optional<BlockingClient>
 BlockingClient::connect(string_view session, HelloStatus *status,
 	chrono::milliseconds timeout)
@@ -162,15 +154,13 @@ BlockingClient::connect(string_view session, HelloStatus *status,
 		left = chrono::milliseconds{0};
 
 	const auto t0 = clock::now();
-	const Endpoint::Connect ep = Endpoint::connect(kService);
+	Endpoint::Connect ep = Endpoint::connect(kService);
 	consume_elapsed(
 		left, chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
-	if (ep.status != Endpoint::ConnectStatus::Ok || ep.fd < 0)
-		return fail_hello(status, HelloStatus::Unavailable);
+	if (ep.status != Endpoint::ConnectStatus::Ok || !ep.conn.ok())
+		return fail_hello(status, HelloStatus::Unavailable, "connect");
 
-	Connection conn(ep.fd);
-	if (!conn.ok())
-		return fail_hello(status, HelloStatus::Unavailable);
+	Connection conn = std::move(ep.conn);
 
 	instance::Hello hello;
 	hello.protocol_version = uint32_t(instance::kInstanceProtocolVersion);
@@ -180,20 +170,20 @@ BlockingClient::connect(string_view session, HelloStatus *status,
 	hello_frame.payload.value = instance::PayloadHello{std::move(hello)};
 	vector<byte> buf;
 	if (!encode_frame(hello_frame, buf) || !write_bytes(conn, buf, left))
-		return fail_hello(status, HelloStatus::Unavailable);
+		return fail_hello(status, HelloStatus::Unavailable, "send");
 
 	if (!read_one_frame(conn, buf, left))
-		return fail_hello(status, HelloStatus::Unavailable);
+		return fail_hello(status, HelloStatus::Unavailable, "no reply");
 
 	Decoder dec(buf);
 	instance::FrameView view{};
 	if (!decode(dec, view) || dec.remaining() != 0)
-		return fail_hello(status, HelloStatus::Unavailable);
+		return fail_hello(status, HelloStatus::Unavailable, "decode");
 
 	const auto *reply =
 		get_if<instance::PayloadHelloReplyView>(&view.payload.value);
 	if (!reply)
-		return fail_hello(status, HelloStatus::Unavailable);
+		return fail_hello(status, HelloStatus::Unavailable, "not a reply");
 
 	const auto &hr = reply->hello_reply.value;
 	if (holds_alternative<instance::HelloReplyAcceptedView>(hr)) {
@@ -202,10 +192,10 @@ BlockingClient::connect(string_view session, HelloStatus *status,
 		return BlockingClient(std::move(conn));
 	}
 	if (holds_alternative<instance::HelloReplyVersionMismatchView>(hr))
-		return fail_hello(status, HelloStatus::VersionMismatch);
+		return fail_hello(status, HelloStatus::VersionMismatch, "version");
 	if (holds_alternative<instance::HelloReplySessionMismatchView>(hr))
-		return fail_hello(status, HelloStatus::SessionMismatch);
-	return fail_hello(status, HelloStatus::Unavailable);
+		return fail_hello(status, HelloStatus::SessionMismatch, "session");
+	return fail_hello(status, HelloStatus::Unavailable, "bad reply");
 }
 
 bool
@@ -269,12 +259,12 @@ BlockingClient::open(const vector<string> &urls, string_view activation_token,
 	return false;
 }
 
-Server::Conn::Conn(int fd) : conn(fd)
+Server::Conn::Conn(Connection c) : conn(std::move(c))
 {
 }
 
-Server::Server(int listen_fd, Config cfg)
-	: listen_fd_(listen_fd), cfg_(std::move(cfg))
+Server::Server(Listener listener, Config cfg)
+	: listener_(std::move(listener)), cfg_(std::move(cfg))
 {
 }
 
@@ -282,36 +272,36 @@ Server::~Server()
 {
 	while (!conns_.empty())
 		drop(conns_.begin()->first);
-	if (listen_fd_ >= 0) {
-		::close(listen_fd_);
-		listen_fd_ = -1;
-	}
+}
+
+Waitable
+Server::listen_waitable() const
+{
+	return listener_.waitable();
 }
 
 void
 Server::poll_listen()
 {
 	for (;;) {
-		const int fd = Endpoint::accept(listen_fd_);
-		if (fd < 0)
+		Connection c = listener_.accept();
+		if (!c.ok())
 			return;
-		auto [it, inserted] = conns_.try_emplace(fd, fd);
-		if (!inserted || !it->second.conn.ok()) {
-			if (inserted)
-				conns_.erase(it);
-			else
-				::close(fd);
-			continue;
-		}
+		const uint64_t id = ++next_id_;
+		auto [it, inserted] = conns_.try_emplace(id, std::move(c));
+		if (!inserted)
+			return;
+		trace("accepted %llu from pid %lu", (unsigned long long) id,
+			(unsigned long) it->second.conn.peer_pid());
 		if (cfg_.watch_read)
-			cfg_.watch_read(fd);
+			cfg_.watch_read(id, it->second.conn.read_waitable());
 	}
 }
 
 void
-Server::poll_read(int fd)
+Server::poll_read(uint64_t id)
 {
-	const auto it = conns_.find(fd);
+	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return;
 	Conn *c = &it->second;
@@ -324,59 +314,59 @@ Server::poll_read(int fd)
 		case Connection::Status::Frame: {
 			vector<byte> payload;
 			if (!c->conn.take_payload(payload) ||
-				!handle_payload(*c, payload)) {
-				drop(fd);
+				!handle_payload(id, *c, payload)) {
+				drop(id);
 				return;
 			}
 			if (c->drop_after_flush) {
 				if (!c->conn.wants_write())
-					drop(fd);
+					drop(id);
 				return;
 			}
 			break;
 		}
 		default:
-			drop(fd);
+			drop(id);
 			return;
 		}
 	}
 }
 
 void
-Server::poll_write(int fd)
+Server::poll_write(uint64_t id)
 {
-	const auto it = conns_.find(fd);
+	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return;
 	Conn &c = it->second;
 	if (c.conn.flush()) {
 		if (cfg_.watch_write)
-			cfg_.watch_write(fd, false);
+			cfg_.watch_write(id, c.conn.write_waitable(), false);
 		if (c.drop_after_flush)
-			drop(fd);
+			drop(id);
 		return;
 	}
 	if (!c.conn.ok()) {
-		drop(fd);
+		drop(id);
 		return;
 	}
 	if (cfg_.watch_write)
-		cfg_.watch_write(fd, c.conn.wants_write());
+		cfg_.watch_write(id, c.conn.write_waitable(), c.conn.wants_write());
 }
 
 void
-Server::drop(int fd)
+Server::drop(uint64_t id)
 {
-	const auto it = conns_.find(fd);
+	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return;
 	if (cfg_.unwatch)
-		cfg_.unwatch(fd);
+		cfg_.unwatch(id);
 	conns_.erase(it);
 }
 
 bool
-Server::write_frame(Conn &c, const instance::Frame &frame)
+Server::write_frame(uint64_t id, Conn &c, const instance::Frame &frame)
 {
 	vector<byte> buf;
 	if (!encode_frame(frame, buf) || !c.conn.write_payload(buf))
@@ -385,12 +375,12 @@ Server::write_frame(Conn &c, const instance::Frame &frame)
 	if (!c.conn.ok())
 		return false;
 	if (cfg_.watch_write)
-		cfg_.watch_write(c.conn.fd(), c.conn.wants_write());
+		cfg_.watch_write(id, c.conn.write_waitable(), c.conn.wants_write());
 	return true;
 }
 
 bool
-Server::handle_payload(Conn &c, span<const byte> payload)
+Server::handle_payload(uint64_t id, Conn &c, span<const byte> payload)
 {
 	Decoder dec(payload);
 	instance::FrameView view{};
@@ -411,7 +401,7 @@ Server::handle_payload(Conn &c, span<const byte> payload)
 			reply.payload.value = instance::PayloadHelloReply{
 				instance::HelloReply{mismatch},
 			};
-			if (!write_frame(c, reply))
+			if (!write_frame(id, c, reply))
 				return false;
 			c.drop_after_flush = true;
 			return true;
@@ -422,18 +412,19 @@ Server::handle_payload(Conn &c, span<const byte> payload)
 					instance::HelloReplySessionMismatch{},
 				},
 			};
-			if (!write_frame(c, reply))
+			if (!write_frame(id, c, reply))
 				return false;
 			c.drop_after_flush = true;
 			return true;
 		}
 
+		trace("hello accepted on %llu", (unsigned long long) id);
 		instance::HelloReplyAccepted accepted;
 		accepted.limits.max_payload_size = cfg_.max_payload_size;
 		reply.payload.value = instance::PayloadHelloReply{
 			instance::HelloReply{accepted},
 		};
-		if (!write_frame(c, reply))
+		if (!write_frame(id, c, reply))
 			return false;
 		c.handshake_done = true;
 		return true;
@@ -457,7 +448,7 @@ Server::handle_payload(Conn &c, span<const byte> payload)
 
 	instance::Frame out;
 	out.payload.value = instance::PayloadResponse{std::move(response)};
-	return write_frame(c, out);
+	return write_frame(id, c, out);
 }
 
 }  // namespace ipc

@@ -9,12 +9,9 @@
 
 #include "ipc/instance.lxdr.hpp"
 
-#ifndef _WIN32
-#include <cerrno>
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 #include <utility>
 
 using namespace std;
@@ -331,221 +328,140 @@ utf8_validate(string_view s)
 	return true;
 }
 
-#ifndef _WIN32
-Connection::Connection(int fd) : fd_(fd)
+// --- Transport diagnostics ---------------------------------------------------
+
+void
+trace(const char *fmt, ...)
 {
-	if (fd_ < 0)
+	static const bool on = getenv("DN_IPC_DEBUG") != nullptr;
+	if (!on)
 		return;
-	const int flags = fcntl(fd_, F_GETFL, 0);
-	if (flags < 0 || fcntl(fd_, F_SETFL, flags | O_NONBLOCK) < 0) {
-		::close(fd_);
-		fd_ = -1;
-		return;
-	}
-	ok_ = true;
+
+	va_list ap;
+	va_start(ap, fmt);
+	fputs("dn: ipc: ", stderr);
+	vfprintf(stderr, fmt, ap);
+	fputc('\n', stderr);
+	va_end(ap);
 }
 
-Connection::~Connection()
-{
-	if (fd_ >= 0)
-		::close(fd_);
-}
+// --- Framing -----------------------------------------------------------------
 
-void
-Connection::steal(Connection &other) noexcept
+span<byte>
+FrameReader::buffer()
 {
-	fd_ = other.fd_;
-	ok_ = other.ok_;
-	eof_ = other.eof_;
-	have_frame_ = other.have_frame_;
-	read_state_ = other.read_state_;
-	length_buf_[0] = other.length_buf_[0];
-	length_buf_[1] = other.length_buf_[1];
-	length_buf_[2] = other.length_buf_[2];
-	length_buf_[3] = other.length_buf_[3];
-	length_got_ = other.length_got_;
-	payload_ = std::move(other.payload_);
-	payload_got_ = other.payload_got_;
-	write_q_ = std::move(other.write_q_);
-	write_off_ = other.write_off_;
-
-	other.fd_ = -1;
-	other.ok_ = false;
-	other.eof_ = false;
-	other.have_frame_ = false;
-	other.read_state_ = ReadState::Length;
-	other.length_got_ = 0;
-	other.payload_got_ = 0;
-	other.write_off_ = 0;
-}
-
-Connection::Connection(Connection &&other) noexcept
-{
-	steal(other);
-}
-
-Connection &
-Connection::operator=(Connection &&other) noexcept
-{
-	if (this != &other) {
-		close();
-		steal(other);
-	}
-	return *this;
-}
-
-void
-Connection::close()
-{
-	if (fd_ >= 0) {
-		::close(fd_);
-		fd_ = -1;
-	}
-	ok_ = false;
-	write_q_.clear();
-	write_off_ = 0;
-}
-
-void
-Connection::fail()
-{
-	eof_ = false;
-	close();
-}
-
-Connection::Status
-Connection::read()
-{
-	if (fd_ < 0 || !ok_)
-		return eof_ ? Status::Eof : Status::Error;
 	if (have_frame_)
-		return Status::Frame;
-
-	for (;;) {
-		if (read_state_ == ReadState::Length) {
-			const ssize_t n =
-				::read(fd_, length_buf_ + length_got_, 4 - length_got_);
-			if (n < 0) {
-				if (errno == EINTR)
-					continue;
-				if (errno == EAGAIN || errno == EWOULDBLOCK)
-					return Status::NeedMore;
-				fail();
-				return Status::Error;
-			}
-			if (n == 0) {
-				if (length_got_ == 0) {
-					eof_ = true;
-					close();
-					return Status::Eof;
-				}
-				fail();
-				return Status::Error;
-			}
-			length_got_ += size_t(n);
-			if (length_got_ < 4)
-				return Status::NeedMore;
-			const uint32_t size = (uint32_t(length_buf_[0]) << 24) |
-				(uint32_t(length_buf_[1]) << 16) |
-				(uint32_t(length_buf_[2]) << 8) | uint32_t(length_buf_[3]);
-			if (size == 0 || size > kMaxPayload) {
-				fail();
-				return Status::Error;
-			}
-			payload_.resize(size);
-			payload_got_ = 0;
-			read_state_ = ReadState::Payload;
-		}
-
-		const ssize_t n = ::read(fd_, payload_.data() + payload_got_,
-			payload_.size() - payload_got_);
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return Status::NeedMore;
-			fail();
-			return Status::Error;
-		}
-		if (n == 0) {
-			fail();
-			return Status::Error;
-		}
-		payload_got_ += size_t(n);
-		if (payload_got_ < payload_.size())
-			return Status::NeedMore;
-		have_frame_ = true;
-		length_got_ = 0;
-		read_state_ = ReadState::Length;
-		return Status::Frame;
-	}
+		return {};
+	if (state_ == State::Length)
+		return {length_ + got_, 4 - got_};
+	return {payload_.data() + got_, payload_.size() - got_};
 }
 
 bool
-Connection::take_payload(vector<byte> &out)
+FrameReader::ready() const
+{
+	return have_frame_;
+}
+
+bool
+FrameReader::idle() const
+{
+	return !have_frame_ && state_ == State::Length && got_ == 0;
+}
+
+FrameReader::Status
+FrameReader::advance(size_t n)
+{
+	if (have_frame_ || n == 0 || n > buffer().size())
+		return Status::Error;
+
+	got_ += n;
+	if (state_ == State::Length) {
+		if (got_ < 4)
+			return Status::NeedMore;
+		const uint32_t size = (uint32_t(length_[0]) << 24) |
+			(uint32_t(length_[1]) << 16) | (uint32_t(length_[2]) << 8) |
+			uint32_t(length_[3]);
+		if (size == 0 || size > kMaxPayload)
+			return Status::Error;
+		payload_.resize(size);
+		got_ = 0;
+		state_ = State::Payload;
+		return Status::NeedMore;
+	}
+
+	if (got_ < payload_.size())
+		return Status::NeedMore;
+	have_frame_ = true;
+	got_ = 0;
+	state_ = State::Length;
+	return Status::Frame;
+}
+
+bool
+FrameReader::take_payload(vector<byte> &out)
 {
 	if (!have_frame_)
 		return false;
 	out = std::move(payload_);
+	payload_.clear();
 	have_frame_ = false;
-	payload_got_ = 0;
 	return true;
 }
 
 bool
-Connection::write_payload(span<const byte> payload)
+FrameWriter::empty() const
 {
-	if (!ok_ || fd_ < 0)
+	return q_.size() <= off_;
+}
+
+span<const byte>
+FrameWriter::pending() const
+{
+	if (empty())
+		return {};
+	return {q_.data() + off_, q_.size() - off_};
+}
+
+bool
+FrameWriter::push(span<const byte> payload)
+{
+	if (payload.empty() || payload.size() > FrameReader::kMaxPayload)
 		return false;
-	if (payload.empty() || payload.size() > kMaxPayload) {
-		fail();
-		return false;
-	}
-	if (write_off_ > 0) {
-		write_q_.erase(write_q_.begin(), write_q_.begin() + write_off_);
-		write_off_ = 0;
+	if (off_ > 0) {
+		q_.erase(q_.begin(), q_.begin() + off_);
+		off_ = 0;
 	}
 	const size_t add = 4 + payload.size();
-	if (add > kMaxWriteQueue || write_q_.size() > kMaxWriteQueue - add) {
-		fail();
+	if (add > kMaxQueue || q_.size() > kMaxQueue - add)
 		return false;
-	}
+
 	const uint32_t n = uint32_t(payload.size());
-	write_q_.push_back(byte((n >> 24) & 0xff));
-	write_q_.push_back(byte((n >> 16) & 0xff));
-	write_q_.push_back(byte((n >> 8) & 0xff));
-	write_q_.push_back(byte(n & 0xff));
-	write_q_.insert(write_q_.end(), payload.begin(), payload.end());
+	q_.push_back(byte((n >> 24) & 0xff));
+	q_.push_back(byte((n >> 16) & 0xff));
+	q_.push_back(byte((n >> 8) & 0xff));
+	q_.push_back(byte(n & 0xff));
+	q_.insert(q_.end(), payload.begin(), payload.end());
 	return true;
 }
 
-bool
-Connection::flush()
+void
+FrameWriter::consume(size_t n)
 {
-	if (!ok_ || fd_ < 0)
-		return false;
-	while (write_off_ < write_q_.size()) {
-		const ssize_t n = ::write(
-			fd_, write_q_.data() + write_off_, write_q_.size() - write_off_);
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-				return false;
-			fail();
-			return false;
-		}
-		if (n == 0) {
-			fail();
-			return false;
-		}
-		write_off_ += size_t(n);
-	}
-	write_q_.clear();
-	write_off_ = 0;
-	return true;
+	off_ += n;
+	if (off_ < q_.size())
+		return;
+	q_.clear();
+	off_ = 0;
 }
-#endif
+
+void
+FrameWriter::clear()
+{
+	q_.clear();
+	off_ = 0;
+}
+
 
 }  // namespace ipc
 }  // namespace dn

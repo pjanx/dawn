@@ -112,7 +112,7 @@ add_executable(test-lxdr test-lxdr.cpp)
 target_link_libraries(test-lxdr PRIVATE dawn::libdn)
 add_test(NAME lxdr COMMAND test-lxdr)
 
-if(NOT WIN32 AND NOT APPLE)
+if(NOT APPLE)
 	add_executable(test-ipc test-ipc.cpp)
 	target_link_libraries(test-ipc PRIVATE dawn::libdn)
 	add_test(NAME ipc COMMAND test-ipc)
