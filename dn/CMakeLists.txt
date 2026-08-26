@@ -7,7 +7,6 @@ qt_add_executable(dn
 	kit-chrome.cpp
 	kit-cie-diagram.cpp
 	kit.cpp
-	kit-hint.cpp
 	kit-viewer.cpp
 	main.cpp
 	overlay.cpp
