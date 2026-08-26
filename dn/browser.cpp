@@ -1569,12 +1569,15 @@ browse_cmp(const BrowseSetup &setup, const QString &name_a, int64_t mtime_a,
 	return setup.sort_desc ? -cmp : cmp;
 }
 
+// Only ever compared against another dir_ent_mtime() from the same listing,
+// so the native filesystem clock tick is fine: no need to convert to epoch
+// ms via QFileInfo, which the caller's directory_entry already made moot.
 int64_t
-path_mtime_ms(const string &path)
+dir_ent_mtime(const filesystem::directory_entry &ent)
 {
-	return QFileInfo(QString::fromStdString(path))
-		.lastModified()
-		.toMSecsSinceEpoch();
+	error_code ec;
+	const auto time = ent.last_write_time(ec);
+	return ec ? 0 : int64_t(time.time_since_epoch().count());
 }
 
 struct DirEnt {
@@ -1607,7 +1610,7 @@ list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 		DirEnt kid;
 		kid.path = ent.path().string();
 		kid.name = name;
-		kid.mtime = path_mtime_ms(kid.path);
+		kid.mtime = dir_ent_mtime(ent);
 		kids.push_back(std::move(kid));
 	}
 	sort(kids.begin(), kids.end(), [&](const DirEnt &a, const DirEnt &c) {
@@ -1738,7 +1741,7 @@ scan_dir(Browser &b)
 			DirEnt kid;
 			kid.path = ent.path().string();
 			kid.name = name;
-			kid.mtime = path_mtime_ms(kid.path);
+			kid.mtime = dir_ent_mtime(ent);
 			children.push_back(std::move(kid));
 			continue;
 		}
@@ -2060,9 +2063,8 @@ spec_enabled(const Browser &b, Action action)
 	case Action::Copy:
 		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size());
 	case Action::Trash:
-		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()) &&
-			QFileInfo(QString::fromStdString(b.files_[size_t(b.cursor_)].path))
-				.isFile();
+		// Scanning already filtered files_ to regular files.
+		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size());
 	default:
 		return true;
 	}

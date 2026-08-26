@@ -18,7 +18,6 @@ namespace dn
 class App;
 
 class InstanceHost : public QObject {
-	Q_OBJECT
 public:
 	// Takes ownership of listen_fd. Forwards Open requests to
 	// app.open.

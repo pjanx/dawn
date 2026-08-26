@@ -48,7 +48,7 @@ App::init()
 	// callback is unreliable for desync subsurfaces under Sway. Disable the
 	// wait and the timeout so presentation does not stall. Process-global;
 	// must run before the first Wayland window.
-	qputenv("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", QByteArrayLiteral("0"));
+	qputenv("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", "0");
 	this->needs_csd_ = wayland_needs_csd();
 #endif
 	QGuiApplication::setQuitOnLastWindowClosed(false);
@@ -58,7 +58,7 @@ App::init()
 	// a display lock. We present the drawable ourselves from the GUI thread,
 	// and Qt's side of that arbitration withholds expose and update requests.
 	// Process-global; must run before the first window.
-	qputenv("QT_MTL_NO_TRANSACTION", QByteArrayLiteral("1"));
+	qputenv("QT_MTL_NO_TRANSACTION", "1");
 	// QCocoaVulkanInstance loadVulkanLibrary("vulkan") — not a dylib name.
 	if (!qEnvironmentVariableIsSet("QT_VULKAN_LIB")) {
 		if (void *sym = dlsym(RTLD_DEFAULT, "vkGetInstanceProcAddr")) {

@@ -29,7 +29,7 @@ namespace
 QString
 from_utf8(string_view s)
 {
-	return QString::fromUtf8(s.data(), qsizetype(s.size()));
+	return QString::fromUtf8(s);
 }
 
 ipc::instance::ErrorCode

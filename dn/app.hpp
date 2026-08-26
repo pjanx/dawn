@@ -49,7 +49,7 @@ public:
 	bool needs_csd = false;
 
 	bool init();
-	OpenResult open(const QUrl &path, const QString &activation_token = {},
+	OpenResult open(const QUrl &url, const QString &activation_token = {},
 		BrowseSetup setup = {}, bool browse = false);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);

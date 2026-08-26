@@ -461,8 +461,7 @@ Window::launch_exiftool(const QUrl &url)
 			report->deleteLater();
 			process->deleteLater();
 		});
-	connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-		process,
+	connect(process, &QProcess::finished, process,
 		[process, report, report_path, finished, show_error](
 			int exit_code, QProcess::ExitStatus exit_status) {
 			if (*finished)

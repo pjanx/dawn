@@ -495,7 +495,7 @@ copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 	}
 	mime->setData(QByteArrayLiteral("x-special/gnome-copied-files"), gnome);
 	mime->setData(QByteArrayLiteral("application/x-kde-cutselection"),
-		cut ? QByteArrayLiteral("1") : QByteArrayLiteral("0"));
+		cut ? "1" : "0");
 #endif
 }
 
