@@ -49,7 +49,7 @@ App::init()
 	// wait and the timeout so presentation does not stall. Process-global;
 	// must run before the first Wayland window.
 	qputenv("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", "0");
-	this->needs_csd_ = wayland_needs_csd();
+	this->needs_csd = wayland_needs_csd();
 #endif
 	QGuiApplication::setQuitOnLastWindowClosed(false);
 #ifdef Q_OS_MACOS

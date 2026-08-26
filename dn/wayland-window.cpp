@@ -73,7 +73,7 @@ WaylandWindow::WaylandWindow(App *app)
 {
 	setSurfaceType(QSurface::RasterSurface);
 	setTitle(QStringLiteral("dn"));
-	if (app && app->needs_csd()) {
+	if (app && app->needs_csd) {
 		setFlag(Qt::FramelessWindowHint);
 		// Qt Wayland treats alphaBufferSize<=0 as opaque and stamps
 		// wl_surface.set_opaque_region over the whole child, including
