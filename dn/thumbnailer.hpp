@@ -9,7 +9,7 @@
 
 #include "gpu.hpp"
 
-#include <thumb-scaler.hpp>
+#include "libdn/thumb-scaler.hpp"
 
 #include <QObject>
 

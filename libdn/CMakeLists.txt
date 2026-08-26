@@ -95,7 +95,6 @@ add_dependencies(libdn dn-tiff-tables lxdr-instance_lxdr_hpp)
 
 target_include_directories(libdn
 	PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
 		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
 		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>
 		$<INSTALL_INTERFACE:include>

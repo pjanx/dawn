@@ -2,7 +2,7 @@
 Type=Application
 Name=dn
 GenericName=Image Browser
-X-GNOME-FullName=dn Colour-Managed Image Browser
+X-GNOME-FullName=Dawn Colour-Managed Image Browser
 Icon=dn
 Exec=dn -- %U
 Terminal=false

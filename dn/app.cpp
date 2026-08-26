@@ -9,8 +9,8 @@
 
 #include "app.hpp"
 
+#include "libdn/vk-device.hpp"
 #include "url.hpp"
-#include "vk-device.hpp"
 #include "window.hpp"
 
 #if DN_WITH_WAYLAND

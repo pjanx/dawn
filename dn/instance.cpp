@@ -8,7 +8,7 @@
 #include "instance.hpp"
 
 #include "app.hpp"
-#include "ipc-instance.hpp"
+#include "libdn/ipc-instance.hpp"
 
 #include <QByteArray>
 #include <QUrl>

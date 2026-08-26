@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "ipc.hpp"
+#include "libdn/ipc.hpp"
 
 #include <QObject>
 #include <QString>

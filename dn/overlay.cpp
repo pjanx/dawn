@@ -9,7 +9,7 @@
 
 #include "dn-overlay-frag-spv.h"
 #include "dn-overlay-vert-spv.h"
-#include "vk-device.hpp"
+#include "libdn/vk-device.hpp"
 
 #include <QtLogging>
 

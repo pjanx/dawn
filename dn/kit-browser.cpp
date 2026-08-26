@@ -9,9 +9,9 @@
 
 #include "action.hpp"
 #include "kit-chrome.hpp"
-#include "libdn.h"
+#include "libdn/libdn.h"
+#include "libdn/thumb-scaler.hpp"
 #include "renderer.hpp"
-#include "thumb-scaler.hpp"
 #include "thumbnail-cache.hpp"
 #include "thumbnailer.hpp"
 #include "url.hpp"

@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include <libdn.h>
+#include "libdn/libdn.h"
 
 #include <QByteArray>
 #include <QString>

@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "app.hpp"
-#include "libdn.h"
+#include "libdn/libdn.h"
 #include "thumbnail-cache.hpp"
 #include "url.hpp"
 #include "window.hpp"
@@ -16,7 +16,7 @@
 
 #ifndef Q_OS_MACOS
 #include "instance.hpp"
-#include "ipc-instance.hpp"
+#include "libdn/ipc-instance.hpp"
 
 #include <cstdint>
 #include <memory>

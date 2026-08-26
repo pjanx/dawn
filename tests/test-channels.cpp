@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn/libdn-loaders.h"
+#include "libdn/libdn.h"
 
 #include <cmath>
 #include <cstdint>

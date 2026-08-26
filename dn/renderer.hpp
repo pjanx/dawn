@@ -8,7 +8,7 @@
 #pragma once
 
 #include "gpu.hpp"
-#include "libdnvk.h"
+#include "libdn/libdnvk.h"
 #include "overlay.hpp"
 #include "types.hpp"
 

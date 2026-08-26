@@ -9,7 +9,7 @@
 
 #include "dn-dither-frag-spv.h"
 #include "fullscreen-vert-spv.h"
-#include "vk-device.hpp"
+#include "libdn/vk-device.hpp"
 
 #include <QtLogging>
 

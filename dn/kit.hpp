@@ -11,7 +11,7 @@
 #include "overlay.hpp"
 #include "sheet.hpp"
 
-#include <libdn.h>
+#include "libdn/libdn.h"
 
 #include <QFont>
 #include <QImage>

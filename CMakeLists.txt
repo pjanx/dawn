@@ -184,6 +184,7 @@ configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dawn-config.h")
 
+include_directories("${PROJECT_SOURCE_DIR}")
 add_subdirectory(libdn)
 add_subdirectory(dnthumbd)
 add_subdirectory(dn)

@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "ipc.hpp"
+#include "libdn/ipc.hpp"
 
 #include <cerrno>
 #include <cstddef>

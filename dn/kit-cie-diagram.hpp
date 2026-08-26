@@ -9,7 +9,7 @@
 
 #include "kit.hpp"
 
-#include <libdn.h>
+#include "libdn/libdn.h"
 
 namespace dn
 {
