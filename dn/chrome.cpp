@@ -257,7 +257,7 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 {
 	this->pad_x = kWinPadX;
 	this->pad_y = kWinPadY;
-	this->fill = Fill::Gradient;
+	this->fill = Fill::Toolbar;
 	this->stroke = Stroke::Bottom;
 	this->hittable = true;
 
@@ -489,7 +489,7 @@ Titlebar::Titlebar()
 {
 	this->pad_x = kWinPadX;
 	this->pad_y = kWinPadY;
-	this->fill = Fill::Gradient;
+	this->fill = Fill::Toolbar;
 	this->stroke = Stroke::Bottom;
 	this->hittable = true;
 
@@ -513,11 +513,8 @@ Titlebar::Titlebar()
 void
 Titlebar::sync(Kit &kit)
 {
-	const bool dim = !kit.active_;
-	if (this->title) {
+	if (this->title)
 		this->title->text = this->text;
-		this->title->dim = dim;
-	}
 	if (this->maximize) {
 		const ActionDef &d = action_def(Action::Maximize);
 		const bool on = kit.maximized_;
@@ -525,12 +522,11 @@ Titlebar::sync(Kit &kit)
 		this->maximize->tip_text = action_tip(d, on);
 		this->maximize->active = on;
 	}
-	auto apply = [this, dim](Button *btn) {
+	auto apply = [this](Button *btn) {
 		if (!btn || btn->action == Action::None)
 			return;
 		btn->enabled_ =
 			!this->actor.enabled || this->actor.enabled(btn->action);
-		btn->dim = dim;
 	};
 	apply(this->minimize);
 	apply(this->maximize);
@@ -681,7 +677,7 @@ Titlebar::double_click(
 Sidebar::Sidebar(unique_ptr<Widget> child)
 {
 	this->content = child.get();
-	this->fill = Fill::Solid;
+	this->fill = Fill::Panel;
 	this->hittable = true;
 	this->clip = true;
 	if (child)

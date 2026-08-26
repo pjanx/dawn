@@ -624,7 +624,7 @@ make_error(Viewer &v)
 	row->add_child(std::move(lab));
 	row->add_child(std::move(dismiss));
 	auto err = make_unique<Panel>();
-	err->fill = Fill::Solid;
+	err->fill = Fill::Panel;
 	err->stroke = Stroke::Bottom;
 	err->grow = true;
 	err->hittable = true;

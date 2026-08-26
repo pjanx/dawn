@@ -679,8 +679,8 @@ Button::paint(Kit &kit) const
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.hover_));
 	const float px = kFramePadX + this->pad_x;
-	const float ink_a =
-		(this->enabled_ ? 1.0f : 0.375f) * (this->dim ? 0.5f : 1.0f);
+	const float ink_a = (this->enabled_ ? 1.0f : 0.375f) *
+		(this->dim ? 0.5f : 1.0f) * kit.ink_alpha();
 	if (this->icon)
 		emit_icon(kit, this->r.x + px,
 			this->r.y + (this->r.h - kIconPx) * 0.5f, kIconPx, this->icon,
@@ -804,8 +804,9 @@ Label::paint(Kit &kit) const
 		ty = this->r.y + (this->r.h - th) * 0.5f;
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - this->pad_y - th;
-	emit_text(kit, tx, ty, this->text, col(kit.ink_, this->dim ? 0.5f : 1.0f),
-		this->bold, wrap_w, wrap_center);
+	emit_text(kit, tx, ty, this->text,
+		col(kit.ink_, (this->dim ? 0.5f : 1.0f) * kit.ink_alpha()), this->bold,
+		wrap_w, wrap_center);
 }
 
 void
@@ -1328,7 +1329,6 @@ ScrollColumn::motion(Kit &, float, float y)
 {
 	if (this->scroll_.dragging)
 		return this->scroll_.motion(y, this->r);
-	this->scroll_.reveal();
 	return false;
 }
 
@@ -1421,16 +1421,12 @@ Panel::paint(Kit &kit) const
 		kit.list_.push_clip(
 			this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
 	switch (this->fill) {
-	case Fill::Gradient:
+	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
 			this->r.x + this->r.w, this->r.y + this->r.h, col(kit.toolbar_top_),
 			col(kit.toolbar_bottom_));
 		break;
-	case Fill::Solid:
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.toolbar_bottom_));
-		break;
-	case Fill::Popup:
+	case Fill::Tooltip:
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.frame_));
 		break;
@@ -1899,6 +1895,10 @@ Kit::mouse_motion(float x, float y)
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	this->hot_ = hit(x, y);
+	for (Widget *w = this->hot_; w; w = w->parent_) {
+		if (Scroll *s = w->scrollbar())
+			s->reveal();
+	}
 	tooltip(this->hot_);
 	if (this->pressed_ && !press_targets_popup(*this, this->pressed_))
 		return this->pressed_->motion(*this, x, y);
@@ -2135,7 +2135,7 @@ paint_tooltip(Kit &kit)
 	Panel tipn;
 	tipn.pad_x = kTooltipPadX;
 	tipn.pad_y = kFramePadY;
-	tipn.fill = Fill::Popup;
+	tipn.fill = Fill::Tooltip;
 	tipn.stroke = Stroke::All;
 	auto row = make_unique<Row>();
 	row->gap = gap;

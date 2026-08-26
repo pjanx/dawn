@@ -157,6 +157,7 @@ struct Browser : Widget {
 	void present(Page &ui);
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	Scroll *scrollbar() override { return &this->scroll_; }
 	bool motion(Kit &kit, float x, float y) override;
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;

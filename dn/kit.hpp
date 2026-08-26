@@ -47,7 +47,7 @@ struct Rect {
 };
 
 enum class Align : uint8_t { Start, Center, End };
-enum class Fill : uint8_t { None, Solid, Gradient, Popup, Panel };
+enum class Fill : uint8_t { None, Toolbar, Tooltip, Panel };
 enum class Stroke : uint8_t { None, All, Bottom };
 
 constexpr float kUnlim = 1.0e8f;
@@ -63,6 +63,7 @@ constexpr float kScrollHideMs = 1000.0f;
 
 struct Kit;
 struct Popup;
+struct Scroll;
 
 // --- Kit ---------------------------------------------------------------------
 
@@ -88,6 +89,9 @@ struct Widget {
 	virtual bool focusable() const { return false; }
 	virtual bool traps_focus() const { return false; }
 	virtual float min_width() const { return 0.0f; }
+	// A scrollbar is a hover effect rather than an event, so it must not
+	// depend on who ends up consuming the motion.
+	virtual Scroll *scrollbar() { return nullptr; }
 	virtual QString tip() const { return {}; }
 	virtual QString tip_key() const { return {}; }
 	// Below this->r. Empty (w <= 0) means follow the pointer.
@@ -262,6 +266,7 @@ struct ScrollColumn : Column {
 	Widget *followed_ = nullptr;
 
 	ScrollColumn() { this->hittable = true; }
+	Scroll *scrollbar() override { return &this->scroll_; }
 	bool clips_children() const override { return true; }
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -411,6 +416,11 @@ struct Kit {
 	void emit_text(
 		float x, float y, const QString &text, Colour colour, bool bold);
 	void draw_glow(float ix, float iy, float iw, float ih, Colour col);
+	// An inactive window halves whatever alpha its ink already had.
+	[[nodiscard]] float ink_alpha() const
+	{
+		return this->active_ ? 1.0f : 0.5f;
+	}
 	void focus_ring(Rect w);   // 1px inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
 	void tooltip(const Widget *hot);

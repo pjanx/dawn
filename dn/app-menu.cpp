@@ -747,7 +747,7 @@ Modal::Modal()
 	auto d = make_unique<Panel>();
 	d->pad_x = kDialogPad;
 	d->pad_y = kDialogPad;
-	d->fill = Fill::Popup;
+	d->fill = Fill::Panel;
 	d->stroke = Stroke::All;
 	d->hittable = false;
 	d->visible = false;

@@ -2519,7 +2519,10 @@ Browser::paint(Kit &kit) const
 		this->r.y + this->r.h, kit.well_);
 	const float th = float(this->thumb_size_);
 	const Colour ink = kit.ink_;
-	const Colour glow_idle = {ink.r, ink.g, ink.b, ink.a * kGlowAlpha};
+	const float glow_a = kit.ink_alpha();
+	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
+	const Colour glow_idle = {
+		ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
 	const Colour frame = kit.frame_;
 	for (int i = 0; i < int(this->files_.size()); ++i) {
 		const File &f = this->files_[size_t(i)];
@@ -2535,7 +2538,7 @@ Browser::paint(Kit &kit) const
 			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
 		if (!f.gpu.empty()) {
 			kit.draw_glow(tx - kBorder, ty - kBorder, tw + 2.0f * kBorder,
-				thp + 2.0f * kBorder, focused ? ink : glow_idle);
+				thp + 2.0f * kBorder, focused ? glow_hot : glow_idle);
 			draw_checker(kit, {tx, ty, tw, thp});
 			kit.list_.add_rect_stroke(tx - 1.0f, ty - 1.0f, tx + tw + 1.0f,
 				ty + thp + 1.0f, frame, kBorder);
@@ -2849,7 +2852,6 @@ Browser::motion(Kit &, float, float y)
 {
 	if (this->scroll_.dragging)
 		return this->scroll_.motion(y, this->r);
-	this->scroll_.reveal();
 	return false;
 }
 
