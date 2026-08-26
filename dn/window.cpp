@@ -778,17 +778,12 @@ Window::render()
 	const float h = float(height());
 	const float dpr = host_dpr(*this);
 	const bool fullscreen = bool(shell()->windowState() & Qt::WindowFullScreen);
-	const bool resized = w != this->kit_.host_w_ || h != this->kit_.host_h_;
 	if (this->mode_ == Mode::Browser && this->browser_)
 		this->browser_->set_host(w, h, dpr);
 	else if (this->viewer_)
 		this->viewer_->set_host(w, h, dpr);
-	if (resized) {
-		Page *cur = this->mode_ == Mode::Browser ? this->browser_ui_.get()
-												 : this->viewer_ui_.get();
-		if (cur)
-			this->kit_.close_popups();
-	}
+	// Nothing to do for a resize: relayout_popups() re-places every popup
+	// and drops the ones whose opener stopped being shown.
 	Page *ui = active_ui();
 	if (!ui)
 		return;
