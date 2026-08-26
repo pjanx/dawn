@@ -118,7 +118,7 @@ struct Page : Composite {
 	Splitter *splitter = nullptr;
 	Widget *content = nullptr;
 	Widget *banner = nullptr;
-	Modal *modal = nullptr;
+	Dialog *dialog = nullptr;
 	Hint *hint = nullptr;
 	ContextMenu *context = nullptr;
 	Actor actor;
@@ -153,7 +153,7 @@ private:
 	std::unique_ptr<Widget> banner_owned_;
 	std::unique_ptr<Overflow> overflow_owned_;
 	std::unique_ptr<Menu> app_menu_owned_;
-	std::unique_ptr<Modal> modal_owned_;
+	std::unique_ptr<Dialog> dialog_owned_;
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;
 	Rect well_{};

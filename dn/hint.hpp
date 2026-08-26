@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "app-menu.hpp"
+#include "kit.hpp"
 
 #include <QString>
 

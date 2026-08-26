@@ -240,6 +240,8 @@ layout_text(QTextLayout *layout, float dpr, float wrap_pts, bool center = false)
 
 }  // namespace
 
+constexpr float kDialogPad = 16.0f;
+
 static Colour
 col(const Colour &c, float alpha = 1.0f)
 {
@@ -1454,6 +1456,268 @@ Panel::paint(Kit &kit) const
 	}
 	if (this->clip)
 		kit.list_.pop_clip();
+}
+
+// --- Popup -------------------------------------------------------------------
+
+Popup::Popup()
+{
+	this->hittable = true;
+	this->visible = false;
+}
+
+void
+Popup::open(Kit &kit, Button *anchor)
+{
+	kit.close_popups();
+	this->parent_popup = nullptr;
+	this->opener = anchor;
+	if (this->opener) {
+		this->opener->active = true;
+		this->at = this->opener->r;
+	}
+	this->visible = true;
+	kit.open_popup(this);
+	place(kit);
+}
+
+void
+Popup::open_at(Kit &kit, Rect anchor)
+{
+	kit.close_popups();
+	this->parent_popup = nullptr;
+	this->opener = nullptr;
+	this->at = anchor;
+	this->visible = true;
+	kit.open_popup(this);
+	place(kit);
+}
+
+void
+Popup::open_sub(Kit &kit, Popup &owner, Button &anchor)
+{
+	kit.close_above(&owner);
+	this->parent_popup = &owner;
+	this->opener = &anchor;
+	this->visible = true;
+	this->opener->active = true;
+	kit.open_popup(this);
+	place_sub(kit);
+}
+
+void
+Popup::paint(Kit &kit) const
+{
+	if (!this->visible)
+		return;
+	kit.draw_shadow(this->r);
+	Panel::paint(kit);
+}
+
+void
+Popup::close(Kit &kit)
+{
+	if (!this->visible)
+		return;
+	kit.close_above(this);
+	this->visible = false;
+	this->parent_popup = nullptr;
+	if (this->opener) {
+		this->opener->active = false;
+		this->opener = nullptr;
+	}
+	auto &ps = kit.popups_;
+	ps.erase(remove(ps.begin(), ps.end(), this), ps.end());
+	if (ps.empty() && kit.scrim_)
+		kit.scrim_->visible = false;
+	kit.sync_focus();
+}
+
+void
+Popup::place(Kit &kit)
+{
+	if (this->opener)
+		this->at = this->opener->r;
+	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
+	measure(kit, cap, kUnlim);
+	float x = kit.snap(this->at.x);
+	float y = kit.snap(this->at.y + this->at.h);
+	if (x + this->r.w > kit.host_w_)
+		x = max(0.0f, kit.host_w_ - this->r.w);
+	if (x < 0.0f)
+		x = 0.0f;
+	if (y + this->r.h > kit.host_h_)
+		y = max(0.0f, this->at.y - this->r.h);
+	if (y + this->r.h > kit.host_h_)
+		y = max(0.0f, kit.host_h_ - this->r.h);
+	if (y < 0.0f)
+		y = 0.0f;
+	arrange(kit, {x, y, this->r.w, this->r.h});
+}
+
+void
+Popup::place_sub(Kit &kit)
+{
+	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
+	measure(kit, cap, kUnlim);
+	const Popup *owner = this->parent_popup;
+	const Widget *anchor = this->opener;
+	float x = owner ? kit.snap(owner->r.x + owner->r.w) : 0.0f;
+	if (x + this->r.w > kit.host_w_)
+		x = owner ? kit.snap(owner->r.x - this->r.w) : 0.0f;
+	if (x < 0.0f)
+		x = 0.0f;
+	float y = anchor ? kit.snap(anchor->r.y) : 0.0f;
+	if (y + this->r.h > kit.host_h_)
+		y = max(0.0f, kit.host_h_ - this->r.h);
+	if (y < 0.0f)
+		y = 0.0f;
+	arrange(kit, {x, y, this->r.w, this->r.h});
+}
+
+// Alt is left to the menu bar's mnemonics, and everything but Escape to
+// whatever the popup holds; MenuPopup adds navigation on top of this.
+bool
+Popup::key(Kit &kit, int key, unsigned mods)
+{
+	if (mods & unsigned(Qt::AltModifier))
+		return false;
+	if (key != Qt::Key_Escape)
+		return false;
+	Button *op = this->opener;
+	close(kit);
+	if (op) {
+		kit.focus_ = op;
+		kit.focus_visible_ = true;
+	}
+	return true;
+}
+
+// --- Dialog ------------------------------------------------------------------
+
+Dialog::Dialog()
+{
+	this->hittable = true;
+	this->visible = false;
+	this->fill = Fill::None;
+	auto f = make_unique<Panel>();
+	f->pad_x = kDialogPad;
+	f->pad_y = kDialogPad;
+	f->fill = Fill::Panel;
+	f->stroke = Stroke::All;
+	f->hittable = false;
+	f->visible = false;
+	this->frame = f.get();
+
+	// The body absorbs whatever height place() clamps away; the footer
+	// keeps its own and stays put while the body scrolls under it.
+	auto stack = make_unique<Column>();
+	stack->grow = true;
+	stack->gap = kDialogPad;
+
+	auto body = make_unique<ScrollColumn>();
+	body->grow = true;
+	body->gap = 8.0f;
+	this->body = body.get();
+	stack->add_child(std::move(body));
+
+	auto close_btn = make_unique<Button>();
+	close_btn->text = QStringLiteral("Close");
+	close_btn->pad_x = kDialogPad;
+	close_btn->on_click = [this](Kit &kit) { close(kit); };
+
+	auto footer = make_unique<Row>();
+	footer->align = Align::End;
+	footer->add_child(std::move(close_btn));
+	stack->add_child(std::move(footer));
+
+	f->add_child(std::move(stack));
+	add_child(std::move(f));
+}
+
+void
+Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w)
+{
+	if (!this->body || !this->frame)
+		return;
+	kit.forget_tree(this->body);
+	this->body->erase_children();
+	this->body->add_child(std::move(content));
+	this->frame->min_w = min_w;
+	Popup::open(kit);
+	this->frame->visible = true;
+}
+
+void
+Dialog::close(Kit &kit)
+{
+	if (this->frame)
+		this->frame->visible = false;
+	Popup::close(kit);
+}
+
+void
+Dialog::place(Kit &kit)
+{
+	if (!this->frame || !shown()) {
+		this->r = {};
+		return;
+	}
+	this->frame->visible = true;
+	this->r = {0.0f, 0.0f, kit.host_w_, kit.host_h_};
+	// Centred on the window, not on whatever the toolbar left over. The
+	// margin is only there to keep the shadow off the edges.
+	const float margin = kGlowPts * 2.0f;
+	const float max_w = max(1.0f, min(560.0f, kit.host_w_ - margin * 2.0f));
+	const float avail_h = max(1.0f, kit.host_h_ - margin * 2.0f);
+	this->frame->measure(kit, max_w, avail_h);
+	// Taller than that means the body scrolls inside it.
+	const float h = min(this->frame->r.h, avail_h);
+	const float x = max(0.0f, (kit.host_w_ - this->frame->r.w) * 0.5f);
+	const float y = margin + max(0.0f, (avail_h - h) * 0.5f);
+	this->frame->arrange(kit, {x, y, this->frame->r.w, h});
+
+	// Button::focusable() wants a laid-out rect, so this cannot happen any
+	// earlier; without it Return and Space reach nothing and are eaten.
+	bool focused = false;
+	for (Widget *w = kit.focus_; w; w = w->parent_) {
+		if (w == this) {
+			focused = true;
+			break;
+		}
+	}
+	if (!focused)
+		kit.focus_first(this);
+}
+
+void
+Dialog::paint(Kit &kit) const
+{
+	if (!this->visible)
+		return;
+	// The same wash Hint lays over the window behind it.
+	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
+		this->r.y + this->r.h, col(kit.ink_, 0.1f));
+	if (this->frame && this->frame->visible)
+		kit.draw_shadow(this->frame->r);
+	Panel::paint(kit);
+}
+
+// Only Escape and the Close button dismiss: a press that misses the frame is
+// swallowed, and a release is left to whoever claimed the press, so finishing
+// a scrollbar drag outside the frame cannot close it.
+bool
+Dialog::press(Kit &, float, float, Qt::MouseButton)
+{
+	return true;
+}
+
+// Hovering must not reach what the dialog covers, nor drag the keyboard focus
+// around and drop its ring, which is what MenuPopup::motion does for items.
+bool
+Dialog::motion(Kit &, float, float)
+{
+	return true;
 }
 
 // --- Kit ---------------------------------------------------------------------

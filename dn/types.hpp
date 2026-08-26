@@ -17,6 +17,4 @@ struct Extent {
 	uint32_t height = 0;
 };
 
-enum class AppOverlay : uint8_t { None, About, Shortcuts };
-
 }  // namespace dn

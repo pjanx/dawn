@@ -9,7 +9,6 @@
 
 #include "action.hpp"
 #include "kit.hpp"
-#include "types.hpp"
 
 #include <QUrl>
 
@@ -23,30 +22,17 @@ namespace dn
 
 struct MenuItem;
 
-struct Popup : Panel {
-	Button *opener = nullptr;
-	Popup *parent_popup = nullptr;
-	Rect at{};
-
-	Popup();
-	void open(Kit &kit, Button *anchor = nullptr);
-	void open_at(Kit &kit, Rect anchor);
-	void open_sub(Kit &kit, Popup &owner, Button &anchor);
-	virtual void close(Kit &kit);
-	virtual void place(Kit &kit);
-	void place_sub(Kit &kit);
+// A popup navigated like a menu: hovering moves the focus, arrows walk the
+// items, and a click anywhere else in the stack dismisses it.
+struct MenuPopup : Popup {
 	void focus_item(Kit &kit, Widget *w, bool kbd) const;
 	void reveal(Kit &kit, Widget *w);
-	void select_first(Kit &kit);
-	bool traps_focus() const override { return true; }
-	virtual bool captures_keys() const { return false; }
-	void paint(Kit &kit) const override;
 	bool motion(Kit &kit, float x, float y) override;
 	bool key(Kit &kit, int key, unsigned mods) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
-struct Overflow : Popup {
+struct Overflow : MenuPopup {
 	Column *col = nullptr;
 	std::vector<Widget *> sources;
 	std::function<void()> fill_items;
@@ -55,7 +41,7 @@ struct Overflow : Popup {
 	void place(Kit &kit) override;
 };
 
-struct Menu : Popup {
+struct Menu : MenuPopup {
 	Column *col = nullptr;
 	Actor actor;
 	std::vector<std::unique_ptr<Menu>> subs_;
@@ -98,26 +84,8 @@ private:
 	void fill_items(const QUrl &url);
 };
 
-struct Modal : Popup {
-	Panel *dialog = nullptr;
-	ScrollColumn *body = nullptr;
-	Button *close_button = nullptr;
-	AppOverlay kind = AppOverlay::None;
-	std::span<const MenuNode> tree = {};
-	std::span<const Action> keys = {};
-
-	Modal();
-	void set_kind(Kit &kit, AppOverlay overlay);
-	void open(Kit &kit);
-	void close(Kit &kit) override;
-	void place(Kit &kit) override;
-	void paint(Kit &kit) const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-
-private:
-	void fill_dialog(Kit &kit);
-};
+void dialog_about(Kit &kit, Dialog &dialog);
+void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
+	std::span<const Action> keys);
 
 }  // namespace dn

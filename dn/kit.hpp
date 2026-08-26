@@ -62,7 +62,6 @@ constexpr float kScrollStep = 32.0f;
 constexpr float kScrollHideMs = 1000.0f;
 
 struct Kit;
-struct Popup;
 struct Scroll;
 
 // --- Kit ---------------------------------------------------------------------
@@ -299,6 +298,41 @@ struct Panel : Composite {
 	bool grows() const override { return this->grow; }
 	bool clips_children() const override { return this->clip; }
 	float min_width() const override { return this->min_w; }
+};
+
+// A panel that floats above the widget tree, on Kit's popup stack.
+// Menu behaviour is not here but in MenuPopup, which app-menu.hpp adds.
+struct Popup : Panel {
+	Button *opener = nullptr;
+	Popup *parent_popup = nullptr;
+	Rect at{};
+
+	Popup();
+	void open(Kit &kit, Button *anchor = nullptr);
+	void open_at(Kit &kit, Rect anchor);
+	void open_sub(Kit &kit, Popup &owner, Button &anchor);
+	virtual void close(Kit &kit);
+	virtual void place(Kit &kit);
+	void place_sub(Kit &kit);
+	bool traps_focus() const override { return true; }
+	virtual bool captures_keys() const { return false; }
+	void paint(Kit &kit) const override;
+	bool key(Kit &kit, int key, unsigned mods) override;
+};
+
+// Dismissed by Escape or its Close button only; the caller fills the body
+// with whatever the case needs, see dialog_about() and dialog_shortcuts().
+struct Dialog : Popup {
+	Panel *frame = nullptr;
+	ScrollColumn *body = nullptr;
+
+	Dialog();
+	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w);
+	void close(Kit &kit) override;
+	void place(Kit &kit) override;
+	void paint(Kit &kit) const override;
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, float x, float y) override;
 };
 
 struct Kit {

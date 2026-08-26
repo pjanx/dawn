@@ -318,10 +318,13 @@ Window::bind_host()
 		case Action::About:
 		case Action::Shortcuts: {
 			Page *ui = active_ui();
-			if (!ui || !ui->modal)
+			if (!ui || !ui->dialog)
 				break;
-			ui->modal->set_kind(this->kit_,
-				a == Action::About ? AppOverlay::About : AppOverlay::Shortcuts);
+			if (a == Action::About)
+				dialog_about(this->kit_, *ui->dialog);
+			else
+				dialog_shortcuts(
+					this->kit_, *ui->dialog, ui->menu_tree, ui->keys);
 			request_render();
 			break;
 		}

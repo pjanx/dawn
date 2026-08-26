@@ -349,7 +349,7 @@ Toolbar::open_app_menu(Kit &kit, bool kbd)
 		anchor = this->left->more;
 	this->app_menu->open(kit, anchor);
 	if (kbd)
-		this->app_menu->select_first(kit);
+		kit.focus_first(this->app_menu);
 }
 
 void
@@ -741,8 +741,8 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->overflow_owned_ = this->toolbar->take_overflow();
 		this->app_menu_owned_ = this->toolbar->take_app_menu();
 	}
-	this->modal_owned_ = make_unique<Modal>();
-	this->modal = this->modal_owned_.get();
+	this->dialog_owned_ = make_unique<Dialog>();
+	this->dialog = this->dialog_owned_.get();
 	this->hint_owned_ = make_unique<Hint>();
 	this->hint = this->hint_owned_.get();
 	this->hint->page = this;

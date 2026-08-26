@@ -10,7 +10,6 @@
 #include "action.hpp"
 #include "app-menu.hpp"
 #include "assoc.hpp"
-#include "chrome.hpp"
 #include "url.hpp"
 
 #include <QCoreApplication>
@@ -120,123 +119,8 @@ shortcut_row(const ActionDef &def, float accel_w)
 
 }  // namespace
 
-Popup::Popup()
-{
-	this->hittable = true;
-	this->visible = false;
-}
-
 void
-Popup::open(Kit &kit, Button *anchor)
-{
-	kit.close_popups();
-	this->parent_popup = nullptr;
-	this->opener = anchor;
-	if (this->opener) {
-		this->opener->active = true;
-		this->at = this->opener->r;
-	}
-	this->visible = true;
-	kit.open_popup(this);
-	place(kit);
-}
-
-void
-Popup::open_at(Kit &kit, Rect anchor)
-{
-	kit.close_popups();
-	this->parent_popup = nullptr;
-	this->opener = nullptr;
-	this->at = anchor;
-	this->visible = true;
-	kit.open_popup(this);
-	place(kit);
-}
-
-void
-Popup::open_sub(Kit &kit, Popup &owner, Button &anchor)
-{
-	kit.close_above(&owner);
-	this->parent_popup = &owner;
-	this->opener = &anchor;
-	this->visible = true;
-	this->opener->active = true;
-	kit.open_popup(this);
-	place_sub(kit);
-}
-
-void
-Popup::paint(Kit &kit) const
-{
-	if (!this->visible)
-		return;
-	kit.draw_shadow(this->r);
-	Panel::paint(kit);
-}
-
-void
-Popup::close(Kit &kit)
-{
-	if (!this->visible)
-		return;
-	kit.close_above(this);
-	this->visible = false;
-	this->parent_popup = nullptr;
-	if (this->opener) {
-		this->opener->active = false;
-		this->opener = nullptr;
-	}
-	auto &ps = kit.popups_;
-	ps.erase(remove(ps.begin(), ps.end(), this), ps.end());
-	if (ps.empty() && kit.scrim_)
-		kit.scrim_->visible = false;
-	kit.sync_focus();
-}
-
-void
-Popup::place(Kit &kit)
-{
-	if (this->opener)
-		this->at = this->opener->r;
-	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
-	measure(kit, cap, kUnlim);
-	float x = kit.snap(this->at.x);
-	float y = kit.snap(this->at.y + this->at.h);
-	if (x + this->r.w > kit.host_w_)
-		x = max(0.0f, kit.host_w_ - this->r.w);
-	if (x < 0.0f)
-		x = 0.0f;
-	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, this->at.y - this->r.h);
-	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, kit.host_h_ - this->r.h);
-	if (y < 0.0f)
-		y = 0.0f;
-	arrange(kit, {x, y, this->r.w, this->r.h});
-}
-
-void
-Popup::place_sub(Kit &kit)
-{
-	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
-	measure(kit, cap, kUnlim);
-	const Popup *owner = this->parent_popup;
-	const Widget *anchor = this->opener;
-	float x = owner ? kit.snap(owner->r.x + owner->r.w) : 0.0f;
-	if (x + this->r.w > kit.host_w_)
-		x = owner ? kit.snap(owner->r.x - this->r.w) : 0.0f;
-	if (x < 0.0f)
-		x = 0.0f;
-	float y = anchor ? kit.snap(anchor->r.y) : 0.0f;
-	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, kit.host_h_ - this->r.h);
-	if (y < 0.0f)
-		y = 0.0f;
-	arrange(kit, {x, y, this->r.w, this->r.h});
-}
-
-void
-Popup::focus_item(Kit &kit, Widget *w, bool kbd) const
+MenuPopup::focus_item(Kit &kit, Widget *w, bool kbd) const
 {
 	kit.focus_ = w;
 	kit.focus_visible_ = kbd;
@@ -245,7 +129,7 @@ Popup::focus_item(Kit &kit, Widget *w, bool kbd) const
 }
 
 void
-Popup::reveal(Kit &kit, Widget *w)
+MenuPopup::reveal(Kit &kit, Widget *w)
 {
 	auto *item = dynamic_cast<MenuItem *>(w);
 	if (item && item->sub) {
@@ -259,14 +143,8 @@ Popup::reveal(Kit &kit, Widget *w)
 	focus_item(kit, w, false);
 }
 
-void
-Popup::select_first(Kit &kit)
-{
-	kit.focus_first(this);
-}
-
 bool
-Popup::motion(Kit &kit, float, float)
+MenuPopup::motion(Kit &kit, float, float)
 {
 	Widget *w = kit.hot_;
 	Widget *item = nullptr;
@@ -286,19 +164,12 @@ Popup::motion(Kit &kit, float, float)
 }
 
 bool
-Popup::key(Kit &kit, int key, unsigned mods)
+MenuPopup::key(Kit &kit, int key, unsigned mods)
 {
+	if (Popup::key(kit, key, mods))
+		return true;
 	if (mods & unsigned(Qt::AltModifier))
 		return false;
-	if (key == Qt::Key_Escape) {
-		Button *op = this->opener;
-		close(kit);
-		if (op) {
-			kit.focus_ = op;
-			kit.focus_visible_ = true;
-		}
-		return true;
-	}
 	if (key == Qt::Key_Up || key == Qt::Key_Down) {
 		kit.cycle_focus(this, key == Qt::Key_Up ? -1 : 1);
 		focus_item(kit, kit.focus_, true);
@@ -330,7 +201,7 @@ Popup::key(Kit &kit, int key, unsigned mods)
 }
 
 bool
-Popup::release(Kit &kit, float x, float y, Qt::MouseButton button)
+MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton && button != Qt::RightButton)
 		return false;
@@ -503,7 +374,7 @@ Menu::measure(Kit &kit, float max_w, float max_h)
 bool
 Menu::key(Kit &kit, int key, unsigned mods)
 {
-	if (Popup::key(kit, key, mods))
+	if (MenuPopup::key(kit, key, mods))
 		return true;
 	if (mods)
 		return false;
@@ -737,251 +608,102 @@ ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 	}
 	open_at(kit, anchor);
 	if (kbd)
-		select_first(kit);
-}
-
-Modal::Modal()
-{
-	this->hittable = true;
-	this->visible = false;
-	this->fill = Fill::None;
-	auto d = make_unique<Panel>();
-	d->pad_x = kDialogPad;
-	d->pad_y = kDialogPad;
-	d->fill = Fill::Panel;
-	d->stroke = Stroke::All;
-	d->hittable = false;
-	d->visible = false;
-	this->dialog = d.get();
-
-	// The body absorbs whatever height place() clamps away; the footer
-	// keeps its own and stays put while the body scrolls under it.
-	auto stack = make_unique<Column>();
-	stack->grow = true;
-	stack->gap = kDialogPad;
-
-	auto body = make_unique<ScrollColumn>();
-	body->grow = true;
-	body->gap = 8.0f;
-	this->body = body.get();
-	stack->add_child(std::move(body));
-
-	auto close_btn = make_unique<Button>();
-	close_btn->text = QStringLiteral("Close");
-	close_btn->pad_x = kDialogPad;
-	close_btn->on_click = [this](Kit &kit) { close(kit); };
-	this->close_button = close_btn.get();
-
-	auto footer = make_unique<Row>();
-	footer->align = Align::End;
-	footer->add_child(std::move(close_btn));
-	stack->add_child(std::move(footer));
-
-	d->add_child(std::move(stack));
-	add_child(std::move(d));
-}
-
-void
-Modal::fill_dialog(Kit &kit)
-{
-	if (!this->body)
-		return;
-	kit.forget_tree(this->body);
-	this->body->erase_children();
-	if (this->kind == AppOverlay::None)
-		return;
-	// Natural height, never stretched: the body only knows to scroll when
-	// what it holds is taller than it is.
-	auto col = make_unique<Column>();
-	col->gap = 8.0f;
-	if (this->kind == AppOverlay::About) {
-		QString name = QStringLiteral(DAWN_NAME);
-		col->add_child(dialog_label(name, true));
-		col->add_child(dialog_label(
-			QStringLiteral("Colour-managed image browser and viewer."), false,
-			true));
-	} else {
-		bool seen[size_t(Action::Count)] = {};
-		float accel_w = 120.0f;
-		auto consider = [&](Action action) {
-			const ActionDef &def = action_def(action);
-			if (!has_shortcut(def))
-				return;
-			accel_w = max(accel_w, kit.text_width(shortcut_accel(def), false));
-		};
-		for_leaves(this->tree, consider);
-		auto consider_other = [&](Action action) {
-			const ActionDef &def = action_def(action);
-			if ((def.flags & ActionInMenu) || !has_shortcut(def))
-				return;
-			consider(action);
-		};
-		bool viewer = false;
-		for (Action action : this->keys) {
-			if (action == Action::ZoomIn || action == Action::FitWidth) {
-				viewer = true;
-				break;
-			}
-		}
-		for (Action action : window_keys())
-			consider_other(action);
-		for (Action action : this->keys)
-			consider_other(action);
-		consider_other(Action::Cancel);
-		if (viewer)
-			consider_other(Action::ZoomLevel);
-
-		col->gap = 2.0f;
-		col->add_child(
-			dialog_label(QStringLiteral("Keyboard Shortcuts"), true));
-		for (const MenuNode &section : this->tree) {
-			if (section.items.empty())
-				continue;
-			bool any = false;
-			for_leaves(section.items, [&](Action action) {
-				if (has_shortcut(action_def(action)))
-					any = true;
-			});
-			if (!any)
-				continue;
-			col->add_child(dialog_label(menu_label(section.title), true));
-			for_leaves(section.items, [&](Action action) {
-				const ActionDef &def = action_def(action);
-				if (!has_shortcut(def))
-					return;
-				seen[size_t(action)] = true;
-				col->add_child(shortcut_row(def, accel_w));
-			});
-		}
-		bool other = false;
-		auto emit_other = [&](Action action) {
-			const size_t i = size_t(action);
-			if (i >= size(seen) || seen[i])
-				return;
-			const ActionDef &def = action_def(action);
-			if ((def.flags & ActionInMenu) || !has_shortcut(def))
-				return;
-			if (!other) {
-				col->add_child(dialog_label(QStringLiteral("Other"), true));
-				other = true;
-			}
-			seen[i] = true;
-			col->add_child(shortcut_row(def, accel_w));
-		};
-		for (Action action : window_keys())
-			emit_other(action);
-		for (Action action : this->keys)
-			emit_other(action);
-		emit_other(Action::Cancel);
-		if (viewer)
-			emit_other(Action::ZoomLevel);
-	}
-	this->dialog->min_w = this->kind == AppOverlay::About ? 360.0f : 520.0f;
-	this->body->add_child(std::move(col));
-}
-
-void
-Modal::set_kind(Kit &kit, AppOverlay overlay)
-{
-	if (overlay == AppOverlay::None) {
-		this->kind = AppOverlay::None;
-		fill_dialog(kit);
-		close(kit);
-		return;
-	}
-	if (this->kind == overlay && this->visible)
-		return;
-	this->kind = overlay;
-	fill_dialog(kit);
-	open(kit);
-}
-
-void
-Modal::open(Kit &kit)
-{
-	Popup::open(kit);
-	if (this->dialog)
-		this->dialog->visible = true;
-}
-
-void
-Modal::close(Kit &kit)
-{
-	this->kind = AppOverlay::None;
-	if (this->dialog)
-		this->dialog->visible = false;
-	Popup::close(kit);
-}
-
-void
-Modal::place(Kit &kit)
-{
-	if (this->kind == AppOverlay::None || !this->dialog) {
-		this->r = {};
-		return;
-	}
-	this->visible = true;
-	this->dialog->visible = true;
-	this->r = {0.0f, 0.0f, kit.host_w_, kit.host_h_};
-	// Centred on the window, not on whatever the toolbar left over. The
-	// margin is only there to keep the shadow off the edges.
-	const float margin = kGlowPts * 2.0f;
-	const float max_w = max(1.0f, min(560.0f, kit.host_w_ - margin * 2.0f));
-	const float avail_h = max(1.0f, kit.host_h_ - margin * 2.0f);
-	this->dialog->measure(kit, max_w, avail_h);
-	// Taller than that means the body scrolls inside it.
-	const float h = min(this->dialog->r.h, avail_h);
-	const float x = max(0.0f, (kit.host_w_ - this->dialog->r.w) * 0.5f);
-	const float y = margin + max(0.0f, (avail_h - h) * 0.5f);
-	this->dialog->arrange(kit, {x, y, this->dialog->r.w, h});
-
-	// Button::focusable() wants a laid-out rect, so this cannot happen any
-	// earlier; without it Return and Space reach nothing and are eaten.
-	bool focused = false;
-	for (Widget *w = kit.focus_; w; w = w->parent_) {
-		if (w == this) {
-			focused = true;
-			break;
-		}
-	}
-	if (!focused)
 		kit.focus_first(this);
 }
 
+// The body takes its natural height, never stretched: it only knows to
+// scroll when what it holds is taller than it is.
 void
-Modal::paint(Kit &kit) const
+dialog_about(Kit &kit, Dialog &dialog)
 {
-	if (!this->visible)
-		return;
-	// The same wash Hint lays over the window behind it.
-	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.ink_, 0.1f));
-	if (this->dialog && this->dialog->visible)
-		kit.draw_shadow(this->dialog->r);
-	Panel::paint(kit);
+	auto col = make_unique<Column>();
+	col->gap = 8.0f;
+	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true));
+	col->add_child(
+		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
+			false, true));
+	dialog.show(kit, std::move(col), 360.0f);
 }
 
-// Only Escape and the Close button dismiss: a press that misses the dialog is
-// swallowed, and a release is left to whoever claimed the press, so finishing
-// a scrollbar drag outside the dialog cannot close it.
-bool
-Modal::press(Kit &, float, float, Qt::MouseButton)
+void
+dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
+	span<const Action> keys)
 {
-	return true;
-}
+	bool seen[size_t(Action::Count)] = {};
+	float accel_w = 120.0f;
+	auto consider = [&](Action action) {
+		const ActionDef &def = action_def(action);
+		if (!has_shortcut(def))
+			return;
+		accel_w = max(accel_w, kit.text_width(shortcut_accel(def), false));
+	};
+	for_leaves(tree, consider);
+	auto consider_other = [&](Action action) {
+		const ActionDef &def = action_def(action);
+		if ((def.flags & ActionInMenu) || !has_shortcut(def))
+			return;
+		consider(action);
+	};
+	bool viewer = false;
+	for (Action action : keys) {
+		if (action == Action::ZoomIn || action == Action::FitWidth) {
+			viewer = true;
+			break;
+		}
+	}
+	for (Action action : window_keys())
+		consider_other(action);
+	for (Action action : keys)
+		consider_other(action);
+	consider_other(Action::Cancel);
+	if (viewer)
+		consider_other(Action::ZoomLevel);
 
-bool
-Modal::release(Kit &, float, float, Qt::MouseButton)
-{
-	return false;
-}
-
-// Not a menu: hovering must not drag the keyboard focus around and drop its
-// ring, which is what Popup::motion does for menu items.
-bool
-Modal::motion(Kit &, float, float)
-{
-	return true;
+	auto col = make_unique<Column>();
+	col->gap = 2.0f;
+	col->add_child(dialog_label(QStringLiteral("Keyboard Shortcuts"), true));
+	for (const MenuNode &section : tree) {
+		if (section.items.empty())
+			continue;
+		bool any = false;
+		for_leaves(section.items, [&](Action action) {
+			if (has_shortcut(action_def(action)))
+				any = true;
+		});
+		if (!any)
+			continue;
+		col->add_child(dialog_label(menu_label(section.title), true));
+		for_leaves(section.items, [&](Action action) {
+			const ActionDef &def = action_def(action);
+			if (!has_shortcut(def))
+				return;
+			seen[size_t(action)] = true;
+			col->add_child(shortcut_row(def, accel_w));
+		});
+	}
+	bool other = false;
+	auto emit_other = [&](Action action) {
+		const size_t i = size_t(action);
+		if (i >= size(seen) || seen[i])
+			return;
+		const ActionDef &def = action_def(action);
+		if ((def.flags & ActionInMenu) || !has_shortcut(def))
+			return;
+		if (!other) {
+			col->add_child(dialog_label(QStringLiteral("Other"), true));
+			other = true;
+		}
+		seen[i] = true;
+		col->add_child(shortcut_row(def, accel_w));
+	};
+	for (Action action : window_keys())
+		emit_other(action);
+	for (Action action : keys)
+		emit_other(action);
+	emit_other(Action::Cancel);
+	if (viewer)
+		emit_other(Action::ZoomLevel);
+	dialog.show(kit, std::move(col), 520.0f);
 }
 
 }  // namespace dn
