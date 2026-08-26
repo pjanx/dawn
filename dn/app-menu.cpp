@@ -752,18 +752,45 @@ Modal::Modal()
 	d->hittable = false;
 	d->visible = false;
 	this->dialog = d.get();
+
+	// The body absorbs whatever height place() clamps away; the footer
+	// keeps its own and stays put while the body scrolls under it.
+	auto stack = make_unique<Column>();
+	stack->grow = true;
+	stack->gap = kDialogPad;
+
+	auto body = make_unique<ScrollColumn>();
+	body->grow = true;
+	body->gap = 8.0f;
+	this->body = body.get();
+	stack->add_child(std::move(body));
+
+	auto close_btn = make_unique<Button>();
+	close_btn->text = QStringLiteral("Close");
+	close_btn->pad_x = kDialogPad;
+	close_btn->on_click = [this](Kit &kit) { close(kit); };
+	this->close_button = close_btn.get();
+
+	auto footer = make_unique<Row>();
+	footer->align = Align::End;
+	footer->add_child(std::move(close_btn));
+	stack->add_child(std::move(footer));
+
+	d->add_child(std::move(stack));
 	add_child(std::move(d));
 }
 
 void
 Modal::fill_dialog(Kit &kit)
 {
-	if (!this->dialog)
+	if (!this->body)
 		return;
-	kit.forget_tree(this->dialog);
-	this->dialog->erase_children();
+	kit.forget_tree(this->body);
+	this->body->erase_children();
 	if (this->kind == AppOverlay::None)
 		return;
+	// Natural height, never stretched: the body only knows to scroll when
+	// what it holds is taller than it is.
 	auto col = make_unique<Column>();
 	col->gap = 8.0f;
 	if (this->kind == AppOverlay::About) {
@@ -848,10 +875,8 @@ Modal::fill_dialog(Kit &kit)
 		if (viewer)
 			emit_other(Action::ZoomLevel);
 	}
-	col->add_child(dialog_label(
-		QStringLiteral("Click or press Escape to dismiss."), false, true));
 	this->dialog->min_w = this->kind == AppOverlay::About ? 360.0f : 520.0f;
-	this->dialog->add_child(std::move(col));
+	this->body->add_child(std::move(col));
 }
 
 void
@@ -897,15 +922,29 @@ Modal::place(Kit &kit)
 	this->visible = true;
 	this->dialog->visible = true;
 	this->r = {0.0f, 0.0f, kit.host_w_, kit.host_h_};
-	float top = 0.0f;
-	if (auto *f = dynamic_cast<Page *>(kit.root_))
-		top = f->toolbar_h();
-	const float max_w = max(1.0f, min(560.0f, kit.host_w_ - 32.0f));
-	const float well_h = max(1.0f, kit.host_h_ - top);
-	this->dialog->measure(kit, max_w, well_h);
+	// Centred on the window, not on whatever the toolbar left over. The
+	// margin is only there to keep the shadow off the edges.
+	const float margin = kGlowPts * 2.0f;
+	const float max_w = max(1.0f, min(560.0f, kit.host_w_ - margin * 2.0f));
+	const float avail_h = max(1.0f, kit.host_h_ - margin * 2.0f);
+	this->dialog->measure(kit, max_w, avail_h);
+	// Taller than that means the body scrolls inside it.
+	const float h = min(this->dialog->r.h, avail_h);
 	const float x = max(0.0f, (kit.host_w_ - this->dialog->r.w) * 0.5f);
-	const float y = top + max(0.0f, (well_h - this->dialog->r.h) * 0.5f);
-	this->dialog->arrange(kit, {x, y, this->dialog->r.w, this->dialog->r.h});
+	const float y = margin + max(0.0f, (avail_h - h) * 0.5f);
+	this->dialog->arrange(kit, {x, y, this->dialog->r.w, h});
+
+	// Button::focusable() wants a laid-out rect, so this cannot happen any
+	// earlier; without it Return and Space reach nothing and are eaten.
+	bool focused = false;
+	for (Widget *w = kit.focus_; w; w = w->parent_) {
+		if (w == this) {
+			focused = true;
+			break;
+		}
+	}
+	if (!focused)
+		kit.focus_first(this);
 }
 
 void
@@ -913,18 +952,34 @@ Modal::paint(Kit &kit) const
 {
 	if (!this->visible)
 		return;
+	// The same wash Hint lays over the window behind it.
+	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
+		this->r.y + this->r.h, col(kit.ink_, 0.1f));
 	if (this->dialog && this->dialog->visible)
 		kit.draw_shadow(this->dialog->r);
 	Panel::paint(kit);
 }
 
+// Only Escape and the Close button dismiss: a press that misses the dialog is
+// swallowed, and a release is left to whoever claimed the press, so finishing
+// a scrollbar drag outside the dialog cannot close it.
 bool
-Modal::press(Kit &kit, float, float, Qt::MouseButton button)
+Modal::press(Kit &, float, float, Qt::MouseButton)
 {
-	if (button != Qt::LeftButton)
-		return false;
-	close(kit);
-	kit.pressed_ = nullptr;
+	return true;
+}
+
+bool
+Modal::release(Kit &, float, float, Qt::MouseButton)
+{
+	return false;
+}
+
+// Not a menu: hovering must not drag the keyboard focus around and drop its
+// ring, which is what Popup::motion does for menu items.
+bool
+Modal::motion(Kit &, float, float)
+{
 	return true;
 }
 

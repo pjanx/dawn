@@ -99,6 +99,8 @@ private:
 
 struct Modal : Popup {
 	Panel *dialog = nullptr;
+	ScrollColumn *body = nullptr;
+	Button *close_button = nullptr;
 	AppOverlay kind = AppOverlay::None;
 	std::span<const MenuNode> tree = {};
 	std::span<const Action> keys = {};
@@ -110,6 +112,8 @@ struct Modal : Popup {
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, float x, float y) override;
 
 private:
 	void fill_dialog(Kit &kit);

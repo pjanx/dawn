@@ -1900,8 +1900,15 @@ Kit::mouse_motion(float x, float y)
 			s->reveal();
 	}
 	tooltip(this->hot_);
-	if (this->pressed_ && !press_targets_popup(*this, this->pressed_))
-		return this->pressed_->motion(*this, x, y);
+	// A popup gets first refusal so press-dragging through a menu tracks
+	// hover, but a widget that claims the motion -- a scrollbar being
+	// dragged -- keeps it.
+	if (this->pressed_) {
+		if (!press_targets_popup(*this, this->pressed_))
+			return this->pressed_->motion(*this, x, y);
+		if (this->pressed_->motion(*this, x, y))
+			return true;
+	}
 	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
 		if (*it && (*it)->motion(*this, x, y))
 			return true;
@@ -1920,9 +1927,12 @@ Kit::mouse_scroll(float x, float y, int delta)
 	this->mouse_y_ = y;
 	if (!delta)
 		return false;
-	if (popup_open())
-		return false;
-	for (Widget *w = hit(x, y); w; w = w->parent_) {
+	Widget *h = hit(x, y);
+	// An open popup owns the pointer: dispatch inside it, swallow outside
+	// so the page behind never scrolls out from under it.
+	if (popup_open() && !owning_popup(h))
+		return true;
+	for (Widget *w = h; w; w = w->parent_) {
 		if (w->scroll(*this, x, y, delta))
 			return true;
 	}
@@ -1936,9 +1946,10 @@ Kit::pan(float x, float y, float dx, float dy)
 	this->mouse_y_ = y;
 	if (dx == 0.0f && dy == 0.0f)
 		return false;
-	if (popup_open())
-		return false;
-	for (Widget *w = hit(x, y); w; w = w->parent_) {
+	Widget *h = hit(x, y);
+	if (popup_open() && !owning_popup(h))
+		return true;
+	for (Widget *w = h; w; w = w->parent_) {
 		if (w->pan(*this, x, y, dx, dy))
 			return true;
 	}
@@ -1950,9 +1961,10 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 {
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
-	if (popup_open())
-		return false;
-	for (Widget *w = hit(x, y); w; w = w->parent_) {
+	Widget *h = hit(x, y);
+	if (popup_open() && !owning_popup(h))
+		return true;
+	for (Widget *w = h; w; w = w->parent_) {
 		if (w->gesture(*this, x, y, scale_factor, angle_delta))
 			return true;
 	}
@@ -2194,7 +2206,12 @@ Kit::wake_ms() const
 		if (elapsed < kTooltipDelayMs)
 			ms = int(ceil(double(kTooltipDelayMs - elapsed)));
 	}
-	return sooner(ms, wake_tree(this->root_));
+	ms = sooner(ms, wake_tree(this->root_));
+	// Popups are not in the root tree, and a scrollbar inside one still
+	// has to be told when to hide itself.
+	for (const Popup *p : this->popups_)
+		ms = sooner(ms, wake_tree(p));
+	return sooner(ms, wake_tree(this->scrim_.get()));
 }
 
 void
