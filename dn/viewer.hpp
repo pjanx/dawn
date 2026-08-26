@@ -13,6 +13,7 @@
 #include <libdn.h>
 
 #include <QString>
+#include <QUrl>
 
 #include <chrono>
 #include <cstdint>
@@ -65,10 +66,11 @@ struct Viewer : Widget {
 	bool open_done_ = false;
 	bool detached_ = false;
 
-	QString path_;
+	// The URL identifies what is on screen; the loader below works on the
+	// local paths derived from it.
+	QUrl url_;
 	std::string previous_path_;
 	std::string next_path_;
-	std::string uri_;
 	std::string basename_;
 	std::shared_ptr<dn::Cmm> cmm_;
 	std::shared_ptr<dn::Profile> screen_profile_;
@@ -124,8 +126,8 @@ struct Viewer : Widget {
 	void init();
 	void destroy();
 	void set_host(float width_pts, float height_pts, float dpr);
-	void open_path(const QString &path);
-	void set_preload_paths(const QString &previous, const QString &next);
+	void open(const QUrl &url);
+	void set_preload_urls(const QUrl &previous, const QUrl &next);
 	void cancel_loads();
 	[[nodiscard]] bool has_view() const;
 	[[nodiscard]] bool consume_open_done();

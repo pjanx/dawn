@@ -15,6 +15,7 @@ qt_add_executable(dn
 	sheet.cpp
 	thumbnail-cache.cpp
 	thumbnailer.cpp
+	url.cpp
 	viewer.cpp
 	window.cpp
 	xdg.cpp

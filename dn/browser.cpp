@@ -14,6 +14,7 @@
 #include "thumb-scaler.hpp"
 #include "thumbnail-cache.hpp"
 #include "thumbnailer.hpp"
+#include "url.hpp"
 #include "xdg.hpp"
 
 #include <QDateTime>
@@ -182,6 +183,20 @@ constexpr Spec kItems[] = {
 };
 
 bool apply_action(Browser &b, Action action);
+
+// Below this line the browser enumerates the local filesystem; above it, and
+// towards the host, everything is identified by URL.
+string
+dir_path(const Browser &b)
+{
+	return url_to_path(b.dir_url_).toStdString();
+}
+
+QUrl
+url_of(const string &path)
+{
+	return path_to_url(QString::fromStdString(path));
+}
 
 struct ThumbJob {
 	uint64_t gen = 0;
@@ -403,7 +418,7 @@ open_new_window(const Browser &b, const string &path)
 	if (path.empty() || !b.page_ || !b.page_->host ||
 		!b.page_->host->new_window)
 		return;
-	b.page_->host->new_window(path);
+	b.page_->host->new_window(url_of(path));
 }
 
 void
@@ -412,7 +427,7 @@ show_file_context(
 {
 	if (!b.page_ || !b.page_->context || path.empty())
 		return;
-	b.page_->context->show(kit, QString::fromStdString(path), anchor, kbd);
+	b.page_->context->show(kit, url_of(path), anchor, kbd);
 }
 
 bool
@@ -423,10 +438,9 @@ show_cursor_context(Browser &b, Kit &kit)
 			b.files_[size_t(b.cursor_)].tile, true);
 		return true;
 	}
-	if (b.dir_path_.isEmpty())
+	if (b.dir_url_.isEmpty())
 		return false;
-	show_file_context(
-		b, kit, b.dir_path_.toStdString(), {b.r.x, b.r.y, 0, 0}, true);
+	show_file_context(b, kit, dir_path(b), {b.r.x, b.r.y, 0, 0}, true);
 	return true;
 }
 
@@ -471,7 +485,7 @@ SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
 		if (kit.hit(x, y) == this && this->browser && !this->path.empty()) {
 			if (Page *page = this->browser->page_;
 				page && page->host && page->host->new_window)
-				page->host->new_window(this->path);
+				page->host->new_window(url_of(this->path));
 		}
 		return true;
 	}
@@ -543,9 +557,7 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 		}
 	}
 	OpenContext ctx;
-	ctx.uri = QUrl::fromLocalFile(QString::fromStdString(path))
-				  .toLocalFile()
-				  .toStdString();
+	ctx.uri = path;
 	ctx.cmm = cmm;
 	const bool cacheable = !thumbnail_cache_root().isEmpty() &&
 		!thumbnail_cache_contains(QString::fromStdString(path));
@@ -1532,13 +1544,13 @@ dir_basename(const filesystem::path &dir)
 	return s.empty() ? string("/") : s;
 }
 
-QString
-abs_dir(const QString &path)
+// The browser always shows a directory: a file URL resolves to its parent.
+QUrl
+dir_url_of(const QUrl &url)
 {
-	const QFileInfo info(path);
-	const QString dir =
-		info.isDir() ? info.absoluteFilePath() : info.absolutePath();
-	return QDir(dir).absolutePath();
+	const QFileInfo info(url_to_path(url));
+	return path_to_url(
+		info.isDir() ? info.absoluteFilePath() : info.absolutePath());
 }
 
 int
@@ -1706,12 +1718,12 @@ scan_dir(Browser &b)
 	b.files_.clear();
 	b.side_dirs_.clear();
 	b.places_dirty_ = true;
-	if (b.dir_path_.isEmpty()) {
+	if (b.dir_url_.isEmpty()) {
 		clear_cursor(b);
 		return;
 	}
 
-	const filesystem::path root(b.dir_path_.toStdString());
+	const filesystem::path root(dir_path(b));
 	error_code ec;
 	vector<Browser::File> files;
 	vector<DirEnt> children;
@@ -1885,23 +1897,23 @@ places_scroll(const Browser &b)
 void
 push_hist(vector<Browser::HistEntry> &st, const Browser &b)
 {
-	if (b.dir_path_.isEmpty())
+	if (b.dir_url_.isEmpty())
 		return;
-	st.push_back({b.dir_path_, places_scroll(b)});
+	st.push_back({b.dir_url_, places_scroll(b)});
 }
 
 void
 open_directory(
-	Browser &b, const QString &path, bool record = true, float side_scroll = 0)
+	Browser &b, const QUrl &url, bool record = true, float side_scroll = 0)
 {
-	const QString dir = abs_dir(path);
-	if (dir == b.dir_path_)
+	const QUrl dir = dir_url_of(url);
+	if (dir == b.dir_url_)
 		return;
 	if (record) {
 		b.hist_forward_.clear();
 		push_hist(b.hist_back_, b);
 	}
-	b.dir_path_ = dir;
+	b.dir_url_ = dir;
 	b.size_cache_.clear();
 	++b.thumb_gen_;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
@@ -2026,17 +2038,16 @@ spec_enabled(const Browser &b, Action action)
 	const int idx = thumb_size_index(b.thumb_size_);
 	switch (action) {
 	case Action::DirPrev:
-		return !b.dir_path_.isEmpty() &&
-			!parent_dir(b.dir_path_.toStdString()).empty();
+		return !b.dir_url_.isEmpty() && !parent_dir(dir_path(b)).empty();
 	case Action::DirNext:
-		return !b.dir_path_.isEmpty() &&
-			!tree_next_dir(b.dir_path_.toStdString(), b.setup_).empty();
+		return !b.dir_url_.isEmpty() &&
+			!tree_next_dir(dir_path(b), b.setup_).empty();
 	case Action::DirParent: {
-		if (b.dir_path_.isEmpty())
+		if (b.dir_url_.isEmpty())
 			return false;
-		const QFileInfo info(b.dir_path_);
-		const QString parent = info.dir().absolutePath();
-		return !parent.isEmpty() && parent != b.dir_path_;
+		const QString parent =
+			QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
+		return !parent.isEmpty() && path_to_url(parent) != b.dir_url_;
 	}
 	case Action::ThumbPlus:
 		return idx + 1 < kThumbSizeN;
@@ -2045,7 +2056,7 @@ spec_enabled(const Browser &b, Action action)
 	case Action::ViewList:
 		return false;
 	case Action::Reload:
-		return !b.dir_path_.isEmpty();
+		return !b.dir_url_.isEmpty();
 	case Action::Copy:
 		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size());
 	case Action::Trash:
@@ -2187,7 +2198,7 @@ fill_places(Browser &b)
 		const string path = d.path;
 		row->on_click = [&b, path](Kit &) {
 			if (!path.empty())
-				open_directory(b, QString::fromStdString(path));
+				open_directory(b, url_of(path));
 		};
 		list->add_child(std::move(row));
 		b.place_items_.push_back({item, d.path});
@@ -2255,30 +2266,31 @@ apply_action(Browser &b, Action action)
 		request_render(b);
 		return true;
 	case Action::DirPrev: {
-		if (b.dir_path_.isEmpty())
+		if (b.dir_url_.isEmpty())
 			return true;
-		const string p = tree_prev_dir(b.dir_path_.toStdString(), b.setup_);
+		const string p = tree_prev_dir(dir_path(b), b.setup_);
 		if (!p.empty())
-			open_directory(b, QString::fromStdString(p));
+			open_directory(b, url_of(p));
 		return true;
 	}
 	case Action::DirNext: {
-		if (b.dir_path_.isEmpty())
+		if (b.dir_url_.isEmpty())
 			return true;
-		const string p = tree_next_dir(b.dir_path_.toStdString(), b.setup_);
+		const string p = tree_next_dir(dir_path(b), b.setup_);
 		if (!p.empty())
-			open_directory(b, QString::fromStdString(p));
+			open_directory(b, url_of(p));
 		return true;
 	}
 	case Action::DirParent: {
-		const QFileInfo info(b.dir_path_);
-		const QString parent = info.dir().absolutePath();
-		if (!parent.isEmpty() && parent != b.dir_path_)
-			open_directory(b, parent);
+		const QString parent =
+			QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
+		const QUrl up = path_to_url(parent);
+		if (!parent.isEmpty() && up != b.dir_url_)
+			open_directory(b, up);
 		return true;
 	}
 	case Action::DirHome:
-		open_directory(b, QDir::homePath());
+		open_directory(b, path_to_url(QDir::homePath()));
 		return true;
 	case Action::ThumbPlus: {
 		const int idx = thumb_size_index(b.thumb_size_);
@@ -2328,10 +2340,10 @@ apply_action(Browser &b, Action action)
 	case Action::Activate:
 		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()) && b.page_ &&
 			b.page_->host && b.page_->host->activate)
-			b.page_->host->activate(b.files_[size_t(b.cursor_)].path);
+			b.page_->host->activate(b.file_url(b.cursor_));
 		return true;
 	case Action::Reload:
-		if (!b.dir_path_.isEmpty()) {
+		if (!b.dir_url_.isEmpty()) {
 			scan_dir(b);
 			enqueue_thumbs(b);
 			request_render(b);
@@ -2339,15 +2351,14 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::Copy:
 		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
-			const QString files[] = {
-				QString::fromStdString(b.files_[size_t(b.cursor_)].path)};
+			const QUrl files[] = {b.file_url(b.cursor_)};
 			copy_files(files);
 		}
 		return true;
 	case Action::Trash:
 		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()) && b.page_ &&
 			b.page_->host && b.page_->host->trash)
-			b.page_->host->trash(b.files_[size_t(b.cursor_)].path);
+			b.page_->host->trash(b.file_url(b.cursor_));
 		return true;
 	default:
 		return false;
@@ -2417,9 +2428,10 @@ Browser::tip() const
 }
 
 void
-Browser::select_file(const string &path)
+Browser::select_file(const QUrl &url)
 {
 	clear_cursor(*this);
+	const string path = url_to_path(url).toStdString();
 	if (!path.empty()) {
 		for (int i = 0; i < int(this->files_.size()); ++i) {
 			if (this->files_[size_t(i)].path == path) {
@@ -2437,22 +2449,21 @@ Browser::select_file(const string &path)
 }
 
 void
-Browser::file_gone(const string &path)
+Browser::file_gone(const QUrl &url)
 {
-	const bool was_cursor = this->cursor_ >= 0 &&
-		this->cursor_ < int(this->files_.size()) &&
-		this->files_[size_t(this->cursor_)].path == path;
-	string next;
+	const bool was_cursor =
+		this->cursor_ >= 0 && file_url(this->cursor_) == url;
+	QUrl next;
 	if (was_cursor) {
 		const int i = this->cursor_;
 		if (i + 1 < int(this->files_.size()))
-			next = this->files_[size_t(i + 1)].path;
+			next = file_url(i + 1);
 		else if (i > 0)
-			next = this->files_[size_t(i - 1)].path;
+			next = file_url(i - 1);
 	}
 	scan_dir(*this);
 	enqueue_thumbs(*this);
-	if (was_cursor && !next.empty())
+	if (was_cursor && !next.isEmpty())
 		select_file(next);
 	else
 		request_render(*this);
@@ -2553,15 +2564,8 @@ make_browser_page(
 		Page::Side::Left, std::move(browser));
 	page->host = &host;
 	if (page->context) {
-		page->context->on_new_window = [nw = host.new_window](
-										   const QString &path) {
-			if (nw)
-				nw(path.toStdString());
-		};
-		page->context->on_trash = [t = host.trash](const QString &path) {
-			if (t)
-				t(path.toStdString());
-		};
+		page->context->on_new_window = host.new_window;
+		page->context->on_trash = host.trash;
 	}
 	page->menu_tree = browser_menu();
 	page->keys = browser_keys();
@@ -2607,9 +2611,17 @@ Browser::set_host(float width_pts, float height_pts, float dpr)
 }
 
 void
-Browser::open_dir(const QString &path, bool record)
+Browser::open_dir(const QUrl &url, bool record)
 {
-	open_directory(*this, path, record);
+	open_directory(*this, url, record);
+}
+
+QUrl
+Browser::file_url(int index) const
+{
+	if (index < 0 || index >= int(this->files_.size()))
+		return {};
+	return url_of(this->files_[size_t(index)].path);
 }
 
 bool
@@ -2620,7 +2632,7 @@ Browser::hist_back()
 	push_hist(this->hist_forward_, *this);
 	const HistEntry e = this->hist_back_.back();
 	this->hist_back_.pop_back();
-	open_directory(*this, e.path, false, e.side_scroll);
+	open_directory(*this, e.url, false, e.side_scroll);
 	return true;
 }
 
@@ -2632,7 +2644,7 @@ Browser::hist_forward()
 	push_hist(this->hist_back_, *this);
 	const HistEntry e = this->hist_forward_.back();
 	this->hist_forward_.pop_back();
-	open_directory(*this, e.path, false, e.side_scroll);
+	open_directory(*this, e.url, false, e.side_scroll);
 	return true;
 }
 
@@ -2743,10 +2755,9 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 				*this, kit, this->files_[size_t(i)].path, {x, y, 0, 0}, false);
 			return true;
 		}
-		if (this->dir_path_.isEmpty())
+		if (this->dir_url_.isEmpty())
 			return false;
-		show_file_context(
-			*this, kit, this->dir_path_.toStdString(), {x, y, 0, 0}, false);
+		show_file_context(*this, kit, dir_path(*this), {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {
@@ -2783,7 +2794,7 @@ activate_hit(Browser &b, float x, float y)
 	b.cursor_ = i;
 	remember_cursor_x_at(b, x);
 	if (b.page_ && b.page_->host && b.page_->host->activate)
-		b.page_->host->activate(b.files_[size_t(i)].path);
+		b.page_->host->activate(b.file_url(i));
 }
 
 bool
@@ -2795,7 +2806,7 @@ Browser::release(Kit &kit, float x, float y, Qt::MouseButton button)
 		const int i = hit_file(*this, x, y);
 		if (i >= 0 && i == this->mid_file_ && this->page_ &&
 			this->page_->host && this->page_->host->new_window)
-			this->page_->host->new_window(this->files_[size_t(i)].path);
+			this->page_->host->new_window(file_url(i));
 		this->mid_file_ = -1;
 		return true;
 	}

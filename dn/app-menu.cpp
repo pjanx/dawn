@@ -11,6 +11,7 @@
 #include "app-menu.hpp"
 #include "assoc.hpp"
 #include "chrome.hpp"
+#include "url.hpp"
 
 #include <QCoreApplication>
 #include <QFileInfo>
@@ -648,11 +649,13 @@ MenuItem::accel_width(const Kit &kit) const
 }
 
 void
-ContextMenu::fill_items(const QString &path)
+ContextMenu::fill_items(const QUrl &url)
 {
 	clear();
 	this->min_w = 200.0f;
 
+	// Open With and Move to Trash are filesystem operations on a real file.
+	const QString path = url_to_path(url);
 	const Handler def = default_for(path);
 	const vector<Handler> rec = recommended_for(path);
 	const vector<Handler> fall = fallback_for(path);
@@ -678,9 +681,9 @@ ContextMenu::fill_items(const QString &path)
 
 	auto &new_win = add_item(menu_label("Open in New _Window"));
 	new_win.mnemonic = mnemonic_index("Open in New _Window");
-	new_win.on_click = [this, path](Kit &) {
+	new_win.on_click = [this, url](Kit &) {
 		if (this->on_new_window)
-			this->on_new_window(path);
+			this->on_new_window(url);
 	};
 	need_sep = true;
 	if (!def.id.isEmpty()) {
@@ -705,18 +708,18 @@ ContextMenu::fill_items(const QString &path)
 		auto &trash = add_item(menu_label("Move to _Trash"));
 		trash.mnemonic = mnemonic_index("Move to _Trash");
 		trash.accel = action_accel(action_def(Action::Trash));
-		trash.on_click = [this, path](Kit &) {
+		trash.on_click = [this, url](Kit &) {
 			if (this->on_trash)
-				this->on_trash(path);
+				this->on_trash(url);
 		};
 	}
 }
 
 void
-ContextMenu::show(Kit &kit, const QString &path, Rect anchor, bool kbd)
+ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 {
 	kit.forget_tree(this);
-	fill_items(path);
+	fill_items(url);
 	bool any = false;
 	if (this->col) {
 		for (const auto &k : this->col->kids) {

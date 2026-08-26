@@ -361,10 +361,11 @@ Hint::fire(Kit &kit, Target t)
 	}
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
 		return;
-	browser->select_file(browser->files_[size_t(file_i)].path);
+	const QUrl url = browser->file_url(file_i);
+	browser->select_file(url);
 	if (browser->page_ && browser->page_->host &&
 		browser->page_->host->activate)
-		browser->page_->host->activate(browser->files_[size_t(file_i)].path);
+		browser->page_->host->activate(url);
 }
 
 }  // namespace dn

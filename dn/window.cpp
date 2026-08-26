@@ -12,6 +12,7 @@
 #include "app.hpp"
 #include "dawn-config.h"
 #include "display-profile.hpp"
+#include "url.hpp"
 
 #if DN_WITH_WAYLAND
 #include "wayland-window.hpp"
@@ -87,42 +88,15 @@ wheel_axis(const QPoint &ang, const QPoint &pix, bool horizontal)
 	return horizontal ? pix.x() : pix.y();
 }
 
-// GFile parse name for a local path: absolute, native separators, $HOME as ~.
-QString
-parse_name(const QString &path)
-{
-	QString abs = QFileInfo(path).absoluteFilePath();
-	if (abs.isEmpty())
-		abs = path;
-	abs = QDir::toNativeSeparators(QDir::cleanPath(abs));
-	const QString home =
-		QDir::toNativeSeparators(QDir::cleanPath(QDir::homePath()));
-	if (home.isEmpty())
-		return abs;
-	const QChar sep = QDir::separator();
-#ifdef Q_OS_WIN
-	const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
-#else
-	const Qt::CaseSensitivity cs = Qt::CaseSensitive;
-#endif
-	if (abs.compare(home, cs) == 0)
-		return QStringLiteral("~");
-	if (abs.startsWith(home + sep, cs))
-		return QChar(u'~') + abs.mid(home.size());
-	return abs;
-}
-
-QString
+QUrl
 first_dropped_file(const QMimeData *mime)
 {
 	if (!mime)
 		return {};
 	for (const QUrl &url : mime->urls()) {
-		if (!url.isLocalFile())
-			continue;
-		const QFileInfo info(url.toLocalFile());
+		const QFileInfo info(url_to_path(url));
 		if (info.exists() && info.isFile())
-			return info.absoluteFilePath();
+			return QUrl::fromLocalFile(info.absoluteFilePath());
 	}
 	return {};
 }
@@ -204,7 +178,7 @@ Window::pixel_size() const
 }
 
 bool
-Window::initialize(const QString &path, BrowseSetup setup, bool browse)
+Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 {
 	QVulkanInstance *const instance = &this->app_->vulkan_instance;
 	create();
@@ -257,8 +231,7 @@ Window::initialize(const QString &path, BrowseSetup setup, bool browse)
 		this->browser_->setup_ = setup;
 	}
 
-	const QString open = path.isEmpty() ? QDir::currentPath() : path;
-	open_any(open, browse);
+	open_any(url.isEmpty() ? path_to_url(QDir::currentPath()) : url, browse);
 	return true;
 }
 
@@ -350,7 +323,7 @@ Window::bind_host()
 		if (a == Action::Back) {
 			if (this->mode_ == Mode::Browser && this->browser_)
 				return this->browser_->hist_can_back();
-			return this->browser_ && !this->browser_->dir_path_.isEmpty();
+			return this->browser_ && !this->browser_->dir_url_.isEmpty();
 		}
 		if (a == Action::Forward) {
 			if (this->mode_ == Mode::Browser && this->browser_)
@@ -360,49 +333,43 @@ Window::bind_host()
 		}
 		return true;
 	};
-	this->host_.activate = [this](string path) {
+	this->host_.activate = [this](QUrl url) {
 		if (!this->viewer_)
 			return;
 		if (this->browser_)
 			this->browser_->hist_clear_forward();
-		open_viewer(QString::fromStdString(std::move(path)));
+		open_viewer(url);
 		this->awaiting_view_ = true;
 		request_render();
 	};
-	this->host_.new_window = [this](string path) {
-		if (path.empty())
-			path = current_path().toStdString();
+	this->host_.new_window = [this](QUrl url) {
+		if (url.isEmpty())
+			url = current_url();
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
-		this->app_->open(QUrl::fromLocalFile(
-		    QString::fromStdString(std::move(path))), {}, setup);
+		this->app_->open(url, {}, setup);
 	};
-	this->host_.launch_exiftool = [this](
-									  QString path) { launch_exiftool(path); };
-	this->host_.trash = [this](string path) {
-		trash_path(QString::fromStdString(std::move(path)));
-	};
+	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
+	this->host_.trash = [this](QUrl url) { trash_url(url); };
 }
 
 void
-Window::trash_path(const QString &path)
+Window::trash_url(const QUrl &url)
 {
+	const QString path = url_to_path(url);
 	if (path.isEmpty() || !QFileInfo(path).isFile())
 		return;
 	const bool viewing = this->mode_ == Mode::View && this->viewer_ &&
-		!this->viewer_->path_.isEmpty() &&
-		QFileInfo(this->viewer_->path_).absoluteFilePath() ==
-			QFileInfo(path).absoluteFilePath();
+		this->viewer_->url_ == url;
 	if (!move_to_trash(path))
 		return;
 	if (this->browser_)
-		this->browser_->file_gone(path.toStdString());
+		this->browser_->file_gone(url);
 	if (viewing) {
 		if (this->browser_ && this->browser_->cursor_ >= 0 &&
 			this->browser_->cursor_ < int(this->browser_->files_.size())) {
-			open_viewer(QString::fromStdString(
-				this->browser_->files_[size_t(this->browser_->cursor_)].path));
+			open_viewer(this->browser_->file_url(this->browser_->cursor_));
 			set_mode(Mode::View);
 		} else {
 			show_browser(false);
@@ -441,8 +408,9 @@ Window::show_help()
 }
 
 void
-Window::launch_exiftool(const QString &path)
+Window::launch_exiftool(const QUrl &url)
 {
+	const QString path = url_to_path(url);
 	if (path.isEmpty())
 		return;
 
@@ -535,16 +503,16 @@ Window::set_mode(Mode m)
 void
 Window::sync_title()
 {
-	QString path;
+	QUrl url;
 	if (this->mode_ == Mode::View && this->viewer_ &&
-		!this->viewer_->path_.isEmpty())
-		path = this->viewer_->path_;
-	else if (this->browser_ && !this->browser_->dir_path_.isEmpty())
-		path = this->browser_->dir_path_;
+		!this->viewer_->url_.isEmpty())
+		url = this->viewer_->url_;
+	else if (this->browser_ && !this->browser_->dir_url_.isEmpty())
+		url = this->browser_->dir_url_;
 	const QString app = QStringLiteral(DAWN_NAME);
-	const QString title = path.isEmpty()
+	const QString title = url.isEmpty()
 		? app
-		: parse_name(path) + QStringLiteral(" \u2014 ") + app;
+		: url_parse_name(url) + QStringLiteral(" \u2014 ") + app;
 	QWindow *w = shell();
 	if (w->title() != title)
 		w->setTitle(title);
@@ -705,41 +673,34 @@ Window::sync_viewer_preloads()
 {
 	if (!this->viewer_ || !this->browser_)
 		return;
-	const int i = viewer_file_index(this->viewer_->path_);
+	const int i = viewer_file_index(this->viewer_->url_);
 	const int n = int(this->browser_->files_.size());
 	if (i < 0 || n < 2) {
-		this->viewer_->set_preload_paths({}, {});
+		this->viewer_->set_preload_urls({}, {});
 		return;
 	}
-	const int previous = (i + n - 1) % n;
-	const int next = (i + 1) % n;
-	this->viewer_->set_preload_paths(
-		QString::fromStdString(this->browser_->files_[size_t(previous)].path),
-		QString::fromStdString(this->browser_->files_[size_t(next)].path));
+	this->viewer_->set_preload_urls(this->browser_->file_url((i + n - 1) % n),
+		this->browser_->file_url((i + 1) % n));
 }
 
 int
-Window::viewer_file_index(const QString &path) const
+Window::viewer_file_index(const QUrl &url) const
 {
-	if (!this->browser_ || path.isEmpty())
+	if (!this->browser_ || url.isEmpty())
 		return -1;
-	const QString current = QFileInfo(path).absoluteFilePath();
 	for (int n = 0; n < int(this->browser_->files_.size()); ++n) {
-		const QString candidate = QFileInfo(
-			QString::fromStdString(this->browser_->files_[size_t(n)].path))
-									  .absoluteFilePath();
-		if (candidate == current)
+		if (this->browser_->file_url(n) == url)
 			return n;
 	}
 	return -1;
 }
 
 void
-Window::open_viewer(const QString &path)
+Window::open_viewer(const QUrl &url)
 {
 	if (!this->viewer_)
 		return;
-	this->viewer_->open_path(path);
+	this->viewer_->open(url);
 	sync_viewer_preloads();
 }
 
@@ -757,7 +718,7 @@ Window::open_sibling(int delta)
 	if (!this->viewer_ || !this->browser_ || this->browser_->files_.empty() ||
 		delta == 0)
 		return;
-	const int i = viewer_file_index(this->viewer_->path_);
+	const int i = viewer_file_index(this->viewer_->url_);
 	if (i < 0)
 		return;
 	const int n = int(this->browser_->files_.size());
@@ -766,7 +727,7 @@ Window::open_sibling(int delta)
 		j += n;
 	if (j == i)
 		return;
-	open_viewer(QString::fromStdString(this->browser_->files_[size_t(j)].path));
+	open_viewer(this->browser_->file_url(j));
 	set_mode(Mode::View);
 	request_render();
 }
@@ -912,12 +873,12 @@ Window::closeEvent(QCloseEvent *event)
 void
 Window::show_browser(bool select)
 {
-	if (!this->browser_ || this->browser_->dir_path_.isEmpty())
+	if (!this->browser_ || this->browser_->dir_url_.isEmpty())
 		return;
 	if (this->viewer_ui_)
 		this->kit_.close_popups();
 	if (select && this->viewer_)
-		this->browser_->select_file(this->viewer_->path_.toStdString());
+		this->browser_->select_file(this->viewer_->url_);
 	cancel_viewer_loads();
 	set_mode(Mode::Browser);
 	request_render();
@@ -1016,12 +977,12 @@ Window::event(QEvent *event)
 	}
 	if (event->type() == QEvent::Drop) {
 		auto *drop = (QDropEvent *) event;
-		const QString path = first_dropped_file(drop->mimeData());
-		if (this->mode_ != Mode::View || path.isEmpty()) {
+		const QUrl url = first_dropped_file(drop->mimeData());
+		if (this->mode_ != Mode::View || url.isEmpty()) {
 			event->ignore();
 			return true;
 		}
-		open_any(path);
+		open_any(url);
 		drop->acceptProposedAction();
 		return true;
 	}
@@ -1102,42 +1063,42 @@ Window::apply_window(Action a)
 		this->host_.apply(a);
 }
 
-QString
-Window::current_path() const
+QUrl
+Window::current_url() const
 {
 	if (this->mode_ == Mode::View && this->viewer_ &&
-		!this->viewer_->path_.isEmpty())
-		return this->viewer_->path_;
-	if (this->browser_ && !this->browser_->dir_path_.isEmpty())
-		return this->browser_->dir_path_;
-	return QDir::currentPath();
+		!this->viewer_->url_.isEmpty())
+		return this->viewer_->url_;
+	if (this->browser_ && !this->browser_->dir_url_.isEmpty())
+		return this->browser_->dir_url_;
+	return path_to_url(QDir::currentPath());
 }
 
 void
-Window::open_any(const QString &path, bool browse)
+Window::open_any(const QUrl &url, bool browse)
 {
-	const QFileInfo info(path);
+	// The browser always wants a directory: a file opens the one holding it.
+	const QFileInfo info(url_to_path(url));
 	if (info.isDir()) {
 		if (this->browser_)
-			this->browser_->open_dir(path);
+			this->browser_->open_dir(url);
 		cancel_viewer_loads();
 		set_mode(Mode::Browser);
 	} else if (browse) {
 		// A file with --browse is a request to point at it, not to view it:
 		// browse the parent and put the cursor on the file.
 		if (this->browser_) {
-			this->browser_->open_dir(info.absolutePath());
-			this->browser_->select_file(
-				info.absoluteFilePath().toStdString());
+			this->browser_->open_dir(path_to_url(info.absolutePath()));
+			this->browser_->select_file(url);
 		}
 		cancel_viewer_loads();
 		set_mode(Mode::Browser);
 	} else {
 		if (this->viewer_)
-			this->viewer_->open_path(path);
+			this->viewer_->open(url);
 		set_mode(Mode::View);
 		if (this->browser_)
-			this->browser_->open_dir(info.absolutePath());
+			this->browser_->open_dir(path_to_url(info.absolutePath()));
 		sync_viewer_preloads();
 	}
 	request_render();
@@ -1185,7 +1146,7 @@ Window::keyPressEvent(QKeyEvent *event)
 	}
 	if (key == Qt::Key_Escape && mods == 0) {
 		if (this->mode_ == Mode::View && this->browser_ &&
-			!this->browser_->dir_path_.isEmpty()) {
+			!this->browser_->dir_url_.isEmpty()) {
 			show_browser(true);
 			return;
 		}

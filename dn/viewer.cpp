@@ -12,6 +12,7 @@
 #include "cie-diagram.hpp"
 #include "kit.hpp"
 #include "renderer.hpp"
+#include "url.hpp"
 
 #include <QByteArray>
 #include <QClipboard>
@@ -58,6 +59,13 @@ constexpr float kScaleMax = 64.0f;
 constexpr float kAngleFast = 1e-5f;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
+
+// The loader below is a local-filesystem reader, and keys its jobs by path.
+string
+viewer_local_path(const Viewer &v)
+{
+	return url_to_path(v.url_).toStdString();
+}
 
 enum class Slot : uint8_t { Left, Middle, Right };
 enum class Kind : uint8_t { Icon, Scale, Sep };
@@ -132,13 +140,13 @@ spec_enabled(const Viewer &v, Action action)
 	case Action::FrameNext:
 		return v.current_ && v.current_->frame_next;
 	case Action::Copy:
-		return !v.path_.isEmpty() ||
+		return !v.url_.isEmpty() ||
 			(v.frame_ && !v.frame_->data.empty() && v.frame_->width &&
 				v.frame_->height);
 	case Action::Reload:
-		return !v.path_.isEmpty();
+		return !v.url_.isEmpty();
 	case Action::Trash:
-		return !v.path_.isEmpty() && QFileInfo(v.path_).isFile();
+		return QFileInfo(url_to_path(v.url_)).isFile();
 	case Action::Smooth:
 		return !(v.current_ && v.current_->render);
 	default:
@@ -647,7 +655,7 @@ make_sidebar(Viewer &v)
 	exiftool->text = QStringLiteral("Launch ExifTool");
 	exiftool->on_click = [&v](Kit &) {
 		if (v.page_ && v.page_->host && v.page_->host->launch_exiftool)
-			v.page_->host->launch_exiftool(v.path_);
+			v.page_->host->launch_exiftool(v.url_);
 	};
 	v.exiftool_button_ = exiftool.get();
 	col->add_child(std::move(exiftool));
@@ -690,7 +698,7 @@ sync_ui(Viewer &v, Page &ui)
 	if (v.info_)
 		fill_info_texts(v, v.current_ ? v.current_.get() : v.image_.get());
 	if (v.exiftool_button_)
-		v.exiftool_button_->enabled_ = !v.path_.isEmpty();
+		v.exiftool_button_->enabled_ = !v.url_.isEmpty();
 	if (ui.sidebar_open && v.info_) {
 		const char *basename = v.basename_.c_str();
 		const QString name = (basename && basename[0])
@@ -794,7 +802,9 @@ apply_open(Viewer &v, uint64_t gen, ImagePtr image, string message)
 	v.open_done_ = true;
 	set_message(v, message);
 	if (!message.empty())
-		fprintf(stderr, "%s: %s\n", v.uri_.c_str(), message.c_str());
+		fprintf(stderr, "%s: %s\n",
+			qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
+			message.c_str());
 	if (!image || !image->width || !image->height) {
 		clear_image(v);
 		request_render(v);
@@ -854,7 +864,7 @@ apply_open_result(Viewer &v, OpenLoad result)
 {
 	if (result.epoch != v.load_epoch_)
 		return;
-	const string current = v.path_.toStdString();
+	const string current = viewer_local_path(v);
 	if (!v.detached_ && result.path != current &&
 		result.path != v.previous_path_ && result.path != v.next_path_)
 		return;
@@ -1032,9 +1042,8 @@ make_open_job(const Viewer &v, const string &path)
 	OpenJob job;
 	job.epoch = v.load_epoch_;
 	job.path = path;
-	job.uri = QUrl::fromLocalFile(QString::fromStdString(path))
-				  .toEncoded()
-				  .toStdString();
+	job.uri =
+		path_to_url(QString::fromStdString(path)).toEncoded().toStdString();
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? screen_icc_bytes(v) : vector<uint8_t>{};
@@ -1064,7 +1073,7 @@ job_active(const Viewer::Worker &worker, uint64_t epoch, const string &path)
 static void
 start_open(Viewer &v, bool invalidate)
 {
-	if (!v.worker_ || v.path_.isEmpty())
+	if (!v.worker_ || v.url_.isEmpty())
 		return;
 	if (invalidate) {
 		++v.load_epoch_;
@@ -1077,7 +1086,7 @@ start_open(Viewer &v, bool invalidate)
 	v.detached_ = false;
 	v.scale_job_pending_ = false;
 	v.scale_failed_ = false;
-	const string path = v.path_.toStdString();
+	const string path = viewer_local_path(v);
 	Viewer::CachedOpen *cached = invalidate ? nullptr : find_cached(v, path);
 	{
 		lock_guard lock(v.worker_->mu);
@@ -1107,7 +1116,7 @@ start_open(Viewer &v, bool invalidate)
 static void
 schedule_preloads(Viewer &v)
 {
-	const string current = v.path_.toStdString();
+	const string current = viewer_local_path(v);
 	auto wanted = [&](const string &path) {
 		return !path.empty() && path != current &&
 			(path == v.previous_path_ || path == v.next_path_);
@@ -1133,7 +1142,7 @@ schedule_preloads(Viewer &v)
 		lock_guard lock(v.worker_->mu);
 		v.worker_->detached = false;
 		v.worker_->desired = {current, v.previous_path_, v.next_path_};
-		if (!v.opening_ && !v.uri_.empty())
+		if (!v.opening_ && !v.url_.isEmpty())
 			v.worker_->current_ready = true;
 		auto desired_job = [&](const OpenJob &job) {
 			return job.epoch == v.load_epoch_ && wanted(job.path);
@@ -1257,7 +1266,7 @@ static void
 toggle_cms(Viewer &v)
 {
 	v.enable_cms_ = !v.enable_cms_;
-	if (!v.path_.isEmpty()) {
+	if (!v.url_.isEmpty()) {
 		v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_, v.orientation_,
 			v.angle_, v.view_locked_};
 		reload_open(v);
@@ -1384,10 +1393,10 @@ context_anchor(const Viewer &v)
 static bool
 show_view_context(const Viewer &v, Kit &kit)
 {
-	if (v.path_.isEmpty() || !v.image_)
+	if (v.url_.isEmpty() || !v.image_)
 		return false;
 	if (v.page_ && v.page_->context)
-		v.page_->context->show(kit, v.path_, context_anchor(v), true);
+		v.page_->context->show(kit, v.url_, context_anchor(v), true);
 	return true;
 }
 
@@ -1636,8 +1645,8 @@ copy_frame(const Viewer &v)
 	auto *mime = new QMimeData;
 	if (v.frame_)
 		copy_image(mime, *v.frame_);
-	if (!v.path_.isEmpty()) {
-		const QString files[] = {v.path_};
+	if (!v.url_.isEmpty()) {
+		const QUrl files[] = {v.url_};
 		copy_files(mime, files);
 	}
 	QGuiApplication::clipboard()->setMimeData(mime);
@@ -1740,9 +1749,9 @@ apply_action(Viewer &v, Action action)
 		reload_open(v);
 		return true;
 	case Action::Trash:
-		if (!v.path_.isEmpty() && v.page_ && v.page_->host &&
+		if (!v.url_.isEmpty() && v.page_ && v.page_->host &&
 			v.page_->host->trash)
-			v.page_->host->trash(v.path_.toStdString());
+			v.page_->host->trash(v.url_);
 		return true;
 	default:
 		return false;
@@ -1875,15 +1884,8 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 		Page::Side::Right, std::move(viewer));
 	page->host = &host;
 	if (page->context) {
-		page->context->on_new_window = [nw = host.new_window](
-										   const QString &path) {
-			if (nw)
-				nw(path.toStdString());
-		};
-		page->context->on_trash = [t = host.trash](const QString &path) {
-			if (t)
-				t(path.toStdString());
-		};
+		page->context->on_new_window = host.new_window;
+		page->context->on_trash = host.trash;
 	}
 	page->set_banner(std::move(err));
 	page->menu_tree = viewer_menu();
@@ -1942,13 +1944,9 @@ Viewer::destroy()
 }
 
 void
-Viewer::open_path(const QString &path)
+Viewer::open(const QUrl &url)
 {
-	QUrl input_url(path);
-	QString filename = input_url.isLocalFile() ? input_url.toLocalFile() : path;
-	QFileInfo info(filename);
-	filename = info.absoluteFilePath();
-	if (filename == this->path_ && this->image_ && this->image_->width &&
+	if (url == this->url_ && this->image_ && this->image_->width &&
 		this->image_->height) {
 		this->opening_ = false;
 		this->open_done_ = true;
@@ -1956,25 +1954,17 @@ Viewer::open_path(const QString &path)
 			this->kit_.request_render();
 		return;
 	}
-	this->path_ = filename;
-	this->basename_ = info.fileName().toStdString();
-	this->uri_ = QUrl::fromLocalFile(filename).toEncoded().toStdString();
+	this->url_ = url;
+	this->basename_ = url_basename(url).toStdString();
 	start_open(*this, false);
 }
 
 void
-Viewer::set_preload_paths(const QString &previous, const QString &next)
+Viewer::set_preload_urls(const QUrl &previous, const QUrl &next)
 {
-	auto normalize = [](const QString &path) {
-		if (path.isEmpty())
-			return string{};
-		const QUrl url(path);
-		const QString file = url.isLocalFile() ? url.toLocalFile() : path;
-		return QFileInfo(file).absoluteFilePath().toStdString();
-	};
-	this->previous_path_ = normalize(previous);
-	this->next_path_ = normalize(next);
-	const string current = this->path_.toStdString();
+	this->previous_path_ = url_to_path(previous).toStdString();
+	this->next_path_ = url_to_path(next).toStdString();
+	const string current = viewer_local_path(*this);
 	if (this->previous_path_ == current)
 		this->previous_path_.clear();
 	if (this->next_path_ == current)
@@ -2008,8 +1998,7 @@ Viewer::cancel_loads()
 	if (!discard_current)
 		return;
 	clear_image(*this);
-	this->path_.clear();
-	this->uri_.clear();
+	this->url_.clear();
 	this->basename_.clear();
 	this->message_.clear();
 	this->message_dismissed_ = false;
@@ -2019,7 +2008,7 @@ Viewer::cancel_loads()
 bool
 Viewer::has_view() const
 {
-	return !this->opening_ && !this->uri_.empty();
+	return !this->opening_ && !this->url_.isEmpty();
 }
 
 bool
@@ -2035,7 +2024,7 @@ void
 Viewer::set_screen_profile(
 	shared_ptr<Cmm> cmm, shared_ptr<Profile> profile, bool fallback)
 {
-	const bool reload = this->enable_cms_ && !this->path_.isEmpty() &&
+	const bool reload = this->enable_cms_ && !this->url_.isEmpty() &&
 		!profiles_equal(this->screen_profile_.get(), profile.get());
 	this->cmm_ = std::move(cmm);
 	this->screen_profile_ = std::move(profile);
@@ -2097,13 +2086,13 @@ bool
 Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
-		if (this->path_.isEmpty() || !this->image_)
+		if (this->url_.isEmpty() || !this->image_)
 			return false;
 		const Rect dest = image_dest_rect(*this);
 		if (!dest.contains(x, y))
 			return false;
 		if (this->page_ && this->page_->context)
-			this->page_->context->show(kit, this->path_, {x, y, 0, 0}, false);
+			this->page_->context->show(kit, this->url_, {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)

@@ -9,6 +9,7 @@
 #include "dawn-config.h"
 #include "libdn.h"
 #include "thumbnail-cache.hpp"
+#include "url.hpp"
 #include "window.hpp"
 #include "xdg.hpp"
 
@@ -57,7 +58,7 @@ bool
 GuiApplication::event(QEvent *event)
 {
 	if (event->type() == QEvent::FileOpen) {
-		this->app_->open(((QFileOpenEvent *) event)->url());
+		this->app_->open(dn::url_normalized(((QFileOpenEvent *) event)->url()));
 		return true;
 	}
 	return QGuiApplication::event(event);
@@ -83,12 +84,12 @@ instance_session()
 }
 
 vector<string>
-paths_utf8(const QStringList &paths)
+urls_utf8(const QList<QUrl> &urls)
 {
 	vector<string> out;
-	out.reserve(size_t(paths.size()));
-	for (const QString &path : paths)
-		out.push_back(path.toUtf8().toStdString());
+	out.reserve(size_t(urls.size()));
+	for (const QUrl &url : urls)
+		out.push_back(url.toEncoded().toStdString());
 	return out;
 }
 
@@ -112,12 +113,12 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 
 bool
 handoff_open(
-	dn::ipc::BlockingClient &client, const QStringList &paths, bool browse)
+	dn::ipc::BlockingClient &client, const QList<QUrl> &urls, bool browse)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
 	dn::ipc::instance::Error error;
-	if (client.open(paths_utf8(paths), token, browse, &error))
+	if (client.open(urls_utf8(urls), token, browse, &error))
 		return true;
 	if (!error.message.empty())
 		fprintf(stderr, "dn: %s\n", error.message.c_str());
@@ -144,7 +145,7 @@ report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
 enum class Remote : uint8_t { Done, Failed, Isolated };
 
 Remote
-try_remote_open(const QString &session, const QStringList &paths, bool browse,
+try_remote_open(const QString &session, const QList<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
 	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
@@ -152,7 +153,7 @@ try_remote_open(const QString &session, const QStringList &paths, bool browse,
 	auto client = dn::ipc::BlockingClient::connect(
 		session.toUtf8().toStdString(), &status);
 	if (client) {
-		if (handoff_open(*client, paths, browse))
+		if (handoff_open(*client, urls, browse))
 			return Remote::Done;
 		return Remote::Failed;
 	}
@@ -231,19 +232,19 @@ main(int argc, char **argv)
 	const QStringList raw = parser.positionalArguments();
 
 	// Without the working directory, relative arguments do not resolve to
-	// a local file, and every one of them silently opens the CWD instead.
+	// a local file, and every one of them is rejected as a foreign scheme.
 	const QString cwd = QDir::currentPath();
 
-	QStringList to_open;
+	QList<QUrl> to_open;
 	if (raw.isEmpty()) {
-		to_open.append(QUrl::fromUserInput(QStringLiteral("."),
-			cwd, QUrl::AssumeLocalFile).toString());
+		to_open.append(dn::url_normalized(QUrl::fromUserInput(
+			QStringLiteral("."), cwd, QUrl::AssumeLocalFile)));
 	} else {
 		for (const QString &arg : raw) {
 			auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
 			if (!url.isValid())
-				url = QUrl::fromLocalFile(QDir(cwd).absoluteFilePath(arg));
-			to_open.append(url.toString());
+				url = dn::path_to_url(QDir(cwd).absoluteFilePath(arg));
+			to_open.append(dn::url_normalized(url));
 		}
 	}
 
@@ -285,8 +286,8 @@ main(int argc, char **argv)
 #endif
 	if (!app.init())
 		return 1;
-	for (const QString &path : to_open) {
-		if (app.open(path, {}, {}, browse) != dn::OpenResult::Ok)
+	for (const QUrl &url : to_open) {
+		if (app.open(url, {}, {}, browse) != dn::OpenResult::Ok)
 			return 1;
 	}
 	// A bare launch opened the CWD above on a guess; see default_window().

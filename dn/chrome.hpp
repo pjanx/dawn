@@ -13,6 +13,8 @@
 #include "kit.hpp"
 #include "types.hpp"
 
+#include <QUrl>
+
 #include <functional>
 #include <memory>
 #include <span>
@@ -24,10 +26,10 @@ namespace dn
 struct HostActions {
 	std::function<void(Action)> apply;
 	std::function<bool(Action)> enabled;
-	std::function<void(std::string path)> activate;
-	std::function<void(std::string path)> new_window;
-	std::function<void(std::string path)> trash;
-	std::function<void(QString path)> launch_exiftool;
+	std::function<void(QUrl url)> activate;
+	std::function<void(QUrl url)> new_window;
+	std::function<void(QUrl url)> trash;
+	std::function<void(QUrl url)> launch_exiftool;
 };
 
 struct ToolbarSlot : Row {

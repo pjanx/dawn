@@ -471,15 +471,11 @@ viewer_keys()
 }
 
 void
-copy_files(QMimeData *mime, span<const QString> abs_paths, bool cut)
+copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 {
 	if (!mime)
 		return;
-	QList<QUrl> urls;
-	urls.reserve(int(abs_paths.size()));
-	for (const QString &path : abs_paths)
-		urls.append(QUrl::fromLocalFile(path));
-	mime->setUrls(urls);
+	mime->setUrls(QList<QUrl>(urls.begin(), urls.end()));
 #ifdef Q_OS_WIN
 	QByteArray effect;
 	QDataStream ds(&effect, QIODevice::WriteOnly);
@@ -504,10 +500,10 @@ copy_files(QMimeData *mime, span<const QString> abs_paths, bool cut)
 }
 
 void
-copy_files(span<const QString> abs_paths, bool cut)
+copy_files(span<const QUrl> urls, bool cut)
 {
 	auto *mime = new QMimeData;
-	copy_files(mime, abs_paths, cut);
+	copy_files(mime, urls, cut);
 	QGuiApplication::clipboard()->setMimeData(mime);
 }
 

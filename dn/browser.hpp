@@ -16,6 +16,7 @@
 #include <libdn.h>
 
 #include <QString>
+#include <QUrl>
 
 #include <cstdint>
 #include <memory>
@@ -84,7 +85,8 @@ struct Browser : Widget {
 	ScrollColumn *places_ = nullptr;
 	std::vector<PlaceItem> place_items_;
 
-	QString dir_path_;
+	// Enumeration below is std::filesystem; this is the identity above it.
+	QUrl dir_url_;
 	std::shared_ptr<Cmm> cmm_;
 	std::shared_ptr<Profile> screen_profile_;
 
@@ -117,7 +119,7 @@ struct Browser : Widget {
 	std::unordered_map<std::string, Thumbnailer::Priority> thumb_inflight_;
 
 	struct HistEntry {
-		QString path;
+		QUrl url;
 		float side_scroll = 0;
 	};
 	std::vector<HistEntry> hist_back_;
@@ -140,14 +142,15 @@ struct Browser : Widget {
 	void init();
 	void destroy();
 	void set_host(float width_pts, float height_pts, float dpr);
-	void open_dir(const QString &path, bool record = true);
+	void open_dir(const QUrl &url, bool record = true);
 	bool hist_back();
 	bool hist_forward();
 	void hist_clear_forward();
 	[[nodiscard]] bool hist_can_back() const;
 	[[nodiscard]] bool hist_can_forward() const;
-	void select_file(const std::string &path);
-	void file_gone(const std::string &path);
+	void select_file(const QUrl &url);
+	void file_gone(const QUrl &url);
+	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
 	void set_screen_profile(
 		std::shared_ptr<Cmm> cmm, std::shared_ptr<Profile> profile);

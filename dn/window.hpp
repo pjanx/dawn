@@ -15,6 +15,7 @@
 
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 #include <QWindow>
 
 #include <libdn.h>
@@ -54,14 +55,14 @@ class Window final : public QWindow
 	void toggle_fullscreen();
 	void toggle_dark();
 	void apply_window(Action a);
-	void open_viewer(const QString &path);
+	void open_viewer(const QUrl &url);
 	void sync_viewer_preloads();
 	void cancel_viewer_loads();
-	void launch_exiftool(const QString &path);
-	void trash_path(const QString &path);
+	void launch_exiftool(const QUrl &url);
+	void trash_url(const QUrl &url);
 	void show_viewer_error(const QString &message);
 	void show_help();
-	int viewer_file_index(const QString &path) const;
+	int viewer_file_index(const QUrl &url) const;
 	void open_sibling(int delta);
 	Page *active_ui();
 	const Page *active_ui() const;
@@ -130,10 +131,10 @@ public:
 	~Window() override;
 
 	bool initialize(
-		const QString &path, BrowseSetup setup = {}, bool browse = false);
+		const QUrl &url, BrowseSetup setup = {}, bool browse = false);
 	void shutdown();
-	void open_any(const QString &path, bool browse = false);
-	[[nodiscard]] QString current_path() const;
+	void open_any(const QUrl &url, bool browse = false);
+	[[nodiscard]] QUrl current_url() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }
 	[[nodiscard]] const Actor *active_actor() const;

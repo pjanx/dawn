@@ -11,6 +11,8 @@
 #include "kit.hpp"
 #include "types.hpp"
 
+#include <QUrl>
+
 #include <functional>
 #include <memory>
 #include <span>
@@ -86,13 +88,13 @@ struct MenuItem : Button {
 };
 
 struct ContextMenu : Menu {
-	std::function<void(const QString &path)> on_new_window;
-	std::function<void(const QString &path)> on_trash;
+	std::function<void(const QUrl &url)> on_new_window;
+	std::function<void(const QUrl &url)> on_trash;
 
-	void show(Kit &kit, const QString &path, Rect anchor, bool kbd);
+	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 
 private:
-	void fill_items(const QString &path);
+	void fill_items(const QUrl &url);
 };
 
 struct Modal : Popup {

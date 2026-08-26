@@ -9,6 +9,7 @@
 
 #include "action.hpp"
 #include "app.hpp"
+#include "url.hpp"
 #include "window.hpp"
 
 #include <QDir>
@@ -208,7 +209,7 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 		if (w->host().apply)
 			w->host().apply(a);
 	} else if (a == dn::Action::NewWindow && _app)
-		_app->open(QDir::currentPath());
+		_app->open(dn::path_to_url(QDir::currentPath()));
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item

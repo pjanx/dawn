@@ -8,6 +8,7 @@
 #include "app.hpp"
 
 #include "dawn-config.h"
+#include "url.hpp"
 #include "vk-device.hpp"
 #include "window.hpp"
 
@@ -96,24 +97,29 @@ OpenResult
 App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	bool browse)
 {
-	// XXX: Any good way of rejecting at this point?
-	const QString resolved = url.isLocalFile()
-		? url.toLocalFile()
-		: QDir::currentPath();
+	// Until there is a VFS, this is where anything but file:// stops.
+	const QString path = url_to_path(url);
+	if (path.isEmpty()) {
+		fprintf(stderr, "%s: unsupported location\n",
+			qUtf8Printable(url.toString(QUrl::PrettyDecoded)));
+		return OpenResult::InvalidArgument;
+	}
 
-	const QFileInfo info(resolved);
+	const QFileInfo info(path);
 	if (!info.exists()) {
-		fprintf(stderr, "%s: not found\n", qUtf8Printable(resolved));
+		fprintf(stderr, "%s: not found\n", qUtf8Printable(path));
 		return OpenResult::NotFound;
 	}
 	if (!info.isReadable()) {
-		fprintf(stderr, "%s: permission denied\n", qUtf8Printable(resolved));
+		fprintf(stderr, "%s: permission denied\n", qUtf8Printable(path));
 		return OpenResult::PermissionDenied;
 	}
 
+	// Windows compare and store this, so hand them a canonical form.
+	const QUrl resolved = QUrl::fromLocalFile(info.absoluteFilePath());
 	if (Window *target = this->default_window) {
 		this->default_window = nullptr;
-		if (target->current_path() == QDir::currentPath()) {
+		if (target->current_url() == path_to_url(QDir::currentPath())) {
 			target->open_any(resolved, browse);
 			apply_activation_token(activation_token);
 			return OpenResult::Ok;
