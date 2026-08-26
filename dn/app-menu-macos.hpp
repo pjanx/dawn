@@ -12,7 +12,7 @@ namespace dn
 
 class App;
 
-#if defined(__APPLE__)
+#ifdef __APPLE__
 void install_macos_app_menu(App *app);
 void sync_macos_app_menu(App *app);
 #else

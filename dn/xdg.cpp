@@ -119,6 +119,7 @@ read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 	QFile file(path);
 	if (!file.open(QIODevice::ReadOnly))
 		return false;
+
 	QString text = QString::fromUtf8(file.readAll());
 	text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
 	text.replace(u'\r', u'\n');

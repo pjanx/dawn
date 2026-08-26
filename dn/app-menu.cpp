@@ -458,6 +458,7 @@ Menu::sync()
 			auto *item = dynamic_cast<MenuItem *>(k.get());
 			if (!item || item->sub || item->action == Action::None)
 				continue;
+
 			const Action action = item->action;
 			item->enabled_ =
 				!this->actor.enabled || this->actor.enabled(action);

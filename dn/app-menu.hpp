@@ -72,6 +72,7 @@ struct Menu : Popup {
 
 struct MenuItem : Button {
 	QString accel;
+	// FIXME: This is an index into a label, it should at least be a unichar.
 	int mnemonic = -1;
 	Menu *sub = nullptr;
 	bool checked = false;

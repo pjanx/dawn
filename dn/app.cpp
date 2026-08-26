@@ -28,7 +28,7 @@
 
 #include <cstdio>
 
-#if defined(Q_OS_MACOS)
+#ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
 
 #include <dlfcn.h>
@@ -159,7 +159,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	window->show();
 	raise_window(window.get());
 	this->windows_.push_back(std::move(window));
-#if defined(Q_OS_MACOS)
+#ifdef Q_OS_MACOS
 	sync_macos_app_menu(this);
 #endif
 	return OpenResult::Ok;

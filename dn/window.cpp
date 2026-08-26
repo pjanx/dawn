@@ -928,6 +928,7 @@ Window::go_forward()
 bool
 Window::event(QEvent *event)
 {
+	// TODO(p): switch statement.
 	if (event->type() == QEvent::NativeGesture)
 		return handle_native_gesture((QNativeGestureEvent *) event);
 	if (event->type() == QEvent::TouchBegin ||

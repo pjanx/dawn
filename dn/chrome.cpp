@@ -708,7 +708,7 @@ constexpr float kSplitW = 8.0f;
 
 Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	unique_ptr<Widget> body)
-	: side(s)
+	: sidebar_side(s)
 {
 	auto title = make_unique<Titlebar>();
 	this->titlebar = title.get();
@@ -723,10 +723,10 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		split->hittable = true;
 		this->splitter = split.get();
 		this->splitter->on_drag = [this](float mx) {
-			if (!this->sidebar_open || this->side == Side::None)
+			if (!this->sidebar_open || this->sidebar_side == Side::None)
 				return;
 			const float max_side = max(kMinSide, this->frame_.w - kMinWell);
-			if (this->side == Side::Right)
+			if (this->sidebar_side == Side::Right)
 				this->sidebar_w = clamp(
 					this->frame_.x + this->frame_.w - mx, kMinSide, max_side);
 			else
@@ -754,7 +754,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->sidebar_open = this->sidebar->visible;
 	} else {
 		this->sidebar_open = false;
-		this->side = Side::None;
+		this->sidebar_side = Side::None;
 	}
 }
 
@@ -816,11 +816,11 @@ Page::arrange(Kit &kit, Rect alloc)
 	float side_w = 0.0f;
 	if (this->sidebar) {
 		this->sidebar->visible =
-			this->sidebar_open && this->side != Side::None && body_h > 0.0f;
+			this->sidebar_open && this->sidebar_side != Side::None && body_h > 0.0f;
 		if (this->sidebar->visible) {
 			side_w = max(0.0f, this->sidebar_w);
 			this->sidebar->min_w = side_w;
-			if (this->side == Side::Left)
+			if (this->sidebar_side == Side::Left)
 				this->sidebar->arrange(
 					kit, {this->frame_.x, body_y, side_w, body_h});
 			else
@@ -833,7 +833,7 @@ Page::arrange(Kit &kit, Rect alloc)
 	}
 	this->well_ = {this->frame_.x, body_y, this->frame_.w, body_h};
 	if (this->sidebar && this->sidebar->visible) {
-		if (this->side == Side::Left)
+		if (this->sidebar_side == Side::Left)
 			this->well_.x += side_w;
 		this->well_.w = max(0.0f, this->well_.w - side_w);
 	}
@@ -845,7 +845,7 @@ Page::arrange(Kit &kit, Rect alloc)
 		if (this->splitter->visible) {
 			const float sw =
 				this->splitter->min_w > 0.0f ? this->splitter->min_w : kSplitW;
-			float sx = this->side == Side::Right
+			float sx = this->sidebar_side == Side::Right
 				? this->well_.x + this->well_.w - sw * 0.5f
 				: this->well_.x - sw * 0.5f;
 			this->splitter->arrange(kit, {sx, body_y, sw, body_h});
@@ -952,7 +952,7 @@ Page::child_count() const
 Widget *
 Page::child(size_t i) const
 {
-	const bool right = this->side == Side::Right;
+	const bool right = this->sidebar_side == Side::Right;
 	switch (i) {
 	case 0:
 		return this->titlebar;

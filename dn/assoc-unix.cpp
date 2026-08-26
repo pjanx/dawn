@@ -30,6 +30,8 @@ namespace dn
 namespace
 {
 
+// FIXME: Duplicated in main.cpp.
+// It should actually be derived from the active QGuiApplication.
 constexpr auto kSelfDesktop = QLatin1String("dn.desktop");
 
 QString
@@ -38,6 +40,7 @@ read_text_file(const QString &path)
 	QFile file(path);
 	if (!file.open(QIODevice::ReadOnly))
 		return {};
+
 	QString text = QString::fromUtf8(file.readAll());
 	text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
 	text.replace(u'\r', u'\n');

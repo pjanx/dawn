@@ -370,6 +370,7 @@ accel_label(const Accel &a)
 {
 	if (!a.key)
 		return {};
+
 	QString s = QKeySequence(int(a.mods) | int(a.key))
 					.toString(QKeySequence::NativeText);
 	s.replace(QLatin1Char('-'), QChar(0x2212));
@@ -392,16 +393,19 @@ menu_label(const char *label)
 {
 	if (!label)
 		return {};
+
 	QString s = QString::fromUtf8(label);
 	s.remove(QLatin1Char('_'));
 	return s;
 }
 
+// TODO(p): Change to return a QChar
 int
 mnemonic_index(const char *label)
 {
 	if (!label)
 		return -1;
+
 	const QString s = QString::fromUtf8(label);
 	int i = 0;
 	for (int p = 0; p < s.size(); ++p) {
@@ -475,6 +479,7 @@ copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 {
 	if (!mime)
 		return;
+
 	mime->setUrls(QList<QUrl>(urls.begin(), urls.end()));
 #ifdef Q_OS_WIN
 	QByteArray effect;
@@ -486,7 +491,7 @@ copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 			"application/x-qt-windows-mime;value=\"Preferred DropEffect\""),
 		effect);
 #endif
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+#if defined Q_OS_UNIX && !defined Q_OS_MACOS
 	QByteArray gnome;
 	gnome += cut ? "cut" : "copy";
 	for (const QUrl &url : urls) {
@@ -512,9 +517,11 @@ move_to_trash(const QString &abs_path)
 {
 	if (abs_path.isEmpty() || !QFileInfo(abs_path).isFile())
 		return false;
+
 	QFile file(abs_path);
 	if (file.moveToTrash())
 		return true;
+
 	fprintf(stderr, "%s: %s\n", qUtf8Printable(abs_path),
 		qUtf8Printable(file.errorString()));
 	return false;

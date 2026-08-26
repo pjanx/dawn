@@ -127,7 +127,7 @@ struct Page : Composite {
 	std::span<const Action> keys = {};
 
 	enum class Side : uint8_t { None, Left, Right };
-	Side side = Side::None;
+	Side sidebar_side = Side::None;
 	float sidebar_w = 192;
 	bool sidebar_open = true;
 

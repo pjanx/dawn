@@ -40,8 +40,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.photography</string>
 
-	<!-- From Qt's own template.  Without NSHighResolutionCapable,
-	     the window gets a 1x backing store upscaled by the compositor. -->
+	<!-- From Qt's own template.  -->
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSHighResolutionCapable</key>
