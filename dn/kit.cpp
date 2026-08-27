@@ -462,9 +462,10 @@ rebuild_atlas(Kit &kit)
 	cache_ascii(kit, true);
 }
 
+// The mnemonic is an index into text, and gets underlined; -1 for none.
 static void
 emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
-	bool bold, float wrap_pts = 0.0f, bool center = false)
+	bool bold, int mnemonic, float wrap_pts = 0.0f, bool center = false)
 {
 	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
@@ -494,6 +495,22 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 				gx, gy, gx + gw, gy + gh, u0, v0, u1, v1, colour);
 		}
 	}
+	if (mnemonic < 0 || mnemonic >= text.size())
+		return;
+
+	const QTextLine line = layout.lineForTextPosition(mnemonic);
+	if (!line.isValid())
+		return;
+
+	// cursorToX() runs backwards within an RTL run.
+	const float cx0 = float(line.cursorToX(mnemonic));
+	const float cx1 = float(line.cursorToX(mnemonic + 1));
+	// Both font metrics grow downwards from the baseline, which is where
+	// the glyphs of this line sit as well.
+	const float uy =
+		y + float(line.y() + line.ascent() + raw.underlinePosition()) * inv;
+	kit.list_.add_line(x + min(cx0, cx1) * inv, uy, x + max(cx0, cx1) * inv, uy,
+		colour, float(raw.lineThickness()) * inv);
 }
 
 static void
@@ -708,7 +725,7 @@ Button::paint(Kit &kit) const
 		const float th = kit.text_height(this->text, 0.0f, false);
 		emit_text(kit, tx, this->r.y + (this->r.h - th) * 0.5f,
 			button_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
-			false);
+			false, -1);
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -826,7 +843,7 @@ Label::paint(Kit &kit) const
 	emit_text(kit, tx, ty, this->text,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.0f) * kit.ink_alpha()),
-		this->bold, wrap_w, wrap_center);
+		this->bold, -1, wrap_w, wrap_center);
 }
 
 void
@@ -1756,6 +1773,45 @@ hsep()
 	return make_unique<Sep>();
 }
 
+// Where an item's columns land, relative to its own left edge.
+struct MenuCols {
+	float label_x = 0.0f;
+	float accel_x = 0.0f;
+	float accel_w = 0.0f;
+	float chevron = 0.0f;
+	float avail = 0.0f;  // what the label gets before the accelerator
+};
+
+MenuCols
+menu_cols(const Kit &kit, const MenuItem &m)
+{
+	MenuCols c;
+	c.accel_w = m.accel_col > 0.0f ? m.accel_col : m.accel_width(kit);
+	c.chevron = m.sub ? kIconPx : 0.0f;
+	c.label_x = kFramePadX + kIconPx + kFramePadX;
+	c.accel_x = m.r.w - kFramePadX - c.chevron - c.accel_w;
+	c.avail = max(1.0f, c.accel_x - kFramePadX - c.label_x);
+	return c;
+}
+
+QString
+menu_shown(const Kit &kit, const MenuItem &m)
+{
+	if (m.text.isEmpty())
+		return m.text;
+	return kit.elide_lines(m.text, menu_cols(kit, m).avail, 1, false);
+}
+
+// Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
+int
+menu_mnemonic(const MenuItem &m, const QString &shown)
+{
+	if (m.mnemonic < 0 || m.mnemonic >= m.text.size() ||
+		m.mnemonic >= shown.size() || shown[m.mnemonic] != m.text[m.mnemonic])
+		return -1;
+	return m.mnemonic;
+}
+
 }  // namespace
 
 void
@@ -2073,13 +2129,10 @@ MenuItem::paint(Kit &kit) const
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
 
-	const float pad = kFramePadX;
-	const float aw =
-		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
-	const float chevron = this->sub ? kIconPx : 0.0f;
-	const float lead_x = this->r.x + pad;
-	const float label_x = lead_x + kIconPx + pad;
-	const float accel_x = this->r.x + this->r.w - pad - chevron - aw;
+	const MenuCols cols = menu_cols(kit, *this);
+	const float lead_x = this->r.x + kFramePadX;
+	const float label_x = this->r.x + cols.label_x;
+	const float accel_x = this->r.x + cols.accel_x;
 	const float th =
 		this->text.isEmpty() ? 0.0f : kit.text_height(this->text, 0.0f, false);
 	const float ty = this->r.y + (this->r.h - th) * 0.5f;
@@ -2090,29 +2143,20 @@ MenuItem::paint(Kit &kit) const
 	if (this->checkable && this->checked)
 		emit_icon(kit, lead_x, iy, kIconPx, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
-		const float avail = max(1.0f, accel_x - pad - label_x);
-		const QString shown = kit.elide_lines(this->text, avail, 1, false);
-		kit.emit_text(label_x, ty, shown, label_c, false);
-		if (this->mnemonic >= 0 && this->mnemonic < shown.size() &&
-			this->mnemonic < this->text.size() &&
-			shown[this->mnemonic] == this->text[this->mnemonic]) {
-			const QString left = shown.left(this->mnemonic);
-			const QString ch = shown.mid(this->mnemonic, 1);
-			const float x0 = label_x + kit.text_width(left, false);
-			const float x1 = x0 + kit.text_width(ch, false);
-			const float uy = kit.snap(ty + kit.text_ascent(false) + 1.0f);
-			kit.list_.add_line(x0, uy, x1, uy, label_c);
-		}
+		const QString shown = menu_shown(kit, *this);
+		emit_text(kit, label_x, ty, shown, label_c, false,
+			menu_mnemonic(*this, shown));
 	}
 	if (!this->accel.isEmpty()) {
 		const float tw = kit.text_width(this->accel, false);
 		const float ath = kit.text_height(this->accel, 0.0f, false);
-		kit.emit_text(accel_x + aw - tw, this->r.y + (this->r.h - ath) * 0.5f,
-			this->accel, col(kit.colours_[ColourInk], 0.5f), false);
+		emit_text(kit, accel_x + cols.accel_w - tw,
+			this->r.y + (this->r.h - ath) * 0.5f, this->accel,
+			col(kit.colours_[ColourInk], 0.5f), false, -1);
 	}
 	if (this->sub) {
-		emit_icon(kit, this->r.x + this->r.w - pad - chevron, iy, kIconPx,
-			"go-next-symbolic",
+		emit_icon(kit, this->r.x + this->r.w - kFramePadX - cols.chevron, iy,
+			kIconPx, "go-next-symbolic",
 			col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.375f));
 	}
 }
@@ -2126,16 +2170,9 @@ MenuItem::prepare(Kit &kit)
 		kit.pack_icon("object-select-symbolic", int(kIconPx * kit.dpr_));
 	if (this->text.isEmpty())
 		return;
-	const float pad = kFramePadX;
-	const float aw =
-		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
-	const float chev = this->sub ? kIconPx : 0.0f;
-	const float label_x = pad + kIconPx + pad;
-	const float accel_x = this->r.w - pad - chev - aw;
-	const float avail = max(1.0f, accel_x - pad - label_x);
-	kit.cache_text(kit.elide_lines(this->text, avail, 1, false), false);
+	cache_text(kit, menu_shown(kit, *this), false, 0.0f);
 	if (!this->accel.isEmpty())
-		kit.cache_text(this->accel, false);
+		cache_text(kit, this->accel, false, 0.0f);
 }
 
 bool
@@ -2760,7 +2797,7 @@ Kit::cache_text(const QString &text, bool bold)
 void
 Kit::emit_text(float x, float y, const QString &text, Colour colour, bool bold)
 {
-	::dn::emit_text(*this, x, y, text, colour, bold, 0.0f);
+	::dn::emit_text(*this, x, y, text, colour, bold, -1);
 }
 
 void
