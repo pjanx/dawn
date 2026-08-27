@@ -65,50 +65,42 @@ ContextMenu::fill_items(const QUrl &url)
 	const vector<Handler> rec = recommended_for(path);
 	const vector<Handler> fall = fallback_for(path);
 
-	auto add_app = [&](const Handler &app) {
-		if (app.id.isEmpty())
-			return;
-		auto &item = add_item(app.name.isEmpty() ? app.id : app.name);
-		item.mnemonic = -1;
-		item.on_click = [app, path](Kit &) {
-			launch(app, path);
-			set_last_used(app, path);
-		};
+	auto apps = make_unique<Menu>();
+	apps->min_w = this->min_w;
+	bool apps_sep = false;
+	auto add_apps = [&](span<const Handler> group) {
+		bool added = false;
+		for (const Handler &app : group) {
+			if (app.id.isEmpty())
+				continue;
+			if (apps_sep && !added)
+				apps->add_sep();
+			added = true;
+			auto &item = apps->add_item(app.name.isEmpty() ? app.id : app.name);
+			item.on_click = [app, path](Kit &) {
+				launch(app, path);
+				set_last_used(app, path);
+			};
+		}
+		if (added)
+			apps_sep = true;
 	};
 
-	bool need_sep = false;
-	auto flush_sep = [&] {
-		if (!need_sep)
-			return;
-		add_sep();
-		need_sep = false;
-	};
+	add_apps({&def, 1});
+	add_apps(rec);
+	add_apps(fall);
 
 	auto &new_win = add_item_with_mnemonic("Open in New _Window");
 	new_win.on_click = [this, url](Kit &) {
 		if (this->on_new_window)
 			this->on_new_window(url);
 	};
-	need_sep = true;
-	if (!def.id.isEmpty()) {
-		flush_sep();
-		add_app(def);
-		need_sep = true;
-	}
-	if (!rec.empty()) {
-		flush_sep();
-		for (const Handler &app : rec)
-			add_app(app);
-		need_sep = true;
-	}
-	if (!fall.empty()) {
-		flush_sep();
-		for (const Handler &app : fall)
-			add_app(app);
-		need_sep = true;
+	if (apps_sep) {
+		add_item_with_mnemonic("Open _With").sub = apps.get();
+		this->subs_.push_back(std::move(apps));
 	}
 	if (QFileInfo(path).isFile() && this->on_trash) {
-		flush_sep();
+		add_sep();
 		auto &trash = add_item_with_mnemonic("Move to _Trash");
 		trash.accel = action_accel(action_def(Action::Trash));
 		trash.on_click = [this, url](Kit &) {

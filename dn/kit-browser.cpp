@@ -2436,6 +2436,14 @@ Browser::focusable() const
 	return shown() && this->r.w > 0 && this->r.h > 0;
 }
 
+Qt::CursorShape
+Browser::cursor() const
+{
+	if (hit_file(*this, this->kit_.mouse_x_, this->kit_.mouse_y_) < 0)
+		return Qt::ArrowCursor;
+	return Qt::PointingHandCursor;
+}
+
 QString
 Browser::tip() const
 {

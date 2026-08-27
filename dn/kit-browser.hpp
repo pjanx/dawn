@@ -136,6 +136,7 @@ struct Browser : Widget {
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	[[nodiscard]] bool focusable() const override;
+	[[nodiscard]] Qt::CursorShape cursor() const override;
 	[[nodiscard]] QString tip() const override;
 	[[nodiscard]] Rect tip_anchor() const override { return {}; }
 

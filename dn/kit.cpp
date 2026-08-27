@@ -3709,8 +3709,18 @@ Kit::sync_cursor()
 	this->cursor_ = Qt::ArrowCursor;
 	if (dynamic_cast<Button *>(this->hot_))
 		return;
-	if (const Qt::Edges edges = resize_edges(this->mouse_x_, this->mouse_y_))
+	if (const Qt::Edges edges = resize_edges(this->mouse_x_, this->mouse_y_)) {
 		this->cursor_ = resize_cursor(edges);
+		return;
+	}
+	// A child that does not care lets its parent decide.
+	for (Widget *w = this->hot_; w; w = w->parent_) {
+		if (const Qt::CursorShape shape = w->cursor();
+			shape != Qt::ArrowCursor) {
+			this->cursor_ = shape;
+			return;
+		}
+	}
 }
 
 void

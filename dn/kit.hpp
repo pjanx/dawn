@@ -107,8 +107,9 @@ struct Widget {
 	virtual bool traps_focus() const { return false; }
 	virtual float min_width() const { return 0.0f; }
 	// A scrollbar is a hover effect rather than an event, so it must not
-	// depend on who ends up consuming the motion.
+	// depend on who ends up consuming the motion.  Neither must the cursor.
 	virtual Scroll *scrollbar() { return nullptr; }
+	virtual Qt::CursorShape cursor() const { return Qt::ArrowCursor; }
 	virtual QString tip() const { return {}; }
 	virtual QString tip_key() const { return {}; }
 	// Below this->r. Empty (w <= 0) means follow the pointer.
@@ -207,6 +208,7 @@ struct Splitter : Widget {
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	float min_width() const override { return this->min_w; }
+	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -397,7 +399,6 @@ struct Menu : MenuPopup {
 
 struct MenuItem : Button {
 	QString accel;
-	// FIXME: This is an index into a label, it should at least be a unichar.
 	int mnemonic = -1;
 	Menu *sub = nullptr;
 	bool checked = false;
