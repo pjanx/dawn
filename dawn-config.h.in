@@ -20,6 +20,7 @@
 #cmakedefine01 DAWN_WITH_LIBJXL
 #cmakedefine01 DAWN_WITH_OPENJPEG
 #cmakedefine01 DAWN_WITH_LIBTIFF
+#cmakedefine01 DAWN_WITH_GLYCIN
 #cmakedefine01 DAWN_WITH_GDKPIXBUF
 
 #cmakedefine01 DN_WITH_WAYLAND

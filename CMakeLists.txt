@@ -93,6 +93,7 @@ dawn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
 dawn_optional_pkg(LIBJXL "JPEG XL support" libjxl)
 dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
 dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
+dawn_optional_pkg(GLYCIN "glycin fallback" glycin-2)
 dawn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 

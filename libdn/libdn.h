@@ -232,6 +232,15 @@ public:
 	std::shared_ptr<Profile> get_profile_parametric(
 		double gamma, double whitepoint[2], double primaries[6]);
 
+	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
+	/// AVIF/HEIF nclx, and by glycin). Null for code points we do not model,
+	/// including PQ (16) and HLG (18): both are HDR curves with no ICC v2
+	/// parametric equivalent, and approximating them would shift tone badly.
+	/// `matrix_coefficients` and range are deliberately not taken -- they
+	/// describe a YCbCr encoding, already undone by the time we see RGB.
+	std::shared_ptr<Profile> get_profile_cicp(
+		uint8_t color_primaries, uint8_t transfer_characteristics);
+
 	/// CMYK8 (inverted) → working-format image (opaque premul).
 	void convert_cmyk8(
 		Image &dst, const uint8_t *cmyk, Profile *source, Profile *target);

@@ -979,6 +979,139 @@ Cmm::get_profile_sRGB_gamma(double gamma)
 	return get_profile_parametric(gamma, wp, prim);
 }
 
+namespace
+{
+
+/// H.273 Table 2 primaries as CIE 1931 xy, in R,G,B order, plus the
+/// illuminant. False for reserved, unspecified, or non-RGB code points.
+bool
+cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
+{
+	static const double kD65[2] = {0.3127, 0.3290};
+	const double *wp = kD65;
+	const double *p = nullptr;
+	switch (code) {
+	case 1: {  // BT.709 / sRGB
+		static const double v[6] = {
+			0.640, 0.330, 0.300, 0.600, 0.150, 0.060};
+		p = v;
+		break;
+	}
+	case 4: {  // BT.470 System M, illuminant C
+		static const double v[6] = {
+			0.670, 0.330, 0.210, 0.710, 0.140, 0.080};
+		static const double c[2] = {0.310, 0.316};
+		p = v;
+		wp = c;
+		break;
+	}
+	case 5: {  // BT.470 System B/G (EBU 3213)
+		static const double v[6] = {
+			0.640, 0.330, 0.290, 0.600, 0.150, 0.060};
+		p = v;
+		break;
+	}
+	case 6:    // BT.601 525 / SMPTE 170M
+	case 7: {  // SMPTE 240M, identical primaries
+		static const double v[6] = {
+			0.630, 0.340, 0.310, 0.595, 0.155, 0.070};
+		p = v;
+		break;
+	}
+	case 9: {  // BT.2020 / BT.2100
+		static const double v[6] = {
+			0.708, 0.292, 0.170, 0.797, 0.131, 0.046};
+		p = v;
+		break;
+	}
+	case 11: {  // SMPTE RP 431-2 (DCI-P3), DCI white
+		static const double v[6] = {
+			0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
+		static const double dci[2] = {0.314, 0.351};
+		p = v;
+		wp = dci;
+		break;
+	}
+	case 12: {  // SMPTE EG 432-1 (Display P3), D65 white
+		static const double v[6] = {
+			0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
+		p = v;
+		break;
+	}
+	default:
+		// 0/3 reserved, 2 unspecified, 10 is XYZ, 22 has no ICC analogue.
+		return false;
+	}
+	memcpy(primaries, p, sizeof(double) * 6);
+	memcpy(whitepoint, wp, sizeof(double) * 2);
+	return true;
+}
+
+/// Tone curve for an H.273 transfer characteristic; null when unrepresentable.
+cmsToneCurve *
+cicp_tone_curve(cmsContext context, uint8_t code)
+{
+	// lcms2 type 4 is "y = (aX+b)^g for X >= d, else cX", the shape shared
+	// by the BT.709/601/2020 and sRGB curves. Parameters are {g, a, b, c, d}.
+	switch (code) {
+	case 1:     // BT.709
+	case 6:     // BT.601
+	case 14:    // BT.2020 10-bit; the curve is the same, only depth differs
+	case 15: {  // BT.2020 12-bit
+		const cmsFloat64Number p[5] = {
+			1 / 0.45, 1 / 1.099, 0.099 / 1.099, 1 / 4.5, 4.5 * 0.018};
+		return cmsBuildParametricToneCurve(context, 4, p);
+	}
+	case 13: {  // sRGB (IEC 61966-2-1)
+		const cmsFloat64Number p[5] = {
+			2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045};
+		return cmsBuildParametricToneCurve(context, 4, p);
+	}
+	case 4:  // BT.470 System M
+		return cmsBuildGamma(context, 2.2);
+	case 5:  // BT.470 System B/G
+		return cmsBuildGamma(context, 2.8);
+	case 8:  // Linear
+		return cmsBuildGamma(context, 1.0);
+	default:
+		// Notably 16 (PQ) and 18 (HLG). Both are HDR curves defined against
+		// absolute or scene-referred luminance, with no ICC v2 parametric
+		// equivalent; substituting an SDR curve would silently and badly
+		// shift tone, so we decline and let the caller assume sRGB.
+		return nullptr;
+	}
+}
+
+}  // namespace
+
+shared_ptr<Profile>
+Cmm::get_profile_cicp(
+	uint8_t color_primaries, uint8_t transfer_characteristics)
+{
+	double primaries[6] = {}, whitepoint[2] = {};
+	if (!cicp_primaries(color_primaries, primaries, whitepoint))
+		return nullptr;
+
+	cmsToneCurve *curve =
+		cicp_tone_curve(cmsContext(context_), transfer_characteristics);
+	if (!curve)
+		return nullptr;
+
+	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
+	const cmsCIExyYTRIPLE prim{
+		{primaries[0], primaries[1], 1.0},
+		{primaries[2], primaries[3], 1.0},
+		{primaries[4], primaries[5], 1.0},
+	};
+	cmsToneCurve *curves[3] = {curve, curve, curve};
+	cmsHPROFILE p =
+		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, curves);
+	cmsFreeToneCurve(curve);
+	if (!p)
+		return nullptr;
+	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
+}
+
 bool
 Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 	Profile *source, Profile *target, bool source_premul, bool target_premul)
@@ -1457,6 +1590,14 @@ supported_media_types()
 #if DAWN_WITH_LIBTIFF
 	types.push_back("image/tiff");
 #endif
+#if DAWN_WITH_GLYCIN
+	// Same treatment as gdk-pixbuf below: glycin's set depends on which
+	// loaders are configured on the target.
+	for (const string &type : detail::glycin_media_types()) {
+		if (find(types.begin(), types.end(), type) == types.end())
+			types.push_back(type);
+	}
+#endif
 #if DAWN_WITH_GDKPIXBUF
 	// gdk-pixbuf loaders vary by installation; skip duplicates, keeping the
 	// first occurrence so that our own types win.
@@ -1543,6 +1684,9 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 #endif
 #if DAWN_WITH_LIBTIFF
 	try_next(detail::load_tiff);
+#endif
+#if DAWN_WITH_GLYCIN
+	try_next(detail::load_glycin);
 #endif
 #if DAWN_WITH_GDKPIXBUF
 	try_next(detail::load_gdkpixbuf);

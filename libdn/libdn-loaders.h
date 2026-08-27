@@ -63,12 +63,16 @@ ImagePtr load_openjpeg(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 ImagePtr load_tiff(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
+ImagePtr load_glycin(
+	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 ImagePtr load_gdkpixbuf(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
-/// MIME types provided by the installed gdk-pixbuf loaders; empty when
-/// gdk-pixbuf support is not built.
+/// MIME types provided by the installed gdk-pixbuf loaders (if built).
 std::vector<std::string> gdkpixbuf_media_types();
+
+/// MIME types glycin can load, per its installed loader config (if built).
+std::vector<std::string> glycin_media_types();
 
 /// SOF width×height product for picking among embedded JPEG previews; 0 if
 /// no SOF is found. Does not validate the rest of the bitstream.

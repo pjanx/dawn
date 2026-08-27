@@ -131,6 +131,30 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 			result->icc = std::move(icc);
 	}
 
+	// AVIF/HEIF more often carry coded values in an nclx `colr` box than a
+	// full ICC profile, and without this a BT.2020 image would be treated as
+	// sRGB--an error of dozens of dE on saturated colours.  ICC wins where
+	// both are present, so this only fills the gap.  Note that an image can
+	// hold both, which is why nclx is queried directly rather than through
+	// heif_image_handle_get_color_profile_type(), which reports only one.
+	heif_color_profile_nclx *nclx = nullptr;
+	if (result->icc.empty() &&
+		!heif_image_handle_get_nclx_color_profile(handle, &nclx).code &&
+		nclx) {
+		// The enums are numerically H.273, so they pass through as-is.
+		auto profile = cmm_or_default(ctx)->get_profile_cicp(
+			uint8_t(nclx->color_primaries),
+			uint8_t(nclx->transfer_characteristics));
+		if (profile)
+			result->icc = profile->to_bytes();
+		else
+			// Chiefly PQ and HLG, which have no ICC v2 equivalent; those
+			// images stay as wrong as they were before, just not more so.
+			add_warning(ctx, "unrepresentable nclx colour space, assuming sRGB");
+	}
+	if (nclx)
+		heif_nclx_color_profile_free(nclx);
+
 	heif_image_release(image);
 
 	// Bring the page to final working premul: colour-manage against any

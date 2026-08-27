@@ -15,7 +15,7 @@ apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
 .Optional dependencies
 ```sh
 apt install librsvg2-dev libxcursor-dev libheif-dev libtiff-dev libraw-dev \
-  libjxl-dev libopenjp2-7-dev libgdk-pixbuf-2.0-dev
+  libjxl-dev libopenjp2-7-dev libgdk-pixbuf-2.0-dev # libglycin-2-dev
 ```
 
 .libresvg-dev is required but not often packaged, thus you may need to build it
