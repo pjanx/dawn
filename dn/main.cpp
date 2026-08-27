@@ -180,11 +180,11 @@ main(int argc, char **argv)
 		QStringLiteral("Output supported filename globs and exit."));
 	parser.addOption(list_extensions_opt);
 
-	parser.addPositionalArgument(QStringLiteral("path | URI"),
+	parser.addPositionalArgument(QStringLiteral("path | URL"),
 		QStringLiteral(
 			"Image file or directory. Repeat to open multiple windows. "
 			"Defaults to the current directory."),
-		QStringLiteral("[path | URI]..."));
+		QStringLiteral("[path | URL]..."));
 
 	{
 		// xdg_data_dirs() invokes the static QCoreApplication::instance().

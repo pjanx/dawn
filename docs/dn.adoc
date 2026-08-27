@@ -10,12 +10,12 @@ dn - Image browser and viewer
 
 Synopsis
 --------
-*dn* [_OPTION_]... [_PATH_ | _URI_]...
+*dn* [_OPTION_]... [_PATH_ | _URL_]...
 
 Description
 -----------
 *dn* is a general-purpose image browser and viewer: pass it a directory path
-or URI to open it for browsing, or pass an image to open it for viewing.
+or URL to open it for browsing, or pass an image to open it for viewing.
 In case that multiple arguments are passed, they'll be opened in
 separate windows.
 
