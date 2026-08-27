@@ -334,6 +334,9 @@ struct Popup : Panel {
 	void place_sub(Kit &kit);
 	bool traps_focus() const override { return true; }
 	virtual bool captures_keys() const { return false; }
+	// Focus loss dismisses transient popups; a dialog waits for Escape
+	// or its Close button.
+	virtual bool transient() const { return true; }
 	void paint(Kit &kit) const override;
 	bool key(Kit &kit, int key, unsigned mods) override;
 };
@@ -351,6 +354,7 @@ struct Dialog : Popup {
 	void paint(Kit &kit) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
+	bool transient() const override { return false; }
 };
 
 struct MenuItem;
@@ -548,6 +552,7 @@ struct Kit {
 	void sync_focus();
 	void open_popup(Popup *p);
 	void close_popups();
+	void close_transient_popups();
 	void close_above(const Popup *p);
 	void relayout_popups();
 	void prepare_popups();

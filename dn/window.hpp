@@ -48,6 +48,8 @@ class Window final : public QWindow
 	void arm_ui_wake();
 	void render();
 	void handle_screen_change(QScreen *target_screen);
+	void focus_gained();
+	void focus_lost();
 	void begin_close();
 	void show_browser(bool select);
 	void go_back();

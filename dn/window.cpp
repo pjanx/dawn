@@ -972,16 +972,11 @@ Window::event(QEvent *event)
 	}
 	case QEvent::FocusIn:
 	case QEvent::WindowActivate:
-		sync_macos_app_menu(this->app_);
-		request_render();
+		focus_gained();
 		break;
 	case QEvent::FocusOut:
 	case QEvent::WindowDeactivate:
-		this->alt_armed_ = false;
-		// FIXME: This will close dialogs.  Why are dialogs popups again?
-		if (this->kit_.popup_open())
-			this->kit_.close_popups();
-		request_render();
+		focus_lost();
 		break;
 	case QEvent::DragEnter:
 	case QEvent::DragMove: {
@@ -1011,6 +1006,23 @@ Window::event(QEvent *event)
 	return QWindow::event(event);
 }
 
+// Wayland gives keyboard focus to the shell, not to the Vulkan child, so this
+// arrives through the event filter there, and through event() elsewhere.
+void
+Window::focus_gained()
+{
+	sync_macos_app_menu(this->app_);
+	request_render();
+}
+
+void
+Window::focus_lost()
+{
+	this->alt_armed_ = false;
+	this->kit_.close_transient_popups();
+	request_render();
+}
+
 bool
 Window::eventFilter(QObject *watched, QEvent *event)
 {
@@ -1027,14 +1039,12 @@ Window::eventFilter(QObject *watched, QEvent *event)
 	}
 	if (watched != this &&
 		(event->type() == QEvent::FocusIn ||
-			event->type() == QEvent::WindowActivate)) {
-		sync_macos_app_menu(this->app_);
-		request_render();
-	}
+			event->type() == QEvent::WindowActivate))
+		focus_gained();
 	if (watched != this &&
 		(event->type() == QEvent::FocusOut ||
 			event->type() == QEvent::WindowDeactivate))
-		request_render();
+		focus_lost();
 	if (event->type() != QEvent::MouseMove)
 		return false;
 	auto *mouse = (QMouseEvent *) event;

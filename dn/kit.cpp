@@ -3552,6 +3552,20 @@ Kit::close_popups()
 	sync_focus();
 }
 
+// Dialogs sit at the bottom of the stack, so this normally closes everything
+// or nothing; a menu opened over one through open_sub() would go, and it stay.
+void
+Kit::close_transient_popups()
+{
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+		if (*it && !(*it)->transient()) {
+			close_above(*it);
+			return;
+		}
+	}
+	close_popups();
+}
+
 void
 Kit::close_above(const Popup *p)
 {
