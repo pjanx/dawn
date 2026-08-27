@@ -146,7 +146,8 @@ struct Image {
 	/// Source profile actually used (or assumed sRGB). `icc` stays the file
 	/// blob. Null for CMYK with no profile.
 	std::shared_ptr<Profile> effective_profile;
-	/// True only when `effective_profile` is invented sRGB (no ICC / Exif / gAMA).
+	/// True only when `effective_profile` is invented sRGB
+	/// (no ICC / Exif / gAMA).
 	bool profile_assumed = false;
 
 	std::unique_ptr<RenderClosure> render;
@@ -167,16 +168,19 @@ row_bytes(Image &img, uint32_t y)
 {
 	return img.data.data() + size_t(y) * img.stride;
 }
+
 inline const uint8_t *
 row_bytes(const Image &img, uint32_t y)
 {
 	return img.data.data() + size_t(y) * img.stride;
 }
+
 inline uint16_t *
 row_u16(Image &img, uint32_t y)
 {
 	return (uint16_t *) row_bytes(img, y);
 }
+
 inline const uint16_t *
 row_u16(const Image &img, uint32_t y)
 {

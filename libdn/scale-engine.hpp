@@ -47,6 +47,9 @@ struct ScaleView {
 
 /// Shared H→V tile scale engine. Does not own VkInstance/VkDevice/VkQueue.
 class ScaleEngine {
+	struct Impl;
+	Impl *impl_ = nullptr;
+
 public:
 	ScaleEngine();
 	~ScaleEngine();
@@ -57,12 +60,12 @@ public:
 	/// `dest_final_layout` is `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` for swapchain
 	/// targets, or `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` for offscreen readback.
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-		  uint32_t queue_family, VkFormat dest_format,
-		  VkImageLayout dest_final_layout, std::string *error = nullptr);
+		uint32_t queue_family, VkFormat dest_format,
+		VkImageLayout dest_final_layout, std::string *error = nullptr);
 	void destroy();
 
 	bool set_image(uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride,
-		       std::string *error = nullptr);
+		std::string *error = nullptr);
 	void clear_image();
 
 	[[nodiscard]] uint32_t image_width() const;
@@ -75,25 +78,21 @@ public:
 		uint32_t bottom);
 
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
-		    uint32_t viewport_h, const ScaleView &view,
-		    const float clear_rgba[4], std::string *error = nullptr);
+		uint32_t viewport_h, const ScaleView &view, const float clear_rgba[4],
+		std::string *error = nullptr);
 	/// Dest-pass CLEAR only (no H/V). For presenting the well with no pixmap.
 	bool record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
-			  uint32_t viewport_w, uint32_t viewport_h,
-			  const float clear_rgba[4], std::string *error = nullptr);
+		uint32_t viewport_w, uint32_t viewport_h, const float clear_rgba[4],
+		std::string *error = nullptr);
 
-	bool create_offscreen(uint32_t w, uint32_t h, VkImage *image, VkDeviceMemory *mem,
-			      VkImageView *view, VkFramebuffer *fb,
-			      std::string *error = nullptr);
-	void destroy_offscreen(VkImage *image, VkDeviceMemory *mem, VkImageView *view,
-			       VkFramebuffer *fb);
+	bool create_offscreen(uint32_t w, uint32_t h, VkImage *image,
+		VkDeviceMemory *mem, VkImageView *view, VkFramebuffer *fb,
+		std::string *error = nullptr);
+	void destroy_offscreen(VkImage *image, VkDeviceMemory *mem,
+		VkImageView *view, VkFramebuffer *fb);
 
 	[[nodiscard]] VkRenderPass dest_render_pass() const;
 	[[nodiscard]] VkFormat dest_format() const;
-
-private:
-	struct Impl;
-	Impl *impl_ = nullptr;
 };
 
 } // namespace dn

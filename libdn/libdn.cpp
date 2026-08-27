@@ -54,8 +54,9 @@ detail::StageClock::StageClock(double OpenTiming::*field)
 detail::StageClock::~StageClock()
 {
 	if (acc) {
-		*acc += chrono::duration<double, milli>(chrono::steady_clock::now() - t0)
-			.count();
+		*acc +=
+			chrono::duration<double, milli>(chrono::steady_clock::now() - t0)
+				.count();
 	}
 }
 

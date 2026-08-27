@@ -24,6 +24,9 @@ namespace dn
 /// thread in flush()/poll().
 class ThumbScaler
 {
+	struct Impl;
+	Impl *impl_ = nullptr;
+
 public:
 	enum class Priority : uint8_t {
 		Interactive,
@@ -70,10 +73,6 @@ public:
 	void destroy();
 
 	[[nodiscard]] bool busy() const;
-
-private:
-	struct Impl;
-	Impl *impl_ = nullptr;
 };
 
 }  // namespace dn

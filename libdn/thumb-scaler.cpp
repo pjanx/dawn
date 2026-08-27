@@ -44,11 +44,13 @@ align_up(uint64_t v, uint64_t a)
 {
 	return a ? (v + a - 1) / a * a : v;
 }
+
 uint32_t
 ceil_div(uint32_t a, uint32_t b)
 {
 	return b ? (a + b - 1) / b : 0;
 }
+
 uint32_t
 reduced_dim(uint32_t n, uint32_t k)
 {
@@ -437,6 +439,7 @@ ThumbScaler::Impl::make_pipeline(
 	VkShaderModule shader = make_shader(device, code, words, error);
 	if (!shader)
 		return false;
+
 	VkPipelineShaderStageCreateInfo stage{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_COMPUTE_BIT,
@@ -627,6 +630,7 @@ ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
 	if (!check_vk(vkAllocateDescriptorSets(device, &ai, &set),
 			"vkAllocateDescriptorSets thumbs", error))
 		return VK_NULL_HANDLE;
+
 	VkDescriptorBufferInfo info[2] = {
 		{in.handle, in_off, in_size}, {out.handle, out_off, out_size}};
 	VkWriteDescriptorSet writes[2]{};
@@ -686,6 +690,7 @@ ThumbScaler::Impl::record_reduce(
 			b, *input, input_off, input_bytes, *output, 0, output_bytes, error);
 		if (!set)
 			return false;
+
 		ReducePush push{sw, sh, dw, dh, sw, last ? s.reduced_w : dw,
 			last ? item.req.tile_ox >> s.info.k : 0,
 			last ? item.req.tile_oy >> s.info.k : 0, uint32_t(s.info.transfer),
@@ -727,6 +732,7 @@ ThumbScaler::Impl::record_h(Batch &b, Item &item, string *error)
 		item.mid_off, mid_bytes, error);
 	if (!set)
 		return false;
+
 	ScalePush push{item.req.src_w, item.req.src_h, item.req.out_w,
 		item.req.out_h, item.req.src_w, item.req.out_w,
 		uint32_t(orientation_or_0(item.req.orientation)),
@@ -748,6 +754,7 @@ ThumbScaler::Impl::record_v(Batch &b, Item &item, string *error)
 		b.output, item.output_off, out_bytes, error);
 	if (!set)
 		return false;
+
 	ScalePush push{item.req.src_w, item.req.src_h, item.req.out_w,
 		item.req.out_h, item.req.out_w, item.req.out_w,
 		uint32_t(orientation_or_0(item.req.orientation)),
@@ -836,6 +843,7 @@ ThumbScaler::Impl::build_batch(
 		}
 		if (!ensure_reduced(*s, error))
 			continue;
+
 		Item item;
 		item.kind = Item::Kind::Fit;
 		item.session = id;
@@ -1169,6 +1177,7 @@ ThumbScaler::Impl::begin_session(const SessionInfo &info, uint32_t *id)
 	if (!ready || !id || !info.src_w || !info.src_h || !info.out_w ||
 		!info.out_h || !info.tile_count)
 		return false;
+
 	auto s = make_unique<Session>();
 	s->info = info;
 	s->reduced_w = reduced_dim(info.src_w, info.k);
@@ -1206,9 +1215,11 @@ ThumbScaler::Impl::queue_full(const Job &job)
 	uint64_t row_bytes = 0, bytes = 0;
 	if (!job_size(job, &row_bytes, &bytes))
 		return false;
+
 	Slot slot;
 	if (!claim(size_t(bytes), job.user, job.priority, &slot))
 		return false;
+
 	bool opaque = true;
 	auto *dst = static_cast<uint8_t *>(slot.mapped);
 	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels);
@@ -1226,6 +1237,7 @@ ThumbScaler::Impl::queue_full(const Job &job)
 		}
 		dst += row_bytes;
 	}
+
 	Request req;
 	req.slot = slot.id;
 	req.src_w = job.src_w;

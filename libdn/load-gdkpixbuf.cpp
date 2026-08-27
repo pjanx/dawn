@@ -6,14 +6,8 @@
 //
 
 // This is the last-resort loader: gdk-pixbuf has a wide range of loadable
-// formats via its module system, of varying quality and trustworthiness, so
-// it only gets a chance after everything more specific has already failed.
-//
-// Unlike fiv, which paints the resulting GdkPixbuf onto a Cairo surface,
-// this reads the raw pixel data directly--gdk-pixbuf's own in-memory layout
-// is already documented and stable, and this way GTK/Cairo need not be
-// a dependency of this library at all.
-//
+// formats via its module system, of varying quality and trustworthiness,
+// so it only gets a chance after everything more specific has already failed.
 
 #include <dawn-config.h>
 
