@@ -146,7 +146,7 @@ find_section(span<const dn::MenuNode> tree, NSString *title)
 {
 	const QString want = QString::fromNSString(title);
 	for (const dn::MenuNode &n : tree) {
-		if (dn::menu_label(n.title) == want)
+		if (dn::menu_label(n.title, nullptr) == want)
 			return &n;
 	}
 	return nullptr;
@@ -256,7 +256,8 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 		const dn::ActionDef &def = dn::action_def(n.action);
 		const bool checked =
 			actor && actor->checked && actor->checked(n.action);
-		const QString title = dn::menu_label(dn::action_label(def, checked));
+		const QString title =
+			dn::menu_label(dn::action_label(def, checked), nullptr);
 		NSString *key = @"";
 		NSEventModifierFlags mods = 0;
 		if (!(def.accel && def.keys[0].key == 0))
@@ -359,7 +360,7 @@ install_macos_app_menu(App *app)
 	vector<QString> titles;
 	auto consider = [&](span<const MenuNode> tree) {
 		for (const MenuNode &n : tree) {
-			const QString t = menu_label(n.title);
+			const QString t = menu_label(n.title, nullptr);
 			if (t.isEmpty())
 				continue;
 			bool seen = false;
