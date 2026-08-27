@@ -197,7 +197,7 @@ Connection::read()
 	if (m.reader.ready())
 		return Status::Frame;
 
-	for (;;) {
+	while (true) {
 		const span<byte> buf = m.reader.buffer();
 		const ssize_t n = ::read(m.fd, buf.data(), buf.size());
 		if (n < 0) {
@@ -250,6 +250,7 @@ Connection::flush()
 	Impl &m = *impl_;
 	if (!m.ok)
 		return false;
+
 	while (!m.writer.empty()) {
 		const span<const byte> p = m.writer.pending();
 		const ssize_t n = ::write(m.fd, p.data(), p.size());
@@ -278,7 +279,7 @@ Connection::wait(Direction dir, int timeout_ms)
 		return Ready::Fail;
 
 	const short events = dir == Direction::Write ? POLLOUT : POLLIN;
-	for (;;) {
+	while (true) {
 		pollfd pfd{};
 		pfd.fd = m.fd;
 		pfd.events = events;
@@ -351,7 +352,7 @@ Listener::accept()
 	if (impl_->fd < 0)
 		return {};
 
-	for (;;) {
+	while (true) {
 		const int fd = ::accept(impl_->fd, nullptr, nullptr);
 		if (fd < 0) {
 			if (errno == EINTR)
@@ -386,7 +387,7 @@ Endpoint::listen(string_view service)
 	if (fd < 0)
 		return out;
 
-	for (;;) {
+	while (true) {
 		if (::bind(fd, (sockaddr *) &addr, len) == 0)
 			break;
 		if (errno == EINTR)
@@ -398,7 +399,7 @@ Endpoint::listen(string_view service)
 		return out;
 	}
 
-	for (;;) {
+	while (true) {
 		if (::listen(fd, SOMAXCONN) == 0)
 			break;
 		if (errno == EINTR)
@@ -425,7 +426,7 @@ Endpoint::connect(string_view service)
 	if (fd < 0)
 		return out;
 
-	for (;;) {
+	while (true) {
 		if (::connect(fd, (sockaddr *) &addr, len) == 0)
 			break;
 		if (errno == EINTR)

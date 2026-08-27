@@ -749,9 +749,11 @@ xf_xy(cmsHTRANSFORM xf, const void *pix, double *x, double *y)
 	cmsDoTransform(xf, pix, &pcs, 1);
 	if (pcs.X + pcs.Y + pcs.Z <= 0.0)
 		return false;
+
 	cmsCIEXYZ illum{};
 	if (!cmsAdaptToIlluminant(&illum, cmsD50_XYZ(), &kD65Xyz, &pcs))
 		illum = pcs;
+
 	xyz_to_xy(illum, x, y);
 	return true;
 }
@@ -765,33 +767,36 @@ profile_chromaticities(const Profile *profile)
 	if (!profile || !profile->profile_ || !profile->cmm_ ||
 		!profile->cmm_->context())
 		return c;
+
 	cmsHPROFILE h = cmsHPROFILE(profile->profile_);
 	cmsContext ctx = cmsContext(profile->cmm_->context());
-	const cmsColorSpaceSignature cs = cmsGetColorSpace(h);
-
-	if (cs == cmsSigGrayData) {
+	switch (cmsGetColorSpace(h)) {
+	case cmsSigGrayData: {
 		c.model = ColorModel::Gray;
 		cmsHTRANSFORM xf = xyz_xf(ctx, h, TYPE_GRAY_8);
 		if (!xf)
 			return c;
+
 		const uint8_t white = 255;
 		c.have_white = xf_xy(xf, &white, &c.wx, &c.wy);
 		cmsDeleteTransform(xf);
-		return c;
+		break;
 	}
-	if (cs == cmsSigCmykData || cs == cmsSigCmyData) {
+	case cmsSigCmykData:
+	case cmsSigCmyData: {
 		c.model = ColorModel::Cmyk;
 		cmsHTRANSFORM xf = xyz_xf(ctx, h, TYPE_CMYK_8);
 		if (!xf)
 			return c;
+
 		// Winding: R Y G C B M
 		const uint8_t corners[6][4] = {
-			{0, 255, 255, 0},
-			{0, 0, 255, 0},
-			{255, 0, 255, 0},
-			{255, 0, 0, 0},
-			{255, 255, 0, 0},
-			{0, 255, 0, 0},
+			{0x00, 0xff, 0xff, 0x00},
+			{0x00, 0x00, 0xff, 0x00},
+			{0xff, 0x00, 0xff, 0x00},
+			{0xff, 0x00, 0x00, 0x00},
+			{0xff, 0xff, 0x00, 0x00},
+			{0x00, 0xff, 0x00, 0x00},
 		};
 		const uint8_t paper[4] = {0, 0, 0, 0};
 		c.have_white = xf_xy(xf, paper, &c.wx, &c.wy);
@@ -804,30 +809,35 @@ profile_chromaticities(const Profile *profile)
 		cmsDeleteTransform(xf);
 		c.n = 6;
 		c.have_primaries = true;
-		return c;
+		break;
 	}
-	if (cs != cmsSigRgbData)
-		return c;
-	c.model = ColorModel::Rgb;
-	cmsHTRANSFORM xf = xyz_xf(ctx, h, TYPE_RGB_8);
-	if (!xf)
-		return c;
-	const uint8_t corners[3][3] = {
-		{255, 0, 0},
-		{0, 255, 0},
-		{0, 0, 255},
-	};
-	const uint8_t white[3] = {255, 255, 255};
-	c.have_white = xf_xy(xf, white, &c.wx, &c.wy);
-	for (int i = 0; i < 3; ++i) {
-		if (!xf_xy(xf, corners[i], &c.x[i], &c.y[i])) {
-			cmsDeleteTransform(xf);
+	case cmsSigRgbData: {
+		c.model = ColorModel::Rgb;
+		cmsHTRANSFORM xf = xyz_xf(ctx, h, TYPE_RGB_8);
+		if (!xf)
 			return c;
+
+		const uint8_t corners[3][3] = {
+			{0xff, 0x00, 0x00},
+			{0x00, 0xff, 0x00},
+			{0x00, 0x00, 0xff},
+		};
+		const uint8_t white[3] = {255, 255, 255};
+		c.have_white = xf_xy(xf, white, &c.wx, &c.wy);
+		for (int i = 0; i < 3; ++i) {
+			if (!xf_xy(xf, corners[i], &c.x[i], &c.y[i])) {
+				cmsDeleteTransform(xf);
+				return c;
+			}
 		}
+		cmsDeleteTransform(xf);
+		c.n = 3;
+		c.have_primaries = true;
+		break;
 	}
-	cmsDeleteTransform(xf);
-	c.n = 3;
-	c.have_primaries = true;
+	default:
+		break;
+	}
 	return c;
 }
 
@@ -860,8 +870,8 @@ Cmm::Cmm()
 		broken_premul_ = LCMS_VERSION <= 2160;
 #endif
 #if DAWN_WITH_LCMS2_THREADED
-	// After fast_float: the parallelization plugin wraps whatever xform the
-	// transform factory installed.
+	// After fast_float: the parallelization plugin wraps whatever xform
+	// the transform factory installed.
 	(void) cmsPluginTHR(cmsContext(context_),
 		cmsThreadedExtensions(CMS_THREADED_GUESS_MAX_THREADS, 0));
 #endif
@@ -1447,89 +1457,18 @@ supported_media_types()
 #if DAWN_WITH_LIBTIFF
 	types.push_back("image/tiff");
 #endif
-
+#if DAWN_WITH_GDKPIXBUF
 	// gdk-pixbuf loaders vary by installation; skip duplicates, keeping the
 	// first occurrence so that our own types win.
 	for (const string &type : detail::gdkpixbuf_media_types()) {
 		if (find(types.begin(), types.end(), type) == types.end())
 			types.push_back(type);
 	}
+#endif
 	return types;
 }
 
 // --- Open --------------------------------------------------------------------
-
-// FIXME: Repeating these preprocessor defines is just stupid.
-#if !DAWN_WITH_LIBRAW
-ImagePtr
-detail::load_libraw(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "LibRaw support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_LIBRSVG
-ImagePtr
-detail::load_librsvg(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "librsvg support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_XCURSOR
-ImagePtr
-detail::load_xcursor(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "Xcursor support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_LIBHEIF
-ImagePtr
-detail::load_heif(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "libheif support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_LIBJXL
-ImagePtr
-detail::load_jxl(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "libjxl support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_OPENJPEG
-ImagePtr
-detail::load_openjpeg(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "OpenJPEG support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_LIBTIFF
-ImagePtr
-detail::load_tiff(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "libtiff support not built");
-	return nullptr;
-}
-#endif
-#if !DAWN_WITH_GDKPIXBUF
-ImagePtr
-detail::load_gdkpixbuf(span<const uint8_t>, const OpenContext &, Error *error)
-{
-	set_error(error, "gdk-pixbuf support not built");
-	return nullptr;
-}
-
-vector<string>
-detail::gdkpixbuf_media_types()
-{
-	return {};
-}
-#endif
 
 static ImagePtr
 try_loader(ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *),
@@ -1575,6 +1514,8 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				image = try_loader(fn, data, ctx, error);
 		};
 
+	// Try to extract full-size previews from TIFF/EP-compatible raws,
+	// but allow for running the full render.
 #if DAWN_WITH_LIBRAW
 	if (!ctx.enhance)
 #endif

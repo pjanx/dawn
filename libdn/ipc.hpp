@@ -19,6 +19,11 @@ namespace dn {
 namespace ipc {
 
 class Encoder {
+	std::vector<std::byte> &buf_;
+	bool ok_ = true;
+
+	void put_be(uint64_t v, size_t width);
+
 public:
 	explicit Encoder(std::vector<std::byte> &buf);
 	void i8(int8_t);
@@ -34,12 +39,6 @@ public:
 	void bytes(std::span<const std::byte>);
 	void i8s(std::span<const int8_t>);
 	[[nodiscard]] bool ok() const { return ok_; }
-
-private:
-	std::vector<std::byte> &buf_;
-	bool ok_ = true;
-
-	void put_be(uint64_t v, size_t width);
 };
 
 enum class DecodeError : uint8_t {
@@ -50,6 +49,14 @@ enum class DecodeError : uint8_t {
 };
 
 class Decoder {
+	std::span<const std::byte> in_;
+	size_t off_ = 0;
+	DecodeError error_ = DecodeError::Ok;
+
+	bool fail(DecodeError e);
+	bool take_be(uint64_t &v, size_t width);
+	bool take_raw(size_t count);
+
 public:
 	static constexpr size_t kMaxElements = 16 * 1024 * 1024;
 	explicit Decoder(std::span<const std::byte> in);
@@ -67,15 +74,6 @@ public:
 	bool i8s(std::span<const int8_t> &, size_t count);
 	[[nodiscard]] size_t remaining() const { return in_.size() - off_; }
 	[[nodiscard]] DecodeError error() const { return error_; }
-
-private:
-	std::span<const std::byte> in_;
-	size_t off_ = 0;
-	DecodeError error_ = DecodeError::Ok;
-
-	bool fail(DecodeError e);
-	bool take_be(uint64_t &v, size_t width);
-	bool take_raw(size_t count);
 };
 
 bool utf8_validate(std::string_view);
@@ -93,6 +91,15 @@ struct Received {
 // where to put arriving bytes and reports how many landed -- which suits
 // readiness-based and completion-based backends equally.
 class FrameReader {
+	enum class State { Length, Payload };
+
+	State state_ = State::Length;
+	bool have_frame_ = false;
+	std::byte length_[4]{};
+	size_t got_ = 0;
+	uint32_t limit_ = kMaxPayload;
+	std::vector<std::byte> payload_;
+
 public:
 	static constexpr uint32_t kMaxPayload = 16 * 1024 * 1024;
 
@@ -112,22 +119,16 @@ public:
 	// A length prefix is believed before the payload arrives, so this is
 	// what bounds the allocation an unauthenticated peer can ask for.
 	void set_limit(uint32_t limit);
-
-private:
-	enum class State { Length, Payload };
-
-	State state_ = State::Length;
-	bool have_frame_ = false;
-	std::byte length_[4]{};
-	size_t got_ = 0;
-	uint32_t limit_ = kMaxPayload;
-	std::vector<std::byte> payload_;
 };
 
 // One serialized output queue. pending() stays valid until the next
 // consume() or push(), so a completion-based backend takes its own copy
 // of whatever it hands to the operating system.
 class FrameWriter {
+	std::vector<std::byte> q_;
+	size_t off_ = 0;
+	uint32_t limit_ = FrameReader::kMaxPayload;
+
 public:
 	static constexpr size_t kMaxQueue = 64 * 1024 * 1024;
 
@@ -139,11 +140,6 @@ public:
 	void clear();
 	// Refuse to enqueue frames the peer would refuse to read.
 	void set_limit(uint32_t limit);
-
-private:
-	std::vector<std::byte> q_;
-	size_t off_ = 0;
-	uint32_t limit_ = FrameReader::kMaxPayload;
 };
 
 // --- Transport ---------------------------------------------------------------
@@ -165,6 +161,12 @@ using Waitable = Handle;
 // nonblocking Unix socket, Windows from completion of overlapped named
 // pipe I/O; both present this same polled interface.
 class Connection {
+	friend class Endpoint;
+	friend class Listener;
+
+	struct Impl;
+	std::unique_ptr<Impl> impl_;
+
 public:
 	static constexpr uint32_t kMaxPayload = FrameReader::kMaxPayload;
 	static constexpr size_t kMaxWriteQueue = FrameWriter::kMaxQueue;
@@ -205,18 +207,16 @@ public:
 	// an event loop waits on the waitables instead.
 	Ready wait(Direction dir, int timeout_ms);
 	void close();
-
-private:
-	friend class Endpoint;
-	friend class Listener;
-
-	struct Impl;
-	std::unique_ptr<Impl> impl_;
 };
 
 // A bound service endpoint. Binding it is what arbitrates between
 // instances starting simultaneously.
 class Listener {
+	friend class Endpoint;
+
+	struct Impl;
+	std::unique_ptr<Impl> impl_;
+
 public:
 	Listener();
 	~Listener();
@@ -231,12 +231,6 @@ public:
 	// Peers running as another user are rejected.
 	Connection accept();
 	void close();
-
-private:
-	friend class Endpoint;
-
-	struct Impl;
-	std::unique_ptr<Impl> impl_;
 };
 
 class Endpoint {
