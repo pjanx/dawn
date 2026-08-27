@@ -7,8 +7,6 @@
 
 #include "ipc.hpp"
 
-#include "ipc/instance.lxdr.hpp"
-
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -382,7 +380,7 @@ FrameReader::advance(size_t n)
 		const uint32_t size = (uint32_t(length_[0]) << 24) |
 			(uint32_t(length_[1]) << 16) | (uint32_t(length_[2]) << 8) |
 			uint32_t(length_[3]);
-		if (size == 0 || size > kMaxPayload)
+		if (size == 0 || size > limit_)
 			return Status::Error;
 		payload_.resize(size);
 		got_ = 0;
@@ -396,6 +394,12 @@ FrameReader::advance(size_t n)
 	got_ = 0;
 	state_ = State::Length;
 	return Status::Frame;
+}
+
+void
+FrameReader::set_limit(uint32_t limit)
+{
+	limit_ = limit > 0 && limit < kMaxPayload ? limit : kMaxPayload;
 }
 
 bool
@@ -423,10 +427,18 @@ FrameWriter::pending() const
 	return {q_.data() + off_, q_.size() - off_};
 }
 
+void
+FrameWriter::set_limit(uint32_t limit)
+{
+	limit_ = limit > 0 && limit < FrameReader::kMaxPayload
+		? limit
+		: FrameReader::kMaxPayload;
+}
+
 bool
 FrameWriter::push(span<const byte> payload)
 {
-	if (payload.empty() || payload.size() > FrameReader::kMaxPayload)
+	if (payload.empty() || payload.size() > limit_)
 		return false;
 	if (off_ > 0) {
 		q_.erase(q_.begin(), q_.begin() + off_);
@@ -465,31 +477,3 @@ FrameWriter::clear()
 
 }  // namespace ipc
 }  // namespace dn
-
-namespace
-{
-
-[[maybe_unused]] void
-compile_check_instance_lxdr()
-{
-	dn::ipc::instance::Hello hello{};
-	vector<byte> hello_buf;
-	dn::ipc::Encoder hello_enc(hello_buf);
-	encode(hello, hello_enc);
-	dn::ipc::Decoder hello_dec(hello_buf);
-	dn::ipc::instance::HelloView view{};
-	(void) decode(hello_dec, view);
-
-	dn::ipc::instance::OpenRequest open{};
-	vector<byte> open_buf;
-	dn::ipc::Encoder open_enc(open_buf);
-	encode(open, open_enc);
-	dn::ipc::Decoder open_dec(open_buf);
-	dn::ipc::instance::OpenRequestView open_view{};
-	(void) decode(open_dec, open_view);
-}
-
-[[maybe_unused]] auto *const kCompileCheckInstanceLxdr =
-	&compile_check_instance_lxdr;
-
-}  // namespace

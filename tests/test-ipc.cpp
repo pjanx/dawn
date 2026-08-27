@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "libdn/ipc-instance.hpp"
 #include "libdn/ipc.hpp"
 
 #include <cerrno>
@@ -12,7 +13,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
+#include <memory>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #ifndef _WIN32
@@ -21,6 +28,7 @@
 #endif
 
 using namespace std;
+namespace inst = dn::ipc::instance;
 
 namespace
 {
@@ -273,6 +281,502 @@ test_endpoint_roundtrip()
 	CHECK(connect.conn.peer_pid() != 0);
 }
 
+// --- Instance service --------------------------------------------------------
+
+// Everything below drives dn::ipc::instance::Server through a hand-built
+// peer: dn's own Client cannot serve here, because it always connects to
+// the real "instance" endpoint, which a running dn may well hold.
+//
+// dn answers every request inline on the Qt thread, so nothing in the
+// application exercises deferred completion, out-of-order responses, or
+// cancellation. This does.
+
+constexpr char kInstanceService[] = "test-instance";
+constexpr char kSession[] = "test-session";
+constexpr uint32_t kMaxPayload = 4096;
+
+vector<byte>
+frame_bytes(const inst::Frame &frame)
+{
+	vector<byte> buf;
+	dn::ipc::Encoder enc(buf);
+	encode(frame, enc);
+	CHECK(enc.ok());
+	return buf;
+}
+
+inst::Frame
+hello_frame(uint32_t version, string_view session)
+{
+	inst::Hello hello;
+	hello.protocol_version = version;
+	hello.session = string(session);
+	inst::Frame frame;
+	frame.payload.value = inst::PayloadHello{std::move(hello)};
+	return frame;
+}
+
+inst::Frame
+open_frame(uint64_t id)
+{
+	inst::OpenRequest open;
+	open.urls = {"file:///tmp"};
+	inst::Request req;
+	req.id = id;
+	req.body.value = inst::RequestBodyOpen{std::move(open)};
+	inst::Frame frame;
+	frame.payload.value = inst::PayloadRequest{std::move(req)};
+	return frame;
+}
+
+inst::Frame
+cancel_frame(uint64_t id)
+{
+	inst::Frame frame;
+	frame.payload.value = inst::PayloadCancel{inst::Cancel{id}};
+	return frame;
+}
+
+// A server, and one raw connection standing in for a client. Everything is
+// single-threaded: the peer writes, then pump() runs the server by hand
+// until an answer comes back.
+struct Fixture {
+	unique_ptr<inst::Server> server;
+	dn::ipc::Connection peer;
+	uint64_t conn_id = 0;
+	int requests = 0;
+	function<void(inst::Call, const inst::RequestView &)> handler;
+
+	bool start();
+	bool send(const inst::Frame &frame);
+	// Drive both ends until the peer has a whole frame, or patience runs
+	// out. False also means the server closed on us; see closed().
+	bool recv(inst::FrameView &view, vector<byte> &storage);
+	bool closed();
+	void poll();
+};
+
+void
+Fixture::poll()
+{
+	this->server->poll_listen();
+	if (this->conn_id) {
+		this->server->poll_read(this->conn_id);
+		this->server->poll_write(this->conn_id);
+	}
+}
+
+bool
+Fixture::start()
+{
+	auto listen = dn::ipc::Endpoint::listen(kInstanceService);
+	CHECK(listen.status == dn::ipc::Endpoint::ListenStatus::Ok);
+	if (listen.status != dn::ipc::Endpoint::ListenStatus::Ok)
+		return false;
+
+	inst::Server::Config cfg;
+	cfg.session = kSession;
+	cfg.max_payload_size = kMaxPayload;
+	cfg.watch_read = [this](uint64_t id, dn::ipc::Waitable) {
+		this->conn_id = id;
+	};
+	cfg.on_request = [this](inst::Call call, const inst::RequestView &req) {
+		++this->requests;
+		if (this->handler)
+			this->handler(std::move(call), req);
+		else
+			call.done();
+	};
+	this->server =
+		make_unique<inst::Server>(std::move(listen.listener), std::move(cfg));
+
+	auto connect = dn::ipc::Endpoint::connect(kInstanceService);
+	CHECK(connect.status == dn::ipc::Endpoint::ConnectStatus::Ok);
+	if (connect.status != dn::ipc::Endpoint::ConnectStatus::Ok)
+		return false;
+	this->peer = std::move(connect.conn);
+
+	for (int i = 0; i < 100 && !this->conn_id; ++i)
+		this->poll();
+	CHECK(this->conn_id != 0);
+	return this->conn_id != 0;
+}
+
+bool
+Fixture::send(const inst::Frame &frame)
+{
+	const vector<byte> buf = frame_bytes(frame);
+	return this->peer.write_payload(buf) && this->peer.flush();
+}
+
+bool
+Fixture::recv(inst::FrameView &view, vector<byte> &storage)
+{
+	for (int i = 0; i < 200; ++i) {
+		this->poll();
+		const auto st = this->peer.read();
+		if (st == dn::ipc::Connection::Status::Frame) {
+			if (!this->peer.take_payload(storage))
+				return false;
+			dn::ipc::Decoder dec(storage);
+			return decode(dec, view) && dec.remaining() == 0;
+		}
+		if (st != dn::ipc::Connection::Status::NeedMore)
+			return false;
+		// Both a short nap and an early wake-up once bytes land.
+		this->peer.wait(dn::ipc::Connection::Direction::Read, 5);
+	}
+	return false;
+}
+
+bool
+Fixture::closed()
+{
+	for (int i = 0; i < 200; ++i) {
+		this->poll();
+		const auto st = this->peer.read();
+		if (st == dn::ipc::Connection::Status::Eof ||
+			st == dn::ipc::Connection::Status::Error)
+			return true;
+		if (st == dn::ipc::Connection::Status::Frame) {
+			vector<byte> drop;
+			(void) this->peer.take_payload(drop);
+			continue;
+		}
+		this->peer.wait(dn::ipc::Connection::Direction::Read, 5);
+	}
+	return false;
+}
+
+// Complete the handshake, and report the payload limit it settled on.
+bool
+handshake(Fixture &f, uint32_t &limit)
+{
+	if (!f.send(hello_frame(uint32_t(inst::kInstanceProtocolVersion), kSession)))
+		return false;
+
+	inst::FrameView view{};
+	vector<byte> storage;
+	if (!f.recv(view, storage))
+		return false;
+	const auto *reply =
+		get_if<inst::PayloadHelloReplyView>(&view.payload.value);
+	if (!reply)
+		return false;
+	const auto *accepted = get_if<inst::HelloReplyAcceptedView>(
+		&reply->hello_reply.value);
+	if (!accepted)
+		return false;
+	limit = accepted->limits.max_payload_size;
+	return true;
+}
+
+void
+test_instance_handshake()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	// What the server accepts is what the client must hold itself to.
+	CHECK(limit == kMaxPayload);
+
+	CHECK(f.send(open_frame(1)));
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *resp = get_if<inst::PayloadResponseView>(&view.payload.value);
+	CHECK(resp != nullptr);
+	if (!resp)
+		return;
+	CHECK(resp->response.id == 1);
+	CHECK(holds_alternative<inst::ResultDoneView>(resp->response.result.value));
+	CHECK(f.requests == 1);
+}
+
+void
+test_instance_version_mismatch()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	CHECK(f.send(
+		hello_frame(uint32_t(inst::kInstanceProtocolVersion) + 1, kSession)));
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *reply =
+		get_if<inst::PayloadHelloReplyView>(&view.payload.value);
+	CHECK(reply != nullptr);
+	if (!reply)
+		return;
+	const auto *mismatch = get_if<inst::HelloReplyVersionMismatchView>(
+		&reply->hello_reply.value);
+	CHECK(mismatch != nullptr);
+	if (mismatch) {
+		CHECK(mismatch->server_protocol_version ==
+			uint32_t(inst::kInstanceProtocolVersion));
+	}
+	// Reported once, then the connection goes; there is nothing to say.
+	CHECK(f.closed());
+}
+
+void
+test_instance_session_mismatch()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	CHECK(f.send(hello_frame(
+		uint32_t(inst::kInstanceProtocolVersion), "somebody-elses-display")));
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *reply =
+		get_if<inst::PayloadHelloReplyView>(&view.payload.value);
+	CHECK(reply != nullptr);
+	if (reply) {
+		CHECK(holds_alternative<inst::HelloReplySessionMismatchView>(
+			reply->hello_reply.value));
+	}
+	CHECK(f.closed());
+}
+
+void
+test_instance_request_before_hello()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	// Nothing is served before the handshake, not even a well-formed
+	// request.
+	CHECK(f.send(open_frame(1)));
+	CHECK(f.closed());
+	CHECK(f.requests == 0);
+}
+
+void
+test_instance_zero_id()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	CHECK(f.send(open_frame(0)));
+	CHECK(f.closed());
+	CHECK(f.requests == 0);
+}
+
+void
+test_instance_duplicate_id()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	vector<inst::Call> held;
+	f.handler = [&held](inst::Call call, const inst::RequestView &) {
+		held.push_back(std::move(call));
+	};
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	CHECK(f.send(open_frame(7)));
+	// Reusing a live ID would make the two answers indistinguishable.
+	CHECK(f.send(open_frame(7)));
+	CHECK(f.closed());
+	CHECK(f.requests == 1);
+
+	// Losing the connection cancels what was outstanding on it.
+	CHECK(held.size() == 1);
+	if (held.size() == 1)
+		CHECK(held[0].cancelled());
+}
+
+void
+test_instance_out_of_order()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	vector<inst::Call> held;
+	f.handler = [&held](inst::Call call, const inst::RequestView &) {
+		held.push_back(std::move(call));
+	};
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	CHECK(f.send(open_frame(11)));
+	CHECK(f.send(open_frame(12)));
+	for (int i = 0; i < 100 && f.requests < 2; ++i)
+		f.poll();
+	CHECK(f.requests == 2);
+	CHECK(held.size() == 2);
+	if (held.size() != 2)
+		return;
+
+	// Answered back to front; each response still carries its own ID.
+	held[1].done();
+	held[0].fail(inst::ErrorCode::NotFound, "gone");
+
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *first = get_if<inst::PayloadResponseView>(&view.payload.value);
+	CHECK(first != nullptr);
+	if (first) {
+		CHECK(first->response.id == 12);
+		CHECK(holds_alternative<inst::ResultDoneView>(
+			first->response.result.value));
+	}
+
+	inst::FrameView view2{};
+	vector<byte> storage2;
+	CHECK(f.recv(view2, storage2));
+	const auto *second =
+		get_if<inst::PayloadResponseView>(&view2.payload.value);
+	CHECK(second != nullptr);
+	if (!second)
+		return;
+	CHECK(second->response.id == 11);
+	const auto *err =
+		get_if<inst::ResultErrorView>(&second->response.result.value);
+	CHECK(err != nullptr);
+	if (err) {
+		CHECK(err->error.code == inst::ErrorCode::NotFound);
+		CHECK(err->error.message == "gone");
+	}
+}
+
+void
+test_instance_cancel()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	vector<inst::Call> held;
+	int cancels = 0;
+	f.handler = [&held, &cancels](inst::Call call, const inst::RequestView &) {
+		call.on_cancel([&cancels] { ++cancels; });
+		held.push_back(std::move(call));
+	};
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	CHECK(f.send(open_frame(3)));
+	for (int i = 0; i < 100 && f.requests < 1; ++i)
+		f.poll();
+	CHECK(held.size() == 1);
+	if (held.size() != 1)
+		return;
+	CHECK(!held[0].cancelled());
+
+	CHECK(f.send(cancel_frame(3)));
+	for (int i = 0; i < 100 && cancels == 0; ++i)
+		f.poll();
+	CHECK(cancels == 1);
+	CHECK(held[0].cancelled());
+
+	// Cancellation is not itself an answer; the service still sends one.
+	held[0].fail(inst::ErrorCode::Cancelled, {});
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *resp = get_if<inst::PayloadResponseView>(&view.payload.value);
+	CHECK(resp != nullptr);
+	if (!resp)
+		return;
+	CHECK(resp->response.id == 3);
+	const auto *err =
+		get_if<inst::ResultErrorView>(&resp->response.result.value);
+	CHECK(err != nullptr);
+	if (err)
+		CHECK(err->error.code == inst::ErrorCode::Cancelled);
+}
+
+void
+test_instance_cancel_unknown()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	// A cancellation racing a completed request is normal, not an error.
+	CHECK(f.send(cancel_frame(999)));
+	CHECK(f.send(open_frame(1)));
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	CHECK(holds_alternative<inst::PayloadResponseView>(view.payload.value));
+}
+
+void
+test_instance_dropped_call()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	// A handler that answers nothing still owes the peer a response.
+	f.handler = [](inst::Call, const inst::RequestView &) {};
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+	CHECK(f.send(open_frame(5)));
+	inst::FrameView view{};
+	vector<byte> storage;
+	CHECK(f.recv(view, storage));
+	const auto *resp = get_if<inst::PayloadResponseView>(&view.payload.value);
+	CHECK(resp != nullptr);
+	if (!resp)
+		return;
+	CHECK(resp->response.id == 5);
+	const auto *err =
+		get_if<inst::ResultErrorView>(&resp->response.result.value);
+	CHECK(err != nullptr);
+	if (err)
+		CHECK(err->error.code == inst::ErrorCode::Internal);
+}
+
+void
+test_instance_oversize()
+{
+	Fixture f;
+	if (!f.start())
+		return;
+
+	uint32_t limit = 0;
+	CHECK(handshake(f, limit));
+
+	// One URL past the negotiated frame size. A peer that ignores the
+	// limit gets dropped rather than served.
+	inst::OpenRequest open;
+	open.urls = {string(kMaxPayload + 64, 'x')};
+	inst::Request req;
+	req.id = 1;
+	req.body.value = inst::RequestBodyOpen{std::move(open)};
+	inst::Frame frame;
+	frame.payload.value = inst::PayloadRequest{std::move(req)};
+
+	const vector<byte> buf = frame_bytes(frame);
+	CHECK(buf.size() > kMaxPayload);
+	CHECK(f.peer.write_payload(buf));
+	(void) f.peer.flush();
+	CHECK(f.closed());
+	CHECK(f.requests == 0);
+}
+
 }  // namespace
 
 int
@@ -287,6 +791,18 @@ main()
 #endif
 	test_listen_arbitrates();
 	test_endpoint_roundtrip();
+
+	test_instance_handshake();
+	test_instance_version_mismatch();
+	test_instance_session_mismatch();
+	test_instance_request_before_hello();
+	test_instance_zero_id();
+	test_instance_duplicate_id();
+	test_instance_out_of_order();
+	test_instance_cancel();
+	test_instance_cancel_unknown();
+	test_instance_dropped_call();
+	test_instance_oversize();
 
 	if (g_failures) {
 		fprintf(stderr, "%d check(s) failed\n", g_failures);

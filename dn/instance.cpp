@@ -85,25 +85,25 @@ struct InstanceHost::Impl {
 	void watch_read(uint64_t id, ipc::Waitable w);
 	void watch_write(uint64_t id, ipc::Waitable w, bool enable);
 	void unwatch(uint64_t id);
-	void on_request(const ipc::instance::RequestView &req,
-		ipc::instance::Response &response);
+	void on_request(
+		ipc::instance::Call call, const ipc::instance::RequestView &req);
 
 	App &app_;
 	InstanceHost *host_;
 	unordered_map<uint64_t, Watch *> reads_;
 	unordered_map<uint64_t, Watch *> writes_;
-	unique_ptr<ipc::Server> server_;
+	unique_ptr<ipc::instance::Server> server_;
 };
 
 InstanceHost::Impl::Impl(ipc::Listener listener, App &app,
 	const QString &session, InstanceHost *host)
 	: app_(app), host_(host)
 {
-	ipc::Server::Config cfg;
+	ipc::instance::Server::Config cfg;
 	cfg.session = session.toUtf8().toStdString();
-	cfg.on_request = [this](const ipc::instance::RequestView &req,
-						 ipc::instance::Response &response) {
-		on_request(req, response);
+	cfg.on_request = [this](ipc::instance::Call call,
+						 const ipc::instance::RequestView &req) {
+		on_request(std::move(call), req);
 	};
 	cfg.watch_read = [this](uint64_t id, ipc::Waitable w) {
 		watch_read(id, w);
@@ -112,8 +112,8 @@ InstanceHost::Impl::Impl(ipc::Listener listener, App &app,
 	cfg.watch_write = [this](uint64_t id, ipc::Waitable w, bool enable) {
 		watch_write(id, w, enable);
 	};
-	this->server_ =
-		make_unique<ipc::Server>(std::move(listener), std::move(cfg));
+	this->server_ = make_unique<ipc::instance::Server>(
+		std::move(listener), std::move(cfg));
 
 	auto *n = make_watch(this->server_->listen_waitable(), false, this->host_);
 	QObject::connect(n, &Watch::activated, this->host_,
@@ -162,19 +162,17 @@ InstanceHost::Impl::unwatch(uint64_t id)
 	}
 }
 
+// Opening runs to completion right here, so there is no window in which
+// a cancellation could arrive: an ID only becomes cancellable when it is
+// dispatched, which is this call.
 void
 InstanceHost::Impl::on_request(
-	const ipc::instance::RequestView &req, ipc::instance::Response &response)
+	ipc::instance::Call call, const ipc::instance::RequestView &req)
 {
 	const auto *open_body =
 		get_if<ipc::instance::RequestBodyOpenView>(&req.body.value);
 	if (!open_body) {
-		response.result.value = ipc::instance::ResultError{
-			ipc::instance::Error{
-				ipc::instance::ErrorCode::InvalidArgument,
-				{},
-			},
-		};
+		call.fail(ipc::instance::ErrorCode::InvalidArgument, {});
 		return;
 	}
 
@@ -190,13 +188,11 @@ InstanceHost::Impl::on_request(
 			QUrl::fromEncoded(QByteArray(url.data(), qsizetype(url.size()))),
 			token, {}, browse);
 		if (r != OpenResult::Ok) {
-			response.result.value = ipc::instance::ResultError{
-				ipc::instance::Error{map_open_error(r), {}},
-			};
+			call.fail(map_open_error(r), {});
 			return;
 		}
 	}
-	response.result.value = ipc::instance::ResultDone{};
+	call.done();
 }
 
 InstanceHost::InstanceHost(

@@ -297,6 +297,13 @@ Connection::wants_write() const
 		(m.write_pending || !m.inflight.empty() || !m.writer.empty());
 }
 
+void
+Connection::set_max_payload(uint32_t limit)
+{
+	impl_->reader.set_limit(limit);
+	impl_->writer.set_limit(limit);
+}
+
 Waitable
 Connection::read_waitable() const
 {

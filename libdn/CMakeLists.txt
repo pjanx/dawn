@@ -75,13 +75,14 @@ endif()
 add_library(dawn::libdn ALIAS libdn)
 
 if (WIN32)
-	target_sources(libdn PRIVATE ipc-windows.cpp ipc-instance.cpp)
+	target_sources(libdn PRIVATE ipc-windows.cpp ipc-rpc.cpp ipc-instance.cpp)
 	target_link_libraries(libdn PRIVATE advapi32)
 elseif (NOT APPLE)
-	target_sources(libdn PRIVATE ipc-unix.cpp ipc-instance.cpp)
+	target_sources(libdn PRIVATE ipc-unix.cpp ipc-rpc.cpp ipc-instance.cpp)
 endif()
 
-# Generated LXDR header; ipc.cpp compile-checks it against Encoder/Decoder.
+# Generated LXDR header; ipc-instance.cpp binds it to the RPC core, and
+# tests/test-lxdr.cpp checks it against Encoder/Decoder.
 lxdr_generate(
 	${PROJECT_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
 	dn::ipc::instance

@@ -125,7 +125,7 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 
 bool
 handoff_open(
-	dn::ipc::BlockingClient &client, const vector<QUrl> &urls, bool browse)
+	dn::ipc::instance::Client &client, const vector<QUrl> &urls, bool browse)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
@@ -137,7 +137,8 @@ handoff_open(
 		AllowSetForegroundWindow(DWORD(pid));
 #endif
 	dn::ipc::instance::Error error;
-	if (client.open(urls_utf8(urls), token, browse, &error))
+	if (client.open(urls_utf8(urls), token, browse, &error,
+			dn::ipc::kRequestTimeout))
 		return true;
 	if (!error.message.empty())
 		qWarning("%s", error.message.c_str());
@@ -147,9 +148,9 @@ handoff_open(
 }
 
 void
-report_mismatch(dn::ipc::BlockingClient::HelloStatus status, bool &reported)
+report_mismatch(dn::ipc::HelloStatus status, bool &reported)
 {
-	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
+	using HelloStatus = dn::ipc::HelloStatus;
 	if (reported)
 		return;
 	if (status == HelloStatus::VersionMismatch) {
@@ -167,10 +168,10 @@ Remote
 try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
-	using HelloStatus = dn::ipc::BlockingClient::HelloStatus;
+	using HelloStatus = dn::ipc::HelloStatus;
 	HelloStatus status = HelloStatus::Unavailable;
-	auto client = dn::ipc::BlockingClient::connect(
-		session.toUtf8().toStdString(), &status);
+	auto client = dn::ipc::instance::Client::connect(
+		session.toUtf8().toStdString(), &status, dn::ipc::kHelloTimeout);
 	if (client) {
 		if (handoff_open(*client, urls, browse))
 			return Remote::Done;
@@ -287,7 +288,7 @@ main(int argc, char **argv)
 			break;
 		}
 
-		auto listen = dn::ipc::Endpoint::listen("instance");
+		auto listen = dn::ipc::Endpoint::listen(dn::ipc::instance::kService);
 		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
 			switch (
 				try_remote_open(session, to_open, browse, reported_mismatch)) {

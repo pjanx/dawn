@@ -108,6 +108,10 @@ public:
 	// True at a frame boundary, the only place a peer may close cleanly.
 	[[nodiscard]] bool idle() const;
 	bool take_payload(std::vector<std::byte> &out);
+	// Lower the accepted frame size; values above kMaxPayload are clamped.
+	// A length prefix is believed before the payload arrives, so this is
+	// what bounds the allocation an unauthenticated peer can ask for.
+	void set_limit(uint32_t limit);
 
 private:
 	enum class State { Length, Payload };
@@ -116,6 +120,7 @@ private:
 	bool have_frame_ = false;
 	std::byte length_[4]{};
 	size_t got_ = 0;
+	uint32_t limit_ = kMaxPayload;
 	std::vector<std::byte> payload_;
 };
 
@@ -132,10 +137,13 @@ public:
 	[[nodiscard]] std::span<const std::byte> pending() const;
 	void consume(size_t n);
 	void clear();
+	// Refuse to enqueue frames the peer would refuse to read.
+	void set_limit(uint32_t limit);
 
 private:
 	std::vector<std::byte> q_;
 	size_t off_ = 0;
+	uint32_t limit_ = FrameReader::kMaxPayload;
 };
 
 // --- Transport ---------------------------------------------------------------
@@ -176,6 +184,8 @@ public:
 
 	[[nodiscard]] bool ok() const;
 	[[nodiscard]] bool wants_write() const;
+	// Bound both directions to what the handshake agreed on.
+	void set_max_payload(uint32_t limit);
 	[[nodiscard]] Waitable read_waitable() const;
 	[[nodiscard]] Waitable write_waitable() const;
 	// Peer process ID as reported by the operating system, or 0.
