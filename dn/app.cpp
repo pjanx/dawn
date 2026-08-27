@@ -222,19 +222,18 @@ content_window(QObject *window)
 {
 	if (auto *win = dynamic_cast<Window *>(window))
 		return win;
-	if (window) {
-		for (QObject *child : window->children())
-			if (auto *win = dynamic_cast<Window *>(child))
-				return win;
-	}
+	for (QObject *child : window->children())
+		if (auto *win = dynamic_cast<Window *>(child))
+			return win;
 	return nullptr;
 }
 
 Window *
 App::key_window() const
 {
-	if (Window *win = content_window(QGuiApplication::focusWindow()))
-		return win;
+	if (QWindow *focus = QGuiApplication::focusWindow())
+		if (Window *win = content_window(focus))
+			return win;
 	for (const unique_ptr<QWindow> &w : this->windows_)
 		if (Window *win = content_window(w.get()))
 			return win;

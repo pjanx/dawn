@@ -20,8 +20,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <string>
-#include <vector>
+#include <optional>
 #endif
 
 #include <QCommandLineOption>
@@ -33,7 +32,7 @@
 #include <QtLogging>
 
 #include <cstdio>
-#include <cstring>
+#include <string>
 #include <vector>
 
 using namespace std;
@@ -66,16 +65,6 @@ instance_session()
 #endif
 }
 
-vector<string>
-urls_utf8(const vector<QUrl> &urls)
-{
-	vector<string> out;
-	out.reserve(urls.size());
-	for (const QUrl &url : urls)
-		out.push_back(url.toEncoded().toStdString());
-	return out;
-}
-
 const char *
 error_fallback(dn::ipc::instance::ErrorCode code)
 {
@@ -100,6 +89,9 @@ handoff_open(
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
+	vector<string> encoded;
+	for (const QUrl &url : urls)
+		encoded.push_back(url.toEncoded().toStdString());
 #ifdef Q_OS_WIN
 	// Windows only lets the foreground process pass that right on, and
 	// the shell just launched us. There is no token to send; the running
@@ -108,8 +100,8 @@ handoff_open(
 		AllowSetForegroundWindow(DWORD(pid));
 #endif
 	dn::ipc::instance::Error error;
-	if (client.open(urls_utf8(urls), token, browse, &error,
-			dn::ipc::kRequestTimeout))
+	if (client.open(
+			encoded, token, browse, &error, dn::ipc::kRequestTimeout))
 		return true;
 	if (!error.message.empty())
 		qWarning("%s", error.message.c_str());
@@ -118,24 +110,8 @@ handoff_open(
 	return false;
 }
 
-void
-report_mismatch(dn::ipc::HelloStatus status, bool &reported)
-{
-	using HelloStatus = dn::ipc::HelloStatus;
-	if (reported)
-		return;
-	if (status == HelloStatus::VersionMismatch) {
-		qWarning("running isolated (version mismatch)");
-		reported = true;
-	} else if (status == HelloStatus::SessionMismatch) {
-		qWarning("running isolated (session mismatch)");
-		reported = true;
-	}
-}
-
-enum class Remote : uint8_t { Done, Failed, Isolated };
-
-Remote
+// Returns an exit code once a running instance has taken the URLs over.
+optional<int>
 try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
@@ -144,12 +120,21 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	auto client = dn::ipc::instance::Client::connect(
 		session.toUtf8().toStdString(), &status, dn::ipc::kHelloTimeout);
 	if (client) {
-		if (handoff_open(*client, urls, browse))
-			return Remote::Done;
-		return Remote::Failed;
+		return handoff_open(*client, urls, browse)
+			? EXIT_SUCCESS
+			: EXIT_FAILURE;
 	}
-	report_mismatch(status, reported_mismatch);
-	return Remote::Isolated;
+
+	const char *mismatch = nullptr;
+	if (status == HelloStatus::VersionMismatch)
+		mismatch = "version";
+	else if (status == HelloStatus::SessionMismatch)
+		mismatch = "session";
+	if (mismatch && !reported_mismatch) {
+		qWarning("running isolated (%s mismatch)", mismatch);
+		reported_mismatch = true;
+	}
+	return {};
 }
 
 }  // namespace
@@ -224,23 +209,21 @@ main(int argc, char **argv)
 	}
 
 	dn::App app(argc, argv);
-	const QStringList raw = parser.positionalArguments();
+	QStringList raw = parser.positionalArguments();
+	const bool bare = raw.isEmpty();
+	if (bare)
+		raw.push_back(QStringLiteral("."));
 
 	// Without the working directory, relative arguments do not resolve to
 	// a local file, and every one of them is rejected as a foreign scheme.
 	const QString cwd = QDir::currentPath();
 
 	vector<QUrl> to_open;
-	if (raw.isEmpty()) {
-		to_open.push_back(dn::url_normalized(QUrl::fromUserInput(
-			QStringLiteral("."), cwd, QUrl::AssumeLocalFile)));
-	} else {
-		for (const QString &arg : raw) {
-			auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
-			if (!url.isValid())
-				url = dn::path_to_url(QDir(cwd).absoluteFilePath(arg));
-			to_open.push_back(dn::url_normalized(url));
-		}
+	for (const QString &arg : raw) {
+		auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
+		if (!url.isValid())
+			url = dn::path_to_url(QDir(cwd).absoluteFilePath(arg));
+		to_open.push_back(dn::url_normalized(url));
 	}
 
 	const bool browse = parser.isSet(browse_opt);
@@ -250,26 +233,16 @@ main(int argc, char **argv)
 	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
 		bool reported_mismatch = false;
-		switch (try_remote_open(session, to_open, browse, reported_mismatch)) {
-		case Remote::Done:
-			return 0;
-		case Remote::Failed:
-			return 1;
-		case Remote::Isolated:
-			break;
-		}
+		if (auto code = try_remote_open(
+				session, to_open, browse, reported_mismatch))
+			return *code;
 
 		auto listen = dn::ipc::Endpoint::listen(dn::ipc::instance::kService);
 		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
-			switch (
-				try_remote_open(session, to_open, browse, reported_mismatch)) {
-			case Remote::Done:
-				return 0;
-			case Remote::Failed:
-				return 1;
-			case Remote::Isolated:
-				break;
-			}
+			// Someone else bound it in the meantime.
+			if (auto code = try_remote_open(
+					session, to_open, browse, reported_mismatch))
+				return *code;
 		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in exec().
 			// A Hello during init may time out (250ms) and isolate.
@@ -279,13 +252,15 @@ main(int argc, char **argv)
 	}
 #endif
 	if (!app.init())
-		return 1;
+		return EXIT_FAILURE;
+
 	for (const QUrl &url : to_open) {
 		if (app.open(url, {}, {}, browse) != dn::OpenResult::Ok)
-			return 1;
+			return EXIT_FAILURE;
 	}
+
 	// A bare launch opened the CWD above on a guess; see default_window().
-	if (raw.isEmpty())
+	if (bare)
 		app.default_window = app.key_window();
 
 	return app.exec();
