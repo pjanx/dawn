@@ -399,25 +399,25 @@ struct Desktop {
 	vector<QString> only_show_in;
 	vector<QString> not_show_in;
 	bool hidden = false;
-	bool no_display = false;
 	bool application = true;
 };
 
 QString
-localized_name(const IniGroup &entry)
+localized_value(const IniGroup &entry, const QString &key)
 {
+	const QString prefix = key + QLatin1String("[");
 	unordered_map<QString, QString> localized;
 	QString fallback;
 	for (const auto &kv : entry.keys) {
-		if (kv.first == QLatin1String("Name")) {
+		if (kv.first == key) {
 			if (fallback.isEmpty())
 				fallback = unescape_desktop(kv.second);
 			continue;
 		}
-		if (!kv.first.startsWith(QLatin1String("Name[")) ||
-			!kv.first.endsWith(u']'))
+		if (!kv.first.startsWith(prefix) || !kv.first.endsWith(u']'))
 			continue;
-		const QString loc = kv.first.mid(5, kv.first.size() - 6);
+		const QString loc =
+			kv.first.mid(prefix.size(), kv.first.size() - prefix.size() - 1);
 		localized.insert({loc, unescape_desktop(kv.second)});
 	}
 	for (const QString &loc : locale_candidates()) {
@@ -426,6 +426,19 @@ localized_name(const IniGroup &entry)
 			return it->second;
 	}
 	return fallback;
+}
+
+QString
+localized_name(const IniGroup &entry)
+{
+	// GLib's display name, which users see next to ours in other file
+	// managers, prefers this GNOME extension: "Mozilla Firefox" over
+	// "Firefox". Unlike GLib, don't let an empty value blank the name out.
+	const QString full =
+		localized_value(entry, QStringLiteral("X-GNOME-FullName"));
+	if (!full.isEmpty())
+		return full;
+	return localized_value(entry, QStringLiteral("Name"));
 }
 
 bool
@@ -494,7 +507,6 @@ load_desktop(const QString &id)
 	d.exec = unescape_desktop(ini_get(*entry, QStringLiteral("Exec")));
 	d.try_exec = unescape_desktop(ini_get(*entry, QStringLiteral("TryExec")));
 	d.hidden = parse_bool(ini_get(*entry, QStringLiteral("Hidden")));
-	d.no_display = parse_bool(ini_get(*entry, QStringLiteral("NoDisplay")));
 	d.only_show_in =
 		split_semicolons(ini_get(*entry, QStringLiteral("OnlyShowIn")));
 	d.not_show_in =
@@ -521,9 +533,7 @@ listable(const Desktop &d)
 {
 	if (d.id == kSelfDesktop)
 		return false;
-	if (d.hidden || d.no_display || d.exec.isEmpty())
-		return false;
-	if (!shown_on_desktop(d))
+	if (d.hidden || d.exec.isEmpty() || !shown_on_desktop(d))
 		return false;
 	if (!try_exec_ok(d.try_exec))
 		return false;
