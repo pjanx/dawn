@@ -932,20 +932,19 @@ Window::go_forward()
 bool
 Window::event(QEvent *event)
 {
-	// TODO(p): switch statement.
-	if (event->type() == QEvent::NativeGesture)
+	switch (event->type()) {
+	case QEvent::NativeGesture:
 		return handle_native_gesture((QNativeGestureEvent *) event);
-	if (event->type() == QEvent::TouchBegin ||
-		event->type() == QEvent::TouchUpdate ||
-		event->type() == QEvent::TouchEnd ||
-		event->type() == QEvent::TouchCancel)
+	case QEvent::TouchBegin:
+	case QEvent::TouchUpdate:
+	case QEvent::TouchEnd:
+	case QEvent::TouchCancel:
 		return handle_touch((QTouchEvent *) event);
-	if (event->type() == QEvent::UpdateRequest) {
+	case QEvent::UpdateRequest:
 		this->update_pending_ = false;
 		render();
 		return true;
-	}
-	if (event->type() == QEvent::WindowStateChange) {
+	case QEvent::WindowStateChange: {
 		auto *change = (QWindowStateChangeEvent *) event;
 		if ((change->oldState() ^ shell()->windowState()) &
 			(Qt::WindowFullScreen | Qt::WindowMaximized)) {
@@ -953,12 +952,13 @@ Window::event(QEvent *event)
 			this->kit_.left_down_ = false;
 			request_render();
 		}
+		break;
 	}
-	if (event->type() == QEvent::DevicePixelRatioChange) {
+	case QEvent::DevicePixelRatioChange:
 		this->resize_pending_ = true;
 		request_render();
-	}
-	if (event->type() == QEvent::PlatformSurface) {
+		break;
+	case QEvent::PlatformSurface: {
 		auto *surface_event = (QPlatformSurfaceEvent *) event;
 		if (surface_event->surfaceEventType() ==
 			QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
@@ -968,21 +968,23 @@ Window::event(QEvent *event)
 			this->renderer_.destroy();
 			this->surface_ = VK_NULL_HANDLE;
 		}
+		break;
 	}
-	if (event->type() == QEvent::FocusIn ||
-		event->type() == QEvent::WindowActivate) {
+	case QEvent::FocusIn:
+	case QEvent::WindowActivate:
 		sync_macos_app_menu(this->app_);
 		request_render();
-	}
-	if (event->type() == QEvent::FocusOut ||
-		event->type() == QEvent::WindowDeactivate) {
+		break;
+	case QEvent::FocusOut:
+	case QEvent::WindowDeactivate:
 		this->alt_armed_ = false;
+		// FIXME: This will close dialogs.  Why are dialogs popups again?
 		if (this->kit_.popup_open())
 			this->kit_.close_popups();
 		request_render();
-	}
-	if (event->type() == QEvent::DragEnter ||
-		event->type() == QEvent::DragMove) {
+		break;
+	case QEvent::DragEnter:
+	case QEvent::DragMove: {
 		auto *drag = (QDropEvent *) event;
 		if (this->mode_ != Mode::View ||
 			first_dropped_file(drag->mimeData()).isEmpty()) {
@@ -992,7 +994,7 @@ Window::event(QEvent *event)
 		drag->acceptProposedAction();
 		return true;
 	}
-	if (event->type() == QEvent::Drop) {
+	case QEvent::Drop: {
 		auto *drop = (QDropEvent *) event;
 		const QUrl url = first_dropped_file(drop->mimeData());
 		if (this->mode_ != Mode::View || url.isEmpty()) {
@@ -1002,6 +1004,9 @@ Window::event(QEvent *event)
 		open_any(url);
 		drop->acceptProposedAction();
 		return true;
+	}
+	default:
+		break;
 	}
 	return QWindow::event(event);
 }
