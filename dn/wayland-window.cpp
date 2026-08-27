@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QtGui/qguiapplication_platform.h>
 #include <QtLogging>
+#include <qpa/qplatformnativeinterface.h>
 
 #include <vulkan/vulkan.h>
 
@@ -35,36 +36,23 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
-
-// QGuiApplication::platformNativeInterface() is public, its class is QPA.
-// Mirror enough of QPlatformNativeInterface to reach its fourth virtual,
-// nativeResourceForWindow(); Qt's xdg-shell exports the toplevel there.
-struct NativeResources : QObject {
-	virtual void *integration(const QByteArray &) = 0;
-	virtual void *context(const QByteArray &, void *) = 0;
-	virtual void *screen(const QByteArray &, void *) = 0;
-	virtual void *window(const QByteArray &, QWindow *) = 0;
-};
-
-}  // namespace
 
 void
 wayland_show_window_menu(QWindow *shell, int x, int y)
 {
-	auto *iface = (NativeResources *) (void *)
-		QGuiApplication::platformNativeInterface();
+	// There is no better way of invoking this than the private API.
+	auto *iface = QGuiApplication::platformNativeInterface();
 	auto *native =
 		qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
 	if (!iface || !native)
 		return;
-	auto *toplevel = (xdg_toplevel *) iface->window(
+	auto *toplevel = (xdg_toplevel *) iface->nativeResourceForWindow(
 		QByteArrayLiteral("xdg_toplevel"), shell);
-	if (!toplevel)
+	wl_seat *seat = native->lastInputSeat();
+	if (!toplevel || !seat)
 		return;
 	xdg_toplevel_show_window_menu(
-		toplevel, native->lastInputSeat(), native->lastInputSerial(), x, y);
+		toplevel, seat, native->lastInputSerial(), x, y);
 }
 
 WaylandWindow::WaylandWindow(App *app)

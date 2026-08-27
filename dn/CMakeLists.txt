@@ -258,7 +258,7 @@ if (DN_WITH_WAYLAND)
 		"${DN_XDG_HEADER}"
 	)
 	target_include_directories(dn PRIVATE "${DN_PROTOCOL_DIR}")
-	target_link_libraries(dn PRIVATE PkgConfig::DN_WAYLAND)
+	target_link_libraries(dn PRIVATE PkgConfig::DN_WAYLAND Qt6::GuiPrivate)
 endif()
 
 # User guide: build tree at share/docs/dawnn (../share from bin/),

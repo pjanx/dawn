@@ -67,6 +67,8 @@ include(embed-shader)
 set(DN_WITH_WAYLAND "${Qt6WaylandClient_FOUND}")
 if (DN_WITH_WAYLAND)
 	pkg_check_modules(DN_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
+	# For QPlatformNativeInterface: Qt exposes no other way to the toplevel.
+	find_package(Qt6 6.8 REQUIRED COMPONENTS GuiPrivate)
 endif()
 
 pkg_check_modules(JPEG REQUIRED IMPORTED_TARGET libjpeg)
