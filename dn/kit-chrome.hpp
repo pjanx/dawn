@@ -15,6 +15,8 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
+#include <vector>
 
 namespace dn
 {
@@ -26,6 +28,9 @@ struct HostActions {
 	std::function<void(QUrl url)> new_window;
 	std::function<void(QUrl url)> trash;
 	std::function<void(QUrl url)> launch_exiftool;
+	std::function<std::vector<std::string>()> bookmarks;
+	std::function<bool(const QUrl &url)> bookmarked;
+	std::function<void(QUrl url)> toggle_bookmark;
 };
 
 // The menu that a right click on a file opens: what this application knows
@@ -33,6 +38,8 @@ struct HostActions {
 struct ContextMenu : Menu {
 	std::function<void(const QUrl &url)> on_new_window;
 	std::function<void(const QUrl &url)> on_trash;
+	std::function<bool(const QUrl &url)> on_bookmarked;
+	std::function<void(const QUrl &url)> on_toggle_bookmark;
 
 	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 

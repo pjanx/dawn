@@ -170,8 +170,10 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 
 Window::~Window()
 {
-	if (this->app_)
+	if (this->app_) {
 		this->app_->display_profiles.unlisten(this);
+		this->app_->settings.unlisten(this);
+	}
 	if (QGuiApplication *app = qGuiApp)
 		app->removeEventFilter(this);
 	shutdown();
@@ -228,6 +230,11 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	refresh_screen_profile(screen());
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
+	this->app_->settings.listen(this, [this] {
+		if (this->browser_)
+			this->browser_->rescan();
+		request_render();
+	});
 	this->kit_.init(host_dpr(*this));
 	this->kit_.renderer_ = &this->renderer_;
 	this->browser_ui_ = make_browser_page(
@@ -372,6 +379,13 @@ Window::bind_host()
 	};
 	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
 	this->host_.trash = [this](QUrl url) { trash_url(url); };
+	this->host_.bookmarks = [this] { return this->app_->settings.bookmarks(); };
+	this->host_.bookmarked = [this](const QUrl &url) {
+		return this->app_->settings.bookmarked(url_to_path(url).toStdString());
+	};
+	this->host_.toggle_bookmark = [this](QUrl url) {
+		this->app_->settings.toggle_bookmark(url_to_path(url).toStdString());
+	};
 }
 
 void

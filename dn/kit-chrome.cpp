@@ -99,6 +99,17 @@ ContextMenu::fill_items(const QUrl &url)
 		add_item_with_mnemonic("Open _With").sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
+	if (QFileInfo(path).isDir() && this->on_bookmarked &&
+		this->on_toggle_bookmark) {
+		add_sep();
+		auto &bookmark = add_item_with_mnemonic(this->on_bookmarked(url)
+				? "Remove from _Bookmarks"
+				: "Add to _Bookmarks");
+		bookmark.on_click = [this, url](Kit &) {
+			if (this->on_toggle_bookmark)
+				this->on_toggle_bookmark(url);
+		};
+	}
 	if (QFileInfo(path).isFile() && this->on_trash) {
 		add_sep();
 		auto &trash = add_item_with_mnemonic("Move to _Trash");

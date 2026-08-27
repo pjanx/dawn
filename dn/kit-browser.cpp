@@ -1710,11 +1710,12 @@ tree_next_dir(const filesystem::path &dir, const BrowseSetup &setup)
 
 void
 push_place(Browser &b, const filesystem::path &root, string path,
-	const char *name, const char *icon)
+	const char *name, const char *icon, string tip = {})
 {
 	Browser::DirRow row;
 	row.path = std::move(path);
 	row.name = name;
+	row.tip = std::move(tip);
 	row.icon = icon;
 	row.current = same_path(root, row.path);
 	b.side_dirs_.push_back(std::move(row));
@@ -1864,6 +1865,14 @@ scan_dir(Browser &b)
 			if (!name.empty())
 				push_place(b, root, pictures.toStdString(), name.c_str(),
 					"image-symbolic");
+		}
+	}
+
+	// Bookmarks live on the App: scan_dir may run before the page is wired.
+	if (b.page_ && b.page_->host && b.page_->host->bookmarks) {
+		for (const string &path : b.page_->host->bookmarks()) {
+			push_place(b, root, path, dir_basename(path).c_str(),
+				"folder-symbolic", path);
 		}
 	}
 	b.side_dirs_.push_back({});
@@ -2031,6 +2040,7 @@ pack_toolbar_icons(Browser &b)
 	b.kit_.pack_icon("drive-harddisk-symbolic", px);
 	b.kit_.pack_icon("go-home-symbolic", px);
 	b.kit_.pack_icon("image-symbolic", px);
+	b.kit_.pack_icon("folder-symbolic", px);
 	b.kit_.pack_icon("open-menu-symbolic", px);
 }
 
@@ -2212,7 +2222,7 @@ fill_places(Browser &b)
 		row->pad_x = kWinPadX;
 		row->icon = d.icon;
 		row->text = QString::fromStdString(d.name);
-		row->tip_text = {};
+		row->tip_text = QString::fromStdString(d.tip);
 		row->active = d.current;
 		const string path = d.path;
 		row->on_click = [&b, path](Kit &) {
@@ -2598,6 +2608,8 @@ make_browser_page(
 	if (page->context) {
 		page->context->on_new_window = host.new_window;
 		page->context->on_trash = host.trash;
+		page->context->on_bookmarked = host.bookmarked;
+		page->context->on_toggle_bookmark = host.toggle_bookmark;
 	}
 	page->menu_tree = browser_menu();
 	page->keys = browser_keys();
@@ -2644,6 +2656,13 @@ void
 Browser::open_dir(const QUrl &url, bool record)
 {
 	open_directory(*this, url, record);
+}
+
+void
+Browser::rescan()
+{
+	scan_dir(*this);
+	request_render(*this);
 }
 
 QUrl

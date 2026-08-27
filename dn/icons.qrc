@@ -36,6 +36,7 @@
 		<file alias="go-up-symbolic.svg">../icons/go-up-symbolic.svg</file>
 		<file alias="image-missing-symbolic.svg">../icons/image-missing-symbolic.svg</file>
 		<file alias="image-symbolic.svg">../icons/image-symbolic.svg</file>
+		<file alias="folder-symbolic.svg">../icons/folder-symbolic.svg</file>
 		<file alias="media-playback-pause-symbolic.svg">../icons/media-playback-pause-symbolic.svg</file>
 		<file alias="media-playback-start-symbolic.svg">../icons/media-playback-start-symbolic.svg</file>
 		<file alias="media-seek-backward-symbolic.svg">../icons/media-seek-backward-symbolic.svg</file>

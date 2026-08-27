@@ -29,6 +29,10 @@
 #include <QUrl>
 #include <QtLogging>
 
+#include <algorithm>
+#include <filesystem>
+#include <string>
+
 #ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
 
@@ -39,6 +43,71 @@ using namespace std;
 
 namespace dn
 {
+
+// Bookmarks are compared by path, so they are stored canonicalised: the
+// sidebar highlights the open directory by std::filesystem::equivalent,
+// and a trailing separator or an unresolved symlink must not disagree.
+static string
+canonical_dir(const string &path)
+{
+	error_code ec;
+	filesystem::path p = filesystem::weakly_canonical(path, ec);
+	if (ec)
+		p = path;
+	while (p.filename().empty()) {
+		const filesystem::path parent = p.parent_path();
+		if (parent.empty() || parent == p)
+			break;
+		p = parent;
+	}
+	return p.string();
+}
+
+bool
+Settings::bookmarked(const string &path) const
+{
+	const string want = canonical_dir(path);
+	return find(this->bookmarks_.begin(), this->bookmarks_.end(), want) !=
+		this->bookmarks_.end();
+}
+
+void
+Settings::toggle_bookmark(const string &path)
+{
+	const string want = canonical_dir(path);
+	const auto it =
+		find(this->bookmarks_.begin(), this->bookmarks_.end(), want);
+	if (it != this->bookmarks_.end())
+		this->bookmarks_.erase(it);
+	else
+		this->bookmarks_.push_back(want);
+	notify();
+}
+
+void
+Settings::listen(void *key, function<void()> fn)
+{
+	unlisten(key);
+	this->listeners_.emplace_back(key, std::move(fn));
+}
+
+void
+Settings::unlisten(const void *key)
+{
+	erase_if(this->listeners_,
+		[key](const auto &item) { return item.first == key; });
+}
+
+void
+Settings::notify() const
+{
+	// All mutations originate on the GUI thread, so unlike DisplayProfileWatch
+	// this needs no queued hop.  Copy: a callback may unlisten.
+	const auto copy = this->listeners_;
+	for (const auto &item : copy)
+		if (item.second)
+			item.second();
+}
 
 // Finder delivers a document to open as a QFileOpenEvent, not an argument.
 bool

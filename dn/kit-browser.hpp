@@ -64,6 +64,7 @@ struct Browser : Widget {
 	struct DirRow {
 		std::string path;
 		std::string name;
+		std::string tip;
 		const char *icon = nullptr;
 		bool current = false;
 	};
@@ -144,6 +145,7 @@ struct Browser : Widget {
 	void destroy();
 	void set_host(float width_pts, float height_pts, float dpr);
 	void open_dir(const QUrl &url, bool record = true);
+	void rescan();
 	bool hist_back();
 	bool hist_forward();
 	void hist_clear_forward();

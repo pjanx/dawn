@@ -21,7 +21,10 @@
 #include <QUrl>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace dn
@@ -35,6 +38,26 @@ enum class OpenResult : uint8_t {
 	PermissionDenied,
 	InvalidArgument,
 	Internal
+};
+
+/// Process-wide user settings and change notification.
+/// Notification is coarse: any change notifies all listeners.
+class Settings
+{
+	std::vector<std::string> bookmarks_;
+	std::vector<std::pair<void *, std::function<void()>>> listeners_;
+
+	void notify() const;
+
+public:
+	[[nodiscard]] const std::vector<std::string> &bookmarks() const
+	{
+		return this->bookmarks_;
+	}
+	[[nodiscard]] bool bookmarked(const std::string &path) const;
+	void toggle_bookmark(const std::string &path);
+	void listen(void *key, std::function<void()> fn);
+	void unlisten(const void *key);
 };
 
 class App : public QGuiApplication
@@ -51,6 +74,7 @@ public:
 	GpuContext gpu;
 	Thumbnailer thumbnailer;
 	DisplayProfileWatch display_profiles;
+	Settings settings;
 	// macOS may open us blank before passing us association-opened files.
 	QPointer<Window> default_window;
 	bool needs_csd = false;
