@@ -359,6 +359,12 @@ Window::bind_host()
 	this->host_.new_window = [this](QUrl url) {
 		if (url.isEmpty())
 			url = current_url();
+
+		// As in InstanceHost: the window dn guessed at startup is there for
+		// Finder's first document to replace, and asking for a new window is
+		// not that -- without this, the first request would land in it.
+		this->app_->default_window.clear();
+
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
