@@ -282,7 +282,7 @@ Window::bind_host()
 			break;
 		case Action::Quit:
 			if (this->app_)
-				this->app_->quit();
+				this->app_->shutdown();
 			break;
 		case Action::NewWindow:
 			if (this->host_.new_window)

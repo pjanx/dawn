@@ -28,8 +28,6 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
-#include <QEvent>
-#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QUrl>
 #include <QtLogging>
@@ -39,33 +37,6 @@
 #include <vector>
 
 using namespace std;
-
-namespace
-{
-
-// Finder delivers a document to open as a QFileOpenEvent, not an argument;
-// app_ is set before exec(), which is the earliest this can be delivered.
-struct GuiApplication : public QGuiApplication
-{
-	dn::App *app_ = nullptr;
-
-	GuiApplication(int &argc, char **argv) : QGuiApplication(argc, argv) {}
-
-protected:
-	bool event(QEvent *event) override;
-};
-
-bool
-GuiApplication::event(QEvent *event)
-{
-	if (event->type() == QEvent::FileOpen) {
-		this->app_->open(dn::url_normalized(((QFileOpenEvent *) event)->url()));
-		return true;
-	}
-	return QGuiApplication::event(event);
-}
-
-}  // namespace
 
 #ifndef Q_OS_MACOS
 #ifdef Q_OS_WIN
@@ -230,28 +201,29 @@ main(int argc, char **argv)
 			"Defaults to the current directory."),
 		QStringLiteral("[path | URI]..."));
 
-	// xdg_data_dirs() invokes the static QCoreApplication::instance().
-	auto application = make_unique<QCoreApplication>(argc, argv);
-	parser.process(*application);
+	{
+		// xdg_data_dirs() invokes the static QCoreApplication::instance().
+		QCoreApplication bootstrap(argc, argv);
+		parser.process(bootstrap);
 
-	if (parser.isSet(invalidate_opt)) {
-		dn::thumbnail_cache_invalidate();
-		return 0;
-	}
-	if (parser.isSet(list_supported_opt)) {
-		for (const string &type : dn::supported_media_types())
-			printf("%s\n", type.c_str());
-		return 0;
-	}
-	if (parser.isSet(list_extensions_opt)) {
-		for (const QString &glob :
-			dn::extract_mime_globs(dn::supported_media_types()))
-			printf("%s\n", glob.toUtf8().constData());
-		return 0;
+		if (parser.isSet(invalidate_opt)) {
+			dn::thumbnail_cache_invalidate();
+			return 0;
+		}
+		if (parser.isSet(list_supported_opt)) {
+			for (const string &type : dn::supported_media_types())
+				printf("%s\n", type.c_str());
+			return 0;
+		}
+		if (parser.isSet(list_extensions_opt)) {
+			for (const QString &glob :
+				dn::extract_mime_globs(dn::supported_media_types()))
+				printf("%s\n", glob.toUtf8().constData());
+			return 0;
+		}
 	}
 
-	application.reset();
-	application = make_unique<GuiApplication>(argc, argv);
+	dn::App app(argc, argv);
 	const QStringList raw = parser.positionalArguments();
 
 	// Without the working directory, relative arguments do not resolve to
@@ -273,7 +245,6 @@ main(int argc, char **argv)
 
 	const bool browse = parser.isSet(browse_opt);
 
-	dn::App app;
 #ifndef Q_OS_MACOS
 	unique_ptr<dn::InstanceHost> host;
 	if (!parser.isSet(new_instance_opt)) {
@@ -317,6 +288,5 @@ main(int argc, char **argv)
 	if (raw.isEmpty())
 		app.default_window = app.key_window();
 
-	((GuiApplication *) application.get())->app_ = &app;
-	return application->exec();
+	return app.exec();
 }

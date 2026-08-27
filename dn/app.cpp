@@ -22,6 +22,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QMetaObject>
 #include <QVersionNumber>
@@ -39,6 +40,17 @@ using namespace std;
 namespace dn
 {
 
+// Finder delivers a document to open as a QFileOpenEvent, not an argument.
+bool
+App::event(QEvent *event)
+{
+	if (event->type() == QEvent::FileOpen) {
+		open(url_normalized(((QFileOpenEvent *) event)->url()));
+		return true;
+	}
+	return QGuiApplication::event(event);
+}
+
 bool
 App::init()
 {
@@ -51,6 +63,9 @@ App::init()
 	qputenv("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", "0");
 	this->needs_csd = wayland_needs_csd();
 #endif
+	// The Wayland close dance hides the shell before closing it, so Qt never
+	// emits lastWindowClosed; App::close() counts windows itself.
+	// See WaylandWindow::finish_close().
 	QGuiApplication::setQuitOnLastWindowClosed(false);
 #ifdef Q_OS_MACOS
 	// QNSView backs a VulkanSurface with QMetalLayer, which arbitrates
@@ -179,14 +194,14 @@ void
 App::close_later(const QWindow *top)
 {
 	QMetaObject::invokeMethod(
-		qGuiApp, [this, top] { close(top); }, Qt::QueuedConnection);
+		this, [this, top] { close(top); }, Qt::QueuedConnection);
 }
 
 void
-App::quit()
+App::shutdown()
 {
 	QMetaObject::invokeMethod(
-		qGuiApp,
+		this,
 		[this] {
 			// Unmap first. The shell is a black SHM buffer; destroying the
 			// Vulkan subsurface while it is still mapped is the black window.
@@ -199,21 +214,31 @@ App::quit()
 		Qt::QueuedConnection);
 }
 
+// A Wayland shell carries the viewer as a child window; elsewhere the
+// top-level is the viewer itself. Nothing here has Q_OBJECT, so qobject_cast
+// and findChild() would fall back to QWindow and match anything.
+static Window *
+content_window(QObject *window)
+{
+	if (auto *win = dynamic_cast<Window *>(window))
+		return win;
+	if (window) {
+		for (QObject *child : window->children())
+			if (auto *win = dynamic_cast<Window *>(child))
+				return win;
+	}
+	return nullptr;
+}
+
 Window *
 App::key_window() const
 {
-	QWindow *focus = QGuiApplication::focusWindow();
-	Window *fallback = nullptr;
-	for (const unique_ptr<QWindow> &w : this->windows_) {
-		auto *win = dynamic_cast<Window *>(w.get());
-		if (!win)
-			continue;
-		if (!fallback)
-			fallback = win;
-		if (w.get() == focus)
+	if (Window *win = content_window(QGuiApplication::focusWindow()))
+		return win;
+	for (const unique_ptr<QWindow> &w : this->windows_)
+		if (Window *win = content_window(w.get()))
 			return win;
-	}
-	return fallback;
+	return nullptr;
 }
 
 }  // namespace dn

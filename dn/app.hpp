@@ -12,6 +12,8 @@
 #include "kit-browser.hpp"
 #include "thumbnailer.hpp"
 
+#include <QEvent>
+#include <QGuiApplication>
 #include <QPointer>
 #include <QString>
 #include <QVulkanInstance>
@@ -35,11 +37,16 @@ enum class OpenResult : uint8_t {
 	Internal
 };
 
-class App
+class App : public QGuiApplication
 {
 	std::vector<std::unique_ptr<QWindow>> windows_;
 
+protected:
+	bool event(QEvent *event) override;
+
 public:
+	App(int &argc, char **argv) : QGuiApplication(argc, argv) {}
+
 	QVulkanInstance vulkan_instance;
 	GpuContext gpu;
 	Thumbnailer thumbnailer;
@@ -53,7 +60,9 @@ public:
 		BrowseSetup setup = {}, bool browse = false);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);
-	void quit();
+	// Not quit(): that name is taken by a static QCoreApplication slot,
+	// which Qt's own quit paths go through, skipping the unmapping below.
+	void shutdown();
 	[[nodiscard]] Window *key_window() const;
 };
 
