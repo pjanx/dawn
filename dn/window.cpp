@@ -1015,9 +1015,18 @@ Window::focus_gained()
 	request_render();
 }
 
+// The shell and the Vulkan child are one window to the user, and may Qt move
+// keyboard focus from the one to the other on the first click into it.
+// That is no loss of focus, and must not take an open menu with it.
+//
+// This has been observed on Weston.
 void
 Window::focus_lost()
 {
+	const QWindow *focus = QGuiApplication::focusWindow();
+	if (focus == this || focus == shell())
+		return;
+
 	this->alt_armed_ = false;
 	this->kit_.close_transient_popups();
 	request_render();
