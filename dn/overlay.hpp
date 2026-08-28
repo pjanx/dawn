@@ -49,7 +49,6 @@ struct OverlayMesh {
 	std::vector<OverlayCmd> cmds;
 	float display_w = 0;
 	float display_h = 0;
-	float fb_scale = 1;
 };
 
 class OverlayList
@@ -73,8 +72,8 @@ class OverlayList
 		float u1, float v1, Colour c00, Colour c10, Colour c11, Colour c01);
 
 public:
-	void begin(float width_pts, float height_pts, float dpr, float white_u,
-		float white_v);
+	void begin(
+		float width_px, float height_px, float white_u, float white_v);
 	void end();
 	void push_clip(float x0, float y0, float x1, float y1);
 	void pop_clip();

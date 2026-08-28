@@ -4269,9 +4269,9 @@ Kit::paint()
 	const float white_v =
 		(float(this->white_.y) + 0.5f) / float(max(this->atlas_.h, 1));
 	// The draw list is fed device pixels now, so its own grid is 1:1 and its
-	// snapping is a no-op on what layout already produced.
-	this->list_.begin(float(this->host_w_), float(this->host_h_), 1.0f,
-		white_u, white_v);
+	// snapping only rounds off what drawing adds on top of layout.
+	this->list_.begin(
+		float(this->host_w_), float(this->host_h_), white_u, white_v);
 	if (this->csd_shadow_) {
 		// TODO(p): Consider if we don't want to add another 1px border.
 		const Rect f = frame();

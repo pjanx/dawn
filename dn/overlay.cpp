@@ -65,11 +65,9 @@ struct PushConstant {
 };
 
 float
-snap_fb(float v, float s)
+snap_fb(float v)
 {
-	if (s <= 0.0f)
-		s = 1.0f;
-	return round(v * s) / s;
+	return round(v);
 }
 
 }  // namespace
@@ -96,19 +94,18 @@ OverlayList::sync_clip()
 
 void
 OverlayList::begin(
-	float width_pts, float height_pts, float dpr, float white_u, float white_v)
+	float width_px, float height_px, float white_u, float white_v)
 {
 	this->mesh_.vertices.clear();
 	this->mesh_.indices.clear();
 	this->mesh_.cmds.clear();
-	this->mesh_.display_w = width_pts;
-	this->mesh_.display_h = height_pts;
-	this->mesh_.fb_scale = dpr > 0.0f ? dpr : 1.0f;
+	this->mesh_.display_w = width_px;
+	this->mesh_.display_h = height_px;
 	this->white_u_ = white_u;
 	this->white_v_ = white_v;
 	this->tex_ = kOverlayTexFont;
 	this->clip_stack_.clear();
-	this->clip_stack_.push_back({0.0f, 0.0f, width_pts, height_pts});
+	this->clip_stack_.push_back({0.0f, 0.0f, width_px, height_px});
 	this->cmd_ = {};
 	sync_clip();
 }
@@ -131,11 +128,10 @@ OverlayList::push_clip(float x0, float y0, float x1, float y1)
 		min(prev.x1, x1),
 		min(prev.y1, y1),
 	};
-	const float s = this->mesh_.fb_scale;
-	next.x0 = snap_fb(next.x0, s);
-	next.y0 = snap_fb(next.y0, s);
-	next.x1 = snap_fb(next.x1, s);
-	next.y1 = snap_fb(next.y1, s);
+	next.x0 = snap_fb(next.x0);
+	next.y0 = snap_fb(next.y0);
+	next.x1 = snap_fb(next.x1);
+	next.y1 = snap_fb(next.y1);
 	if (next.x1 < next.x0)
 		next.x1 = next.x0;
 	if (next.y1 < next.y0)
@@ -158,11 +154,10 @@ OverlayList::add_quad(float x0, float y0, float x1, float y1, float u0,
 	float v0, float u1, float v1, Colour c00, Colour c10, Colour c11,
 	Colour c01)
 {
-	const float s = this->mesh_.fb_scale;
-	x0 = snap_fb(x0, s);
-	y0 = snap_fb(y0, s);
-	x1 = snap_fb(x1, s);
-	y1 = snap_fb(y1, s);
+	x0 = snap_fb(x0);
+	y0 = snap_fb(y0);
+	x1 = snap_fb(x1);
+	y1 = snap_fb(y1);
 	sync_clip();
 	const uint32_t i = uint32_t(this->mesh_.vertices.size());
 	this->mesh_.vertices.push_back({x0, y0, u0, v0, c00});
@@ -205,16 +200,15 @@ OverlayList::add_line(
 	const float len = sqrt(dx * dx + dy * dy);
 	if (len <= 0.0f || thickness <= 0.0f)
 		return;
-	const float s = this->mesh_.fb_scale > 0.0f ? this->mesh_.fb_scale : 1.0f;
-	const float th = max(1.0f, round(thickness * s)) / s;
-	if (abs(dy) * s < 0.5f) {
-		x0 = snap_fb(x0, s);
-		x1 = snap_fb(x1, s);
-		y0 = y1 = (floor(y0 * s) + 0.5f) / s;
-	} else if (abs(dx) * s < 0.5f) {
-		y0 = snap_fb(y0, s);
-		y1 = snap_fb(y1, s);
-		x0 = x1 = (floor(x0 * s) + 0.5f) / s;
+	const float th = max(1.0f, round(thickness));
+	if (abs(dy) < 0.5f) {
+		x0 = snap_fb(x0);
+		x1 = snap_fb(x1);
+		y0 = y1 = floor(y0) + 0.5f;
+	} else if (abs(dx) < 0.5f) {
+		y0 = snap_fb(y0);
+		y1 = snap_fb(y1);
+		x0 = x1 = floor(x0) + 0.5f;
 	}
 	const float hx = (-dy / len) * (th * 0.5f);
 	const float hy = (dx / len) * (th * 0.5f);
@@ -241,23 +235,22 @@ void
 OverlayList::add_rect_stroke(
 	float x0, float y0, float x1, float y1, Colour col, float thickness)
 {
-	const float s = this->mesh_.fb_scale > 0.0f ? this->mesh_.fb_scale : 1.0f;
 	if (thickness <= 0.0f)
 		return;
 
 	// Snap the outline to the framebuffer grid first, so that the four bands
 	// agree on where the corners are: drawing them as lines would leave the
 	// butt caps short of each other, and notch the bottom right corner.
-	x0 = snap_fb(x0, s);
-	y0 = snap_fb(y0, s);
-	x1 = snap_fb(x1, s);
-	y1 = snap_fb(y1, s);
+	x0 = snap_fb(x0);
+	y0 = snap_fb(y0);
+	x1 = snap_fb(x1);
+	y1 = snap_fb(y1);
 	if (x1 < x0)
 		swap(x0, x1);
 	if (y1 < y0)
 		swap(y0, y1);
 
-	const float th = max(1.0f, round(thickness * s)) / s;
+	const float th = max(1.0f, round(thickness));
 	if (x1 - x0 <= 2.0f * th || y1 - y0 <= 2.0f * th) {
 		add_rect_filled(x0, y0, x1, y1, col);
 		return;
@@ -991,7 +984,6 @@ OverlayVulkan::record(
 	vkCmdPushConstants(cmd, this->pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT,
 		0, sizeof(push), &push);
 
-	const float fb = mesh.fb_scale > 0.0f ? mesh.fb_scale : 1.0f;
 	uint32_t bound_tex = ~0u;
 	for (const OverlayCmd &draw_cmd : mesh.cmds) {
 		if (draw_cmd.idx_count == 0)
@@ -1007,10 +999,10 @@ OverlayVulkan::record(
 				&this->descriptor_sets_[draw_cmd.tex], 0, nullptr);
 			bound_tex = draw_cmd.tex;
 		}
-		float clip_min_x = draw_cmd.clip_x0 * fb;
-		float clip_min_y = draw_cmd.clip_y0 * fb;
-		float clip_max_x = draw_cmd.clip_x1 * fb;
-		float clip_max_y = draw_cmd.clip_y1 * fb;
+		float clip_min_x = draw_cmd.clip_x0;
+		float clip_min_y = draw_cmd.clip_y0;
+		float clip_max_x = draw_cmd.clip_x1;
+		float clip_max_y = draw_cmd.clip_y1;
 		if (clip_min_x < 0.0f)
 			clip_min_x = 0.0f;
 		if (clip_min_y < 0.0f)
