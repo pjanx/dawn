@@ -51,6 +51,9 @@ struct Rect {
 		return px >= float(this->x) && py >= float(this->y) &&
 			px < float(this->x + this->w) && py < float(this->y + this->h);
 	}
+	[[nodiscard]] int right() const { return this->x + this->w; }
+	[[nodiscard]] int bottom() const { return this->y + this->h; }
+	[[nodiscard]] bool empty() const { return this->w <= 0 || this->h <= 0; }
 	[[nodiscard]] Rect inset(int px, int py) const;
 };
 
@@ -363,7 +366,7 @@ struct Scroll {
 	[[nodiscard]] int wake_ms() const;
 	[[nodiscard]] Rect bar_rect(Rect viewport) const;
 	[[nodiscard]] Rect thumb_rect(Rect viewport) const;
-	bool wheel(int delta, float step);
+	bool wheel(int delta, float step_px);
 	bool pan(float dy);
 	bool page(int dir);
 	bool press(float x, float y, Qt::MouseButton button, Rect viewport);
@@ -707,6 +710,12 @@ struct Kit {
 	}
 	void focus_ring(Rect w);   // 1px inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
+	// Rect-shaped wrappers over the draw list, which speaks floats: layout
+	// is integral, so these save every caller the same four conversions.
+	void draw_fill(Rect w, Colour col);
+	void draw_border(Rect w, Colour col, float thickness);
+	void clip_to(Rect w);
+	void clip_pop();
 	void tooltip(const Widget *hot);
 	[[nodiscard]] int wake_ms() const;
 	void paint();

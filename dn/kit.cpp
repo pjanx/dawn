@@ -580,7 +580,7 @@ Widget::paint(Kit &kit) const
 Widget *
 Widget::hit_at(float x, float y)
 {
-	if (!shown() || this->r.w <= 0.0f || this->r.h <= 0.0f ||
+	if (!shown() || this->r.empty() ||
 		!this->r.contains(x, y))
 		return nullptr;
 	for (size_t i = child_count(); i > 0; --i) {
@@ -720,11 +720,9 @@ Button::paint(Kit &kit) const
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if ((this->enabled_ && pressed) || this->active)
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
 	else if (this->enabled_ && hot)
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourHover]));
+		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.px(kIconPts);
 	const float ink_a = (this->enabled_ ? 1.0f : 0.375f) *
@@ -1013,17 +1011,15 @@ Entry::arrange(Kit &kit, Rect alloc)
 void
 Entry::paint(Kit &kit) const
 {
-	if (!this->Widget::shown() || this->r.w <= 0.0f || this->r.h <= 0.0f)
+	if (!this->Widget::shown() || this->r.empty())
 		return;
 
-	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
-	const float hair = kit.hairline();
-	kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
+	kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
+	const float hair = float(kit.hairline());
+	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
-	kit.list_.push_clip(in.x, in.y, in.x + in.w, in.y + in.h);
+	kit.clip_to(in);
 
 	const QString full = painted();
 	const int th = kit.text_height(QStringLiteral("Ag"), 0, false);
@@ -1059,7 +1055,7 @@ Entry::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
-	kit.list_.pop_clip();
+	kit.clip_pop();
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
 }
@@ -1614,10 +1610,10 @@ Scroll::set_from_y(float y, Rect viewport)
 }
 
 bool
-Scroll::wheel(int delta, float step)
+Scroll::wheel(int delta, float step_px)
 {
 	const float s = float(delta) / 120.0f;
-	this->offset = std::clamp(this->offset - s * step, 0.0f, max_offset());
+	this->offset = std::clamp(this->offset - s * step_px, 0.0f, max_offset());
 	reveal();
 	return true;
 }
@@ -1691,9 +1687,7 @@ Scroll::paint(Kit &kit, Rect viewport) const
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.w <= 0 || thumb.h <= 0)
 		return;
-	kit.list_.add_rect_filled(float(thumb.x), float(thumb.y),
-		float(thumb.x + thumb.w), float(thumb.y + thumb.h),
-		kit.colours_[ColourDivider]);
+	kit.draw_fill(thumb, kit.colours_[ColourDivider]);
 }
 
 void
@@ -1741,17 +1735,16 @@ ScrollColumn::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	kit.list_.push_clip(
-		this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
+	kit.clip_to(this->r);
 	paint_children(kit);
 	this->scroll_.paint(kit, this->r);
-	kit.list_.pop_clip();
+	kit.clip_pop();
 }
 
 Widget *
 ScrollColumn::hit_at(float x, float y)
 {
-	if (!shown() || this->r.w <= 0.0f || this->r.h <= 0.0f ||
+	if (!shown() || this->r.empty() ||
 		!this->r.contains(x, y))
 		return nullptr;
 	if (this->scroll_.visible() &&
@@ -1873,8 +1866,7 @@ Panel::paint(Kit &kit) const
 	if (!shown())
 		return;
 	if (this->clip)
-		kit.list_.push_clip(
-			this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
+		kit.clip_to(this->r);
 	switch (this->fill) {
 	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
@@ -1883,12 +1875,10 @@ Panel::paint(Kit &kit) const
 			col(kit.colours_[ColourToolbarBottom]));
 		break;
 	case Fill::Tooltip:
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
+		kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
 		break;
 	case Fill::Panel:
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourPanel]));
+		kit.draw_fill(this->r, col(kit.colours_[ColourPanel]));
 		break;
 	case Fill::None:
 		break;
@@ -1900,8 +1890,7 @@ Panel::paint(Kit &kit) const
 	const float edge = float(this->r.y + this->r.h) - hair * 0.5f;
 	switch (this->stroke) {
 	case Stroke::All:
-		kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
+		kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 		break;
 	case Stroke::Bottom:
 		kit.list_.add_line(this->r.x, edge, this->r.x + this->r.w, edge,
@@ -1913,7 +1902,7 @@ Panel::paint(Kit &kit) const
 		break;
 	}
 	if (this->clip)
-		kit.list_.pop_clip();
+		kit.clip_pop();
 }
 
 // --- Popup -------------------------------------------------------------------
@@ -2153,8 +2142,7 @@ Dialog::paint(Kit &kit) const
 	if (!this->visible)
 		return;
 	// The same wash Hint lays over the window behind it.
-	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourInk], 0.1f));
+	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
 	if (this->frame && this->frame->visible)
 		kit.draw_shadow(this->frame->r);
 	Panel::paint(kit);
@@ -2540,8 +2528,7 @@ MenuItem::paint(Kit &kit) const
 	// and it would stay lit behind the pointer when press-dragging through.
 	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
 	if (this->enabled_ && (this->active || kit.focus_ == this))
-		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
 
 	const MenuCols cols = menu_cols(kit, *this);
 	const int icon = kit.px(kIconPts), pad_x = kit.px(kFramePadX);
@@ -3290,6 +3277,33 @@ void
 Kit::draw_shadow(Rect w)
 {
 	draw_glow(w.x, w.y, w.w, w.h, {0, 0, 0, 0.25f});
+}
+
+void
+Kit::draw_fill(Rect w, Colour col)
+{
+	this->list_.add_rect_filled(
+		float(w.x), float(w.y), float(w.right()), float(w.bottom()), col);
+}
+
+void
+Kit::draw_border(Rect w, Colour col, float thickness)
+{
+	this->list_.add_rect_stroke(float(w.x), float(w.y), float(w.right()),
+		float(w.bottom()), col, thickness);
+}
+
+void
+Kit::clip_to(Rect w)
+{
+	this->list_.push_clip(
+		float(w.x), float(w.y), float(w.right()), float(w.bottom()));
+}
+
+void
+Kit::clip_pop()
+{
+	this->list_.pop_clip();
 }
 
 bool
@@ -4274,7 +4288,7 @@ Kit::paint()
 	if (this->csd_shadow_) {
 		// TODO(p): Consider if we don't want to add another 1px border.
 		const Rect f = frame();
-		if (f.w > 0.0f && f.h > 0.0f)
+		if (!f.empty())
 			draw_glow(
 				f.x, f.y, f.w, f.h, {0, 0, 0, this->active_ ? 0.25f : 0.125f});
 	}

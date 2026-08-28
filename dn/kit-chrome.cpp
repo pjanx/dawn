@@ -326,14 +326,14 @@ intersection(Rect a, Rect b)
 {
 	const int x = max(a.x, b.x);
 	const int y = max(a.y, b.y);
-	return {x, y, max(0, min(a.x + a.w, b.x + b.w) - x),
-		max(0, min(a.y + a.h, b.y + b.h) - y)};
+	return {x, y, max(0, min(a.right(), b.right()) - x),
+		max(0, min(a.bottom(), b.bottom()) - y)};
 }
 
 Rect
 visible_rect(const Widget *w, Rect host)
 {
-	if (!w || !w->shown() || w->r.w <= 0.0f || w->r.h <= 0.0f)
+	if (!w || !w->shown() || w->r.empty())
 		return {};
 	Rect visible = intersection(w->r, host);
 	for (const Widget *p = w->parent_; p; p = p->parent_) {
@@ -447,17 +447,15 @@ Hint::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourInk], 0.1f));
+	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
 	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, true);
 	for (const Target &t : this->targets_) {
-		if (!matches(t) || t.chip.w <= 0.0f)
+		if (!matches(t) || t.chip.empty())
 			continue;
 		const Rect c = t.chip;
-		kit.list_.add_rect_filled(
-			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourHint]);
-		kit.list_.add_rect_stroke(c.x, c.y, c.x + c.w, c.y + c.h,
-			kit.colours_[ColourInk], kit.hairline());
+		kit.draw_fill(c, kit.colours_[ColourHint]);
+		kit.draw_border(
+			c, kit.colours_[ColourInk], float(kit.hairline()));
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = float(c.x + kit.px(kChipPadX));
 		const float ty = float(c.y) + max(0.0f, float(c.h - th) * 0.5f);
@@ -570,10 +568,10 @@ Hint::collect()
 	const Rect well = browser->r;
 	for (int i = 0; i < int(browser->files_.size()); ++i) {
 		const Browser::File &f = browser->files_[size_t(i)];
-		if (f.tile.w <= 0.0f || f.tile.h <= 0.0f)
+		if (f.tile.empty())
 			continue;
 		const Rect visible = intersection(f.tile, well);
-		if (visible.w <= 0.0f || visible.h <= 0.0f)
+		if (visible.empty())
 			continue;
 		Target t;
 		t.browser = browser;
@@ -612,7 +610,7 @@ Hint::refresh_rects()
 			continue;
 		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
 		const Rect visible = intersection(f.tile, t.browser->r);
-		if (visible.w <= 0.0f || visible.h <= 0.0f)
+		if (visible.empty())
 			continue;
 		t.at = visible;
 		keep.push_back(t);
@@ -702,7 +700,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 			const float max_side =
 				max(min_side, float(frame.w - kit.px(kMinWell)));
 			const float want = this->sidebar_side == Side::Right
-				? float(frame.x + frame.w) - mx
+				? float(frame.right()) - mx
 				: mx - float(frame.x);
 			this->sidebar_w = clamp(want, min_side, max_side) / kit.dpr_;
 		};
@@ -819,13 +817,13 @@ Page::arrange(Kit &kit, Rect alloc)
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
-		const int rest = max(0, frame.y + frame.h - y);
+		const int rest = max(0, frame.bottom() - y);
 		this->banner->measure(kit, frame.w, rest);
 		this->banner->arrange(kit, {frame.x, y, frame.w, this->banner->r.h});
 		y += this->banner->r.h;
 	}
 	const int body_y = y;
-	const int body_h = max(0, frame.y + frame.h - body_y);
+	const int body_h = max(0, frame.bottom() - body_y);
 	int side_w = 0;
 	if (this->sidebar) {
 		this->sidebar->visible = this->sidebar_open &&
@@ -839,7 +837,7 @@ Page::arrange(Kit &kit, Rect alloc)
 				this->sidebar->arrange(kit, {frame.x, body_y, side_w, body_h});
 			else
 				this->sidebar->arrange(
-					kit, {frame.x + frame.w - side_w, body_y, side_w, body_h});
+					kit, {frame.right() - side_w, body_y, side_w, body_h});
 		} else {
 			this->sidebar->r = {};
 		}

@@ -395,10 +395,9 @@ row_h(const Browser &b)
 bool
 thumb_in_band(const Browser &b, const Browser::File &f, float pad)
 {
-	if (f.cell.w <= 0.0f)
+	if (f.cell.empty())
 		return false;
-	return f.cell.y + f.cell.h >= b.r.y - pad &&
-		f.cell.y <= b.r.y + b.r.h + pad;
+	return f.cell.bottom() >= b.r.y - pad && f.cell.y <= b.r.bottom() + pad;
 }
 
 void
@@ -1223,7 +1222,7 @@ remember_cursor_x(Browser &b)
 	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
 		return;
 	const Rect &c = b.files_[size_t(b.cursor_)].cell;
-	if (c.w <= 0.0f) {
+	if (c.empty()) {
 		b.cursor_x_dirty_ = true;
 		return;
 	}
@@ -1241,7 +1240,7 @@ remember_cursor_x_at(Browser &b, float x)
 		b.cursor_x_dirty_ = true;
 		return;
 	}
-	b.cursor_x_ = clamp(x, float(c.x), float(c.x + c.w));
+	b.cursor_x_ = clamp(x, float(c.x), float(c.right()));
 	b.cursor_x_dirty_ = false;
 }
 
@@ -1408,7 +1407,7 @@ layout_grid(Browser &b, Rect area)
 			f.cell = {x, inner.y + y - off, ow, rh};
 			f.cap.x = f.cell.x;
 			f.cap.y = f.cell.y + band + 2 * ch;
-			x = f.cell.x + f.cell.w + gap;
+			x = f.cell.right() + gap;
 		}
 		b.rows_.push_back({row.front().i, int(row.size()), y, rh});
 		y += rh + gap;
@@ -1493,13 +1492,12 @@ layout_grid(Browser &b, Rect area)
 void
 draw_checker(Kit &kit, const Rect &tile)
 {
-	if (tile.w <= 0.0f || tile.h <= 0.0f)
+	if (tile.empty())
 		return;
-	kit.list_.push_clip(tile.x, tile.y, tile.x + tile.w, tile.y + tile.h);
+	kit.clip_to(tile);
 	const Colour bg = kit.colours_[ColourToolbarBottom];
 	const Colour fg = kit.colours_[ColourWell];
-	kit.list_.add_rect_filled(
-		tile.x, tile.y, tile.x + tile.w, tile.y + tile.h, bg);
+	kit.draw_fill(tile, bg);
 	const int nx = max(1, int(ceil(double(tile.w / kCheck))));
 	const int ny = max(1, int(ceil(double(tile.h / kCheck))));
 	for (int j = 0; j < ny; ++j) {
@@ -1511,7 +1509,7 @@ draw_checker(Kit &kit, const Rect &tile)
 			kit.list_.add_rect_filled(x0, y0, x0 + kCheck, y0 + kCheck, fg);
 		}
 	}
-	kit.list_.pop_clip();
+	kit.clip_pop();
 }
 
 int
@@ -2554,7 +2552,7 @@ Browser::prepare(Kit &kit)
 	if (!this->show_names_)
 		return;
 	for (const File &f : this->files_) {
-		if (f.cell.w <= 0.0f || f.cap.h <= 0.0f)
+		if (f.cell.empty() || f.cap.h <= 0)
 			continue;
 		Label lab;
 		lab.text = f.cap_text;
@@ -2570,10 +2568,8 @@ Browser::paint(Kit &kit) const
 {
 	if (kit.renderer_)
 		kit.renderer_->set_view(1.0f, 0.0f, 0.0f, dawn::Orientation::Rotate0);
-	kit.list_.push_clip(
-		this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
-	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, kit.colours_[ColourWell]);
+	kit.clip_to(this->r);
+	kit.draw_fill(this->r, kit.colours_[ColourWell]);
 	const int th = kit.px(float(this->thumb_size_));
 	const Colour ink = kit.colours_[ColourInk];
 	const float glow_a = kit.ink_alpha();
@@ -2584,7 +2580,7 @@ Browser::paint(Kit &kit) const
 		const File &f = this->files_[size_t(i)];
 		if (f.cell.w <= 0)
 			continue;
-		if (f.cell.y + f.cell.h < this->r.y || f.cell.y > this->r.y + this->r.h)
+		if (f.cell.bottom() < this->r.y || f.cell.y > this->r.bottom())
 			continue;
 		const int tw = f.tile.w > 0 ? f.tile.w : th;
 		const int thp = f.tile.h > 0 ? f.tile.h : th;
@@ -2614,9 +2610,8 @@ Browser::paint(Kit &kit) const
 			kit.draw_icon(tx + (tw - sz) * 0.5f, ty + (thp - sz) * 0.5f, sz,
 				f.failed ? kMissingIcon : kPendingIcon, ink);
 		}
-		if (this->show_names_ && f.cap.h > 0.0f) {
-			kit.list_.push_clip(
-				f.cap.x, f.cap.y, f.cap.x + f.cap.w, f.cap.y + f.cap.h);
+		if (this->show_names_ && f.cap.h > 0) {
+			kit.clip_to(f.cap);
 			Label lab;
 			lab.text = f.cap_text;
 			lab.align = Align::Center;
@@ -2624,11 +2619,11 @@ Browser::paint(Kit &kit) const
 			lab.pad_y = kCapPad * 0.5f;
 			lab.r = f.cap;
 			lab.paint(kit);
-			kit.list_.pop_clip();
+			kit.clip_pop();
 		}
 	}
 	this->scroll_.paint(kit, this->r);
-	kit.list_.pop_clip();
+	kit.clip_pop();
 }
 
 bool
