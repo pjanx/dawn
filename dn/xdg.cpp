@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 
 #include <algorithm>
 #include <unordered_map>
@@ -84,6 +85,7 @@ read_text_file(const QString &path)
 struct MimeGlob {
 	QString type;
 	QString glob;
+	QRegularExpression glob_re;  ///< glob converted
 	int weight = 50;
 };
 
@@ -128,19 +130,23 @@ read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 		const QString line = raw.trimmed();
 		if (line.isEmpty() || line.startsWith(u'#'))
 			continue;
+
 		const QStringList f = line.split(u':');
 		const int type_i = is_globs2 ? 1 : 0;
 		if (f.size() < type_i + 2)
 			continue;
+
 		const QString type = f[type_i];
 		const QString glob = f[type_i + 1];
 		if (type.isEmpty() || glob.isEmpty() ||
 			glob == QLatin1String("__NOGLOBS__"))
 			continue;
+
 		// :cs (case-sensitive) is ignored; weight is unused for filtering.
 		MimeGlob g;
 		g.type = type;
 		g.glob = glob.toLower();
+		g.glob_re = QRegularExpression::fromWildcard(g.glob, Qt::CaseInsensitive);
 		if (is_globs2)
 			g.weight = f[0].toInt();
 		db.globs.push_back(std::move(g));
@@ -273,7 +279,7 @@ types_for_filename(const QString &path)
 	const MimeDb &db = mime_db();
 	unordered_map<QString, int> best_weight;
 	for (const MimeGlob &g : db.globs) {
-		if (!QDir::match(g.glob, name))
+		if (!g.glob_re.match(name).hasMatch())
 			continue;
 		auto it = best_weight.find(g.type);
 		if (it == best_weight.end())

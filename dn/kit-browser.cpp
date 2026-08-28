@@ -267,13 +267,13 @@ hidden_name(const string &name)
 }
 
 bool
-is_image_ext(const QString &name)
+is_image_filename(const QString &name)
 {
 	// The MIME database is external data: the globs need not be mere
 	// extensions.  QDir::match() recompiles a QRegularExpression for every
 	// glob on every call, which dominates the cost of scanning a directory,
 	// so translate them the once, as fiv did with GPatternSpec.
-	static const vector<QRegularExpression> globs = [] {
+	static const vector<QRegularExpression> glob_res = [] {
 		vector<QRegularExpression> out;
 		for (const QString &glob :
 			extract_mime_globs(dawn::supported_media_types())) {
@@ -284,8 +284,8 @@ is_image_ext(const QString &name)
 		return out;
 	}();
 	const QString filename = QFileInfo(name).fileName();
-	for (const QRegularExpression &glob : globs) {
-		if (glob.match(filename).hasMatch())
+	for (const QRegularExpression &glob_re : glob_res) {
+		if (glob_re.match(filename).hasMatch())
 			return true;
 	}
 	return false;
@@ -1772,7 +1772,7 @@ scan_dir(Browser &b)
 		if (!ent.is_regular_file(fec) || fec)
 			continue;
 		if (b.setup_.filter_files &&
-			!is_image_ext(QString::fromStdString(name)))
+			!is_image_filename(QString::fromStdString(name)))
 			continue;
 		if (!matches_search(b, name))
 			continue;
