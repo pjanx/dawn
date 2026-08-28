@@ -24,6 +24,17 @@ target_include_directories(dn PRIVATE
 	"${CMAKE_CURRENT_SOURCE_DIR}"
 	"${PROJECT_SOURCE_DIR}/libdn"
 )
+
+# Widget geometry is integral device pixels, and the only way in is an explicit
+# conversion: a silent float truncation here is a layout bug.  Scoped to dn, as
+# vendored dependencies do not build clean under it.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+	target_compile_options(dn PRIVATE -Werror=float-conversion)
+endif()
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+	target_compile_options(dn PRIVATE -Werror=implicit-int-conversion)
+endif()
+
 find_package(Threads REQUIRED)
 target_link_libraries(dn PRIVATE
 	dawn::libdn

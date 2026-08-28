@@ -43,7 +43,7 @@ const QString kTargetLab = QStringLiteral("Target");
 float
 caption_h(const Kit &kit)
 {
-	return kCapGap + kit.text_height(kSourceLab, 0.0f, false) + 4.;
+	return kCapGap + kit.text_height(kSourceLab, 0.0f, false) + 4.0f;
 }
 
 Rect
@@ -235,7 +235,7 @@ CieDiagram::measure(Kit &kit, float max_w, float max_h)
 	const float cap = caption_h(kit);
 	const float plot_h = max(0.0f, max_h - cap);
 	const Rect fit = plot_rect({0, 0, max_w, plot_h}, kit.dpr_);
-	const float labs = kit.text_width(kSourceLab, false) + 8. +
+	const float labs = kit.text_width(kSourceLab, false) + 8.0f +
 		kit.text_width(kTargetLab, false);
 	this->r.w = max(fit.w, labs);
 	this->r.h = fit.h + cap;
@@ -307,8 +307,8 @@ CieDiagram::paint(Kit &kit) const
 
 	const float cx = x0 + cap_w / 2;
 	const float widthS = kit.text_width(kSourceLab, true);
-	kit.emit_text(cx - 4. - widthS, y, kSourceLab, kBlackCol, true);
-	kit.emit_text(cx + 4., y, kTargetLab, kWhiteCol, true);
+	kit.emit_text(cx - 4.0f - widthS, y, kSourceLab, kBlackCol, true);
+	kit.emit_text(cx + 4.0f, y, kTargetLab, kWhiteCol, true);
 }
 
 }  // namespace dn
