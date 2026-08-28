@@ -241,10 +241,31 @@ void
 OverlayList::add_rect_stroke(
 	float x0, float y0, float x1, float y1, Colour col, float thickness)
 {
-	add_line(x0, y0, x1, y0, col, thickness);
-	add_line(x1, y0, x1, y1, col, thickness);
-	add_line(x1, y1, x0, y1, col, thickness);
-	add_line(x0, y1, x0, y0, col, thickness);
+	const float s = this->mesh_.fb_scale > 0.0f ? this->mesh_.fb_scale : 1.0f;
+	if (thickness <= 0.0f)
+		return;
+
+	// Snap the outline to the framebuffer grid first, so that the four bands
+	// agree on where the corners are: drawing them as lines would leave the
+	// butt caps short of each other, and notch the bottom right corner.
+	x0 = snap_fb(x0, s);
+	y0 = snap_fb(y0, s);
+	x1 = snap_fb(x1, s);
+	y1 = snap_fb(y1, s);
+	if (x1 < x0)
+		swap(x0, x1);
+	if (y1 < y0)
+		swap(y0, y1);
+
+	const float th = max(1.0f, round(thickness * s)) / s;
+	if (x1 - x0 <= 2.0f * th || y1 - y0 <= 2.0f * th) {
+		add_rect_filled(x0, y0, x1, y1, col);
+		return;
+	}
+	add_rect_filled(x0, y0, x1, y0 + th, col);
+	add_rect_filled(x0, y1 - th, x1, y1, col);
+	add_rect_filled(x0, y0 + th, x0 + th, y1 - th, col);
+	add_rect_filled(x1 - th, y0 + th, x1, y1 - th, col);
 }
 
 void
