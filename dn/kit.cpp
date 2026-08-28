@@ -57,7 +57,7 @@ widen8(uint8_t v)
 Colour
 u8_colour(uint8_t r, uint8_t g, uint8_t b)
 {
-	return {r / 255.0f, g / 255.0f, b / 255.0f, 1.0f};
+	return {r / 255.f, g / 255.f, b / 255.f, 1.f};
 }
 
 Colour
@@ -75,7 +75,7 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 			(uint8_t *) pixel, 1, 1, srgb.get(), target, false, false))
 		return colour;
 	return {
-		pixel[2] / 65535.0f, pixel[1] / 65535.0f, pixel[0] / 65535.0f, 1.0f};
+		pixel[2] / 65535.f, pixel[1] / 65535.f, pixel[0] / 65535.f, 1.f};
 }
 
 Colour
@@ -223,14 +223,14 @@ layout_text(QTextLayout *layout, int wrap, bool center = false)
 		layout->setTextOption(opt);
 	}
 	layout->beginLayout();
-	float y = 0.0f;
+	float y = 0.f;
 	const float wrap_px = wrap > 0 ? float(wrap) : 1.0e8f;
 	for (;;) {
 		QTextLine line = layout->createLine();
 		if (!line.isValid())
 			break;
 		line.setLineWidth(wrap_px);
-		float x = 0.0f;
+		float x = 0.f;
 		if (center)
 			x = (wrap_px - float(line.naturalTextWidth())) * 0.5f;
 		line.setPosition(QPointF(x, y));
@@ -259,10 +259,10 @@ resize_cursor(Qt::Edges edges)
 
 }  // namespace
 
-constexpr float kDialogPad = 16.0f;
+constexpr float kDialogPad = 16.f;
 
 static Colour
-col(const Colour &c, float alpha = 1.0f)
+col(const Colour &c, float alpha = 1.f)
 {
 	return {c.r, c.g, c.b, c.a * alpha};
 }
@@ -533,10 +533,10 @@ emit_icon(
 namespace
 {
 
-constexpr float kSepW = 8.0f;
-constexpr float kSepH = 7.0f;
-constexpr float kTooltipDelayMs = 500.0f;
-constexpr float kTooltipMovePts = 6.0f;
+constexpr float kSepW = 8.f;
+constexpr float kSepH = 7.f;
+constexpr float kTooltipDelayMs = 500.f;
+constexpr float kTooltipMovePts = 6.f;
 
 int
 sooner(int a, int b)
@@ -673,7 +673,7 @@ int
 button_text_avail(const Kit &kit, const Button &b)
 {
 	const int px = kit.px(kFramePadX + b.pad_x);
-	const int left = px + (b.icon ? kit.px(kIconPts + 4.0f) : 0);
+	const int left = px + (b.icon ? kit.px(kIconPts + 4.f) : 0);
 	return max(1, b.r.w - left - px);
 }
 
@@ -700,7 +700,7 @@ Button::measure(Kit &kit, int, int)
 	}
 	if (!this->text.isEmpty()) {
 		if (this->icon)
-			cw += kit.px(4.0f);
+			cw += kit.px(4.f);
 		cw += kit.text_width(this->text, false);
 		ch = max(ch, kit.text_height(this->text, 0, false));
 	}
@@ -726,15 +726,15 @@ Button::paint(Kit &kit) const
 		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.px(kIconPts);
-	const float ink_a = (this->enabled_ ? 1.0f : 0.375f) *
-		(this->dim ? 0.5f : 1.0f) * kit.ink_alpha();
+	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
+		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->icon)
 		emit_icon(kit, float(this->r.x + px),
 			float(this->r.y + (this->r.h - icon) / 2), float(icon),
 			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx =
-			this->r.x + px + (this->icon ? icon + kit.px(4.0f) : 0);
+			this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
 		const int th = kit.text_height(this->text, 0, false);
 		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
 			button_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
@@ -856,7 +856,7 @@ Label::paint(Kit &kit) const
 		ty = this->r.y + this->r.h - pad_y - th;
 	emit_text(kit, float(tx), float(ty), this->text,
 		col(kit.colours_[ColourInk],
-			(this->dim ? 0.5f : 1.0f) * kit.ink_alpha()),
+			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
 		this->bold, -1, wrap_w, wrap_center);
 }
 
@@ -873,8 +873,8 @@ Label::prepare(Kit &kit)
 namespace
 {
 
-constexpr float kCaretBlinkMs = 530.0f;
-constexpr float kEntryPadY = 3.0f;
+constexpr float kCaretBlinkMs = 530.f;
+constexpr float kEntryPadY = 3.f;
 
 // Both walk whole grapheme clusters, so that combining marks and surrogate
 // pairs never get split down the middle.
@@ -960,13 +960,13 @@ Entry::rescroll(const Kit &kit)
 	const float text_w = float(kit.text_width(full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
-		this->scroll_ = 0.0f;
+		this->scroll_ = 0.f;
 		return;
 	}
 
 	// Keep the caret around the centre, but never leave a gap at either end:
 	// the text fills the box before the caret gets to be centred.
-	this->scroll_ = clamp(caret - view * 0.5f, 0.0f, text_w - view);
+	this->scroll_ = clamp(caret - view * 0.5f, 0.f, text_w - view);
 }
 
 void
@@ -1262,7 +1262,7 @@ Sep::paint(Kit &kit) const
 	// Half-pixel centres: these are drawing positions, not geometry.
 	const float cx = float(this->r.x) + float(this->r.w) * 0.5f;
 	const float cy = float(this->r.y) + float(this->r.h) * 0.5f;
-	const float inset = float(kit.px(2.0f)), gap = float(kit.px(4.0f));
+	const float inset = float(kit.px(2.f)), gap = float(kit.px(4.f));
 	const float hair = kit.hairline();
 	if (this->r.h > this->r.w)
 		kit.list_.add_line(cx, float(this->r.y) + inset, cx,
@@ -1514,20 +1514,20 @@ Column::arrange(Kit &kit, Rect alloc)
 float
 Scroll::max_offset() const
 {
-	return max(0.0f, this->content - this->view);
+	return max(0.f, this->content - this->view);
 }
 
 void
 Scroll::clamp()
 {
-	this->offset = std::clamp(this->offset, 0.0f, max_offset());
+	this->offset = std::clamp(this->offset, 0.f, max_offset());
 }
 
 void
 Scroll::set_metrics(const Kit &kit, float content_h, float view_h)
 {
-	this->content = max(0.0f, content_h);
-	this->view = max(0.0f, view_h);
+	this->content = max(0.f, content_h);
+	this->view = max(0.f, view_h);
 	this->bar_w = kit.px(kScrollBarW);
 	this->step = kit.px(kScrollStep);
 	clamp();
@@ -1582,7 +1582,7 @@ Rect
 Scroll::thumb_rect(Rect viewport) const
 {
 	const Rect bar = bar_rect(viewport);
-	if (bar.h <= 0 || this->content <= 0.0f)
+	if (bar.h <= 0 || this->content <= 0.f)
 		return bar;
 	// Length and position stay continuous right up to the rect: rounding
 	// the ratio itself would make the thumb jitter as content grows.
@@ -1591,7 +1591,7 @@ Scroll::thumb_rect(Rect viewport) const
 	const float travel = float(bar.h) - th;
 	const float range = max_offset();
 	const float ty =
-		range > 0.0f && travel > 0.0f ? (this->offset / range) * travel : 0.0f;
+		range > 0.f && travel > 0.f ? (this->offset / range) * travel : 0.f;
 	return {bar.x, bar.y + int(lround(ty)), bar.w, int(lround(th))};
 }
 
@@ -1602,19 +1602,19 @@ Scroll::set_from_y(float y, Rect viewport)
 	const Rect thumb = thumb_rect(viewport);
 	const float travel = float(bar.h - thumb.h);
 	const float range = max_offset();
-	if (travel <= 0.0f || range <= 0.0f) {
-		this->offset = 0.0f;
+	if (travel <= 0.f || range <= 0.f) {
+		this->offset = 0.f;
 		return;
 	}
 	const float ty = y - this->grab_ - float(bar.y);
-	this->offset = std::clamp(ty / travel, 0.0f, 1.0f) * range;
+	this->offset = std::clamp(ty / travel, 0.f, 1.f) * range;
 }
 
 bool
 Scroll::wheel(int delta, float step_px)
 {
-	const float s = float(delta) / 120.0f;
-	this->offset = std::clamp(this->offset - s * step_px, 0.0f, max_offset());
+	const float s = float(delta) / 120.f;
+	this->offset = std::clamp(this->offset - s * step_px, 0.f, max_offset());
 	reveal();
 	return true;
 }
@@ -1622,7 +1622,7 @@ Scroll::wheel(int delta, float step_px)
 bool
 Scroll::pan(float dy)
 {
-	this->offset = std::clamp(this->offset - dy, 0.0f, max_offset());
+	this->offset = std::clamp(this->offset - dy, 0.f, max_offset());
 	reveal();
 	return true;
 }
@@ -1636,7 +1636,7 @@ Scroll::page(int dir)
 	const float by = this->view > page ? this->view - page : this->view;
 	const float prev = this->offset;
 	this->offset =
-		std::clamp(this->offset + float(dir) * by, 0.0f, max_offset());
+		std::clamp(this->offset + float(dir) * by, 0.f, max_offset());
 	reveal();
 	return this->offset != prev;
 }
@@ -2066,7 +2066,7 @@ Dialog::Dialog()
 
 	auto body = make_unique<ScrollColumn>();
 	body->grow = true;
-	body->gap = 8.0f;
+	body->gap = 8.f;
 	this->body = body.get();
 	stack->add_child(std::move(body));
 
@@ -2117,9 +2117,9 @@ Dialog::place(Kit &kit)
 	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
-	const int margin = kit.px(kGlowPts * 2.0f);
+	const int margin = kit.px(kGlowPts * 2.f);
 	const int max_w =
-		max(1, min(kit.px(560.0f), kit.host_w_ - margin * 2));
+		max(1, min(kit.px(560.f), kit.host_w_ - margin * 2));
 	const int avail_h = max(1, kit.host_h_ - margin * 2);
 	this->frame->measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
@@ -2175,9 +2175,9 @@ Dialog::motion(Kit &, float, float)
 namespace
 {
 
-constexpr float kItemGap = 2.0f;
-constexpr float kMenuPad = 4.0f;
-constexpr float kMenuHoldMs = 500.0f;  // GTK MENU_SHELL_TIMEOUT
+constexpr float kItemGap = 2.f;
+constexpr float kMenuPad = 4.f;
+constexpr float kMenuHoldMs = 500.f;  // GTK MENU_SHELL_TIMEOUT
 
 unique_ptr<Sep>
 hsep()
@@ -2200,7 +2200,7 @@ menu_cols(const Kit &kit, const MenuItem &m)
 	MenuCols c;
 	c.accel_w = m.accel_col > 0 ? m.accel_col : m.accel_width(kit);
 	c.chevron = m.sub ? kit.px(kIconPts) : 0;
-	c.label_x = kit.px(kFramePadX * 2.0f + kIconPts);
+	c.label_x = kit.px(kFramePadX * 2.f + kIconPts);
 	c.accel_x = m.r.w - kit.px(kFramePadX) - c.chevron - c.accel_w;
 	c.avail = max(1, c.accel_x - kit.px(kFramePadX) - c.label_x);
 	return c;
@@ -2410,7 +2410,7 @@ Menu::build(span<const MenuNode> nodes, const Actor &a)
 	if (!this->col)
 		return;
 	this->col->grow = false;
-	this->min_w = 200.0f;
+	this->min_w = 200.f;
 	for (const MenuNode &node : nodes) {
 		if (!node.items.empty()) {
 			auto child = make_unique<Menu>();
@@ -2516,7 +2516,7 @@ MenuItem::measure(Kit &kit, int, int)
 	const int icon = kit.px(kIconPts);
 	// One conversion for the whole run of padding, rather than rounding
 	// each term and accumulating the error.
-	int width = kit.px(kIconPts + kFramePadX * 5.0f) + lw + aw;
+	int width = kit.px(kIconPts + kFramePadX * 5.f) + lw + aw;
 	if (this->sub)
 		width += icon;
 	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
@@ -2549,7 +2549,7 @@ MenuItem::paint(Kit &kit) const
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.5f);
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f);
 
 	if (this->checkable && this->checked)
 		emit_icon(kit, float(lead_x), float(iy), float(icon),
@@ -2570,7 +2570,7 @@ MenuItem::paint(Kit &kit) const
 		emit_icon(kit,
 			float(this->r.x + this->r.w - pad_x - cols.chevron), float(iy),
 			float(icon), "go-next-symbolic",
-			col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.375f));
+			col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.375f));
 	}
 }
 
@@ -2624,8 +2624,8 @@ MenuItem::accel_width(const Kit &kit) const
 namespace
 {
 
-constexpr float kWinPadX = 4.0f;
-constexpr float kWinPadY = 4.0f;
+constexpr float kWinPadX = 4.f;
+constexpr float kWinPadY = 4.f;
 
 void
 sync_overflow_proxy(Widget &source, Widget &proxy)
@@ -2978,7 +2978,7 @@ namespace
 {
 
 // How far the pointer must travel before a titlebar press becomes a move.
-constexpr float kDragPts = 4.0f;
+constexpr float kDragPts = 4.f;
 
 unique_ptr<Button>
 make_title_button(Titlebar *bar, Action action, const char *icon)
@@ -3244,7 +3244,7 @@ Kit::draw_icon(float x, float y, float size, const char *name, Colour colour)
 void
 Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 {
-	if (this->glow_.empty() || iw <= 0.0f || ih <= 0.0f)
+	if (this->glow_.empty() || iw <= 0.f || ih <= 0.f)
 		return;
 	float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 	this->atlas_.uv(this->glow_, &u0, &v0, &u1, &v1);
@@ -3318,7 +3318,7 @@ Kit::clip_pop()
 bool
 Kit::set_dpr(float dpr)
 {
-	const float next = dpr > 0.0f ? dpr : 1.0f;
+	const float next = dpr > 0.f ? dpr : 1.f;
 	if (abs(next - this->dpr_) < 0.01f)
 		return false;
 	this->dpr_ = next;
@@ -3770,7 +3770,7 @@ Kit::pan(float x, float y, float dx, float dy)
 	dy = float(px(dy));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
-	if (dx == 0.0f && dy == 0.0f)
+	if (dx == 0.f && dy == 0.f)
 		return false;
 	Widget *h = hit(x, y);
 	if (popup_open() && !owning_popup(h))
@@ -3823,7 +3823,7 @@ void
 Kit::init(float dpr)
 {
 	destroy();
-	this->dpr_ = dpr > 0.0f ? dpr : 1.0f;
+	this->dpr_ = dpr > 0.f ? dpr : 1.f;
 	rebuild_atlas(*this);
 	bake_colours(nullptr, nullptr);
 	this->inited_ = true;
@@ -3961,7 +3961,7 @@ paint_tooltip(Kit &kit)
 	tipn.fill = Fill::Tooltip;
 	tipn.stroke = Stroke::All;
 	auto row = make_unique<Row>();
-	row->gap = accel.isEmpty() ? 0.0f : 8.0f;
+	row->gap = accel.isEmpty() ? 0.f : 8.f;
 	auto lab = make_unique<Label>();
 	lab->text = kit.tooltip_text_;
 	row->add_child(std::move(lab));
@@ -3976,10 +3976,10 @@ paint_tooltip(Kit &kit)
 	// paddings up a second time by hand.
 	tipn.measure(kit, kUnlim, kUnlim);
 	const int tw = tipn.r.w, th = tipn.r.h;
-	const int glow = kit.px(kGlowPts), step = kit.px(4.0f);
+	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
 
-	int tx = int(kit.mouse_x_) + kit.px(16.0f);
-	int ty = int(kit.mouse_y_) + kit.px(8.0f);
+	int tx = int(kit.mouse_x_) + kit.px(16.f);
+	int ty = int(kit.mouse_y_) + kit.px(8.f);
 	Rect a{};
 	if (kit.tooltip_anchor_)
 		a = kit.tooltip_anchor_->tip_anchor();

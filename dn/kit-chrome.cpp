@@ -57,7 +57,7 @@ void
 ContextMenu::fill_items(const QUrl &url)
 {
 	clear();
-	this->min_w = 200.0f;
+	this->min_w = 200.f;
 
 	// Open With and Move to Trash are filesystem operations on a real file.
 	const QString path = url_to_path(url);
@@ -198,7 +198,7 @@ unique_ptr<Row>
 shortcut_row(const ActionDef &def, float accel_w)
 {
 	auto row = make_unique<Row>();
-	row->gap = 8.0f;
+	row->gap = 8.f;
 	auto accel = dialog_label(shortcut_accel(def));
 	accel->min_w = accel_w;
 	accel->dim = true;
@@ -216,12 +216,12 @@ void
 dialog_about(Kit &kit, Dialog &dialog)
 {
 	auto col = make_unique<Column>();
-	col->gap = 8.0f;
+	col->gap = 8.f;
 	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true));
 	col->add_child(
 		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
 			false, true));
-	dialog.show(kit, std::move(col), 360.0f);
+	dialog.show(kit, std::move(col), 360.f);
 }
 
 void
@@ -229,7 +229,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	span<const Action> keys)
 {
 	bool seen[size_t(Action::Count)] = {};
-	int accel_w = kit.px(120.0f);
+	int accel_w = kit.px(120.f);
 	auto consider = [&](Action action) {
 		const ActionDef &def = action_def(action);
 		if (!has_shortcut(def))
@@ -259,7 +259,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		consider_other(Action::ZoomLevel);
 
 	auto col = make_unique<Column>();
-	col->gap = 2.0f;
+	col->gap = 2.f;
 	col->add_child(dialog_label(QStringLiteral("Keyboard Shortcuts"), true));
 	for (const MenuNode &section : tree) {
 		if (section.items.empty())
@@ -302,7 +302,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	emit_other(Action::Cancel);
 	if (viewer)
 		emit_other(Action::ZoomLevel);
-	dialog.show(kit, std::move(col), 520.0f);
+	dialog.show(kit, std::move(col), 520.f);
 }
 
 // --- Hint -------------------------------------------------------------------
@@ -312,11 +312,11 @@ namespace
 
 constexpr char kChars[] = "SADFJKLEWCMPGH";
 constexpr int kNChars = size(kChars) - 1;
-constexpr float kChipPadX = 4.0f;
-constexpr float kChipPadY = 2.0f;
+constexpr float kChipPadX = 4.f;
+constexpr float kChipPadY = 2.f;
 
 Colour
-col(const Colour &c, float alpha = 1.0f)
+col(const Colour &c, float alpha = 1.f)
 {
 	return {c.r, c.g, c.b, c.a * alpha};
 }
@@ -357,7 +357,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 		return;
 	if (dynamic_cast<Popup *>(w) || dynamic_cast<Browser *>(w))
 		return;
-	if (w->focusable() && visible_rect(w, host).w > 0.0f)
+	if (w->focusable() && visible_rect(w, host).w > 0.f)
 		out.push_back(w);
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; ++i)
@@ -448,7 +448,7 @@ Hint::paint(Kit &kit) const
 	if (!shown())
 		return;
 	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
-	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, true);
+	const float th = kit.text_height(QStringLiteral("Ag"), 0.f, true);
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())
 			continue;
@@ -458,7 +458,7 @@ Hint::paint(Kit &kit) const
 			c, kit.colours_[ColourInk], float(kit.hairline()));
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = float(c.x + kit.px(kChipPadX));
-		const float ty = float(c.y) + max(0.0f, float(c.h - th) * 0.5f);
+		const float ty = float(c.y) + max(0.f, float(c.h - th) * 0.5f);
 		if (!this->typed_.isEmpty()) {
 			kit.emit_text(tx, ty, this->typed_,
 				col(kit.colours_[ColourInk], 0.25f), true);
@@ -598,8 +598,8 @@ Hint::refresh_rects()
 	for (Target &t : this->targets_) {
 		if (t.widget) {
 			const Rect visible = visible_rect(t.widget, this->page->r);
-			if (!t.widget->focusable() || visible.w <= 0.0f ||
-				visible.h <= 0.0f)
+			if (!t.widget->focusable() || visible.w <= 0.f ||
+				visible.h <= 0.f)
 				continue;
 			t.at = visible;
 			keep.push_back(t);
@@ -667,9 +667,9 @@ Hint::fire(Kit &kit, Target t)
 namespace
 {
 
-constexpr float kMinWell = 80.0f;
-constexpr float kMinSide = 120.0f;
-constexpr float kSplitW = 8.0f;
+constexpr float kMinWell = 80.f;
+constexpr float kMinSide = 120.f;
+constexpr float kSplitW = 8.f;
 
 }  // namespace
 
@@ -733,7 +733,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	this->context_owned_ = make_unique<ContextMenu>();
 	this->context = this->context_owned_.get();
 	if (this->sidebar) {
-		if (this->sidebar->min_w > 0.0f)
+		if (this->sidebar->min_w > 0.f)
 			this->sidebar_w = this->sidebar->min_w;
 		this->sidebar_open = this->sidebar->visible;
 	} else {

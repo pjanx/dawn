@@ -28,7 +28,7 @@ struct CieDiagram;
 struct Kit;
 struct Page;
 
-constexpr float kInfoSidebarPts = 240.0f;
+constexpr float kInfoSidebarPts = 240.f;
 
 struct Viewer : Widget {
 	struct CachedOpen {
@@ -39,11 +39,11 @@ struct Viewer : Widget {
 	struct Worker;
 	struct RestoreView {
 		bool valid = false;
-		float scale = 1.0f;
-		float pan_x = 0.0f;
-		float pan_y = 0.0f;
+		float scale = 1.f;
+		float pan_x = 0.f;
+		float pan_y = 0.f;
 		dawn::Orientation orientation = dawn::Orientation::Rotate0;
-		float angle = 0.0f;
+		float angle = 0.f;
 		bool view_locked = true;
 	};
 
@@ -85,10 +85,10 @@ struct Viewer : Widget {
 	float vector_scale_ = 0;
 	uint32_t image_width_ = 0;
 	uint32_t image_height_ = 0;
-	float scale_ = 1.0f;
-	float pan_x_ = 0.0f;
-	float pan_y_ = 0.0f;
-	float angle_ = 0.0f;
+	float scale_ = 1.f;
+	float pan_x_ = 0.f;
+	float pan_y_ = 0.f;
+	float angle_ = 0.f;
 	bool scale_to_fit_ = true;
 	bool view_locked_ = true;
 	bool fixate_ = false;

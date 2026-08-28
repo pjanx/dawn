@@ -56,7 +56,7 @@ struct YRange {
 
 struct PushConstants {
 	float viewport_x = 0, viewport_y = 0;
-	float scale = 1.0f;
+	float scale = 1.f;
 	int32_t transfer = 0;
 	int32_t image_w = 0, image_h = 0;
 	int32_t grid_cols = 1, grid_rows = 1;
@@ -86,7 +86,7 @@ use_separable(const ScaleView &view)
 		return false;
 	if (view.filter == Filter::Bilinear)
 		return true;
-	return view.filter == Filter::Expensive && view.scale < 1.0f;
+	return view.filter == Filter::Expensive && view.scale < 1.f;
 }
 
 uint32_t
@@ -458,7 +458,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		.polygonMode = VK_POLYGON_MODE_FILL,
 		.cullMode = VK_CULL_MODE_NONE,
 		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.0f,
+		.lineWidth = 1.f,
 	};
 	VkPipelineMultisampleStateCreateInfo ms{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -1116,11 +1116,11 @@ ScaleEngine::Impl::visible_source_y_range(
 	uint32_t disp_w = 0, disp_h = 0;
 	orientation_display_size(
 		image_w, image_h, view.orientation, &disp_w, &disp_h);
-	const float kernel_scale = min(view.scale, 1.0f);
-	const float radius = 1.0f / kernel_scale;
+	const float kernel_scale = min(view.scale, 1.f);
+	const float radius = 1.f / kernel_scale;
 	const float centre = 0.5f * float(disp_h) + view.pan_y;
 	const float half_h = 0.5f * float(vp_h);
-	const float y_top = (0.0f - half_h) / view.scale + centre;
+	const float y_top = (0.f - half_h) / view.scale + centre;
 	const float y_bot = (float(vp_h) - half_h) / view.scale + centre;
 	YRange r;
 	r.lo = max(0, int32_t(floor(min(y_top, y_bot) - radius)));
@@ -1138,7 +1138,7 @@ ScaleEngine::Impl::cmd_h_pass(
 	pc.layer_ox = tile.ox;
 	pc.layer_oy = tile.oy;
 
-	VkClearValue clear{.color = {{0.0f, 0.0f, 0.0f, 0.0f}}};
+	VkClearValue clear{.color = {{0.f, 0.f, 0.f, 0.f}}};
 	VkRenderPassBeginInfo rp{
 		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 		.renderPass = mid_render_pass,
@@ -1150,12 +1150,12 @@ ScaleEngine::Impl::cmd_h_pass(
 	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport vp{
-		.x = 0.0f,
-		.y = 0.0f,
+		.x = 0.f,
+		.y = 0.f,
 		.width = float(tile.w),
 		.height = float(tile.h),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f,
+		.minDepth = 0.f,
+		.maxDepth = 1.f,
 	};
 	VkRect2D scissor{.extent = {uint32_t(tile.w), uint32_t(tile.h)}};
 	vkCmdSetViewport(cmd, 0, 1, &vp);
@@ -1226,12 +1226,12 @@ ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport vp{
-		.x = 0.0f,
-		.y = 0.0f,
+		.x = 0.f,
+		.y = 0.f,
 		.width = float(vp_w),
 		.height = float(vp_h),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f,
+		.minDepth = 0.f,
+		.maxDepth = 1.f,
 	};
 	VkRect2D scissor = area;
 	vkCmdSetViewport(cmd, 0, 1, &vp);
@@ -1264,12 +1264,12 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport vp{
-		.x = 0.0f,
-		.y = 0.0f,
+		.x = 0.f,
+		.y = 0.f,
 		.width = float(vp_w),
 		.height = float(vp_h),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f,
+		.minDepth = 0.f,
+		.maxDepth = 1.f,
 	};
 	VkRect2D scissor = area;
 	vkCmdSetViewport(cmd, 0, 1, &vp);
@@ -1417,7 +1417,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		.maxLod = 0.0f,
+		.maxLod = 0.f,
 	};
 	if (!check_vk(vkCreateSampler(device, &samp, nullptr, &e.sampler),
 			"vkCreateSampler", error)) {
@@ -1604,7 +1604,7 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 	Impl &e = *impl_;
 	if (view.filter == Filter::Nearest)
 		e.pipe_2d = e.pipeline_2d_nearest;
-	else if (view.filter == Filter::Expensive && view.scale >= 1.0f)
+	else if (view.filter == Filter::Expensive && view.scale >= 1.f)
 		e.pipe_2d = e.pipeline_2d_nohalo;
 	else
 		e.pipe_2d = e.pipeline_2d_bilinear;

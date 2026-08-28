@@ -81,9 +81,9 @@ public:
 	void add_rect_filled_vgradient(
 		float x0, float y0, float x1, float y1, Colour top, Colour bottom);
 	void add_rect_stroke(float x0, float y0, float x1, float y1, Colour col,
-		float thickness = 1.0f);
+		float thickness = 1.f);
 	void add_line(float x0, float y0, float x1, float y1, Colour col,
-		float thickness = 1.0f);
+		float thickness = 1.f);
 	void add_image(float x0, float y0, float x1, float y1, float u0, float v0,
 		float u1, float v1, Colour col);
 	void add_thumb(float x0, float y0, float x1, float y1, float u0, float v0,

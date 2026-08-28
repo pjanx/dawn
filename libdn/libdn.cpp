@@ -656,7 +656,7 @@ transfer_decode(float encoded, Transfer transfer)
 			return powf((encoded + 0.055f) / 1.055f, 2.4f);
 		return encoded / 12.92f;
 	case Transfer::AdobeRgb:
-		return powf(fmaxf(encoded, 0.0f), 2.2f);
+		return powf(fmaxf(encoded, 0.f), 2.2f);
 	case Transfer::Linear:
 		break;
 	}
@@ -668,12 +668,12 @@ transfer_encode(float linear, Transfer transfer)
 {
 	switch (transfer) {
 	case Transfer::Srgb:
-		linear = fminf(fmaxf(linear, 0.0f), 1.0f);
+		linear = fminf(fmaxf(linear, 0.f), 1.f);
 		if (linear > 0.0031308f)
-			return 1.055f * powf(linear, 1.0f / 2.4f) - 0.055f;
+			return 1.055f * powf(linear, 1.f / 2.4f) - 0.055f;
 		return linear * 12.92f;
 	case Transfer::AdobeRgb:
-		return powf(fminf(fmaxf(linear, 0.0f), 1.0f), 1.0f / 2.2f);
+		return powf(fminf(fmaxf(linear, 0.f), 1.f), 1.f / 2.2f);
 	case Transfer::Linear:
 		break;
 	}
@@ -684,7 +684,7 @@ namespace
 {
 
 constexpr int kTransferSamples = 1024;
-constexpr float kTransferMaxErr = 1.5f / 65535.0f;
+constexpr float kTransferMaxErr = 1.5f / 65535.f;
 
 bool
 curve_matches(const cmsToneCurve *curve, Transfer transfer)

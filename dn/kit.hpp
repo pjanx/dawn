@@ -67,15 +67,15 @@ constexpr int kUnlim = 1 << 24;
 
 // Design sizes, in points: they must keep their physical size across displays,
 // so they are converted to pixels on use, through Kit::px().
-constexpr float kIconPts = 16.0f;
-constexpr float kFramePadX = 6.0f;
-constexpr float kFramePadY = 4.0f;
-constexpr float kTooltipPadX = 8.0f;
-constexpr float kGlowPts = 8.0f;
-constexpr float kResizeBorderPts = 8.0f;
-constexpr float kScrollBarW = 8.0f;
-constexpr float kScrollStep = 32.0f;
-constexpr float kScrollHideMs = 1000.0f;
+constexpr float kIconPts = 16.f;
+constexpr float kFramePadX = 6.f;
+constexpr float kFramePadY = 4.f;
+constexpr float kTooltipPadX = 8.f;
+constexpr float kGlowPts = 8.f;
+constexpr float kResizeBorderPts = 8.f;
+constexpr float kScrollBarW = 8.f;
+constexpr float kScrollStep = 32.f;
+constexpr float kScrollHideMs = 1000.f;
 
 // Indexes into Kit::colours_, which Kit::bake_colours fills in for the
 // current theme and display profile.
@@ -251,7 +251,7 @@ struct Entry : Widget {
 	QString preedit;
 	int caret = 0;
 	int preedit_caret = 0;
-	float min_w = 160.0f;
+	float min_w = 160.f;
 	float pad_x = kFramePadX;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
@@ -296,7 +296,7 @@ struct Sep : Widget {
 };
 
 struct Splitter : Widget {
-	float min_w = 8.0f;
+	float min_w = 8.f;
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
 	void measure(Kit &kit, int max_w, int max_h) override;
@@ -560,8 +560,8 @@ struct Titlebar : Panel {
 	Button *close = nullptr;
 	Actor actor;
 	QString text;
-	float drag_x_ = 0.0f;
-	float drag_y_ = 0.0f;
+	float drag_x_ = 0.f;
+	float drag_y_ = 0.f;
 	bool drag_armed_ = false;
 
 	Titlebar();
@@ -585,7 +585,7 @@ struct Kit {
 		float bearing_y = 0;
 	};
 
-	float dpr_ = 1.0f;
+	float dpr_ = 1.f;
 	bool inited_ = false;
 	Sheet atlas_;
 	uint32_t atlas_epoch_ = 0;
@@ -609,8 +609,8 @@ struct Kit {
 	Widget *default_focus_ = nullptr;
 	bool focus_visible_ = false;
 	Widget *hot_ = nullptr;
-	float mouse_x_ = -1.0f;
-	float mouse_y_ = -1.0f;
+	float mouse_x_ = -1.f;
+	float mouse_y_ = -1.f;
 	bool left_down_ = false;
 	Widget *pressed_ = nullptr;
 	unsigned mods_ = 0;
@@ -706,7 +706,7 @@ struct Kit {
 	// An inactive window halves whatever alpha its ink already had.
 	[[nodiscard]] float ink_alpha() const
 	{
-		return this->active_ ? 1.0f : 0.5f;
+		return this->active_ ? 1.f : 0.5f;
 	}
 	void focus_ring(Rect w);   // 1px inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
@@ -747,7 +747,7 @@ struct Kit {
 	// rather than staying a single pixel.
 	[[nodiscard]] int hairline() const
 	{
-		const int n = px(1.0f);
+		const int n = px(1.f);
 		return n > 1 ? n : 1;
 	}
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.

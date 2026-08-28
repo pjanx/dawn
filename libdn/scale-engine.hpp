@@ -26,18 +26,18 @@ enum class Filter : uint8_t { Nearest, Bilinear, Expensive };
 Filter preferred_filter(VkPhysicalDevice phys);
 
 struct ScaleView {
-	float scale = 1.0f;
-	float pan_x = 0.0f;
-	float pan_y = 0.0f;
-	float angle = 0.0f;
+	float scale = 1.f;
+	float pan_x = 0.f;
+	float pan_y = 0.f;
+	float angle = 0.f;
 	Transfer transfer = Transfer::Srgb;
 	Orientation orientation = Orientation::Rotate0;
 	bool checkerboard = false;
 	/// Encoded even-tile grey (toolbar_bottom). Odd tiles use `record`'s
 	/// clear colour (well). Decoded on the CPU like `bg_*`.
-	float checker_r = 0xF0 / 255.0f;
-	float checker_g = 0xF0 / 255.0f;
-	float checker_b = 0xF0 / 255.0f;
+	float checker_r = 0xF0 / 255.f;
+	float checker_g = 0xF0 / 255.f;
+	float checker_b = 0xF0 / 255.f;
 	/// Resolve alpha against `record`'s clear colour in linear light and
 	/// write opaque pixels. Correct (the fixed-function blend would
 	/// composite in the dest encoding) and cheaper than re-associating.

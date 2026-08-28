@@ -27,7 +27,7 @@
 namespace dn
 {
 
-constexpr float kBrowseSidebarPts = 192.0f;
+constexpr float kBrowseSidebarPts = 192.f;
 
 enum class SortField : uint8_t { Name, Time };
 enum class BrowserView : uint8_t { Tile, Grid };

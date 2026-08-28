@@ -117,16 +117,16 @@ namespace dn
 namespace
 {
 
-constexpr float kWinPadX = 4.0f;
-constexpr float kItemGap = 2.0f;
-constexpr float kGridPad = 8.0f;
+constexpr float kWinPadX = 4.f;
+constexpr float kItemGap = 2.f;
+constexpr float kGridPad = 8.f;
 constexpr float kGlowAlpha = 0.375f;
-constexpr float kBorder = 2.0f;
-constexpr float kThumbGap = 1.0f;
+constexpr float kBorder = 2.f;
+constexpr float kThumbGap = 1.f;
 constexpr int kCapLines = 2;
-constexpr float kCapPad = 4.0f;
-constexpr float kCheck = 40.0f;
-constexpr float kPrefetchRows = 2.0f;
+constexpr float kCapPad = 4.f;
+constexpr float kCheck = 40.f;
+constexpr float kPrefetchRows = 2.f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
 constexpr const char *kMissingIcon = "image-missing-symbolic";
@@ -202,7 +202,7 @@ struct ThumbJob {
 	int64_t mtime = 0;
 	uint64_t size = 0;
 	int thumb_size = 0;
-	float dpr = 1.0f;
+	float dpr = 1.f;
 	int atlas_max = 0;
 	vector<uint8_t> screen_icc;
 	bool skip_cache = false;
@@ -245,7 +245,7 @@ struct FinishJob {
 	shared_ptr<const vector<uint16_t>> pixels;
 	int tier = 0;
 	int thumb_size = 0;
-	float dpr = 1.0f;
+	float dpr = 1.f;
 	int atlas_max = 0;
 	vector<uint8_t> screen_icc;
 };
@@ -328,17 +328,17 @@ thumb_dest_params(uint32_t gw, uint32_t gh, int thumb_size, float dpr,
 		*out_h = 1;
 		return;
 	}
-	const float d = dpr > 0.0f ? dpr : 1.0f;
+	const float d = dpr > 0.f ? dpr : 1.f;
 	float cap_h = float(thumb_size) * d;
-	if (cap_h < 1.0f)
-		cap_h = 1.0f;
+	if (cap_h < 1.f)
+		cap_h = 1.f;
 	const float cap_w = float(kThumbWide) * cap_h;
 	const float s = min(cap_w / float(gw), cap_h / float(gh));
 	int w = max(1, int(lround(double(gw) * double(s))));
 	int h = max(1, int(lround(double(gh) * double(s))));
 	const int atlas = max(1, atlas_max);
 	if (w > atlas || h > atlas) {
-		float s2 = 1.0f;
+		float s2 = 1.f;
 		if (w > 0)
 			s2 = min(s2, float(atlas) / float(w));
 		if (h > 0)
@@ -580,7 +580,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 		uint32_t ow = 1, oh = 1;
 		if (cacheable) {
 			const int h = thumbnail_tier_height(tier);
-			thumb_dest_params(result.geometry_w, result.geometry_h, h, 1.0f,
+			thumb_dest_params(result.geometry_w, result.geometry_h, h, 1.f,
 				h * kThumbWide, &ow, &oh);
 		} else {
 			thumb_dest_params(result.geometry_w, result.geometry_h, thumb_size,
@@ -700,7 +700,7 @@ cache_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		const int next = job.tier - 1;
 		const int h = thumbnail_tier_height(next);
 		thumb_dest_params(
-			job.image_w, job.image_h, h, 1.0f, h * kThumbWide, &ow, &oh);
+			job.image_w, job.image_h, h, 1.f, h * kThumbWide, &ow, &oh);
 		dawn::ThumbScaler::Job gpu;
 		gpu.pixels = job.pixels->data();
 		gpu.stride = size_t(job.width) * dawn::kBytesPerPixel;
@@ -730,7 +730,7 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		uint32_t ow = 1, oh = 1;
 		if (update.gpu_purpose == GpuPurpose::CacheDisplay) {
 			const int h = thumbnail_tier_height(update.tier);
-			thumb_dest_params(update.geometry_w, update.geometry_h, h, 1.0f,
+			thumb_dest_params(update.geometry_w, update.geometry_h, h, 1.f,
 				h * kThumbWide, &ow, &oh);
 		} else {
 			thumb_dest_params(update.geometry_w, update.geometry_h,
@@ -906,7 +906,7 @@ try_upload(Browser &b, Browser::File &f)
 	}
 	if (slot.empty()) {
 		for (Browser::File &o : b.files_) {
-			if (o.gpu.empty() || thumb_in_band(b, o, 0.0f))
+			if (o.gpu.empty() || thumb_in_band(b, o, 0.f))
 				continue;
 			b.sheet_.release(o.gpu);
 			o.gpu = {};
@@ -1119,7 +1119,7 @@ enqueue_thumbs(Browser &b)
 	vector<int> vis, pre, sizes;
 	for (int i = 0; i < int(b.files_.size()); ++i) {
 		const Browser::File &f = b.files_[size_t(i)];
-		const bool visible = thumb_in_band(b, f, 0.0f);
+		const bool visible = thumb_in_band(b, f, 0.f);
 		const bool prefetched = !visible && thumb_in_band(b, f, pad);
 		// The viewport defines the current priority exactly.  In particular,
 		// demote work from the old viewport before adding new visible jobs.
@@ -1268,8 +1268,8 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	if (row.y < b.scroll_.offset)
 		b.scroll_.offset = row.y;
 	else if (row.y + row.h > b.scroll_.offset + vis)
-		b.scroll_.offset = max(0.0f, row.y + row.h - vis);
-	b.scroll_.offset = clamp(b.scroll_.offset, 0.0f, b.scroll_.max_offset());
+		b.scroll_.offset = max(0.f, row.y + row.h - vis);
+	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
 }
 
 void
@@ -1279,7 +1279,7 @@ page_scroll(Browser &b, int dir)
 	const float rh = row_h(b);
 	const float step = vis > rh ? vis - rh : vis;
 	b.scroll_.offset = clamp(
-		b.scroll_.offset + float(dir) * step, 0.0f, b.scroll_.max_offset());
+		b.scroll_.offset + float(dir) * step, 0.f, b.scroll_.max_offset());
 	request_render(b);
 }
 
@@ -1428,7 +1428,7 @@ layout_grid(Browser &b, Rect area)
 			ih = int(fit_h);
 		}
 		const int cap_w = (grid ? 1 : kThumbWide) * th;
-		float fit = 1.0f;
+		float fit = 1.f;
 		if (tw > 0)
 			fit = min(fit, float(cap_w) / float(tw));
 		if (ih > 0)
@@ -2166,7 +2166,7 @@ make_item(Browser &b, const Spec &spec)
 	const bool on = spec_active(b, action);
 	n->action = action;
 	if (spec.kind == Kind::Text) {
-		n->pad_x = 2.0f;
+		n->pad_x = 2.f;
 		n->text = action == Action::SortTime ? QStringLiteral("Time")
 											 : QStringLiteral("Name");
 	}
@@ -2211,7 +2211,7 @@ make_sidebar(Browser &b)
 	auto list = make_unique<ScrollColumn>();
 	b.places_ = list.get();
 	list->follow_focus = true;
-	list->gap = 0.0f;
+	list->gap = 0.f;
 	list->grow = true;
 	auto side = make_unique<Sidebar>(std::move(list));
 	side->min_w = kBrowseSidebarPts;
@@ -2543,7 +2543,7 @@ void
 Browser::paint(Kit &kit) const
 {
 	if (kit.renderer_)
-		kit.renderer_->set_view(1.0f, 0.0f, 0.0f, dawn::Orientation::Rotate0);
+		kit.renderer_->set_view(1.f, 0.f, 0.f, dawn::Orientation::Rotate0);
 	kit.clip_to(this->r);
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
 	const int th = kit.px(float(this->thumb_size_));
@@ -2567,7 +2567,7 @@ Browser::paint(Kit &kit) const
 		if (!f.gpu.empty()) {
 			const float border = float(kit.px(kBorder));
 			kit.draw_glow(float(tx) - border, float(ty) - border,
-				float(tw) + 2.0f * border, float(thp) + 2.0f * border,
+				float(tw) + 2.f * border, float(thp) + 2.f * border,
 				focused ? glow_hot : glow_idle);
 			draw_checker(kit, {tx, ty, tw, thp});
 			// The frame sits just outside the thumbnail, by half its own

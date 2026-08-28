@@ -32,10 +32,10 @@ constexpr float kD65x = 0.3127f;
 constexpr float kD65y = 0.3290f;
 constexpr int kRasterW = 256;
 constexpr int kRasterH = 288;
-constexpr float kCapGap = 4.0f;
-constexpr Colour kMidGreyCol{188 / 255.0f, 188 / 255.0f, 188 / 255.0f, 1.0f};
-constexpr Colour kBlackCol{0.0f, 0.0f, 0.0f, 1.0f};
-constexpr Colour kWhiteCol{1.0f, 1.0f, 1.0f, 1.0f};
+constexpr float kCapGap = 4.f;
+constexpr Colour kMidGreyCol{188 / 255.f, 188 / 255.f, 188 / 255.f, 1.f};
+constexpr Colour kBlackCol{0.f, 0.f, 0.f, 1.f};
+constexpr Colour kWhiteCol{1.f, 1.f, 1.f, 1.f};
 
 const QString kSourceLab = QStringLiteral("Source");
 const QString kTargetLab = QStringLiteral("Target");
@@ -44,7 +44,7 @@ int
 caption_h(const Kit &kit)
 {
 	return kit.px(kCapGap) + kit.text_height(kSourceLab, 0, false) +
-		kit.px(4.0f);
+		kit.px(4.f);
 }
 
 // The raster is a fixed pixel size, and so is the rect: no scale involved.
@@ -236,7 +236,7 @@ CieDiagram::measure(Kit &kit, int max_w, int max_h)
 	const int cap = caption_h(kit);
 	const int plot_h = max(0, max_h - cap);
 	const Rect fit = plot_rect({0, 0, max_w, plot_h});
-	const int labs = kit.text_width(kSourceLab, false) + kit.px(8.0f) +
+	const int labs = kit.text_width(kSourceLab, false) + kit.px(8.f) +
 		kit.text_width(kTargetLab, false);
 	this->r.w = max(fit.w, labs);
 	this->r.h = fit.h + cap;
@@ -257,7 +257,7 @@ CieDiagram::prepare(Kit &kit)
 	const int cap = caption_h(kit);
 	const Rect plot = plot_rect(
 		{this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
-	if (plot.w < 8.0f || plot.h < 8.0f)
+	if (plot.w < 8.f || plot.h < 8.f)
 		return;
 
 	const bool epoch_ok =
@@ -297,7 +297,7 @@ CieDiagram::paint(Kit &kit) const
 	const int th = kit.text_height(kSourceLab, 0, true);
 	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
 	kit.list_.add_rect_filled(x0, y, x0 + cap_w, y + th, kMidGreyCol);
-	if (plot.w >= 8.0f && plot.h >= 8.0f && !this->slot_.empty()) {
+	if (plot.w >= 8.f && plot.h >= 8.f && !this->slot_.empty()) {
 		float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 		kit.atlas_.uv(this->slot_, &u0, &v0, &u1, &v1);
 		kit.list_.add_image(plot.x, plot.y, plot.x + plot.w, plot.y + plot.h,
@@ -305,7 +305,7 @@ CieDiagram::paint(Kit &kit) const
 	}
 
 	const int cx = x0 + cap_w / 2;
-	const int gap = kit.px(4.0f);
+	const int gap = kit.px(4.f);
 	const int widthS = kit.text_width(kSourceLab, true);
 	kit.emit_text(float(cx - gap - widthS), float(y), kSourceLab, kBlackCol,
 		true);

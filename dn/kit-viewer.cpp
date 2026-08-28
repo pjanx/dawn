@@ -50,14 +50,14 @@ namespace dn
 namespace
 {
 
-constexpr float kWinPadX = 4.0f;
-constexpr float kWinPadY = 2.0f;
-constexpr float kItemGap = 2.0f;
+constexpr float kWinPadX = 4.f;
+constexpr float kWinPadY = 2.f;
+constexpr float kItemGap = 2.f;
 constexpr float kZoomStep = 1.25f;
-constexpr float kZoomDragPts = 40.0f;
-constexpr float kRotateMinR = 8.0f;
+constexpr float kZoomDragPts = 40.f;
+constexpr float kRotateMinR = 8.f;
 constexpr float kScaleMin = 0.0125f;
-constexpr float kScaleMax = 64.0f;
+constexpr float kScaleMax = 64.f;
 constexpr float kAngleFast = 1e-5f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 
@@ -234,7 +234,7 @@ meta_row(
 	const QString &lab, const QString &value, float label_w, Label *&value_out)
 {
 	auto row = make_unique<Row>();
-	row->gap = 4.0f;
+	row->gap = 4.f;
 	auto k = make_unique<Label>();
 	k->min_w = label_w;
 	k->text = lab;
@@ -307,7 +307,7 @@ struct OpenLoad {
 struct ScaleJob {
 	uint64_t gen = 0;
 	dawn::ImagePtr page;
-	float scale = 1.0f;
+	float scale = 1.f;
 	vector<uint8_t> screen_icc;
 	bool enable_cms = true;
 };
@@ -548,23 +548,23 @@ well_cy(const Viewer &v)
 static void
 clamp_view(Viewer &v)
 {
-	if (!v.view_locked_ || v.scale_ <= 0.0f)
+	if (!v.view_locked_ || v.scale_ <= 0.f)
 		return;
 	const float well_w = well_w_px(v);
 	const float well_h = well_h_px(v);
-	if (well_w <= 0.0f || well_h <= 0.0f)
+	if (well_w <= 0.f || well_h <= 0.f)
 		return;
 	uint32_t dw = 0, dh = 0;
 	display_size(v, &dw, &dh);
 	if (!dw || !dh)
 		return;
-	const float slack_x = 0.5f * float(dw) - well_w / (2.0f * v.scale_);
-	const float slack_y = 0.5f * float(dh) - well_h / (2.0f * v.scale_);
-	if (slack_x <= 0.0f)
+	const float slack_x = 0.5f * float(dw) - well_w / (2.f * v.scale_);
+	const float slack_y = 0.5f * float(dh) - well_h / (2.f * v.scale_);
+	if (slack_x <= 0.f)
 		v.pan_x_ = 0;
 	else
 		v.pan_x_ = clamp(v.pan_x_, -slack_x, slack_x);
-	if (slack_y <= 0.0f)
+	if (slack_y <= 0.f)
 		v.pan_y_ = 0;
 	else
 		v.pan_y_ = clamp(v.pan_y_, -slack_y, slack_y);
@@ -646,8 +646,8 @@ make_sidebar(Viewer &v)
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
 	col->gap = kItemGap;
-	col->pad_x = kWinPadX * 2.0f;
-	col->pad_y = kWinPadX * 2.0f;
+	col->pad_x = kWinPadX * 2.f;
+	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
 	col->add_child(meta_row(
 		QStringLiteral("Name:"), QStringLiteral("-"), label_w, v.name_label_));
@@ -676,7 +676,7 @@ static void
 sync_scale_label(Viewer &v)
 {
 	char scale_buf[16];
-	snprintf(scale_buf, sizeof(scale_buf), "%.0f%%", double(v.scale_ * 100.0f));
+	snprintf(scale_buf, sizeof(scale_buf), "%.f%%", double(v.scale_ * 100.f));
 	v.scale_text_ = QString::fromUtf8(scale_buf);
 	if (!v.scale_label_)
 		return;
@@ -746,10 +746,10 @@ fit_to_well(Viewer &v)
 		return;
 	const float content_w = well_w_px(v);
 	const float content_h = well_h_px(v);
-	if (content_w <= 0.0f || content_h <= 0.0f)
+	if (content_w <= 0.f || content_h <= 0.f)
 		return;
 	const float fit =
-		min({content_w / float(disp_w), content_h / float(disp_h), 1.0f});
+		min({content_w / float(disp_w), content_h / float(disp_h), 1.f});
 	v.scale_ = clamp(fit, kScaleMin, kScaleMax);
 	v.pan_x_ = 0;
 	v.pan_y_ = 0;
@@ -814,7 +814,7 @@ apply_open(Viewer &v, uint64_t gen, dawn::ImagePtr image, string message)
 	}
 	if (v.kit_.renderer_)
 		upload_frame(v, *v.frame_);
-	v.vector_scale_ = v.current_->render ? 1.0f : 0.0f;
+	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
 	v.remaining_loops_ = 0;
 	start_playback(v);
 	request_render(v);
@@ -1182,7 +1182,7 @@ ensure_vector_frame(Viewer &v)
 	if (!v.current_ || !v.current_->render)
 		return;
 
-	if (v.scale_ == 1.0f) {
+	if (v.scale_ == 1.f) {
 		if (v.scale_job_pending_) {
 			++v.scale_gen_;
 			v.scale_job_pending_ = false;
@@ -1193,9 +1193,9 @@ ensure_vector_frame(Viewer &v)
 		}
 		v.scale_failed_ = false;
 		v.page_scaled_.reset();
-		if (v.vector_scale_ != 1.0f) {
+		if (v.vector_scale_ != 1.f) {
 			upload_frame(v, *v.current_);
-			v.vector_scale_ = 1.0f;
+			v.vector_scale_ = 1.f;
 		}
 		return;
 	}
@@ -1223,7 +1223,7 @@ fit_width_if_larger(Viewer &v)
 	uint32_t disp_w = 0, disp_h = 0;
 	display_size(v, &disp_w, &disp_h);
 	const float content_w = well_w_px(v);
-	if (!disp_w || content_w <= 0.0f)
+	if (!disp_w || content_w <= 0.f)
 		return;
 	if (ceil(double(disp_w) * double(v.scale_)) > double(content_w))
 		set_scale(v, content_w / float(disp_w));
@@ -1235,7 +1235,7 @@ fit_height_if_larger(Viewer &v)
 	uint32_t disp_w = 0, disp_h = 0;
 	display_size(v, &disp_w, &disp_h);
 	const float content_h = well_h_px(v);
-	if (!disp_h || content_h <= 0.0f)
+	if (!disp_h || content_h <= 0.f)
 		return;
 	if (ceil(double(disp_h) * double(v.scale_)) > double(content_h))
 		set_scale(v, content_h / float(disp_h));
@@ -1268,9 +1268,9 @@ static float
 wrap_angle(float a)
 {
 	while (a > numbers::pi_v<float>)
-		a -= 2.0f * numbers::pi_v<float>;
+		a -= 2.f * numbers::pi_v<float>;
 	while (a < -numbers::pi_v<float>)
-		a += 2.0f * numbers::pi_v<float>;
+		a += 2.f * numbers::pi_v<float>;
 	return a;
 }
 
@@ -1294,7 +1294,7 @@ turn(float angle, Vec p)
 static Vec
 view_to_image(const Viewer &v, Vec p)
 {
-	const float k = v.scale_ > 0.0f ? 1.0f / v.scale_ : 0.0f;
+	const float k = v.scale_ > 0.f ? 1.f / v.scale_ : 0.f;
 	const Vec q =
 		turn(-v.angle_, {(p.x - well_cx(v)) * k, (p.y - well_cy(v)) * k});
 	return {q.x + v.pan_x_, q.y + v.pan_y_};
@@ -1315,7 +1315,7 @@ transform_at(Viewer &v, float new_scale, float new_angle, Vec at)
 {
 	v.scale_to_fit_ = false;
 	new_scale = clamp(new_scale, kScaleMin, kScaleMax);
-	const bool hold = v.scale_ > 0.0f && new_scale > 0.0f;
+	const bool hold = v.scale_ > 0.f && new_scale > 0.f;
 	const Vec was = hold ? view_to_image(v, at) : Vec{};
 	v.scale_ = new_scale;
 	v.angle_ = wrap_angle(new_angle);
@@ -1345,7 +1345,7 @@ image_dest_rect(const Viewer &v)
 {
 	uint32_t dw = 0, dh = 0;
 	display_size(v, &dw, &dh);
-	if (v.scale_ <= 0.0f || !dw || !dh)
+	if (v.scale_ <= 0.f || !dw || !dh)
 		return {};
 	const Vec c = image_to_view(v, {});
 	// Bounding box of the turned rectangle.
@@ -1478,7 +1478,7 @@ rotate_locked(Viewer &v, float delta)
 static void
 pan_by(Viewer &v, double dx_points, double dy_points)
 {
-	if (v.scale_ <= 0.0f)
+	if (v.scale_ <= 0.f)
 		return;
 	const float k = v.kit_.dpr_ / v.scale_;
 	const Vec u = turn(-v.angle_, {float(dx_points) * k, float(dy_points) * k});
@@ -1490,7 +1490,7 @@ pan_by(Viewer &v, double dx_points, double dy_points)
 void
 snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 {
-	if (!pan || scale <= 0.0f || disp <= 0.0f || vp <= 0.0f)
+	if (!pan || scale <= 0.f || disp <= 0.f || vp <= 0.f)
 		return;
 	const float origin = 0.5f * vp - scale * (0.5f * disp + *pan);
 	*pan += (origin - round(origin)) / scale;
@@ -1558,7 +1558,7 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 	cancel_scale(v);
 	if (v.kit_.renderer_)
 		upload_frame(v, *v.frame_);
-	v.vector_scale_ = v.current_->render ? 1.0f : 0.0f;
+	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
 	v.remaining_loops_ = 0;
 	start_playback(v);
 	request_render(v);
@@ -1646,7 +1646,7 @@ apply_action(Viewer &v, Action action)
 		zoom_to(v, v.scale_ / kZoomStep);
 		return true;
 	case Action::Zoom1:
-		zoom_to(v, 1.0f);
+		zoom_to(v, 1.f);
 		return true;
 	case Action::Fit:
 		set_scale_to_fit(v, !v.scale_to_fit_);
@@ -1748,7 +1748,7 @@ apply_view(const Viewer &v)
 		return;
 	Renderer &renderer = *v.kit_.renderer_;
 	const bool have_scaled = v.page_scaled_ && v.page_scaled_->width &&
-		v.page_scaled_->height && v.vector_scale_ > 0.0f;
+		v.page_scaled_->height && v.vector_scale_ > 0.f;
 	const float gpu_scale = have_scaled ? v.scale_ / v.vector_scale_ : v.scale_;
 	float pan_x = v.pan_x_;
 	float pan_y = v.pan_y_;
@@ -1763,7 +1763,7 @@ apply_view(const Viewer &v)
 			pan_y *= float(dst_dh) / float(src_dh);
 		}
 	}
-	if (gpu_scale > 0.0f) {
+	if (gpu_scale > 0.f) {
 		const Extent vp = renderer.extent();
 		// The shader turns the image about the viewport centre; this offset
 		// moves that to the well centre, so it takes the image frame too.
@@ -2162,7 +2162,7 @@ Viewer::double_click(Kit &, float, float, Qt::MouseButton button, unsigned mods)
 bool
 Viewer::scroll(Kit &, float x, float y, int delta)
 {
-	zoom_at(*this, delta > 0 ? kZoomStep : 1.0f / kZoomStep, {x, y});
+	zoom_at(*this, delta > 0 ? kZoomStep : 1.f / kZoomStep, {x, y});
 	return true;
 }
 
@@ -2178,7 +2178,7 @@ Viewer::gesture(Kit &, float x, float y, float scale_factor, float angle_delta)
 {
 	if (this->view_locked_)
 		angle_delta = 0;
-	if (scale_factor == 1.0f && angle_delta == 0.0f)
+	if (scale_factor == 1.f && angle_delta == 0.f)
 		return true;
 	transform_at(
 		*this, this->scale_ * scale_factor, this->angle_ + angle_delta, {x, y});

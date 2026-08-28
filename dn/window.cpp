@@ -1433,7 +1433,7 @@ Window::wheelEvent(QWheelEvent *event)
 		if (!rot)
 			rot = wheel_axis(ang, pix, true);
 		if (rot) {
-			this->kit_.gesture(x, y, 1.0f, rot > 0 ? 0.05f : -0.05f);
+			this->kit_.gesture(x, y, 1.f, rot > 0 ? 0.05f : -0.05f);
 			request_render();
 		}
 		event->accept();
@@ -1482,16 +1482,16 @@ Window::handle_native_gesture(QNativeGestureEvent *event)
 		return true;
 	case Qt::ZoomNativeGesture: {
 		const float v = float(event->value());
-		float factor = 1.0f;
-		if (v > 0.4f && v < 8.0f) {
+		float factor = 1.f;
+		if (v > 0.4f && v < 8.f) {
 			const float last =
-				this->pinch_last_zoom_ > 0.4f ? this->pinch_last_zoom_ : 1.0f;
+				this->pinch_last_zoom_ > 0.4f ? this->pinch_last_zoom_ : 1.f;
 			factor = v / last;
 			this->pinch_last_zoom_ = v;
 		} else
-			factor = 1.0f + v;
-		if (factor > 0.0f && factor != 1.0f) {
-			this->kit_.gesture(x, y, factor, 0.0f);
+			factor = 1.f + v;
+		if (factor > 0.f && factor != 1.f) {
+			this->kit_.gesture(x, y, factor, 0.f);
 			request_render();
 		}
 		event->accept();
@@ -1500,14 +1500,14 @@ Window::handle_native_gesture(QNativeGestureEvent *event)
 	case Qt::RotateNativeGesture: {
 		const float v = float(event->value());
 		float ddeg = v;
-		if (this->pinch_active_ && this->pinch_last_rot_ != 0.0f &&
-			fabs(v) >= 5.0f && fabs(v - this->pinch_last_rot_) < 40.0f)
+		if (this->pinch_active_ && this->pinch_last_rot_ != 0.f &&
+			fabs(v) >= 5.f && fabs(v - this->pinch_last_rot_) < 40.f)
 			ddeg = v - this->pinch_last_rot_;
-		if (fabs(v) >= 5.0f)
+		if (fabs(v) >= 5.f)
 			this->pinch_last_rot_ = v;
-		const float dangle = ddeg * (numbers::pi_v<float> / 180.0f);
-		if (dangle != 0.0f) {
-			this->kit_.gesture(x, y, 1.0f, dangle);
+		const float dangle = ddeg * (numbers::pi_v<float> / 180.f);
+		if (dangle != 0.f) {
+			this->kit_.gesture(x, y, 1.f, dangle);
 			request_render();
 		}
 		event->accept();
@@ -1574,16 +1574,16 @@ Window::handle_touch(QTouchEvent *event)
 	const float ndy = y1 - y0;
 	const float olen = hypotf(odx, ody);
 	const float nlen = hypotf(ndx, ndy);
-	float factor = 1.0f;
-	if (olen > 1.0f && nlen > 1.0f)
+	float factor = 1.f;
+	if (olen > 1.f && nlen > 1.f)
 		factor = nlen / olen;
 	const float oang = atan2f(ody, odx);
 	const float nang = atan2f(ndy, ndx);
 	float dangle = nang - oang;
 	if (dangle > numbers::pi_v<float>)
-		dangle -= 2.0f * numbers::pi_v<float>;
+		dangle -= 2.f * numbers::pi_v<float>;
 	if (dangle < -numbers::pi_v<float>)
-		dangle += 2.0f * numbers::pi_v<float>;
+		dangle += 2.f * numbers::pi_v<float>;
 	const float cx = 0.5f * (x0 + x1);
 	const float cy = 0.5f * (y0 + y1);
 	this->kit_.gesture(cx, cy, factor, dangle);

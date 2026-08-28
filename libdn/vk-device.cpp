@@ -149,7 +149,7 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 		return false;
 	}
 
-	const float prio = 1.0f;
+	const float prio = 1.f;
 	VkDeviceQueueCreateInfo qci{
 		.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
 		.queueFamilyIndex = best_family,

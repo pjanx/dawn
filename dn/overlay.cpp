@@ -105,7 +105,7 @@ OverlayList::begin(
 	this->white_v_ = white_v;
 	this->tex_ = kOverlayTexFont;
 	this->clip_stack_.clear();
-	this->clip_stack_.push_back({0.0f, 0.0f, width_px, height_px});
+	this->clip_stack_.push_back({0.f, 0.f, width_px, height_px});
 	this->cmd_ = {};
 	sync_clip();
 }
@@ -198,9 +198,9 @@ OverlayList::add_line(
 	const float dx = x1 - x0;
 	const float dy = y1 - y0;
 	const float len = sqrt(dx * dx + dy * dy);
-	if (len <= 0.0f || thickness <= 0.0f)
+	if (len <= 0.f || thickness <= 0.f)
 		return;
-	const float th = max(1.0f, round(thickness));
+	const float th = max(1.f, round(thickness));
 	if (abs(dy) < 0.5f) {
 		x0 = snap_fb(x0);
 		x1 = snap_fb(x1);
@@ -235,7 +235,7 @@ void
 OverlayList::add_rect_stroke(
 	float x0, float y0, float x1, float y1, Colour col, float thickness)
 {
-	if (thickness <= 0.0f)
+	if (thickness <= 0.f)
 		return;
 
 	// Snap the outline to the framebuffer grid first, so that the four bands
@@ -250,8 +250,8 @@ OverlayList::add_rect_stroke(
 	if (y1 < y0)
 		swap(y0, y1);
 
-	const float th = max(1.0f, round(thickness));
-	if (x1 - x0 <= 2.0f * th || y1 - y0 <= 2.0f * th) {
+	const float th = max(1.f, round(thickness));
+	if (x1 - x0 <= 2.f * th || y1 - y0 <= 2.f * th) {
 		add_rect_filled(x0, y0, x1, y1, col);
 		return;
 	}
@@ -350,7 +350,7 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-		.maxLod = 1.0f,
+		.maxLod = 1.f,
 	};
 	check_vk(
 		vkCreateSampler(this->device_, &sampler_info, nullptr, &this->sampler_),
@@ -484,7 +484,7 @@ OverlayVulkan::create_pipeline()
 		.polygonMode = VK_POLYGON_MODE_FILL,
 		.cullMode = VK_CULL_MODE_NONE,
 		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.0f,
+		.lineWidth = 1.f,
 	};
 	VkPipelineMultisampleStateCreateInfo multisample{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -931,8 +931,8 @@ OverlayVulkan::record(
 		!this->font_view_)
 		return;
 	if (mesh.vertices.empty() || mesh.indices.empty() || mesh.cmds.empty() ||
-		this->extent_.width == 0 || mesh.display_w <= 0.0f ||
-		mesh.display_h <= 0.0f)
+		this->extent_.width == 0 || mesh.display_w <= 0.f ||
+		mesh.display_h <= 0.f)
 		return;
 
 	const VkDeviceSize vertex_bytes =
@@ -963,12 +963,12 @@ OverlayVulkan::record(
 	};
 	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
 	VkViewport viewport{
-		.x = 0.0f,
-		.y = 0.0f,
+		.x = 0.f,
+		.y = 0.f,
 		.width = float(this->extent_.width),
 		.height = float(this->extent_.height),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f,
+		.minDepth = 0.f,
+		.maxDepth = 1.f,
 	};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->pipeline_);
@@ -977,10 +977,10 @@ OverlayVulkan::record(
 	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);
 
 	PushConstant push{};
-	push.scale[0] = 2.0f / mesh.display_w;
-	push.scale[1] = 2.0f / mesh.display_h;
-	push.translate[0] = -1.0f;
-	push.translate[1] = -1.0f;
+	push.scale[0] = 2.f / mesh.display_w;
+	push.scale[1] = 2.f / mesh.display_h;
+	push.translate[0] = -1.f;
+	push.translate[1] = -1.f;
 	vkCmdPushConstants(cmd, this->pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT,
 		0, sizeof(push), &push);
 
@@ -1003,10 +1003,10 @@ OverlayVulkan::record(
 		float clip_min_y = draw_cmd.clip_y0;
 		float clip_max_x = draw_cmd.clip_x1;
 		float clip_max_y = draw_cmd.clip_y1;
-		if (clip_min_x < 0.0f)
-			clip_min_x = 0.0f;
-		if (clip_min_y < 0.0f)
-			clip_min_y = 0.0f;
+		if (clip_min_x < 0.f)
+			clip_min_x = 0.f;
+		if (clip_min_y < 0.f)
+			clip_min_y = 0.f;
 		if (clip_max_x > float(this->extent_.width))
 			clip_max_x = float(this->extent_.width);
 		if (clip_max_y > float(this->extent_.height))

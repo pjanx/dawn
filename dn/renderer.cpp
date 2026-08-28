@@ -499,7 +499,7 @@ Renderer::set_well_colour(float r, float g, float b)
 	this->well_[0] = r;
 	this->well_[1] = g;
 	this->well_[2] = b;
-	this->well_[3] = 1.0f;
+	this->well_[3] = 1.f;
 }
 
 void
@@ -958,7 +958,7 @@ Renderer::create_dither()
 		.polygonMode = VK_POLYGON_MODE_FILL,
 		.cullMode = VK_CULL_MODE_NONE,
 		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.0f,
+		.lineWidth = 1.f,
 	};
 	VkPipelineMultisampleStateCreateInfo multisample{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
@@ -1028,12 +1028,12 @@ Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
 	};
 	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
 	VkViewport viewport{
-		.x = 0.0f,
-		.y = 0.0f,
+		.x = 0.f,
+		.y = 0.f,
 		.width = float(this->extent_.width),
 		.height = float(this->extent_.height),
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f,
+		.minDepth = 0.f,
+		.maxDepth = 1.f,
 	};
 	VkRect2D scissor{.extent = this->extent_};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);

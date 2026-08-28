@@ -60,17 +60,17 @@ class Renderer
 
 	dawn::ScaleEngine engine_;
 	OverlayVulkan overlay_;
-	float scale_ = 1.0f;
-	float pan_x_ = 0.0f;
-	float pan_y_ = 0.0f;
-	float angle_ = 0.0f;
+	float scale_ = 1.f;
+	float pan_x_ = 0.f;
+	float pan_y_ = 0.f;
+	float angle_ = 0.f;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	bool checkerboard_ = false;
 	bool filter_ = true;
 	dawn::Filter preferred_ = dawn::Filter::Expensive;
 	dawn::Transfer transfer_ = dawn::Transfer::Srgb;
-	float well_[4] = {0xE8 / 255.0f, 0xE8 / 255.0f, 0xE8 / 255.0f, 1.0f};
-	float checker_[3] = {0xF0 / 255.0f, 0xF0 / 255.0f, 0xF0 / 255.0f};
+	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
+	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
 	VkFormat overlay_format_ = VK_FORMAT_UNDEFINED;
 	VkImageLayout overlay_initial_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImageLayout overlay_final_ = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -108,7 +108,7 @@ public:
 		uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride);
 	void clear_image();
 	void set_view(float scale, float pan_x, float pan_y,
-		dawn::Orientation orientation, float angle = 0.0f);
+		dawn::Orientation orientation, float angle = 0.f);
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled);
 	void set_dest_inset(uint32_t px);
