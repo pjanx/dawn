@@ -2588,7 +2588,7 @@ namespace
 {
 
 constexpr float kWinPadX = 4.0f;
-constexpr float kWinPadY = 2.0f;
+constexpr float kWinPadY = 4.0f;
 
 void
 sync_overflow_proxy(Widget &source, Widget &proxy)
