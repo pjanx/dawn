@@ -22,6 +22,7 @@
 #include <QTextLine>
 #include <QTextOption>
 
+#include <qnamespace.h>
 #include <resvg.h>
 
 #include <algorithm>
@@ -1985,16 +1986,19 @@ Popup::place(Kit &kit)
 {
 	if (this->opener)
 		this->at = this->opener->r;
+
+	const int glow = kit.px(kGlowPts);
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
 	measure(kit, cap, kUnlim);
+
 	int x = this->at.x;
 	int y = this->at.y + this->at.h;
-	if (x + this->r.w > kit.host_w_)
-		x = max(0, kit.host_w_ - this->r.w);
+	if (x + this->r.w + glow > kit.host_w_)
+		x = max(0, kit.host_w_ - this->r.w - glow);
 	if (x < 0)
 		x = 0;
-	if (y + this->r.h > kit.host_h_)
-		y = max(0, this->at.y - this->r.h);
+	if (y + this->r.h + glow > kit.host_h_)
+		y = max(0, this->at.y - this->r.h - glow);
 	if (y + this->r.h > kit.host_h_)
 		y = max(0, kit.host_h_ - this->r.h);
 	if (y < 0)
@@ -2085,6 +2089,7 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w)
 {
 	if (!this->body || !this->frame)
 		return;
+
 	kit.forget_tree(this->body);
 	this->body->erase_children();
 	this->body->add_child(std::move(content));
@@ -2268,15 +2273,20 @@ MenuPopup::key(Kit &kit, const Key &ev)
 {
 	if (Popup::key(kit, ev))
 		return true;
-	if (ev.mods & unsigned(Qt::AltModifier))
+	if (ev.mods & unsigned(Qt::AltModifier | Qt::ShiftModifier |
+		Qt::ControlModifier | Qt::MetaModifier))
 		return false;
-	if (ev.key == Qt::Key_Up || ev.key == Qt::Key_Down) {
+
+	switch (ev.key) {
+	case Qt::Key_Up:
+	case Qt::Key_Down:
 		kit.cycle_focus(this, ev.key == Qt::Key_Up ? -1 : 1);
 		focus_item(kit, kit.focus_, true);
 		return true;
-	}
-	if (ev.key == Qt::Key_Right || ev.key == Qt::Key_Return ||
-		ev.key == Qt::Key_Enter || ev.key == Qt::Key_Space) {
+	case Qt::Key_Right:
+	case Qt::Key_Return:
+	case Qt::Key_Enter:
+	case Qt::Key_Space:
 		if (auto *item = dynamic_cast<MenuItem *>(kit.focus_);
 			item && item->sub) {
 			item->activate(kit);
@@ -2285,8 +2295,7 @@ MenuPopup::key(Kit &kit, const Key &ev)
 		if (ev.key == Qt::Key_Right)
 			return true;
 		return false;
-	}
-	if (ev.key == Qt::Key_Left) {
+	case Qt::Key_Left:
 		if (this->parent_popup) {
 			Button *op = this->opener;
 			close(kit);
@@ -3944,6 +3953,7 @@ paint_tooltip(Kit &kit)
 {
 	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty())
 		return;
+
 	const QString text = kit.tooltip_text_;
 	const QString accel = kit.tooltip_accel_;
 	const int gap = accel.isEmpty() ? 0 : kit.px(8.0f);
@@ -3952,6 +3962,7 @@ paint_tooltip(Kit &kit)
 		kit.px(kTooltipPadX) * 2;
 	const int th = kit.text_height(text, 0, false) + kit.px(kFramePadY) * 2;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.0f);
+
 	int tx = int(kit.mouse_x_) + kit.px(16.0f);
 	int ty = int(kit.mouse_y_) + kit.px(8.0f);
 	Rect a{};
@@ -3962,14 +3973,15 @@ paint_tooltip(Kit &kit)
 		ty = a.y + a.h + step;
 		if (tx + tw + glow > kit.host_w_)
 			tx = max(0, kit.host_w_ - tw - glow);
-		if (ty + th > kit.host_h_)
+		if (ty + th + glow > kit.host_h_)
 			ty = max(0, a.y - th - step);
 	} else {
 		if (tx + tw + glow > kit.host_w_)
 			tx = max(0, kit.host_w_ - tw - glow);
-		if (ty + th > kit.host_h_)
+		if (ty + th + glow > kit.host_h_)
 			ty = max(0, int(kit.mouse_y_) - th - step);
 	}
+
 	Panel tipn;
 	tipn.pad_x = kTooltipPadX;
 	tipn.pad_y = kFramePadY;
