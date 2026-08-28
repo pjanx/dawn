@@ -1,0 +1,27 @@
+Why you need a better image viewer
+==================================
+
+Wide gamuts
+-----------
+// TODO(p): show the CIE picture.
+
+Today's displays commonly have colour gamuts superpassing sRGB.
+
+Bit depth
+---------
+// TODO(p): show emphasised banding.
+
+Today's displays can often display more than 16.7 million colours.
+
+Gamma correctness
+-----------------
+// TODO(p): show artifacts; architecture is enough.
+
+Zooming in or out requires correct colour handling.
+Even an iPhone fails at this.
+
+Scaling
+-------
+// TODO(p): show extreme close-ups.
+
+You can do better than use bilinear scaling.

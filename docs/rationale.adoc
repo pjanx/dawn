@@ -25,7 +25,7 @@ problems, at a significant cost.
 
 Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
 the problems become more complex.  Perhaps as I'm shifting to believing
-that it can read my mind.
+that the models can read my mind.
 
 Constraints
 -----------
@@ -106,7 +106,7 @@ be useful.  (I've since checked that a GDK 4 path is impossible.)
 Its largest dependency is ICU, which we don't strictly require, and Qt can
 actually be built without it if needed for smaller standalone packages.
 
-Qt is pretty nuke-able, and the minimal platform abstraction layer it provides
+Qt is somewhat nuke-able, and the minimal platform abstraction layer it provides
 _still_ creates problems of its own anyway.  It's likely that we'll get rid of
 it eventually, whether due to licencing or otherwise.
 

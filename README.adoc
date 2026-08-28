@@ -5,15 +5,18 @@ Dawn
 'Dawn' is a multiplatform colour-managed image browser, with very high standards
 for fidelity and responsivity.
 
+See link:docs/why.adoc[Why you need a better image viewer]
+if you don't get this.
+
 image::docs/dn.webp["Screenshot of both the browser and the viewer"]
 
 Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
 https://git.janouch.name/p/gallery[desires].
-Right now, we've mostly reached our first milestone, and we're cleaning up
-AI-accelerated mess before we can afford to continue making large steps.
+Right now, we've mostly reached our first milestone, and we're mostly cleaning
+up after rapid development before we can afford to continue making large steps.
 
-The project comes with a promise of basic maintenance.
+The project comes with a maintenance guarantee.
 Also see link:docs/plan.adoc[Plan],
 and a detailed link:docs/rationale.adoc[Rationale].
 
