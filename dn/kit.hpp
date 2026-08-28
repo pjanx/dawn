@@ -127,6 +127,11 @@ struct Widget {
 	}
 	virtual bool clips_children() const { return false; }
 	virtual bool focusable() const { return false; }
+	// This widget's default action, as a menu item or a hint would trigger
+	// it.  Most widgets have none and say so; what to do instead is then the
+	// caller's to decide, which is why this does not fall back to taking
+	// focus on its own.
+	virtual bool activate(Kit &kit) { return false; }
 	virtual bool traps_focus() const { return false; }
 	virtual float min_width() const { return 0.0f; }
 	// A scrollbar is a hover effect rather than an event, so it must not
@@ -197,7 +202,7 @@ struct Button : Widget {
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
-	virtual bool activate(Kit &kit);
+	bool activate(Kit &kit) override;
 };
 
 struct Label : Widget {
@@ -235,7 +240,6 @@ struct Entry : Widget {
 	float min_w = 160.0f;
 	float pad_x = kFramePadX;
 	std::function<void(Kit &)> on_change;
-	std::function<void(Kit &)> on_activate;
 	std::function<void(Kit &)> on_cancel;
 
 	// Horizontal scroll, in points, kept so that the caret stays visible.

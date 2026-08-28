@@ -1162,11 +1162,6 @@ Entry::key(Kit &kit, const Key &ev)
 		set_text(kit, next);
 		return true;
 	}
-	case Qt::Key_Return:
-	case Qt::Key_Enter:
-		if (this->on_activate)
-			this->on_activate(kit);
-		return true;
 	case Qt::Key_Escape:
 		if (this->on_cancel)
 			this->on_cancel(kit);

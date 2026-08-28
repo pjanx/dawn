@@ -355,8 +355,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
 		return;
-	if (dynamic_cast<Popup *>(w) || dynamic_cast<Browser *>(w) ||
-		dynamic_cast<Splitter *>(w))
+	if (dynamic_cast<Popup *>(w) || dynamic_cast<Browser *>(w))
 		return;
 	if (w->focusable() && visible_rect(w, host).w > 0.0f)
 		out.push_back(w);
@@ -647,11 +646,11 @@ Hint::fire(Kit &kit, Target t)
 	const int file_i = t.file_i;
 	close(kit);
 	if (widget) {
-		// A button's whole point is its click; anything else that can hold
-		// focus is asking to be typed into, so hand it the keyboard instead.
-		if (auto *b = dynamic_cast<Button *>(widget))
-			b->activate(kit);
-		else {
+		// Whatever this widget calls its default action; one that has none
+		// takes the keyboard instead, which is what hinting a field is for.
+		// Both are re-checked because a target collected when the overlay
+		// opened may have been disabled or hidden since.
+		if (!widget->activate(kit) && widget->focusable()) {
 			kit.focus_ = widget;
 			kit.focus_visible_ = true;
 		}
