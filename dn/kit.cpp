@@ -996,16 +996,6 @@ Entry::set_text(Kit &kit, const QString &next)
 }
 
 void
-Entry::adopt(const Entry &from)
-{
-	this->text = from.text;
-	this->caret = from.caret;
-	this->preedit.clear();
-	this->preedit_caret = 0;
-	this->scroll_ = 0;
-}
-
-void
 Entry::measure(Kit &kit, int, int)
 {
 	// This is the width the field asks for, never the one it settles for:
@@ -1353,6 +1343,18 @@ Composite::add_child(unique_ptr<Widget> child, size_t at)
 	return raw;
 }
 
+unique_ptr<Widget>
+Composite::take_child(size_t at)
+{
+	if (at >= this->kids.size())
+		return nullptr;
+	unique_ptr<Widget> child = std::move(this->kids[at]);
+	this->kids.erase(this->kids.begin() + ptrdiff_t(at));
+	if (child)
+		child->parent_ = nullptr;
+	return child;
+}
+
 void
 Composite::erase_children(size_t from)
 {
@@ -1564,10 +1566,9 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
 	const size_t n = this->kids.size();
 	for (size_t i = 0; i < n; ++i) {
 		Widget *k = this->kids[i].get();
-		// A hidden child keeps whatever rect it had.  Clearing it here would
-		// be measuring as a side effect: focusable() asks for a width, and
-		// the browser tests exactly that on the proxy it has just revealed,
-		// before this container has had a chance to lay it out.
+		// A hidden child keeps whatever rect it had: clearing it here would
+		// be measuring as a side effect, and a width is what focusable()
+		// asks for -- a question that may come before any layout has run.
 		if (!k || !k->shown())
 			continue;
 		// A separator infers its orientation from the offer, and here it
@@ -2518,33 +2519,29 @@ Overflow::Overflow()
 	add_child(std::move(column));
 }
 
+// Nothing should outlive the toolbar it borrows from, but a stranded item
+// would be a leak of something the slot still lists, so give it back anyway.
+Overflow::~Overflow()
+{
+	if (this->lender)
+		this->lender->reclaim();
+}
+
 void
 Overflow::close(Kit &kit)
 {
-	// A fresh opening seeds the proxy fields again; while it is up, they are
-	// the ones being typed into.
-	this->seeded = false;
+	// The items go home before the popup stops being a place to be: closing
+	// drops the focus, and sync_focus() must see where they have landed.
+	if (this->lender)
+		this->lender->reclaim();
 	Popup::close(kit);
-}
-
-Widget *
-Overflow::proxy_for(const Widget *source) const
-{
-	if (!source || !this->col)
-		return nullptr;
-	for (size_t i = 0; i < this->sources.size(); ++i) {
-		if (this->sources[i] == source)
-			return i < this->col->kids.size() ? this->col->kids[i].get()
-											  : nullptr;
-	}
-	return nullptr;
 }
 
 void
 Overflow::place(Kit &kit)
 {
-	if (this->fill_items)
-		this->fill_items();
+	if (this->refill)
+		this->refill();
 	if (this->opener)
 		this->at = this->opener->r;
 
@@ -2564,10 +2561,12 @@ bool
 Overflow::motion(Kit &kit, float x, float y)
 {
 	// Unlike a menu, this popup can hold the field that currently has the
-	// caret.  Hover-follows-focus would then take the keyboard away from
-	// someone mid-word because the pointer crossed a neighbouring button,
-	// so while a field here is focused, the pointer only hovers.
-	if (auto *e = dynamic_cast<Entry *>(kit.focus_); e && e->parent_ == this->col)
+	// caret -- it is the toolbar's own, moved in here.  Hover-follows-focus
+	// would then take the keyboard away from someone mid-word because the
+	// pointer crossed a neighbouring button, so while a field here is
+	// focused, the pointer only hovers.
+	if (auto *e = dynamic_cast<Entry *>(kit.focus_);
+		e && e->parent_ == this->col)
 		return true;
 	return MenuPopup::motion(kit, x, y);
 }
@@ -2932,138 +2931,8 @@ MenuItem::accel_width(const Kit &kit) const
 
 namespace
 {
-
 constexpr float kWinPadX = 4.f;
 constexpr float kWinPadY = 4.f;
-
-void
-sync_overflow_proxy(Widget &source, Widget &proxy)
-{
-	Widget *parent = proxy.parent_;
-	const bool visible = proxy.visible;
-	const bool layout_visible = proxy.layout_visible;
-	if (auto *button = dynamic_cast<Button *>(&source))
-		static_cast<Button &>(proxy) = *button;
-	else if (auto *label = dynamic_cast<Label *>(&source))
-		static_cast<Label &>(proxy) = *label;
-	else if (auto *entry = dynamic_cast<Entry *>(&source)) {
-		auto &dst = static_cast<Entry &>(proxy);
-		// Everything except what the user is editing.  This runs every frame
-		// the popup is up, so it must not touch text, caret or preedit: the
-		// proxy is the field being typed into and owns them, and it hands
-		// them to the source through on_change rather than the other way
-		// round.  Nor may it re-wrap the handlers -- wrapping a wrapper each
-		// frame builds a chain that grows without bound.
-		dst.placeholder = entry->placeholder;
-		dst.min_w = entry->min_w;
-		dst.pad_x = entry->pad_x;
-		dst.hittable = entry->hittable;
-		// A field still stretches here, as it does in the bar: Flow gives it
-		// what is left of its line, and clamps it when the popup is narrower
-		// than the width it asks for.
-		dst.grow = entry->grow;
-	}
-	proxy.parent_ = parent;
-	proxy.visible = visible;
-	proxy.layout_visible = layout_visible;
-}
-
-unique_ptr<Widget>
-overflow_proxy(Widget &source)
-{
-	if (dynamic_cast<Button *>(&source))
-		return make_unique<Button>();
-	if (dynamic_cast<Label *>(&source))
-		return make_unique<Label>();
-	if (dynamic_cast<Entry *>(&source))
-		return make_unique<Entry>();
-	if (dynamic_cast<Sep *>(&source))
-		return make_unique<Sep>();
-	return nullptr;
-}
-
-void
-add_overflow_proxies(Overflow &overflow, ToolbarSlot *row)
-{
-	if (!row)
-		return;
-	const size_t end = row->item_count();
-	for (size_t i = 0; i < end; ++i) {
-		if (!row->kids[i])
-			continue;
-		auto proxy = overflow_proxy(*row->kids[i]);
-		if (!proxy)
-			continue;
-		sync_overflow_proxy(*row->kids[i], *proxy);
-		// Once, here: the write-through has to survive every later re-sync,
-		// and wrapping it again each frame would nest it into itself.
-		if (auto *src = dynamic_cast<Entry *>(row->kids[i].get())) {
-			auto *self = static_cast<Entry *>(proxy.get());
-			auto change = src->on_change;
-			auto cancel = src->on_cancel;
-			self->on_change = [src, self, change](Kit &kit) {
-				src->text = self->text;
-				src->caret = self->caret;
-				if (change)
-					change(kit);
-			};
-			self->on_cancel = [src, self, cancel](Kit &kit) {
-				src->text = self->text;
-				src->caret = self->caret;
-				if (cancel)
-					cancel(kit);
-				// Cancelling is the one time the source talks back: it
-				// empties the field rather than just reading it, and the
-				// proxy holds the text now, so it has to follow.
-				self->adopt(*src);
-			};
-		}
-		proxy->visible = false;
-		if (overflow.col) {
-			overflow.sources.push_back(row->kids[i].get());
-			overflow.col->add_child(std::move(proxy));
-		}
-	}
-}
-
-void
-fill_overflow_items(ToolbarSlot &row, Overflow &overflow)
-{
-	if (!overflow.col)
-		return;
-	// Only the first pass of an opening can reseed a field: this runs on
-	// every relayout, and one being typed into must not be overwritten from
-	// a source that only hears about text, never about the caret.
-	const bool seeding = !overflow.seeded;
-	overflow.seeded = true;
-	for (auto &item : overflow.col->kids)
-		item->visible = false;
-	const size_t end = row.item_count();
-	size_t a = min(row.split_, end);
-	size_t b = end;
-	while (a < b && is_sep(row.kids[a].get()))
-		++a;
-	while (b > a && is_sep(row.kids[b - 1].get()))
-		--b;
-	for (size_t i = a; i < b; ++i) {
-		Widget *source = row.kids[i].get();
-		for (size_t j = 0; j < overflow.sources.size(); ++j) {
-			if (overflow.sources[j] != source)
-				continue;
-			Widget &proxy = *overflow.col->kids[j];
-			sync_overflow_proxy(*source, proxy);
-			// Opening, a field starts from whatever the source holds; from
-			// then on it is the one being typed into, and sync_overflow_proxy
-			// leaves its text alone.
-			if (seeding) {
-				if (auto *dst = dynamic_cast<Entry *>(&proxy))
-					dst->adopt(*static_cast<Entry *>(source));
-			}
-			proxy.visible = source->visible;
-			break;
-		}
-	}
-}
 }  // namespace
 
 ToolbarSlot::ToolbarSlot()
@@ -3079,25 +2948,123 @@ ToolbarSlot::ToolbarSlot()
 Widget *
 ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
 {
-	return Composite::add_child(std::move(item), min(at, item_count()));
-}
-
-size_t
-ToolbarSlot::item_count() const
-{
-	return this->more && !this->kids.empty() ? this->kids.size() - 1 : 0;
+	// The lent run is a pair of indices into items_, so nothing may shift
+	// underneath it: take everything back before touching the order.
+	reclaim();
+	Widget *raw = item.get();
+	if (!raw)
+		return nullptr;
+	at = min(at, this->items_.size());
+	// Nothing is lent now, so kids is items_ in order, then more.
+	Composite::add_child(std::move(item), at);
+	this->items_.insert(this->items_.begin() + ptrdiff_t(at), raw);
+	if (at < this->split_)
+		++this->split_;
+	return raw;
 }
 
 void
+ToolbarSlot::sync_layout_visible()
+{
+	for (size_t i = 0; i < this->items_.size(); ++i) {
+		// Only ever one of the two: what is lent starts at the split, so an
+		// item is either shown in the popup's Flow or kept here by the bar.
+		this->items_[i]->layout_visible =
+			(i >= this->lent_first_ && i < this->lent_last_) ||
+			i < this->split_;
+	}
+}
+
+void
+ToolbarSlot::lend_to(Overflow &overflow)
+{
+	if (!overflow.col)
+		return;
+	if (overflow.lender && overflow.lender != this)
+		overflow.lender->reclaim();
+	// Everything comes home first: the split moves as the window resizes,
+	// and this is what re-splits the popup rather than stranding items.
+	reclaim();
+
+	// Separators are what a run happens to start or end with, never worth a
+	// line of their own: the popup shows what they divide, not the dividers.
+	const size_t end = this->items_.size();
+	size_t a = min(this->split_, end), b = end;
+	while (a < b && is_sep(this->items_[a]))
+		++a;
+	while (b > a && is_sep(this->items_[b - 1]))
+		--b;
+	for (size_t i = a; i < b; ++i) {
+		Widget *item = this->items_[i];
+		// Ownership follows the widget: whoever lays it out holds it.
+		for (size_t j = 0; j < this->kids.size(); ++j) {
+			if (this->kids[j].get() != item)
+				continue;
+			overflow.col->add_child(take_child(j));
+			break;
+		}
+	}
+	this->lent_first_ = a;
+	this->lent_last_ = b;
+	this->borrower_ = &overflow;
+	overflow.lender = this;
+	// The popup measures itself the moment this returns, before the bar gets
+	// to lay out again, so the run has to be shown here rather than there.
+	sync_layout_visible();
+}
+
+void
+ToolbarSlot::reclaim()
+{
+	Overflow *overflow = this->borrower_;
+	this->borrower_ = nullptr;
+	const size_t first = this->lent_first_, last = this->lent_last_;
+	this->lent_first_ = this->lent_last_ = 0;
+	if (!overflow || !overflow->col || first >= last)
+		return;
+	if (overflow->lender == this)
+		overflow->lender = nullptr;
+
+	// Back in bar order, ahead of more, which is the last child throughout.
+	// Everything below the run stayed here, so that is where it resumes.
+	size_t at = first;
+	for (size_t i = first; i < last; ++i) {
+		Widget *item = this->items_[i];
+		for (size_t j = 0; j < overflow->col->kids.size(); ++j) {
+			if (overflow->col->kids[j].get() != item)
+				continue;
+			Composite::add_child(overflow->col->take_child(j), at++);
+			break;
+		}
+	}
+	sync_layout_visible();
+}
+
+// The natural width of everything this slot has, wherever it is living: the
+// bar tiles its three slots against these, and measuring only the children
+// would make a slot shrink the moment the popup took some of them away.
+void
 ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
 {
-	for (size_t i = 0; i < item_count(); ++i) {
-		if (this->kids[i])
-			this->kids[i]->layout_visible = true;
-	}
 	this->more->visible = false;
-	this->split_ = item_count();
 	Row::measure(kit, max_w, max_h);
+
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int ih = max(0, max_h - pad_y * 2);
+	const int gap = kit.px(this->gap);
+	int used = 0, shown = 0, cross = 0;
+	for (Widget *item : this->items_) {
+		if (!item->visible)
+			continue;
+		// Whatever is packed in the bar right now, Row::measure has just
+		// done; only the overflowed rest still has to be asked.
+		if (item->parent_ != this || !item->layout_visible)
+			item->measure(kit, kUnlim, ih);
+		used += item->r.w + (shown++ ? gap : 0);
+		cross = max(cross, item->r.h);
+	}
+	this->r.w = max(this->r.w, pad_x * 2 + used);
+	this->r.h = max(this->r.h, pad_y * 2 + cross);
 }
 
 void
@@ -3106,28 +3073,40 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 	if (!this->visible) {
 		this->r = {};
 		this->split_ = 0;
+		sync_layout_visible();
 		return;
 	}
 	const int pad_x = kit.px(this->pad_x);
 	const Rect in = alloc.inset(pad_x, kit.px(this->pad_y));
-	const size_t end = item_count();
-	measure(kit, kUnlim, alloc.h);
-	const int total = max(0, this->r.w - pad_x * 2);
+	const size_t end = this->items_.size();
+	const int gap = kit.px(this->gap);
+
+	// The split is measured against every item, wherever it is living right
+	// now: measuring only the children would see the lent ones as gone,
+	// decide nothing overflows, and close the popup that is holding them.
+	int total = 0;
+	int shown = 0;
+	for (size_t i = 0; i < end; ++i) {
+		Widget *item = this->items_[i];
+		if (!item->visible)
+			continue;
+		item->measure(kit, kUnlim, in.h);
+		total += item->r.w + (shown++ ? gap : 0);
+	}
 
 	this->split_ = end;
 	this->more->visible = false;
 	if (total > in.w) {
 		this->more->visible = true;
 		this->more->measure(kit, kUnlim, in.h);
-		const int gap = kit.px(this->gap);
 		const int budget = max(0, in.w - this->more->r.w - gap);
 		int used = 0;
 		int kept = 0;
 		bool full = false;
 		this->split_ = 0;
 		for (size_t i = 0; i < end; ++i) {
-			Widget *item = this->kids[i].get();
-			if (!item || !item->shown()) {
+			Widget *item = this->items_[i];
+			if (!item->visible) {
 				if (!full)
 					this->split_ = i + 1;
 				continue;
@@ -3141,16 +3120,11 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 			++kept;
 			this->split_ = i + 1;
 		}
-		while (this->split_ > 0 &&
-			(!this->kids[this->split_ - 1] ||
-				is_sep(this->kids[this->split_ - 1].get())))
+		while (this->split_ > 0 && is_sep(this->items_[this->split_ - 1]))
 			--this->split_;
 		this->more->visible = this->split_ < end;
 	}
-	for (size_t i = this->split_; i < end; ++i) {
-		if (this->kids[i])
-			this->kids[i]->layout_visible = false;
-	}
+	sync_layout_visible();
 	Row::arrange(kit, alloc);
 }
 
@@ -3178,14 +3152,13 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	this->overflow_owned_ = make_unique<Overflow>();
 	this->overflow_owned_->pad_y = kWinPadY;
 	this->overflow = this->overflow_owned_.get();
-	add_overflow_proxies(*this->overflow, this->left);
-	add_overflow_proxies(*this->overflow, this->mid);
-	add_overflow_proxies(*this->overflow, this->right);
-
-	this->overflow->fill_items = [this] {
+	// Laying out the bar decides the split; this then hands over what fell
+	// past it, every time the popup is placed, so that resizing the window
+	// with it open moves items in and out rather than stranding them.
+	this->overflow->refill = [this] {
 		if (Button *m = this->overflow->opener) {
 			if (ToolbarSlot *slot = slot_for_more(m))
-				fill_overflow_items(*slot, *this->overflow);
+				slot->lend_to(*this->overflow);
 		}
 	};
 
@@ -3223,11 +3196,12 @@ Toolbar::sync_buttons()
 		btn->tip_text = action_tip(d, on);
 		btn->tip_accel = action_accel(d);
 	};
+	// items_, not kids: what the overflow is holding is still ours to sync.
 	auto walk = [&apply](const ToolbarSlot *row) {
 		if (!row)
 			return;
-		for (auto &k : row->kids)
-			apply(k.get());
+		for (Widget *k : row->items_)
+			apply(k);
 	};
 	walk(this->left);
 	walk(this->mid);
@@ -3298,9 +3272,12 @@ Toolbar::place_slots(Kit &kit)
 		mmin = min(mw, this->mid->more->r.w);
 	}
 	auto stretches = [](const ToolbarSlot *slot) {
-		for (size_t i = 0; slot && i < slot->item_count(); ++i) {
-			if (slot->kids[i] && slot->kids[i]->shown() &&
-				slot->kids[i]->grows())
+		if (!slot)
+			return false;
+		for (const Widget *item : slot->items_) {
+			// Only what is in the bar: a field in the popup fills a line
+			// there, and must not also stretch the gap it left behind.
+			if (item->shown() && item->grows())
 				return true;
 		}
 		return false;

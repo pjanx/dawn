@@ -1732,10 +1732,12 @@ push_place(Browser &b, const filesystem::path &root, string path,
 bool
 matches_search(const Browser &b, const string &name)
 {
-	if (b.search_text_.isEmpty())
+	// Scanning can outrun the toolbar: before it is built there is no field,
+	// and so nothing to narrow by.
+	if (!b.search_ || b.search_->text.isEmpty())
 		return true;
 	return QString::fromStdString(name).contains(
-		b.search_text_, Qt::CaseInsensitive);
+		b.search_->text, Qt::CaseInsensitive);
 }
 
 void
@@ -2154,18 +2156,16 @@ make_item(Browser &b, const Spec &spec)
 		auto e = make_unique<Entry>();
 		b.search_ = e.get();
 		e->placeholder = QStringLiteral("Search");
-		e->text = b.search_text_;
 		e->on_change = [&b](Kit &) {
-			if (!b.search_)
-				return;
-			b.search_text_ = b.search_->text;
 			scan_dir(b);
 			enqueue_thumbs(b);
 			request_render(b);
 		};
 		// Escape gives the browser back both the focus and the full listing.
 		e->on_cancel = [&b](Kit &kit) {
-			if (b.search_ && !b.search_->text.isEmpty())
+			// set_text() rescans unconditionally; an empty field has nothing
+			// to give back, and the listing is already whole.
+			if (!b.search_->text.isEmpty())
 				b.search_->set_text(kit, QString());
 			kit.set_focus(&b, true);
 			request_render(b);
@@ -2367,23 +2367,18 @@ apply_action(Browser &b, Action action)
 	case Action::Search: {
 		if (!b.search_)
 			return false;
-		Widget *field = b.search_;
-		// Too narrow a toolbar packs the field away into the overflow,
-		// which then holds the proxy that stands in for it.  Opening the
-		// popup is what makes that proxy visible, so it has to come first.
-		if (!field->focusable() && b.page_ && b.page_->toolbar) {
+		// Too narrow a toolbar packs the field away into the overflow.
+		// Opening the popup is what moves it back into a tree the focus can
+		// reach, so it has to come first.
+		if (!b.search_->shown() && b.page_ && b.page_->toolbar) {
 			Toolbar *tb = b.page_->toolbar;
-			if (tb->overflow && tb->left && tb->left->more->shown()) {
-				tb->overflow->open(b.kit_, tb->left->more);
-				Widget *proxy = tb->overflow->proxy_for(b.search_);
-				field = proxy && proxy->focusable() ? proxy : nullptr;
-			} else {
-				field = nullptr;
-			}
+			if (!tb->overflow || !tb->left || !tb->left->more->shown())
+				return false;
+			tb->overflow->open(b.kit_, tb->left->more);
 		}
-		if (!field)
+		if (!b.search_->focusable())
 			return false;
-		b.kit_.set_focus(field, true);
+		b.kit_.set_focus(b.search_, true);
 		if (b.kit_.input_method_changed)
 			b.kit_.input_method_changed();
 		request_render(b);

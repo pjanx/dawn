@@ -92,9 +92,8 @@ struct Browser : Widget {
 	std::shared_ptr<dawn::Profile> screen_profile_;
 
 	bool show_names_ = false;
-	// Substring the toolbar search field narrows the listing by; it is
+	// The toolbar search field, whose text narrows the listing; it is
 	// deliberately per-window, and not part of BrowseSetup.
-	QString search_text_;
 	Entry *search_ = nullptr;
 	BrowseSetup setup_;
 	BrowserView view_ = BrowserView::Tile;

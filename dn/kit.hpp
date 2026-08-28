@@ -184,6 +184,8 @@ struct Composite : Widget {
 
 	Widget *add_child(
 		std::unique_ptr<Widget> child, std::size_t at = std::size_t(-1));
+	// The inverse: detaches one child and hands its ownership back.
+	std::unique_ptr<Widget> take_child(std::size_t at);
 	void erase_children(std::size_t from = 0);
 	std::size_t child_count() const override { return this->kids.size(); }
 	Widget *child(std::size_t i) const override
@@ -253,8 +255,9 @@ struct Entry : Widget {
 	int preedit_caret = 0;
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
-	// A field takes what room it is given -- in an overflow popup as much as
-	// in the bar, where it fills out the rest of the line it wrapped onto.
+	// A field takes what room it is given -- in the overflow popup it moved
+	// into as much as in the bar, where it fills out the rest of the line it
+	// wrapped onto.
 	bool grow = true;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
@@ -268,10 +271,6 @@ struct Entry : Widget {
 	bool caret_on_ = false;
 
 	Entry() { this->hittable = true; }
-	// Takes over another field's contents, discarding anything this one was
-	// composing: an overflow proxy and its source hand the text back and
-	// forth, and whichever is not being typed into has no caret to keep.
-	void adopt(const Entry &from);
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -505,20 +504,20 @@ struct MenuPopup : Popup {
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
-// What a ToolbarSlot puts the items it could not fit into.  These are toolbar
-// items rather than menu entries, so they keep flowing sideways, and wrap.
+struct ToolbarSlot;
+
+// What a ToolbarSlot puts the items it could not fit into.  These are the
+// toolbar items themselves, moved here for as long as the popup is up rather
+// than stood in for, so they keep flowing sideways, and wrap.
 struct Overflow : MenuPopup {
 	Flow *col = nullptr;
-	std::vector<Widget *> sources;
-	std::function<void()> fill_items;
-
-	// Set while the popup is up: a proxy field seeds itself from its source
-	// the first time round, and owns the text from then on.
-	bool seeded = false;
+	// Whose items col is currently holding.  One Overflow serves all three
+	// slots, so this, not the slot asking, says who to hand them back to.
+	ToolbarSlot *lender = nullptr;
+	std::function<void()> refill;
 
 	Overflow();
-	// The stand-in this popup shows for a toolbar item, if it has one.
-	[[nodiscard]] Widget *proxy_for(const Widget *source) const;
+	~Overflow() override;
 	void close(Kit &kit) override;
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -571,16 +570,36 @@ struct ToolbarSlot : Row {
 	Button *more = nullptr;
 	std::size_t split_ = 0;
 
+	// Every item this slot has, in bar order, never null and never reordered:
+	// raw, because while the overflow is up the tail of them is owned by its
+	// Flow rather than by this slot's kids.  The split is measured against
+	// all of them wherever they live, which is what keeps it steady.
+	std::vector<Widget *> items_;
+
 	ToolbarSlot();
 	Widget *add_item(
 		std::unique_ptr<Widget> item, std::size_t at = std::size_t(-1));
-	[[nodiscard]] std::size_t item_count() const;
+	// Moves everything past the split into the popup, or brings it back.
+	void lend_to(Overflow &overflow);
+	void reclaim();
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
+	// On a toolbar item layout_visible means "I am in somebody's kids right
+	// now": it is what keeps an item that overflowed while the popup is shut
+	// -- parented here, but no child of anyone -- out of the focus order.
+	void sync_layout_visible();
+
+	// Where the lent items came from, so that they go back in bar order.
+	// Empty (first >= last) when the popup holds none of ours.
+	std::size_t lent_first_ = 0;
+	std::size_t lent_last_ = 0;
+	Overflow *borrower_ = nullptr;
+
 	using Composite::add_child;
 	using Composite::erase_children;
+	using Composite::take_child;
 };
 
 struct Toolbar : Panel {
