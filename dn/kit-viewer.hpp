@@ -142,7 +142,7 @@ struct Viewer : Widget {
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
 	bool gesture(Kit &kit, float x, float y, float scale_factor,
 		float angle_delta) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	bool double_click(
 		Kit &kit, float x, float y, Qt::MouseButton button, unsigned mods) override;
 };

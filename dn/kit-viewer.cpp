@@ -2069,13 +2069,13 @@ Viewer::wake_ms() const
 }
 
 bool
-Viewer::key(Kit &kit, int key, unsigned mods)
+Viewer::key(Kit &kit, const Key &ev)
 {
-	if (context_key(key, mods))
+	if (context_key(ev.key, ev.mods))
 		return show_view_context(*this, kit);
-	if (mods == unsigned(Qt::NoModifier) && key >= Qt::Key_1 &&
-		key <= Qt::Key_9) {
-		set_scale(*this, float(key - Qt::Key_0));
+	if (ev.mods == unsigned(Qt::NoModifier) && ev.key >= Qt::Key_1 &&
+		ev.key <= Qt::Key_9) {
+		set_scale(*this, float(ev.key - Qt::Key_0));
 		return true;
 	}
 	return false;

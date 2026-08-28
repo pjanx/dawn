@@ -33,6 +33,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QInputDevice>
+#include <QInputMethod>
+#include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QMetaObject>
 #include <QMimeData>
@@ -41,6 +43,7 @@
 #include <QPlatformSurfaceEvent>
 #include <QPointer>
 #include <QProcess>
+#include <QRectF>
 #include <QRegion>
 #include <QScreen>
 #include <QStyleHints>
@@ -145,6 +148,7 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 	this->kit_.post = std::move(post);
 	this->kit_.request_render = [this] { request_render(); };
+	this->kit_.input_method_changed = [this] { sync_input_method(); };
 	this->kit_.start_move = [this] {
 		this->system_grab_ = shell()->startSystemMove();
 		request_render();
@@ -964,6 +968,10 @@ Window::event(QEvent *event)
 		this->update_pending_ = false;
 		render();
 		return true;
+	case QEvent::InputMethod:
+		return handle_input_method((QInputMethodEvent *) event);
+	case QEvent::InputMethodQuery:
+		return handle_input_method_query((QInputMethodQueryEvent *) event);
 	case QEvent::WindowStateChange: {
 		auto *change = (QWindowStateChangeEvent *) event;
 		if ((change->oldState() ^ shell()->windowState()) &
@@ -1195,7 +1203,7 @@ Window::keyPressEvent(QKeyEvent *event)
 			p && p->visible && p->captures_keys() && key != Qt::Key_Backspace)
 			return;
 	}
-	if (this->kit_.key(key, mods)) {
+	if (this->kit_.key({key, mods, event->text()})) {
 		request_render();
 		return;
 	}
@@ -1235,6 +1243,96 @@ Window::keyReleaseEvent(QKeyEvent *event)
 		request_render();
 	}
 	event->accept();
+}
+
+bool
+Window::handle_input_method(QInputMethodEvent *event)
+{
+	TextTarget target;
+	if (!this->kit_.text_target(target)) {
+		event->ignore();
+		return false;
+	}
+
+	// The preedit caret rides in the attribute list, in UTF-16 units from
+	// the start of the preedit string.
+	int caret = event->preeditString().size();
+	for (const QInputMethodEvent::Attribute &a : event->attributes()) {
+		if (a.type == QInputMethodEvent::Cursor)
+			caret = a.start;
+	}
+	this->kit_.input_method(
+		event->commitString(), event->preeditString(), caret);
+	event->accept();
+	request_render();
+	return true;
+}
+
+// QWindow has no inputMethodQuery() of its own: the platform asks by way of
+// a query event, which we answer one field at a time.
+bool
+Window::handle_input_method_query(QInputMethodQueryEvent *event)
+{
+	TextTarget target;
+	if (!this->kit_.text_target(target)) {
+		event->ignore();
+		return false;
+	}
+	for (unsigned i = 0; i < 32; i++) {
+		const auto q = Qt::InputMethodQuery(1u << i);
+		if (event->queries() & q)
+			event->setValue(q, input_method_value(target, q));
+	}
+	event->accept();
+	return true;
+}
+
+QVariant
+Window::input_method_value(
+	const TextTarget &target, Qt::InputMethodQuery query) const
+{
+	switch (query) {
+	case Qt::ImEnabled:
+		return true;
+	case Qt::ImHints:
+		return int(Qt::ImhNone);
+	case Qt::ImSurroundingText:
+		return target.text;
+	// There is no selection, so the anchor never parts from the cursor.
+	case Qt::ImCursorPosition:
+	case Qt::ImAnchorPosition:
+		return target.caret;
+	case Qt::ImCurrentSelection:
+		return QString();
+	case Qt::ImCursorRectangle: {
+		const Rect &c = target.caret_rect;
+		return QRectF(qreal(c.x), qreal(c.y), qreal(c.w), qreal(c.h));
+	}
+	default:
+		return {};
+	}
+}
+
+void
+Window::sync_input_method()
+{
+	// This runs from inside layout, where reset() committing a preedit back
+	// to us would mutate the tree mid-pass; hand it to the event loop.
+	if (this->ime_sync_pending_)
+		return;
+	this->ime_sync_pending_ = true;
+	this->kit_.post([this] {
+		this->ime_sync_pending_ = false;
+		QInputMethod *im = QGuiApplication::inputMethod();
+		if (!im)
+			return;
+		TextTarget target;
+		const bool on = this->kit_.text_target(target);
+		im->update(Qt::ImQueryInput);
+		im->setVisible(on);
+		if (!on)
+			im->reset();
+	});
 }
 
 void

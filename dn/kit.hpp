@@ -82,6 +82,29 @@ enum : uint8_t {
 struct Kit;
 struct Scroll;
 
+// One keystroke, as the platform delivered it.
+struct Key {
+	int key = 0;
+	unsigned mods = 0;
+	// What Qt composed for this keystroke: layout- and dead-key-aware.
+	// Empty for bare modifiers, and a control code for Return and friends.
+	QString text;
+};
+
+// What an input method needs to know about the widget it is composing into.
+// Everything the platform asks for is derived from these; a widget that
+// fills one in is by that fact a text target.
+struct TextTarget {
+	// Committed text only, without any preedit: what the input method may
+	// reconsider around the caret.
+	QString text;
+	// Caret offset into text, in UTF-16 units, as Qt counts them.
+	int caret = 0;
+	// Where to park the candidate window, in the same coordinates as
+	// Widget::r -- getting this wrong strands the list in a screen corner.
+	Rect caret_rect;
+};
+
 // --- Kit ---------------------------------------------------------------------
 
 struct Widget {
@@ -122,7 +145,13 @@ struct Widget {
 	virtual bool pan(Kit &kit, float x, float y, float dx, float dy);
 	virtual bool gesture(
 		Kit &kit, float x, float y, float scale_factor, float angle_delta);
-	virtual bool key(Kit &kit, int key, unsigned mods);
+	virtual bool key(Kit &kit, const Key &ev);
+	// An input method updated its preedit, or committed to it.
+	virtual bool input_method(
+		Kit &kit, const QString &commit, const QString &preedit, int caret);
+	// The other half of that channel: what the input method may ask back.
+	// Returning false means this widget does not take text.
+	virtual bool text_target(const Kit &kit, TextTarget &out) const;
 	virtual bool double_click(
 		Kit &kit, float x, float y, Qt::MouseButton button, unsigned mods);
 	[[nodiscard]] virtual int wake_ms() const { return -1; }
@@ -167,7 +196,7 @@ struct Button : Widget {
 	bool focusable() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	virtual bool activate(Kit &kit);
 };
 
@@ -192,6 +221,55 @@ struct Label : Widget {
 	bool grows() const override { return this->grow; }
 	QString tip() const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
+};
+
+// A single-line text field.  There is no selection: the caret is the whole
+// of the state, and a click just places it.
+struct Entry : Widget {
+	QString text;
+	QString placeholder;
+	// Uncommitted input-method text, shown at the caret but not part of text.
+	QString preedit;
+	int caret = 0;
+	int preedit_caret = 0;
+	float min_w = 160.0f;
+	float pad_x = kFramePadX;
+	std::function<void(Kit &)> on_change;
+	std::function<void(Kit &)> on_activate;
+	std::function<void(Kit &)> on_cancel;
+
+	// Horizontal scroll, in points, kept so that the caret stays visible.
+	float scroll_ = 0;
+	std::chrono::steady_clock::time_point caret_at_{};
+	// Both decided in prepare, which is the only place with a Kit to ask
+	// about focus; paint and wake_ms are const and just read them.
+	bool focused_ = false;
+	bool caret_on_ = false;
+
+	Entry() { this->hittable = true; }
+	void measure(Kit &kit, float max_w, float max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool focusable() const override;
+	float min_width() const override { return this->min_w; }
+	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool key(Kit &kit, const Key &ev) override;
+	bool input_method(Kit &kit, const QString &commit, const QString &pre,
+		int pre_caret) override;
+	bool text_target(const Kit &kit, TextTarget &out) const override;
+	[[nodiscard]] int wake_ms() const override;
+
+	void set_text(Kit &kit, const QString &next);
+	void move_caret(Kit &kit, int to);
+	// Resets the blink, and re-scrolls to keep the caret in view.
+	void touch_caret(const Kit &kit);
+	// Just the scroll: layout runs every frame, and must not touch the blink.
+	void rescroll(const Kit &kit);
+	[[nodiscard]] float inner_w() const;
+	// The text as painted: the placeholder stands in when empty.
+	[[nodiscard]] QString painted() const;
 };
 
 struct Sep : Widget {
@@ -295,7 +373,7 @@ struct ScrollColumn : Column {
 	bool motion(Kit &kit, float x, float y) override;
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	[[nodiscard]] int wake_ms() const override;
 };
 
@@ -340,7 +418,7 @@ struct Popup : Panel {
 	// or its Close button.
 	virtual bool transient() const { return true; }
 	void paint(Kit &kit) const override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 };
 
 // Dismissed by Escape or its Close button only; the caller fills the body
@@ -367,7 +445,7 @@ struct MenuPopup : Popup {
 	void focus_item(Kit &kit, Widget *w, bool kbd) const;
 	void reveal(Kit &kit, Widget *w);
 	bool motion(Kit &kit, float x, float y) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
@@ -394,7 +472,7 @@ struct Menu : MenuPopup {
 	void add_sep();
 	void clear();
 	void measure(Kit &kit, float max_w, float max_h) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 };
 
 struct MenuItem : Button {
@@ -522,6 +600,9 @@ struct Kit {
 	Renderer *renderer_ = nullptr;
 	std::function<void(std::function<void()>)> post;
 	std::function<void()> request_render;
+	// The focused Entry changed, or moved its caret: the platform has to
+	// re-query the input method state.
+	std::function<void()> input_method_changed;
 	bool fullscreen_ = false;
 	bool maximized_ = false;
 	bool active_ = true;
@@ -573,7 +654,9 @@ struct Kit {
 	void cycle_focus(int dir);
 	bool cycle_focus(Widget *scope, int dir, bool wrap = true);
 	void focus_first(Widget *scope);
-	bool key(int key, unsigned mods);
+	bool key(const Key &ev);
+	bool input_method(const QString &commit, const QString &preedit, int caret);
+	[[nodiscard]] bool text_target(TextTarget &out) const;
 	bool mouse_press(
 		float x, float y, Qt::MouseButton button, unsigned mods = 0);
 	bool mouse_release(float x, float y, Qt::MouseButton button);
@@ -604,6 +687,10 @@ struct Kit {
 	[[nodiscard]] int wake_ms() const;
 	void paint();
 	[[nodiscard]] float text_width(const QString &text, bool bold) const;
+	// Caret geometry, both in points, and both counting in UTF-16 units.
+	[[nodiscard]] float caret_x(
+		const QString &text, int index, bool bold) const;
+	[[nodiscard]] int index_at(const QString &text, float x, bool bold) const;
 	[[nodiscard]] float text_ascent(bool bold) const;
 	[[nodiscard]] QString elide_lines(
 		const QString &text, float wrap_pts, int max_lines, bool bold) const;

@@ -147,7 +147,7 @@ constexpr int kThumbWide = 2;
 constexpr size_t kThumbRamBudget = 2ull << 30;
 
 enum class Slot : uint8_t { Left, Middle, Right };
-enum class Kind : uint8_t { Icon, Text, Sep };
+enum class Kind : uint8_t { Icon, Text, Sep, Search };
 
 struct Spec {
 	Kind kind;
@@ -180,6 +180,8 @@ constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Left, Action::SortDir},
 	{Kind::Text, Slot::Left, Action::SortName},
 	{Kind::Text, Slot::Left, Action::SortTime},
+	{Kind::Sep, Slot::Left, Action::None},
+	{Kind::Search, Slot::Left, Action::Search},
 
 	{Kind::Sep, Slot::Right, Action::None},
 	{Kind::Icon, Slot::Right, Action::DarkMode},
@@ -461,7 +463,7 @@ struct SideRow : Button {
 	void measure(Kit &, float max_w, float) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 };
 
 void
@@ -504,19 +506,19 @@ SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-SideRow::key(Kit &kit, int key, unsigned mods)
+SideRow::key(Kit &kit, const Key &ev)
 {
-	if (context_key(key, mods)) {
+	if (context_key(ev.key, ev.mods)) {
 		if (this->browser)
 			show_file_context(*this->browser, kit, this->path, this->r, true);
 		return true;
 	}
-	if (shift_enter(key, mods)) {
+	if (shift_enter(ev.key, ev.mods)) {
 		if (this->browser)
 			open_new_window(*this->browser, this->path);
 		return true;
 	}
-	return Button::key(kit, key, mods);
+	return Button::key(kit, ev);
 }
 
 void layout_grid(Browser &b, Rect area);
@@ -1723,6 +1725,16 @@ push_place(Browser &b, const filesystem::path &root, string path,
 
 // --- Scan --------------------------------------------------------------------
 
+// Case-insensitive substring match; an empty search matches everything.
+bool
+matches_search(const Browser &b, const string &name)
+{
+	if (b.search_text_.isEmpty())
+		return true;
+	return QString::fromStdString(name).contains(
+		b.search_text_, Qt::CaseInsensitive);
+}
+
 void
 scan_dir(Browser &b)
 {
@@ -1761,6 +1773,8 @@ scan_dir(Browser &b)
 			continue;
 		if (b.setup_.filter_files &&
 			!is_image_ext(QString::fromStdString(name)))
+			continue;
+		if (!matches_search(b, name))
 			continue;
 		Browser::File f;
 		f.path = ent.path().string();
@@ -2131,6 +2145,29 @@ make_item(Browser &b, const Spec &spec)
 {
 	if (spec.kind == Kind::Sep)
 		return make_unique<Sep>();
+	if (spec.kind == Kind::Search) {
+		auto e = make_unique<Entry>();
+		b.search_ = e.get();
+		e->placeholder = QStringLiteral("Search");
+		e->text = b.search_text_;
+		e->on_change = [&b](Kit &) {
+			if (!b.search_)
+				return;
+			b.search_text_ = b.search_->text;
+			scan_dir(b);
+			enqueue_thumbs(b);
+			request_render(b);
+		};
+		// Escape gives the browser back both the focus and the full listing.
+		e->on_cancel = [&b](Kit &kit) {
+			if (b.search_ && !b.search_->text.isEmpty())
+				b.search_->set_text(kit, QString());
+			kit.focus_ = &b;
+			kit.focus_visible_ = true;
+			request_render(b);
+		};
+		return e;
+	}
 	auto n = make_unique<Button>();
 	const Action action = spec.action;
 	const ActionDef &d = action_def(action);
@@ -2344,6 +2381,15 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::Filenames:
 		b.show_names_ = !b.show_names_;
+		request_render(b);
+		return true;
+	case Action::Search:
+		if (!b.search_ || !b.search_->focusable())
+			return false;
+		b.kit_.focus_ = b.search_;
+		b.kit_.focus_visible_ = true;
+		if (b.kit_.input_method_changed)
+			b.kit_.input_method_changed();
 		request_render(b);
 		return true;
 	case Action::Filter:
@@ -2746,22 +2792,22 @@ Browser::present(Page &ui)
 }
 
 bool
-Browser::key(Kit &kit, int key, unsigned mods)
+Browser::key(Kit &kit, const Key &ev)
 {
-	if (context_key(key, mods))
+	if (context_key(ev.key, ev.mods))
 		return show_cursor_context(*this, kit);
-	if (shift_enter(key, mods)) {
+	if (shift_enter(ev.key, ev.mods)) {
 		if (this->cursor_ >= 0 && this->cursor_ < int(this->files_.size()))
 			open_new_window(*this, this->files_[size_t(this->cursor_)].path);
 		return true;
 	}
-	if (key == Qt::Key_Escape && mods == 0 && this->cursor_ >= 0) {
+	if (ev.key == Qt::Key_Escape && ev.mods == 0 && this->cursor_ >= 0) {
 		clear_cursor(*this);
 		request_render(*this);
 		return true;
 	}
-	if (mods == 0) {
-		switch (key) {
+	if (ev.mods == 0) {
+		switch (ev.key) {
 		case Qt::Key_Left:
 			move_cursor(*this, CursorDir::Left);
 			return true;

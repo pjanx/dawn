@@ -41,13 +41,13 @@ Sidebar::Sidebar(unique_ptr<Widget> child)
 }
 
 bool
-Sidebar::key(Kit &kit, int key, unsigned mods)
+Sidebar::key(Kit &kit, const Key &ev)
 {
-	if (mods)
+	if (ev.mods)
 		return false;
-	if (key != Qt::Key_Up && key != Qt::Key_Down)
+	if (ev.key != Qt::Key_Up && ev.key != Qt::Key_Down)
 		return false;
-	const int dir = key == Qt::Key_Up ? -1 : 1;
+	const int dir = ev.key == Qt::Key_Up ? -1 : 1;
 	return kit.cycle_focus(this, dir, false);
 }
 
@@ -473,23 +473,23 @@ Hint::paint(Kit &kit) const
 }
 
 bool
-Hint::key(Kit &kit, int key, unsigned mods)
+Hint::key(Kit &kit, const Key &ev)
 {
-	const unsigned extra = mods &
+	const unsigned extra = ev.mods &
 		unsigned(Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
-	if (modifier_only(key) && extra == 0)
+	if (modifier_only(ev.key) && extra == 0)
 		return true;
-	if (key == Qt::Key_Escape) {
+	if (ev.key == Qt::Key_Escape) {
 		close(kit);
 		return true;
 	}
-	if (key == Qt::Key_Backspace && extra == 0) {
+	if (ev.key == Qt::Key_Backspace && extra == 0) {
 		if (!this->typed_.isEmpty())
 			this->typed_.chop(1);
 		return true;
 	}
-	if (extra == 0 && key >= Qt::Key_A && key <= Qt::Key_Z) {
-		const QChar ch = QLatin1Char(char('A' + (key - Qt::Key_A)));
+	if (extra == 0 && ev.key >= Qt::Key_A && ev.key <= Qt::Key_Z) {
+		const QChar ch = QLatin1Char(char('A' + (ev.key - Qt::Key_A)));
 		const QString next = this->typed_ + ch;
 		bool any = false;
 		const Target *exact = nullptr;
@@ -857,12 +857,12 @@ Page::arrange(Kit &kit, Rect alloc)
 }
 
 bool
-Page::key(Kit &kit, int key, unsigned mods)
+Page::key(Kit &kit, const Key &ev)
 {
 	constexpr Action pane[] = {Action::NextPane, Action::PrevPane};
-	const Action a = match_key(pane, key, mods);
+	const Action a = match_key(pane, ev.key, ev.mods);
 	if (a == Action::None) {
-		const Action mode = match_key(this->keys, key, mods);
+		const Action mode = match_key(this->keys, ev.key, ev.mods);
 		if (mode == Action::None)
 			return false;
 		if (this->actor.apply)

@@ -92,6 +92,10 @@ struct Browser : Widget {
 	std::shared_ptr<Profile> screen_profile_;
 
 	bool show_names_ = false;
+	// Substring the toolbar search field narrows the listing by; it is
+	// deliberately per-window, and not part of BrowseSetup.
+	QString search_text_;
+	Entry *search_ = nullptr;
 	BrowseSetup setup_;
 	BrowserView view_ = BrowserView::Tile;
 	int thumb_size_ = 256;
@@ -164,7 +168,7 @@ struct Browser : Widget {
 	bool motion(Kit &kit, float x, float y) override;
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
 	[[nodiscard]] int wake_ms() const override;

@@ -55,7 +55,7 @@ struct Sidebar : Panel {
 	Widget *content = nullptr;
 
 	explicit Sidebar(std::unique_ptr<Widget> child);
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 };
 
 struct Browser;
@@ -71,7 +71,7 @@ struct Hint : Popup {
 	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool captures_keys() const override { return true; }
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
@@ -132,7 +132,7 @@ struct Page : Composite {
 
 	void measure(Kit &kit, float max_w, float max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
-	bool key(Kit &kit, int key, unsigned mods) override;
+	bool key(Kit &kit, const Key &ev) override;
 	std::size_t child_count() const override;
 	Widget *child(std::size_t i) const override;
 

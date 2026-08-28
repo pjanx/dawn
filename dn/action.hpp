@@ -58,6 +58,7 @@ enum class Action : uint8_t {
 	SortDir,
 	SortName,
 	SortTime,
+	Search,
 	Activate,
 	// viewer
 	Browse,

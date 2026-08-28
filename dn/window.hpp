@@ -16,6 +16,7 @@
 #include <QString>
 #include <QTimer>
 #include <QUrl>
+#include <QVariant>
 #include <QWindow>
 
 #include <libdn.h>
@@ -25,6 +26,8 @@
 
 class QCloseEvent;
 class QExposeEvent;
+class QInputMethodEvent;
+class QInputMethodQueryEvent;
 class QKeyEvent;
 class QMouseEvent;
 class QNativeGestureEvent;
@@ -76,6 +79,11 @@ class Window final : public QWindow
 	void sync_csd();
 	bool handle_native_gesture(QNativeGestureEvent *event);
 	bool handle_touch(QTouchEvent *event);
+	bool handle_input_method(QInputMethodEvent *event);
+	bool handle_input_method_query(QInputMethodQueryEvent *event);
+	[[nodiscard]] QVariant input_method_value(
+		const TextTarget &target, Qt::InputMethodQuery q) const;
+	void sync_input_method();
 	[[nodiscard]] Extent pixel_size() const;
 	[[nodiscard]] QWindow *shell();
 
@@ -110,6 +118,7 @@ class Window final : public QWindow
 	float touch_x1_ = 0;
 	float touch_y1_ = 0;
 	bool alt_armed_ = false;
+	bool ime_sync_pending_ = false;
 	bool csd_ = false;
 	bool system_grab_ = false;
 	bool fullscreen_from_maximized_ = false;

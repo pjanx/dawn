@@ -17,6 +17,7 @@
 #include <QKeyEvent>
 #include <QPainter>
 #include <QPen>
+#include <QTextBoundaryFinder>
 #include <QTextLayout>
 #include <QTextLine>
 #include <QTextOption>
@@ -641,7 +642,19 @@ Widget::gesture(Kit &, float, float, float, float)
 }
 
 bool
-Widget::key(Kit &, int, unsigned)
+Widget::key(Kit &, const Key &)
+{
+	return false;
+}
+
+bool
+Widget::input_method(Kit &, const QString &, const QString &, int)
+{
+	return false;
+}
+
+bool
+Widget::text_target(const Kit &, TextTarget &) const
 {
 	return false;
 }
@@ -771,11 +784,12 @@ Button::release(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Button::key(Kit &kit, int key, unsigned mods)
+Button::key(Kit &kit, const Key &ev)
 {
-	if (mods)
+	if (ev.mods)
 		return false;
-	if (key != Qt::Key_Space && key != Qt::Key_Return && key != Qt::Key_Enter)
+	if (ev.key != Qt::Key_Space && ev.key != Qt::Key_Return &&
+		ev.key != Qt::Key_Enter)
 		return false;
 	return activate(kit);
 }
@@ -852,6 +866,380 @@ Label::prepare(Kit &kit)
 	if (shown() && !this->text.isEmpty())
 		cache_text(kit, this->text, this->bold,
 			this->wrap ? max(1.0f, this->r.w - this->pad_x * 2.0f) : 0.0f);
+}
+
+// --- Entry -------------------------------------------------------------------
+
+namespace
+{
+
+constexpr float kCaretBlinkMs = 530.0f;
+constexpr float kEntryPadY = 3.0f;
+
+// Both walk whole grapheme clusters, so that combining marks and surrogate
+// pairs never get split down the middle.
+int
+grapheme_before(const QString &text, int at)
+{
+	if (at <= 0)
+		return 0;
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(min(at, int(text.size())));
+	const int prev = finder.toPreviousBoundary();
+	return prev < 0 ? 0 : prev;
+}
+
+int
+grapheme_after(const QString &text, int at)
+{
+	const int end = int(text.size());
+	if (at >= end)
+		return end;
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(max(at, 0));
+	const int next = finder.toNextBoundary();
+	return next < 0 ? end : next;
+}
+
+// Qt hands us the control codes as text too; none of them are insertable.
+QString
+printable_only(const QString &text)
+{
+	QString out;
+	out.reserve(text.size());
+	for (const QChar c : text) {
+		if (c == QChar(0x7F) || c.unicode() < 0x20)
+			continue;
+		out.append(c);
+	}
+	return out;
+}
+
+// How far through the on-off cycle a caret last touched then is: [0, 1),
+// with the first half lit.
+double
+blink_phase(chrono::steady_clock::time_point since)
+{
+	const double elapsed =
+		chrono::duration<double, milli>(chrono::steady_clock::now() - since)
+			.count();
+	return fmod(elapsed, kCaretBlinkMs * 2.0) / (kCaretBlinkMs * 2.0);
+}
+
+}  // namespace
+
+float
+Entry::inner_w() const
+{
+	return max(1.0f, this->r.w - this->pad_x * 2.0f);
+}
+
+QString
+Entry::painted() const
+{
+	if (!this->preedit.isEmpty())
+		return QString(this->text).insert(this->caret, this->preedit);
+	return this->text;
+}
+
+void
+Entry::touch_caret(const Kit &kit)
+{
+	this->caret_at_ = chrono::steady_clock::now();
+	rescroll(kit);
+}
+
+void
+Entry::rescroll(const Kit &kit)
+{
+	// The caret sits mid-preedit while an input method is composing.
+	const QString full = painted();
+	const int at =
+		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
+	const float caret = kit.caret_x(full, at, false);
+	const float text_w = kit.text_width(full, false);
+	const float view = inner_w();
+	if (text_w <= view) {
+		this->scroll_ = 0.0f;
+		return;
+	}
+
+	// Keep the caret around the centre, but never leave a gap at either end:
+	// the text fills the box before the caret gets to be centred.
+	this->scroll_ = clamp(caret - view * 0.5f, 0.0f, text_w - view);
+}
+
+void
+Entry::move_caret(Kit &kit, int to)
+{
+	this->caret = clamp(to, 0, int(this->text.size()));
+	touch_caret(kit);
+	if (kit.input_method_changed)
+		kit.input_method_changed();
+}
+
+void
+Entry::set_text(Kit &kit, const QString &next)
+{
+	this->text = next;
+	this->caret = clamp(this->caret, 0, int(this->text.size()));
+	this->preedit.clear();
+	this->preedit_caret = 0;
+	touch_caret(kit);
+	if (this->on_change)
+		this->on_change(kit);
+	if (kit.input_method_changed)
+		kit.input_method_changed();
+}
+
+void
+Entry::measure(Kit &kit, float, float)
+{
+	const float h = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
+	this->r = {0, 0, kit.snap_size(max(this->min_w, this->pad_x * 2.0f)),
+		kit.snap_size(h + kEntryPadY * 2.0f)};
+}
+
+void
+Entry::arrange(Kit &kit, Rect alloc)
+{
+	this->r = this->Widget::shown() ? kit.snap_rect(alloc) : Rect{};
+	// Only the scroll: resetting the blink here would restart it every
+	// frame, and the caret would never reach the dark half.
+	rescroll(kit);
+}
+
+void
+Entry::paint(Kit &kit) const
+{
+	if (!this->Widget::shown() || this->r.w <= 0.0f || this->r.h <= 0.0f)
+		return;
+
+	const float hair = 1.0f / max(kit.dpr_, 0.01f);
+	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
+		this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
+	kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
+		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
+
+	const Rect in = this->r.inset(this->pad_x, kEntryPadY);
+	kit.list_.push_clip(in.x, in.y, in.x + in.w, in.y + in.h);
+
+	const QString full = painted();
+	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
+	const float ty = this->r.y + (this->r.h - th) * 0.5f;
+	const float tx = in.x - this->scroll_;
+	if (full.isEmpty()) {
+		if (!this->placeholder.isEmpty())
+			emit_text(kit, tx, ty, this->placeholder,
+				col(kit.colours_[ColourInk], 0.4f * kit.ink_alpha()), false,
+				-1);
+	} else {
+		emit_text(kit, tx, ty, full,
+			col(kit.colours_[ColourInk], kit.ink_alpha()), false, -1);
+	}
+
+	// The preedit is underlined for its whole length, the way every other
+	// toolkit marks text the input method still owns.
+	if (!this->preedit.isEmpty()) {
+		const float x0 = tx + kit.caret_x(full, this->caret, false);
+		const float x1 = tx +
+			kit.caret_x(full, this->caret + int(this->preedit.size()), false);
+		const float uy = kit.snap(ty + th) - hair;
+		kit.list_.add_line(min(x0, x1), uy, max(x0, x1), uy,
+			col(kit.colours_[ColourInk], kit.ink_alpha()), hair);
+	}
+
+	if (this->caret_on_) {
+		const int at =
+			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
+		const float cx = kit.snap(tx + kit.caret_x(full, at, false));
+		kit.list_.add_rect_filled(cx, kit.snap(ty), cx + hair,
+			kit.snap(ty + th), col(kit.colours_[ColourInk], kit.ink_alpha()));
+	}
+
+	kit.list_.pop_clip();
+	if (kit.focus_ == this && kit.focus_visible_)
+		kit.focus_ring(this->r);
+}
+
+void
+Entry::prepare(Kit &kit)
+{
+	if (!this->Widget::shown()) {
+		this->focused_ = false;
+		this->caret_on_ = false;
+		return;
+	}
+
+	// Whether this frame draws a caret is decided once, here: paint and
+	// wake_ms both just read the answer, so they cannot disagree.
+	const bool focused = kit.focus_ == this;
+	if (focused && !this->focused_)
+		this->caret_at_ = chrono::steady_clock::now();
+	this->focused_ = focused;
+	this->caret_on_ = focused &&
+		(!this->preedit.isEmpty() || blink_phase(this->caret_at_) < 0.5);
+
+	const QString full = painted();
+	if (full.isEmpty())
+		cache_text(kit, this->placeholder, false, 0.0f);
+	else
+		cache_text(kit, full, false, 0.0f);
+}
+
+bool
+Entry::focusable() const
+{
+	return this->Widget::shown() && this->hittable && this->r.w > 0;
+}
+
+bool
+Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+
+	// Unlike a button, which does not take focus at all, clicking a text
+	// field is a deliberate grab of the keyboard, and is shown as one: the
+	// ring says which field the next keystroke goes to, however focus got
+	// here.  The caret marks the spot within it, which is a different job.
+	kit.focus_ = this;
+	kit.focus_visible_ = true;
+	kit.pressed_ = this;
+
+	// A click during composition would land in the middle of text the input
+	// method still owns; let it finish rather than fighting over the caret.
+	if (this->preedit.isEmpty()) {
+		const Rect in = this->r.inset(this->pad_x, kEntryPadY);
+		move_caret(
+			kit, kit.index_at(this->text, x - in.x + this->scroll_, false));
+	}
+	return true;
+}
+
+bool
+Entry::key(Kit &kit, const Key &ev)
+{
+	// Let the window keep its shortcuts; only bare typing belongs to us.
+	const unsigned extra = ev.mods &
+		unsigned(Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
+	if (extra)
+		return false;
+
+	// Anything the input method is still composing is its business.
+	if (!this->preedit.isEmpty())
+		return false;
+
+	switch (ev.key) {
+	case Qt::Key_Left:
+		move_caret(kit, grapheme_before(this->text, this->caret));
+		return true;
+	case Qt::Key_Right:
+		move_caret(kit, grapheme_after(this->text, this->caret));
+		return true;
+	case Qt::Key_Home:
+		move_caret(kit, 0);
+		return true;
+	case Qt::Key_End:
+		move_caret(kit, int(this->text.size()));
+		return true;
+	case Qt::Key_Backspace: {
+		if (this->caret <= 0)
+			return true;
+		const int from = grapheme_before(this->text, this->caret);
+		QString next = this->text;
+		next.remove(from, this->caret - from);
+		this->caret = from;
+		set_text(kit, next);
+		return true;
+	}
+	case Qt::Key_Delete: {
+		const int to = grapheme_after(this->text, this->caret);
+		if (to <= this->caret)
+			return true;
+		QString next = this->text;
+		next.remove(this->caret, to - this->caret);
+		set_text(kit, next);
+		return true;
+	}
+	case Qt::Key_Return:
+	case Qt::Key_Enter:
+		if (this->on_activate)
+			this->on_activate(kit);
+		return true;
+	case Qt::Key_Escape:
+		if (this->on_cancel)
+			this->on_cancel(kit);
+		return true;
+	default:
+		break;
+	}
+
+	// Whatever the layout composed goes in as typed.  Consuming it here is
+	// also what keeps the browser's bare-letter accelerators from firing --
+	// the swallow and the insert are one decision, so they cannot disagree.
+	const QString insert = printable_only(ev.text);
+	if (insert.isEmpty())
+		return false;
+	QString next = this->text;
+	next.insert(this->caret, insert);
+	this->caret += int(insert.size());
+	set_text(kit, next);
+	return true;
+}
+
+bool
+Entry::input_method(
+	Kit &kit, const QString &commit, const QString &pre, int pre_caret)
+{
+	if (!commit.isEmpty()) {
+		QString next = this->text;
+		const QString insert = printable_only(commit);
+		next.insert(this->caret, insert);
+		this->caret += int(insert.size());
+		this->text = next;
+	}
+	this->preedit = pre;
+	this->preedit_caret = clamp(pre_caret, 0, int(pre.size()));
+	this->caret = clamp(this->caret, 0, int(this->text.size()));
+	touch_caret(kit);
+	if (!commit.isEmpty() && this->on_change)
+		this->on_change(kit);
+	if (kit.input_method_changed)
+		kit.input_method_changed();
+	return true;
+}
+
+bool
+Entry::text_target(const Kit &kit, TextTarget &out) const
+{
+	if (!this->Widget::shown())
+		return false;
+
+	out.text = this->text;
+	out.caret = this->caret;
+
+	// The preedit is not in text, but the caret still has to be placed past
+	// it on screen, or the candidate window covers what is being composed.
+	const QString full = painted();
+	const int at =
+		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
+	const float cx =
+		this->r.x + this->pad_x - this->scroll_ + kit.caret_x(full, at, false);
+	out.caret_rect = {cx, this->r.y, 1.0f, this->r.h};
+	return true;
+}
+
+int
+Entry::wake_ms() const
+{
+	// An unfocused field has no caret, and a composing one holds it steady:
+	// neither needs waking.  Otherwise, sleep until the caret next flips.
+	if (!this->focused_ || !this->preedit.isEmpty())
+		return -1;
+	const double phase = blink_phase(this->caret_at_);
+	const double until = (phase < 0.5 ? 0.5 : 1.0) - phase;
+	return max(1, int(ceil(until * kCaretBlinkMs * 2.0)));
 }
 
 // --- Sep ---------------------------------------------------------------------
@@ -1383,13 +1771,13 @@ ScrollColumn::pan(Kit &, float, float, float, float dy)
 }
 
 bool
-ScrollColumn::key(Kit &, int key, unsigned mods)
+ScrollColumn::key(Kit &, const Key &ev)
 {
-	if (mods)
+	if (ev.mods)
 		return false;
-	if (key == Qt::Key_PageUp)
+	if (ev.key == Qt::Key_PageUp)
 		return this->scroll_.page(-1);
-	if (key == Qt::Key_PageDown)
+	if (ev.key == Qt::Key_PageDown)
 		return this->scroll_.page(1);
 	return false;
 }
@@ -1616,11 +2004,11 @@ Popup::place_sub(Kit &kit)
 // Alt is left to the menu bar's mnemonics, and everything but Escape to
 // whatever the popup holds; MenuPopup adds navigation on top of this.
 bool
-Popup::key(Kit &kit, int key, unsigned mods)
+Popup::key(Kit &kit, const Key &ev)
 {
-	if (mods & unsigned(Qt::AltModifier))
+	if (ev.mods & unsigned(Qt::AltModifier))
 		return false;
-	if (key != Qt::Key_Escape)
+	if (ev.key != Qt::Key_Escape)
 		return false;
 	Button *op = this->opener;
 	close(kit);
@@ -1859,29 +2247,29 @@ MenuPopup::motion(Kit &kit, float, float)
 }
 
 bool
-MenuPopup::key(Kit &kit, int key, unsigned mods)
+MenuPopup::key(Kit &kit, const Key &ev)
 {
-	if (Popup::key(kit, key, mods))
+	if (Popup::key(kit, ev))
 		return true;
-	if (mods & unsigned(Qt::AltModifier))
+	if (ev.mods & unsigned(Qt::AltModifier))
 		return false;
-	if (key == Qt::Key_Up || key == Qt::Key_Down) {
-		kit.cycle_focus(this, key == Qt::Key_Up ? -1 : 1);
+	if (ev.key == Qt::Key_Up || ev.key == Qt::Key_Down) {
+		kit.cycle_focus(this, ev.key == Qt::Key_Up ? -1 : 1);
 		focus_item(kit, kit.focus_, true);
 		return true;
 	}
-	if (key == Qt::Key_Right || key == Qt::Key_Return || key == Qt::Key_Enter ||
-		key == Qt::Key_Space) {
+	if (ev.key == Qt::Key_Right || ev.key == Qt::Key_Return ||
+		ev.key == Qt::Key_Enter || ev.key == Qt::Key_Space) {
 		if (auto *item = dynamic_cast<MenuItem *>(kit.focus_);
 			item && item->sub) {
 			item->activate(kit);
 			return true;
 		}
-		if (key == Qt::Key_Right)
+		if (ev.key == Qt::Key_Right)
 			return true;
 		return false;
 	}
-	if (key == Qt::Key_Left) {
+	if (ev.key == Qt::Key_Left) {
 		if (this->parent_popup) {
 			Button *op = this->opener;
 			close(kit);
@@ -2075,15 +2463,15 @@ Menu::measure(Kit &kit, float max_w, float max_h)
 }
 
 bool
-Menu::key(Kit &kit, int key, unsigned mods)
+Menu::key(Kit &kit, const Key &ev)
 {
-	if (MenuPopup::key(kit, key, mods))
+	if (MenuPopup::key(kit, ev))
 		return true;
-	if (mods)
+	if (ev.mods)
 		return false;
-	if (key < Qt::Key_A || key > Qt::Key_Z || !this->col)
+	if (ev.key < Qt::Key_A || ev.key > Qt::Key_Z || !this->col)
 		return false;
-	const QChar letter = QChar(key).toLower();
+	const QChar letter = QChar(ev.key).toLower();
 	for (const auto &k : this->col->kids) {
 		auto *item = dynamic_cast<MenuItem *>(k.get());
 		if (!item || item->mnemonic < 0 || item->mnemonic >= item->text.size())
@@ -2911,6 +3299,39 @@ Kit::text_width(const QString &text, bool bold) const
 }
 
 float
+Kit::caret_x(const QString &text, int index, bool bold) const
+{
+	const float dpr = max(this->dpr_, 0.01f);
+	if (text.isEmpty())
+		return 0.0f;
+	const int at = clamp(index, 0, int(text.size()));
+	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
+	QTextLayout layout(text, font);
+	layout_text(&layout, dpr, 0.0f);
+	const QTextLine line = layout.lineForTextPosition(at);
+	if (!line.isValid())
+		return 0.0f;
+	return float(line.cursorToX(at)) / dpr;
+}
+
+int
+Kit::index_at(const QString &text, float x, bool bold) const
+{
+	if (text.isEmpty())
+		return 0;
+	const float dpr = max(this->dpr_, 0.01f);
+	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
+	QTextLayout layout(text, font);
+	layout_text(&layout, dpr, 0.0f);
+	if (layout.lineCount() < 1)
+		return 0;
+	const QTextLine line = layout.lineAt(0);
+	if (!line.isValid())
+		return 0;
+	return line.xToCursor(qreal(x * dpr));
+}
+
+float
 Kit::text_ascent(bool bold) const
 {
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
@@ -3063,6 +3484,15 @@ popup_for_hit(const Kit &kit, Widget *h)
 void
 Kit::sync_focus()
 {
+	// Focus can be dropped from under a text field -- a popup opening over
+	// it, or the toolbar overflowing it away -- and the input method has to
+	// hear about it, or it keeps composing into a field that is gone.
+	Widget *was = this->focus_;
+	auto done = [this, was] {
+		if (this->focus_ != was && this->input_method_changed)
+			this->input_method_changed();
+	};
+
 	if (!this->popups_.empty()) {
 		for (Popup *p : this->popups_) {
 			if (focus_in_visible_tree(this->focus_, p))
@@ -3070,6 +3500,7 @@ Kit::sync_focus()
 		}
 		this->focus_ = nullptr;
 		this->focus_visible_ = false;
+		done();
 		return;
 	}
 	if (focus_in_visible_tree(this->focus_, this->root_))
@@ -3077,10 +3508,12 @@ Kit::sync_focus()
 	if (focus_in_visible_tree(this->default_focus_, this->root_)) {
 		this->focus_ = this->default_focus_;
 		this->focus_visible_ = false;
+		done();
 		return;
 	}
 	this->focus_ = nullptr;
 	this->focus_visible_ = false;
+	done();
 }
 
 Widget *
@@ -3140,24 +3573,44 @@ Kit::focus_first(Widget *scope)
 }
 
 bool
-Kit::key(int key, unsigned mods)
+Kit::key(const Key &ev)
 {
 	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
-		return p->key(*this, key, mods);
-	if (key == Qt::Key_Tab || key == Qt::Key_Backtab) {
-		const int dir =
-			(key == Qt::Key_Backtab || (mods & unsigned(Qt::ShiftModifier)))
+		return p->key(*this, ev);
+	if (ev.key == Qt::Key_Tab || ev.key == Qt::Key_Backtab) {
+		const int dir = (ev.key == Qt::Key_Backtab ||
+							(ev.mods & unsigned(Qt::ShiftModifier)))
 			? -1
 			: 1;
 		cycle_focus(dir);
 		return true;
 	}
 	for (Widget *w = this->focus_; w; w = w->parent_) {
-		if (w->key(*this, key, mods))
+		if (w->key(*this, ev))
 			return true;
 	}
 	if (Popup *p = top_popup(); p && p->shown())
-		return p->key(*this, key, mods);
+		return p->key(*this, ev);
+	return false;
+}
+
+bool
+Kit::text_target(TextTarget &out) const
+{
+	for (const Widget *w = this->focus_; w; w = w->parent_) {
+		if (w->text_target(*this, out))
+			return true;
+	}
+	return false;
+}
+
+bool
+Kit::input_method(const QString &commit, const QString &preedit, int caret)
+{
+	for (Widget *w = this->focus_; w; w = w->parent_) {
+		if (w->input_method(*this, commit, preedit, caret))
+			return true;
+	}
 	return false;
 }
 
