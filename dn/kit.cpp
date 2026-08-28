@@ -4111,6 +4111,7 @@ Kit::frame() const
 	const Rect host = {0.0f, 0.0f, this->host_w_, this->host_h_};
 	if (!this->csd_shadow_)
 		return host;
+	// TODO(p): Consider if we don't want to add another 1px border.
 	return snap_rect(host.inset(kGlowPts, kGlowPts));
 }
 
@@ -4229,6 +4230,7 @@ Kit::paint()
 	this->list_.begin(
 		this->host_w_, this->host_h_, this->dpr_, white_u, white_v);
 	if (this->csd_shadow_) {
+		// TODO(p): Consider if we don't want to add another 1px border.
 		const Rect f = frame();
 		if (f.w > 0.0f && f.h > 0.0f)
 			draw_glow(
