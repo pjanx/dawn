@@ -54,7 +54,7 @@ enum class Stroke : uint8_t { None, All, Bottom };
 constexpr float kUnlim = 1.0e8f;
 constexpr float kIconPx = 16.0f;
 constexpr float kFramePadX = 6.0f;
-constexpr float kFramePadY = 6.0f;
+constexpr float kFramePadY = 4.0f;
 constexpr float kTooltipPadX = 8.0f;
 constexpr float kGlowPts = 8.0f;
 constexpr float kResizeBorderPts = 8.0f;
