@@ -3237,9 +3237,12 @@ void
 Kit::focus_ring(Rect w)
 {
 	const float hair = 1.0f / max(this->dpr_, 0.01f);
-	const Rect g = snap_rect(w.inset(hair, hair));
-	this->list_.add_rect_stroke(g.x, g.y, g.x + g.w - hair, g.y + g.h - hair,
-		col(this->colours_[ColourInk]));
+
+	// Snap the edges rather than the size: snap_size() rounds up, which would
+	// push the far edges back out over the widget's own border.
+	const Rect g = w.inset(hair, hair);
+	this->list_.add_rect_stroke(snap(g.x), snap(g.y), snap(g.x + g.w),
+		snap(g.y + g.h), col(this->colours_[ColourInk]));
 }
 
 void
