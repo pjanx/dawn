@@ -676,6 +676,7 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 {
 	if (!this->device_ || !pixels || !image || width <= 0 || height <= 0)
 		return false;
+
 	const VkDeviceSize size =
 		VkDeviceSize(width) * VkDeviceSize(height) * kOverlayBpp;
 	VkBuffer staging = VK_NULL_HANDLE;
@@ -687,6 +688,7 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 	};
 	check_vk(vkCreateBuffer(this->device_, &buffer_info, nullptr, &staging),
 		"vkCreateBuffer overlay tex staging");
+
 	VkMemoryRequirements requirements{};
 	vkGetBufferMemoryRequirements(this->device_, staging, &requirements);
 	const uint32_t host_type =
@@ -697,6 +699,7 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 		vkDestroyBuffer(this->device_, staging, nullptr);
 		return false;
 	}
+
 	VkMemoryAllocateInfo allocate{
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.allocationSize = requirements.size,

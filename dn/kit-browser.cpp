@@ -1119,6 +1119,7 @@ enqueue_thumbs(Browser &b)
 {
 	if (!b.thumbnail_client_)
 		return;
+
 	const float pad = row_h(b) * kPrefetchRows;
 	vector<int> vis, pre, sizes;
 	for (int i = 0; i < int(b.files_.size()); ++i) {
@@ -1149,6 +1150,7 @@ enqueue_thumbs(Browser &b)
 		else if (!f.image_w || !f.image_h)
 			sizes.push_back(i);
 	}
+
 	ThumbJob proto;
 	proto.gen = b.thumb_gen_;
 	proto.thumb_size = b.thumb_size_;
@@ -1186,6 +1188,7 @@ enqueue_thumbs(Browser &b)
 		if (priority == Thumbnailer::Priority::Dimensions)
 			dimensions++;
 	}
+
 	const size_t limit = b.thumbnailer_.background_limit();
 	if (dimensions < limit) {
 		const size_t room = limit - dimensions;
@@ -1741,7 +1744,11 @@ scan_dir(Browser &b)
 	string keep;
 	if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()))
 		keep = b.files_[size_t(b.cursor_)].path;
+
 	vector<Browser::File> old = std::move(b.files_);
+	b.can_prev_dir_ = false;
+	b.can_next_dir_ = false;
+	b.can_parent_dir_ = false;
 	b.files_.clear();
 	b.side_dirs_.clear();
 	b.places_dirty_ = true;
@@ -1751,6 +1758,13 @@ scan_dir(Browser &b)
 	}
 
 	const filesystem::path root(dir_path(b));
+
+	b.can_prev_dir_ = !parent_dir(dir_path(b)).empty();
+	b.can_next_dir_ = !tree_next_dir(dir_path(b), b.setup_).empty();
+	const QString parent =
+		QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
+	b.can_parent_dir_ = !parent.isEmpty() && path_to_url(parent) != b.dir_url_;
+
 	error_code ec;
 	vector<Browser::File> files;
 	vector<DirEnt> children;
@@ -2079,17 +2093,11 @@ spec_enabled(const Browser &b, Action action)
 	const int idx = thumb_size_index(b.thumb_size_);
 	switch (action) {
 	case Action::DirPrev:
-		return !b.dir_url_.isEmpty() && !parent_dir(dir_path(b)).empty();
+		return b.can_prev_dir_;
 	case Action::DirNext:
-		return !b.dir_url_.isEmpty() &&
-			!tree_next_dir(dir_path(b), b.setup_).empty();
-	case Action::DirParent: {
-		if (b.dir_url_.isEmpty())
-			return false;
-		const QString parent =
-			QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
-		return !parent.isEmpty() && path_to_url(parent) != b.dir_url_;
-	}
+		return b.can_next_dir_;
+	case Action::DirParent:
+		return b.can_parent_dir_;
 	case Action::ThumbPlus:
 		return idx + 1 < kThumbSizeN;
 	case Action::ThumbMinus:

@@ -118,6 +118,9 @@ struct Browser : Widget {
 	int layout_w_ = 0;
 	int mid_file_ = -1;
 
+	bool can_prev_dir_ = false;
+	bool can_next_dir_ = false;
+	bool can_parent_dir_ = false;
 	std::vector<File> files_;
 	std::vector<DirRow> side_dirs_;
 	std::unordered_map<std::string, CachedSize> size_cache_;

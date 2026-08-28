@@ -225,10 +225,11 @@ layout_text(QTextLayout *layout, int wrap, bool center = false)
 	layout->beginLayout();
 	float y = 0.f;
 	const float wrap_px = wrap > 0 ? float(wrap) : 1.0e8f;
-	for (;;) {
+	while (true) {
 		QTextLine line = layout->createLine();
 		if (!line.isValid())
 			break;
+
 		line.setLineWidth(wrap_px);
 		float x = 0.f;
 		if (center)
@@ -379,6 +380,7 @@ cache_text(Kit &kit, const QString &text, bool bold, int wrap)
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
+
 	QTextLayout layout(text, font);
 	layout_text(&layout, wrap);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
@@ -472,6 +474,7 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
+
 	QTextLayout layout(text, font);
 	layout_text(&layout, wrap, center);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
