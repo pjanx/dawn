@@ -54,12 +54,6 @@ make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 }
 #endif
 
-QString
-from_utf8(string_view s)
-{
-	return QString::fromUtf8(s);
-}
-
 dawn::ipc::instance::ErrorCode
 map_open_error(OpenResult r)
 {
@@ -181,7 +175,7 @@ InstanceHost::Impl::on_request(
 	// invocation with its own arguments, and gets its own window.
 	this->app_.default_window.clear();
 
-	const QString token = from_utf8(open_body->open.activation_token);
+	const QString token = QString::fromUtf8(open_body->open.activation_token);
 	const bool browse = open_body->open.browse;
 	for (const string_view url : open_body->open.urls) {
 		const OpenResult r = this->app_.open(
