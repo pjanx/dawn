@@ -1103,8 +1103,7 @@ Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
 	// field is a deliberate grab of the keyboard, and is shown as one: the
 	// ring says which field the next keystroke goes to, however focus got
 	// here.  The caret marks the spot within it, which is a different job.
-	kit.focus_ = this;
-	kit.focus_visible_ = true;
+	kit.set_focus(this, true);
 	kit.pressed_ = this;
 
 	// A click during composition would land in the middle of text the input
@@ -2007,10 +2006,8 @@ Popup::key(Kit &kit, const Key &ev)
 		return false;
 	Button *op = this->opener;
 	close(kit);
-	if (op) {
-		kit.focus_ = op;
-		kit.focus_visible_ = true;
-	}
+	if (op)
+		kit.set_focus(op, true);
 	return true;
 }
 
@@ -2200,8 +2197,7 @@ menu_mnemonic(const MenuItem &m, const QString &shown)
 void
 MenuPopup::focus_item(Kit &kit, Widget *w, bool kbd) const
 {
-	kit.focus_ = w;
-	kit.focus_visible_ = kbd;
+	kit.set_focus(w, kbd);
 	if (kbd)
 		kit.hot_ = nullptr;
 }
@@ -2213,8 +2209,7 @@ MenuPopup::reveal(Kit &kit, Widget *w)
 	if (item && item->sub) {
 		if (!item->sub->visible)
 			item->sub->open_sub(kit, *this, *item);
-		kit.focus_ = item->sub;
-		kit.focus_visible_ = false;
+		kit.set_focus(item->sub, false);
 		return;
 	}
 	kit.close_above(this);
@@ -2268,10 +2263,8 @@ MenuPopup::key(Kit &kit, const Key &ev)
 		if (this->parent_popup) {
 			Button *op = this->opener;
 			close(kit);
-			if (op) {
-				kit.focus_ = op;
-				kit.focus_visible_ = true;
-			}
+			if (op)
+				kit.set_focus(op, true);
 		}
 		return true;
 	}
@@ -3493,22 +3486,26 @@ Kit::sync_focus()
 			if (focus_in_visible_tree(this->focus_, p))
 				return;
 		}
-		this->focus_ = nullptr;
-		this->focus_visible_ = false;
+		set_focus(nullptr, false);
 		done();
 		return;
 	}
 	if (focus_in_visible_tree(this->focus_, this->root_))
 		return;
 	if (focus_in_visible_tree(this->default_focus_, this->root_)) {
-		this->focus_ = this->default_focus_;
-		this->focus_visible_ = false;
+		set_focus(this->default_focus_, false);
 		done();
 		return;
 	}
-	this->focus_ = nullptr;
-	this->focus_visible_ = false;
+	set_focus(nullptr, false);
 	done();
+}
+
+void
+Kit::set_focus(Widget *w, bool ring)
+{
+	this->focus_ = w;
+	this->focus_visible_ = ring;
 }
 
 Widget *
@@ -3545,16 +3542,20 @@ Kit::cycle_focus(Widget *scope, int dir, bool wrap)
 		}
 	}
 	const int n = int(items.size());
+	Widget *next = this->focus_;
 	if (i < 0)
-		this->focus_ = dir >= 0 ? items.front() : items.back();
+		next = dir >= 0 ? items.front() : items.back();
 	else if (wrap)
-		this->focus_ = items[size_t((i + dir + n) % n)];
+		next = items[size_t((i + dir + n) % n)];
 	else {
 		const int j = i + dir;
 		if (j >= 0 && j < n)
-			this->focus_ = items[size_t(j)];
+			next = items[size_t(j)];
 	}
-	this->focus_visible_ = true;
+
+	// Tab always means the keyboard, even when it runs into the end of a
+	// non-wrapping scope and leaves focus where it was.
+	set_focus(next, true);
 	return true;
 }
 
@@ -3563,8 +3564,7 @@ Kit::focus_first(Widget *scope)
 {
 	vector<Widget *> items;
 	collect_focusable(scope, items);
-	this->focus_ = items.empty() ? nullptr : items.front();
-	this->focus_visible_ = true;
+	set_focus(items.empty() ? nullptr : items.front(), true);
 }
 
 bool
@@ -3615,7 +3615,6 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	this->mods_ = mods;
-	this->focus_visible_ = false;
 	if (button == Qt::LeftButton)
 		this->left_down_ = true;
 	if (this->root_ && this->root_->r.w <= 0) {
@@ -3785,9 +3784,8 @@ Kit::destroy()
 	this->raw_ = QRawFont();
 	this->raw_bold_ = QRawFont();
 	this->root_ = nullptr;
-	this->focus_ = nullptr;
+	set_focus(nullptr, false);
 	this->default_focus_ = nullptr;
-	this->focus_visible_ = false;
 	this->hot_ = nullptr;
 	this->pressed_ = nullptr;
 	this->tooltip_text_.clear();

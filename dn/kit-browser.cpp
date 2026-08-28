@@ -2162,8 +2162,7 @@ make_item(Browser &b, const Spec &spec)
 		e->on_cancel = [&b](Kit &kit) {
 			if (b.search_ && !b.search_->text.isEmpty())
 				b.search_->set_text(kit, QString());
-			kit.focus_ = &b;
-			kit.focus_visible_ = true;
+			kit.set_focus(&b, true);
 			request_render(b);
 		};
 		return e;
@@ -2233,11 +2232,13 @@ fill_places(Browser &b)
 	if (!list)
 		return;
 
+	// Rebuilding the sidebar is not a focus change: forget_tree drops the
+	// pointer into the dying rows, and this puts it back on their successor,
+	// leaving whatever decided the ring in the first place alone.
 	string restore_path;
 	for (const auto &item : b.place_items_) {
 		if (item.button == b.kit_.focus_) {
 			restore_path = item.path;
-			b.kit_.focus_ = nullptr;
 			break;
 		}
 	}
@@ -2270,7 +2271,6 @@ fill_places(Browser &b)
 		b.place_items_.push_back({item, d.path});
 	}
 	if (!restore_path.empty()) {
-		b.kit_.focus_ = nullptr;
 		for (size_t i = b.place_items_.size(); i--;) {
 			const auto &item = b.place_items_.at(i);
 			if (item.path == restore_path) {
@@ -2386,8 +2386,7 @@ apply_action(Browser &b, Action action)
 	case Action::Search:
 		if (!b.search_ || !b.search_->focusable())
 			return false;
-		b.kit_.focus_ = b.search_;
-		b.kit_.focus_visible_ = true;
+		b.kit_.set_focus(b.search_, true);
 		if (b.kit_.input_method_changed)
 			b.kit_.input_method_changed();
 		request_render(b);
@@ -2841,7 +2840,7 @@ bool
 Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
-		kit.focus_ = this;
+		kit.set_focus(this, false);
 		const int i = hit_file(*this, x, y);
 		if (i >= 0) {
 			this->cursor_ = i;
@@ -2859,7 +2858,7 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		const int i = hit_file(*this, x, y);
 		if (i < 0)
 			return false;
-		kit.focus_ = this;
+		kit.set_focus(this, false);
 		this->mid_file_ = i;
 		kit.pressed_ = this;
 		return true;
@@ -2867,11 +2866,11 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button != Qt::LeftButton)
 		return false;
 	if (this->scroll_.press(x, y, button, this->r)) {
-		kit.focus_ = this;
+		kit.set_focus(this, false);
 		kit.pressed_ = this;
 		return true;
 	}
-	kit.focus_ = this;
+	kit.set_focus(this, false);
 	if (hit_file(*this, x, y) < 0 && this->cursor_ >= 0) {
 		clear_cursor(*this);
 		request_render(*this);

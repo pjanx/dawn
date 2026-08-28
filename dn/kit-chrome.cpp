@@ -651,8 +651,7 @@ Hint::fire(Kit &kit, Target t)
 		// Both are re-checked because a target collected when the overlay
 		// opened may have been disabled or hidden since.
 		if (!widget->activate(kit) && widget->focusable()) {
-			kit.focus_ = widget;
-			kit.focus_visible_ = true;
+			kit.set_focus(widget, true);
 		}
 		return;
 	}

@@ -654,6 +654,12 @@ struct Kit {
 	bool start_resize_at(float x, float y);
 	void sync_cursor();
 
+	// Moving focus says in the same breath whether to draw it: a ring means
+	// the keyboard put focus here.  Anything that changes who has focus goes
+	// through here, so the two can never drift into a ring that outlives its
+	// focus, or focus with no ring.  Re-seating the same focus across a tree
+	// rebuild is not a focus change, and leaves the ring as it found it.
+	void set_focus(Widget *w, bool ring);
 	Widget *focus_scope() const;
 	void cycle_focus(int dir);
 	bool cycle_focus(Widget *scope, int dir, bool wrap = true);
