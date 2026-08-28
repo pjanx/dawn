@@ -998,6 +998,8 @@ Entry::set_text(Kit &kit, const QString &next)
 void
 Entry::measure(Kit &kit, int, int)
 {
+	// This is the width the field asks for, never the one it settles for:
+	// growing is the container's business, and it arranges what it gives.
 	const int h = kit.text_height(QStringLiteral("Ag"), 0, false);
 	this->r = {0, 0, max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
 		h + kit.px(kEntryPadY) * 2};
@@ -1378,10 +1380,15 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 	}
 	const int gaps = kit.px(this->gap) * max(0, vis - 1);
 	if (growers) {
+		// An unbounded offer is a question about the natural size, not an
+		// allocation: there is no slack to hand out, and each grower then
+		// answers with what it would take at rest.
 		// Integer division leaves a remainder of at most growers-1 pixels;
 		// hand one to each of the first few, so that the children fill the
 		// space exactly rather than falling short of it.
-		const int slack = max(0, (hz ? iw : ih) - used - gaps);
+		const int slack = (hz ? max_w : max_h) < kUnlim
+			? max(0, (hz ? iw : ih) - used - gaps)
+			: 0;
 		const int share = slack / growers, extra = slack % growers;
 		int i = 0;
 		for (const auto &child : this->kids) {
@@ -2266,7 +2273,10 @@ MenuPopup::motion(Kit &kit, float, float)
 	}
 	if (w != this)
 		return false;
-	if (item)
+	// A text field takes focus by being clicked, the way it does in the
+	// toolbar; letting a passing pointer move the caret would make it
+	// unusable.
+	if (item && !dynamic_cast<Entry *>(item))
 		reveal(kit, item);
 	return true;
 }
@@ -2316,6 +2326,10 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button != Qt::LeftButton && button != Qt::RightButton)
 		return false;
 	Widget *hit = hit_at(x, y);
+	// A field inside the menu keeps it open: the press already gave it the
+	// focus, and dismissing here would take the caret away again.
+	if (dynamic_cast<Entry *>(hit))
+		return true;
 	if (auto *b = dynamic_cast<Button *>(hit); b && hit != this) {
 		b->activate(kit);
 		if (auto *item = dynamic_cast<MenuItem *>(b);
@@ -2345,6 +2359,19 @@ Overflow::Overflow()
 	this->hittable = true;
 	this->visible = false;
 	add_child(std::move(column));
+}
+
+Widget *
+Overflow::proxy_for(const Widget *source) const
+{
+	if (!source || !this->col)
+		return nullptr;
+	for (size_t i = 0; i < this->sources.size(); ++i) {
+		if (this->sources[i] == source)
+			return i < this->col->kids.size() ? this->col->kids[i].get()
+											  : nullptr;
+	}
+	return nullptr;
 }
 
 void
@@ -2640,6 +2667,33 @@ sync_overflow_proxy(Widget &source, Widget &proxy)
 		static_cast<Button &>(proxy) = *button;
 	else if (auto *label = dynamic_cast<Label *>(&source))
 		static_cast<Label &>(proxy) = *label;
+	else if (auto *entry = dynamic_cast<Entry *>(&source)) {
+		auto &dst = static_cast<Entry &>(proxy);
+		dst = *entry;
+		// Growing is for a toolbar, which packs sideways; the menu stacks,
+		// and would stretch the field down the popup instead.
+		dst.grow = false;
+		// The copied handlers close over the source -- the browser reads
+		// its search text back out of it -- so the proxy has to write
+		// through before handing over.  The source's own handler is never
+		// itself a wrapper, which keeps re-syncing idempotent.
+		Entry *src = entry;
+		Entry *self = &dst;
+		auto change = entry->on_change;
+		auto cancel = entry->on_cancel;
+		dst.on_change = [src, self, change](Kit &kit) {
+			src->text = self->text;
+			src->caret = self->caret;
+			if (change)
+				change(kit);
+		};
+		dst.on_cancel = [src, self, cancel](Kit &kit) {
+			src->text = self->text;
+			src->caret = self->caret;
+			if (cancel)
+				cancel(kit);
+		};
+	}
 	proxy.parent_ = parent;
 	proxy.visible = visible;
 	proxy.layout_visible = layout_visible;
@@ -2652,6 +2706,8 @@ overflow_proxy(Widget &source)
 		return make_unique<Button>();
 	if (dynamic_cast<Label *>(&source))
 		return make_unique<Label>();
+	if (dynamic_cast<Entry *>(&source))
+		return make_unique<Entry>();
 	if (dynamic_cast<Sep *>(&source))
 		return make_unique<Sep>();
 	return nullptr;
@@ -2937,11 +2993,26 @@ Toolbar::place_slots(Kit &kit)
 		this->mid->more->measure(kit, kUnlim, h);
 		mmin = min(mw, this->mid->more->r.w);
 	}
+	auto stretches = [](const ToolbarSlot *slot) {
+		for (size_t i = 0; slot && i < slot->item_count(); ++i) {
+			if (slot->kids[i] && slot->kids[i]->shown() &&
+				slot->kids[i]->grows())
+				return true;
+		}
+		return false;
+	};
 	int left_w = lw;
 	int right_w = rw;
 	int mid_x;
 	if (lw + mw + rw <= avail) {
-		mid_x = x0 + clamp((avail - mw) / 2, lw, avail - rw - mw);
+		// An empty middle has no position of its own, so it sits against
+		// the right slot; otherwise it stays centred in the bar.
+		mid_x = mw > 0 ? x0 + clamp((avail - mw) / 2, lw, avail - rw - mw)
+					   : x0 + avail - rw;
+		// Whatever stretches then fills the gap the centre leaves in front
+		// of it, rather than sitting at its natural width.
+		if (stretches(this->left))
+			left_w = mid_x - x0;
 	} else {
 		const int keep = min(mmin, avail);
 		const int rest = max(0, avail - keep);

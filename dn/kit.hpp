@@ -253,6 +253,9 @@ struct Entry : Widget {
 	int preedit_caret = 0;
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
+	// A field takes what room it is given: only a menu, which stacks and
+	// would stretch it the wrong way, turns this off.
+	bool grow = true;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
 
@@ -270,6 +273,7 @@ struct Entry : Widget {
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool focusable() const override;
+	bool grows() const override { return this->grow; }
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -478,6 +482,8 @@ struct Overflow : MenuPopup {
 	std::function<void()> fill_items;
 
 	Overflow();
+	// The stand-in this popup shows for a toolbar item, if it has one.
+	[[nodiscard]] Widget *proxy_for(const Widget *source) const;
 	void place(Kit &kit) override;
 };
 

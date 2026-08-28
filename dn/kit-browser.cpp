@@ -2364,14 +2364,31 @@ apply_action(Browser &b, Action action)
 		b.show_names_ = !b.show_names_;
 		request_render(b);
 		return true;
-	case Action::Search:
-		if (!b.search_ || !b.search_->focusable())
+	case Action::Search: {
+		if (!b.search_)
 			return false;
-		b.kit_.set_focus(b.search_, true);
+		Widget *field = b.search_;
+		// Too narrow a toolbar packs the field away into the overflow,
+		// which then holds the proxy that stands in for it.  Opening the
+		// popup is what makes that proxy visible, so it has to come first.
+		if (!field->focusable() && b.page_ && b.page_->toolbar) {
+			Toolbar *tb = b.page_->toolbar;
+			if (tb->overflow && tb->left && tb->left->more->shown()) {
+				tb->overflow->open(b.kit_, tb->left->more);
+				Widget *proxy = tb->overflow->proxy_for(b.search_);
+				field = proxy && proxy->focusable() ? proxy : nullptr;
+			} else {
+				field = nullptr;
+			}
+		}
+		if (!field)
+			return false;
+		b.kit_.set_focus(field, true);
 		if (b.kit_.input_method_changed)
 			b.kit_.input_method_changed();
 		request_render(b);
 		return true;
+	}
 	case Action::Filter:
 		b.setup_.filter_files = !b.setup_.filter_files;
 		scan_dir(b);
