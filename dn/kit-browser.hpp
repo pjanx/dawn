@@ -136,7 +136,7 @@ struct Browser : Widget {
 	Browser(Kit &kit, Thumbnailer &thumbnailer);
 	~Browser() override;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;

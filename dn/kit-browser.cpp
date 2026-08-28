@@ -365,18 +365,19 @@ thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 		gw, gh, b.thumb_size_, dpr, thumb_atlas_max(b), out_w, out_h);
 }
 
-float
+int
 label_h(const Browser &b)
 {
 	if (!b.show_names_)
-		return 0.0f;
-	return b.kit_.text_height(QStringLiteral("Ag\nAg"), 0.0f, false) + kCapPad;
+		return 0;
+	return b.kit_.text_height(QStringLiteral("Ag\nAg"), 0, false) +
+		b.kit_.px(kCapPad);
 }
 
-float
-chrome()
+int
+chrome(const Kit &kit)
 {
-	return kGlow + kBorder;
+	return kit.px(kGlow + kBorder);
 }
 
 QString
@@ -390,7 +391,8 @@ caption_name(const string &name)
 float
 row_h(const Browser &b)
 {
-	return float(b.thumb_size_) + 2.0f * chrome() + label_h(b);
+	return float(b.kit_.px(float(b.thumb_size_)) + 2 * chrome(b.kit_) +
+		label_h(b));
 }
 
 bool
@@ -454,14 +456,14 @@ show_cursor_context(Browser &b, Kit &kit)
 struct SideRow : Button {
 	string path;
 	Browser *browser = nullptr;
-	void measure(Kit &, float max_w, float) override;
+	void measure(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
 void
-SideRow::measure(Kit &kit, float max_w, float max_h)
+SideRow::measure(Kit &kit, int max_w, int max_h)
 {
 	Button::measure(kit, max_w, max_h);
 	this->r.w = max_w;
@@ -473,7 +475,7 @@ SideRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button == Qt::RightButton) {
 		if (this->browser)
 			show_file_context(
-				*this->browser, kit, this->path, {x, y, 0, 0}, false);
+				*this->browser, kit, this->path, {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {
@@ -1238,11 +1240,11 @@ remember_cursor_x_at(Browser &b, float x)
 	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
 		return;
 	const Rect &c = b.files_[size_t(b.cursor_)].cell;
-	if (c.w <= 0.0f) {
+	if (c.w <= 0) {
 		b.cursor_x_dirty_ = true;
 		return;
 	}
-	b.cursor_x_ = clamp(x, c.x, c.x + c.w);
+	b.cursor_x_ = clamp(x, float(c.x), float(c.x + c.w));
 	b.cursor_x_dirty_ = false;
 }
 
@@ -1255,7 +1257,7 @@ select_closest(Browser &b, const Browser::GridRow &row, float target_x)
 		if (fi < 0 || fi >= int(b.files_.size()))
 			break;
 		const Rect &cell = b.files_[size_t(fi)].cell;
-		const float d = abs(cell.x + cell.w * 0.5f - target_x);
+		const float d = abs(float(cell.x) + float(cell.w) * 0.5f - target_x);
 		if (d > closest)
 			break;
 		b.cursor_ = fi;
@@ -1266,23 +1268,22 @@ select_closest(Browser &b, const Browser::GridRow &row, float target_x)
 void
 scroll_to_row(Browser &b, const Browser::GridRow &row)
 {
-	const float vis = max(0.0f, b.r.h - 2.0f * kGridPad);
+	const float vis = float(max(0, b.r.h - 2 * b.kit_.px(kGridPad)));
 	if (row.y < b.scroll_.offset)
 		b.scroll_.offset = row.y;
 	else if (row.y + row.h > b.scroll_.offset + vis)
 		b.scroll_.offset = max(0.0f, row.y + row.h - vis);
-	b.scroll_.offset =
-		b.kit_.snap(clamp(b.scroll_.offset, 0.0f, b.scroll_.max_offset()));
+	b.scroll_.offset = clamp(b.scroll_.offset, 0.0f, b.scroll_.max_offset());
 }
 
 void
 page_scroll(Browser &b, int dir)
 {
-	const float vis = max(0.0f, b.r.h);
+	const float vis = float(max(0, b.r.h));
 	const float rh = row_h(b);
 	const float step = vis > rh ? vis - rh : vis;
-	b.scroll_.offset = b.kit_.snap(clamp(
-		b.scroll_.offset + float(dir) * step, 0.0f, b.scroll_.max_offset()));
+	b.scroll_.offset = clamp(
+		b.scroll_.offset + float(dir) * step, 0.0f, b.scroll_.max_offset());
 	request_render(b);
 }
 
@@ -1369,91 +1370,97 @@ move_cursor_end(Browser &b)
 void
 layout_grid(Browser &b, Rect area)
 {
-	const Rect inner = area.inset(kGridPad, kGridPad);
-	const float th = float(b.thumb_size_);
-	const float ch = chrome();
-	const float avail = inner.w;
-	const float dpr = max(b.kit_.dpr_, 0.01f);
+	const int pad = b.kit_.px(kGridPad);
+	const Rect inner = area.inset(pad, pad);
+	// The thumbnail size is a point size, like every other design constant;
+	// the atlas and the grid both want it in pixels.
+	const int th = b.kit_.px(float(b.thumb_size_));
+	const int ch = chrome(b.kit_);
+	const int gap = b.kit_.px(kThumbGap);
+	const int avail = inner.w;
 	const bool grid = b.view_ == BrowserView::Grid;
 	struct Item {
 		int i;
-		float w;
-		float h;
+		int w;
+		int h;
 	};
 	vector<Item> row;
-	float row_w = 0.0f;
-	float y = 0.0f;
+	int row_w = 0;
+	int y = 0;
 	b.rows_.clear();
 
 	auto flush = [&]() {
 		if (row.empty())
 			return;
-		float band = grid ? th : 0.0f;
-		float cap_band = 0.0f;
+		int band = grid ? th : 0;
+		int cap_band = 0;
 		for (const Item &it : row) {
 			band = max(band, it.h);
 			cap_band = max(cap_band, b.files_[size_t(it.i)].cap.h);
 		}
-		const float rh = band + 2.0f * ch + cap_band;
-		const float extra = max(0.0f, avail - row_w) * 0.5f;
-		float x = b.kit_.snap(inner.x + extra);
+		const int rh = band + 2 * ch + cap_band;
+		const int extra = max(0, avail - row_w) / 2;
+		const int off = int(lround(b.scroll_.offset));
+		int x = inner.x + extra;
 		for (const Item &it : row) {
 			Browser::File &f = b.files_[size_t(it.i)];
-			const float reserved_w = grid ? th : it.w;
-			const float ow = reserved_w + 2.0f * ch;
-			f.tile = b.kit_.snap_rect({x + ch + (reserved_w - it.w) * 0.5f,
-				inner.y + y - b.scroll_.offset + ch + (band - it.h) * 0.5f,
-				it.w, it.h});
-			f.cell =
-				b.kit_.snap_rect({x, inner.y + y - b.scroll_.offset, ow, rh});
+			const int reserved_w = grid ? th : it.w;
+			const int ow = reserved_w + 2 * ch;
+			f.tile = {x + ch + (reserved_w - it.w) / 2,
+				inner.y + y - off + ch + (band - it.h) / 2, it.w, it.h};
+			f.cell = {x, inner.y + y - off, ow, rh};
 			f.cap.x = f.cell.x;
-			f.cap.y = b.kit_.snap(f.cell.y + band + 2.0f * ch);
-			x = f.cell.x + f.cell.w + kThumbGap;
+			f.cap.y = f.cell.y + band + 2 * ch;
+			x = f.cell.x + f.cell.w + gap;
 		}
-		b.rows_.push_back({row.front().i, int(row.size()), y, rh});
-		y += rh + kThumbGap;
+		b.rows_.push_back({row.front().i, int(row.size()), float(y),
+			float(rh)});
+		y += rh + gap;
 		row.clear();
-		row_w = 0.0f;
+		row_w = 0;
 	};
 
 	for (int i = 0; i < int(b.files_.size()); ++i) {
 		Browser::File &f = b.files_[size_t(i)];
-		float tw = th;
-		float ih = th;
+		// thumb_dest() answers in pixels, which is what the grid wants:
+		// no round trip through points, and nothing to snap back.
+		int tw = th;
+		int ih = th;
 		if (f.image_w && f.image_h) {
 			uint32_t fit_w = 1, fit_h = 1;
 			thumb_dest(b, f.image_w, f.image_h, &fit_w, &fit_h);
-			tw = float(fit_w) / dpr;
-			ih = float(fit_h) / dpr;
+			tw = int(fit_w);
+			ih = int(fit_h);
 		}
-		const float cap_w = float(grid ? 1 : kThumbWide) * th;
+		const int cap_w = (grid ? 1 : kThumbWide) * th;
 		float fit = 1.0f;
-		if (tw > 0.0f)
-			fit = min(fit, cap_w / tw);
-		if (ih > 0.0f)
-			fit = min(fit, th / ih);
-		tw = max(1.0f, b.kit_.snap(tw * fit));
-		ih = max(1.0f, b.kit_.snap(ih * fit));
-		const float ow = (grid ? th : tw) + 2.0f * ch;
+		if (tw > 0)
+			fit = min(fit, float(cap_w) / float(tw));
+		if (ih > 0)
+			fit = min(fit, float(th) / float(ih));
+		tw = max(1, int(lround(float(tw) * fit)));
+		ih = max(1, int(lround(float(ih) * fit)));
+		const int ow = (grid ? th : tw) + 2 * ch;
 		if (!b.show_names_) {
 			f.cap = {};
 			f.cap_text.clear();
 		} else if (f.cap.w != ow) {
 			f.cap_text =
 				b.kit_.elide_lines(caption_name(f.name), ow, kCapLines, false);
-			f.cap = {0.0f, 0.0f, ow,
-				b.kit_.text_height(f.cap_text, ow, false) + kCapPad};
+			f.cap = {0, 0, ow,
+				b.kit_.text_height(f.cap_text, ow, false) +
+					b.kit_.px(kCapPad)};
 		}
-		if (!row.empty() && row_w + kThumbGap + ow > avail + 0.01f)
+		if (!row.empty() && row_w + gap + ow > avail)
 			flush();
 		if (!row.empty())
-			row_w += kThumbGap;
+			row_w += gap;
 		row.push_back({i, tw, ih});
 		row_w += ow;
 	}
 	flush();
-	if (y > 0.0f)
-		y -= kThumbGap;
+	if (y > 0)
+		y -= gap;
 	if (b.cursor_ >= int(b.files_.size()))
 		clear_cursor(b);
 	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size())) {
@@ -1462,8 +1469,8 @@ layout_grid(Browser &b, Rect area)
 		b.layout_w_ = 0;
 	} else {
 		const Rect &cell = b.files_[size_t(b.cursor_)].cell;
-		const float cx = cell.x + cell.w * 0.5f;
-		if (b.cursor_x_dirty_ || abs(area.w - b.layout_w_) > 0.5f ||
+		const float cx = float(cell.x) + float(cell.w) * 0.5f;
+		if (b.cursor_x_dirty_ || area.w != b.layout_w_ ||
 			(b.cursor_ == b.layout_cursor_ &&
 				abs(cx - b.layout_cell_x_) > 0.5f))
 			remember_cursor_x(b);
@@ -1471,18 +1478,18 @@ layout_grid(Browser &b, Rect area)
 		b.layout_cell_x_ = cx;
 		b.layout_w_ = area.w;
 	}
-	const float prev = b.scroll_.offset;
-	b.scroll_.set_metrics(y + kGridPad * 2.0f, area.h);
-	b.scroll_.offset = b.kit_.snap(b.scroll_.offset);
+	const int prev = int(lround(b.scroll_.offset));
+	b.scroll_.set_metrics(b.kit_, float(y + pad * 2), float(area.h));
 	b.scroll_.clamp();
-	if (b.scroll_.offset != prev) {
-		const float dy = prev - b.scroll_.offset;
+	// Clamping may have moved the offset after the rects were placed
+	// against the old one; shift them rather than laying out again.
+	const int now = int(lround(b.scroll_.offset));
+	if (now != prev) {
+		const int dy = prev - now;
 		for (Browser::File &f : b.files_) {
 			f.tile.y += dy;
 			f.cell.y += dy;
 			f.cap.y += dy;
-			f.tile = b.kit_.snap_rect(f.tile);
-			f.cell = b.kit_.snap_rect(f.cell);
 		}
 	}
 }
@@ -2030,7 +2037,7 @@ pack_standin_icons(Browser &b)
 void
 pack_toolbar_icons(Browser &b)
 {
-	const int px = max(16, int(lround(kIconPx * b.kit_.dpr_)));
+	const int px = max(16, int(lround(kIconPts * b.kit_.dpr_)));
 	for (const Spec &spec : kItems) {
 		const ActionDef &d = action_def(spec.action);
 		b.kit_.pack_icon(action_icon(d, false), px);
@@ -2299,7 +2306,7 @@ layout(Browser &b, Page &ui)
 {
 	b.kit_.root_ = &ui;
 	sync_ui(b, ui);
-	ui.arrange(b.kit_, {0.0f, 0.0f, b.kit_.host_w_, b.kit_.host_h_});
+	ui.arrange(b.kit_, {0, 0, b.kit_.host_w_, b.kit_.host_h_});
 	sync_thumbs(b);
 	b.kit_.relayout_popups();
 	b.kit_.sync_focus();
@@ -2468,7 +2475,7 @@ Browser::init()
 }
 
 void
-Browser::measure(Kit &, float max_w, float max_h)
+Browser::measure(Kit &, int max_w, int max_h)
 {
 	this->r = {0, 0, max_w, max_h};
 }
@@ -2476,7 +2483,7 @@ Browser::measure(Kit &, float max_w, float max_h)
 void
 Browser::arrange(Kit &kit, Rect alloc)
 {
-	this->r = kit.snap_rect(alloc);
+	this->r = alloc;
 	layout_grid(*this, this->r);
 }
 
@@ -2574,7 +2581,7 @@ Browser::paint(Kit &kit) const
 		this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 		this->r.y + this->r.h, kit.colours_[ColourWell]);
-	const float th = float(this->thumb_size_);
+	const int th = kit.px(float(this->thumb_size_));
 	const Colour ink = kit.colours_[ColourInk];
 	const float glow_a = kit.ink_alpha();
 	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
@@ -2582,22 +2589,24 @@ Browser::paint(Kit &kit) const
 	const Colour frame = kit.colours_[ColourFrame];
 	for (int i = 0; i < int(this->files_.size()); ++i) {
 		const File &f = this->files_[size_t(i)];
-		if (f.cell.w <= 0.0f)
+		if (f.cell.w <= 0)
 			continue;
 		if (f.cell.y + f.cell.h < this->r.y || f.cell.y > this->r.y + this->r.h)
 			continue;
-		const float tw = f.tile.w > 0.0f ? f.tile.w : th;
-		const float thp = f.tile.h > 0.0f ? f.tile.h : th;
-		const float tx = f.tile.x;
-		const float ty = f.tile.y;
+		const int tw = f.tile.w > 0 ? f.tile.w : th;
+		const int thp = f.tile.h > 0 ? f.tile.h : th;
+		const int tx = f.tile.x;
+		const int ty = f.tile.y;
 		const bool focused =
 			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
 		if (!f.gpu.empty()) {
-			kit.draw_glow(tx - kBorder, ty - kBorder, tw + 2.0f * kBorder,
-				thp + 2.0f * kBorder, focused ? glow_hot : glow_idle);
+			const float border = float(kit.px(kBorder));
+			kit.draw_glow(float(tx) - border, float(ty) - border,
+				float(tw) + 2.0f * border, float(thp) + 2.0f * border,
+				focused ? glow_hot : glow_idle);
 			draw_checker(kit, {tx, ty, tw, thp});
-			kit.list_.add_rect_stroke(tx - 1.0f, ty - 1.0f, tx + tw + 1.0f,
-				ty + thp + 1.0f, frame, kBorder);
+			kit.list_.add_rect_stroke(float(tx) - 1.0f, float(ty) - 1.0f,
+				float(tx + tw) + 1.0f, float(ty + thp) + 1.0f, frame, border);
 			float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 			this->sheet_.uv(f.gpu, &u0, &v0, &u1, &v1);
 			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1);
@@ -2685,10 +2694,12 @@ Browser::destroy()
 void
 Browser::set_host(float width_pts, float height_pts, float dpr)
 {
-	this->kit_.host_w_ = width_pts;
-	this->kit_.host_h_ = height_pts;
+	// The platform speaks logical points; everything past here is pixels,
+	// so the scale has to be current before the conversion.
 	if (!set_dpr(*this, dpr))
 		pack_toolbar_icons(*this);
+	this->kit_.host_w_ = this->kit_.px(width_pts);
+	this->kit_.host_h_ = this->kit_.px(height_pts);
 }
 
 void
@@ -2841,12 +2852,12 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 			this->cursor_ = i;
 			remember_cursor_x_at(*this, x);
 			show_file_context(
-				*this, kit, this->files_[size_t(i)].path, {x, y, 0, 0}, false);
+				*this, kit, this->files_[size_t(i)].path, {int(x), int(y), 0, 0}, false);
 			return true;
 		}
 		if (this->dir_url_.isEmpty())
 			return false;
-		show_file_context(*this, kit, dir_path(*this), {x, y, 0, 0}, false);
+		show_file_context(*this, kit, dir_path(*this), {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {
@@ -2933,7 +2944,6 @@ bool
 Browser::scroll(Kit &, float, float, int delta)
 {
 	this->scroll_.wheel(delta, row_h(*this));
-	this->scroll_.offset = this->kit_.snap(this->scroll_.offset);
 	this->scroll_.clamp();
 	return true;
 }
@@ -2942,7 +2952,6 @@ bool
 Browser::pan(Kit &, float, float, float, float dy)
 {
 	this->scroll_.pan(dy);
-	this->scroll_.offset = this->kit_.snap(this->scroll_.offset);
 	this->scroll_.clamp();
 	return true;
 }

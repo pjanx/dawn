@@ -159,8 +159,11 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 #if DN_WITH_WAYLAND
 	this->kit_.start_menu = [this](float x, float y) {
-		// Wants shell-local coordinates; we may hang off it by the glow.
-		const QPoint p = position() + QPoint(int(x), int(y));
+		// Wants shell-local logical coordinates, while the kit passes
+		// device pixels; we may also hang off the shell by the glow.
+		const qreal dpr = qreal(host_dpr(*this));
+		const QPoint p = position() +
+			QPoint(int(qreal(x) / dpr), int(qreal(y) / dpr));
 		wayland_show_window_menu(shell(), p.x(), p.y());
 	};
 #endif
@@ -655,10 +658,13 @@ Window::sync_csd()
 	QRegion mask;
 	if (shadow) {
 		// Input still has to reach the resize band, which lies in the shadow.
+		// setMask() speaks logical points, while the frame is in pixels:
+		// one conversion back, rather than two roundings that disagree.
+		const float dpr = host_dpr(*this);
+		const auto pt = [dpr](int v) { return int(lround(double(v) / dpr)); };
 		const int band = int(lround(double(kResizeBorderPts)));
 		const Rect f = this->kit_.frame();
-		const QRect frame(int(lround(double(f.x))), int(lround(double(f.y))),
-			int(lround(double(f.w))), int(lround(double(f.h))));
+		const QRect frame(pt(f.x), pt(f.y), pt(f.w), pt(f.h));
 		mask = QRegion(frame.adjusted(-band, -band, band, band));
 	}
 	setMask(mask);
@@ -1304,8 +1310,11 @@ Window::input_method_value(
 	case Qt::ImCurrentSelection:
 		return QString();
 	case Qt::ImCursorRectangle: {
+		// Qt wants logical points; the kit answers in device pixels.
 		const Rect &c = target.caret_rect;
-		return QRectF(qreal(c.x), qreal(c.y), qreal(c.w), qreal(c.h));
+		const qreal dpr = qreal(host_dpr(*this));
+		return QRectF(qreal(c.x) / dpr, qreal(c.y) / dpr, qreal(c.w) / dpr,
+			qreal(c.h) / dpr);
 	}
 	default:
 		return {};
@@ -1341,7 +1350,11 @@ Window::mousePressEvent(QMouseEvent *event)
 	const float x = float(pos.x());
 	const float y = float(pos.y());
 	this->alt_armed_ = false;
-	if (event->button() == Qt::LeftButton && this->kit_.start_resize_at(x, y)) {
+	// start_resize_at() works in pixels, like the rest of the widget tree;
+	// this call sidesteps the Kit entry points that would convert for us.
+	if (event->button() == Qt::LeftButton &&
+		this->kit_.start_resize_at(
+			float(this->kit_.px(x)), float(this->kit_.px(y)))) {
 		request_render();
 		event->accept();
 		return;

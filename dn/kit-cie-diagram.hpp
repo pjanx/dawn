@@ -21,7 +21,7 @@ struct CieDiagram : Widget {
 	bool screen_dashed = false;
 	bool image_dashed = false;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;

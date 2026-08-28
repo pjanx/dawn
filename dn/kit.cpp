@@ -214,16 +214,16 @@ raster_glyph(const QRawFont &raw, quint32 gid, QPoint *origin)
 }
 
 void
-layout_text(QTextLayout *layout, float dpr, float wrap_pts, bool center = false)
+layout_text(QTextLayout *layout, int wrap, bool center = false)
 {
-	if (wrap_pts > 0.0f) {
+	if (wrap > 0) {
 		QTextOption opt = layout->textOption();
 		opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
 		layout->setTextOption(opt);
 	}
 	layout->beginLayout();
 	float y = 0.0f;
-	const float wrap_px = (wrap_pts > 0.0f ? wrap_pts : 1.0e8f) * dpr;
+	const float wrap_px = wrap > 0 ? float(wrap) : 1.0e8f;
 	for (;;) {
 		QTextLine line = layout->createLine();
 		if (!line.isValid())
@@ -372,14 +372,14 @@ cache_ascii(Kit &kit, bool bold)
 }
 
 static void
-cache_text(Kit &kit, const QString &text, bool bold, float wrap_pts)
+cache_text(Kit &kit, const QString &text, bool bold, int wrap)
 {
 	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
 	QTextLayout layout(text, font);
-	layout_text(&layout, kit.dpr_, wrap_pts);
+	layout_text(&layout, wrap);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		for (quint32 gid : run.glyphIndexes())
 			cache_glyph(kit, run.rawFont(), gid);
@@ -466,16 +466,14 @@ rebuild_atlas(Kit &kit)
 // The mnemonic is an index into text, and gets underlined; -1 for none.
 static void
 emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
-	bool bold, int mnemonic, float wrap_pts = 0.0f, bool center = false)
+	bool bold, int mnemonic, int wrap = 0, bool center = false)
 {
 	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
-	const float dpr = max(kit.dpr_, 0.01f);
 	QTextLayout layout(text, font);
-	layout_text(&layout, dpr, wrap_pts, center);
-	const float inv = 1.0f / dpr;
+	layout_text(&layout, wrap, center);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		const QList<quint32> gids = run.glyphIndexes();
 		const QList<QPointF> pos = run.positions();
@@ -484,12 +482,14 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 			const Kit::Glyph *glyph = cache_glyph(kit, run.rawFont(), gids[i]);
 			if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
 				continue;
-			const float gx = kit.snap(
-				x + float(pos[i].x() + double(glyph->bearing_x)) * inv);
-			const float gy = kit.snap(
-				y + float(pos[i].y() + double(glyph->bearing_y)) * inv);
-			const float gw = float(glyph->rect.w) * inv;
-			const float gh = float(glyph->rect.h) * inv;
+			// Glyph atlas rects are whole pixels, so a rounded origin
+			// keeps the quad on the grid without snapping its size.
+			const float gx =
+				round(x + float(pos[i].x() + double(glyph->bearing_x)));
+			const float gy =
+				round(y + float(pos[i].y() + double(glyph->bearing_y)));
+			const float gw = float(glyph->rect.w);
+			const float gh = float(glyph->rect.h);
 			float u0, v0, u1, v1;
 			kit.atlas_.uv(glyph->rect, &u0, &v0, &u1, &v1);
 			kit.list_.add_image(
@@ -509,9 +509,9 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 	// Both font metrics grow downwards from the baseline, which is where
 	// the glyphs of this line sit as well.
 	const float uy =
-		y + float(line.y() + line.ascent() + raw.underlinePosition()) * inv;
-	kit.list_.add_line(x + min(cx0, cx1) * inv, uy, x + max(cx0, cx1) * inv, uy,
-		colour, float(raw.lineThickness()) * inv);
+		y + float(line.y() + line.ascent() + raw.underlinePosition());
+	kit.list_.add_line(x + min(cx0, cx1), uy, x + max(cx0, cx1), uy, colour,
+		float(raw.lineThickness()));
 }
 
 static void
@@ -551,12 +551,11 @@ sooner(int a, int b)
 // --- Rect --------------------------------------------------------------------
 
 Rect
-Rect::inset(float px, float py) const
+Rect::inset(int px, int py) const
 {
-	const float nw = this->w - px * 2.0f;
-	const float nh = this->h - py * 2.0f;
-	return {this->x + px, this->y + py, nw > 0.0f ? nw : 0.0f,
-		nh > 0.0f ? nh : 0.0f};
+	const int nw = this->w - px * 2;
+	const int nh = this->h - py * 2;
+	return {this->x + px, this->y + py, nw > 0 ? nw : 0, nh > 0 ? nh : 0};
 }
 
 // --- Widget ------------------------------------------------------------------
@@ -670,12 +669,12 @@ Widget::double_click(Kit &, float, float, Qt::MouseButton, unsigned)
 namespace
 {
 
-float
-button_text_avail(const Button &b)
+int
+button_text_avail(const Kit &kit, const Button &b)
 {
-	const float px = kFramePadX + b.pad_x;
-	const float left = px + (b.icon ? kIconPx + 4.0f : 0.0f);
-	return max(1.0f, b.r.w - left - px);
+	const int px = kit.px(kFramePadX + b.pad_x);
+	const int left = px + (b.icon ? kit.px(kIconPts + 4.0f) : 0);
+	return max(1, b.r.w - left - px);
 }
 
 QString
@@ -683,35 +682,35 @@ button_shown(const Kit &kit, const Button &b)
 {
 	if (b.text.isEmpty())
 		return b.text;
-	return kit.elide_lines(b.text, button_text_avail(b), 1, false);
+	return kit.elide_lines(b.text, button_text_avail(kit, b), 1, false);
 }
 
 }  // namespace
 
 void
-Button::measure(Kit &kit, float, float)
+Button::measure(Kit &kit, int, int)
 {
-	const float px = kFramePadX + this->pad_x;
-	float cw = 0.0f;
-	float ch = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
+	const int px = kit.px(kFramePadX + this->pad_x);
+	const int icon = kit.px(kIconPts);
+	int cw = 0;
+	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
 	if (this->icon) {
-		cw = kIconPx;
-		ch = max(ch, kIconPx);
+		cw = icon;
+		ch = max(ch, icon);
 	}
 	if (!this->text.isEmpty()) {
 		if (this->icon)
-			cw += 4.0f;
+			cw += kit.px(4.0f);
 		cw += kit.text_width(this->text, false);
-		ch = max(ch, kit.text_height(this->text, 0.0f, false));
+		ch = max(ch, kit.text_height(this->text, 0, false));
 	}
-	this->r = {0, 0, kit.snap_size(px * 2.0f + cw),
-		kit.snap_size(kFramePadY * 2.0f + ch)};
+	this->r = {0, 0, px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
 Button::arrange(Kit &kit, Rect alloc)
 {
-	this->r = shown() ? kit.snap_rect(alloc) : Rect{};
+	this->r = shown() ? alloc : Rect{};
 }
 
 void
@@ -727,16 +726,19 @@ Button::paint(Kit &kit) const
 	else if (this->enabled_ && hot)
 		kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 			this->r.y + this->r.h, col(kit.colours_[ColourHover]));
-	const float px = kFramePadX + this->pad_x;
+	const int px = kit.px(kFramePadX + this->pad_x);
+	const int icon = kit.px(kIconPts);
 	const float ink_a = (this->enabled_ ? 1.0f : 0.375f) *
 		(this->dim ? 0.5f : 1.0f) * kit.ink_alpha();
 	if (this->icon)
-		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - kIconPx) * 0.5f,
-			kIconPx, this->icon, col(kit.colours_[ColourInk], ink_a));
+		emit_icon(kit, float(this->r.x + px),
+			float(this->r.y + (this->r.h - icon) / 2), float(icon),
+			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
-		const float tx = this->r.x + px + (this->icon ? kIconPx + 4.0f : 0.0f);
-		const float th = kit.text_height(this->text, 0.0f, false);
-		emit_text(kit, tx, this->r.y + (this->r.h - th) * 0.5f,
+		const int tx =
+			this->r.x + px + (this->icon ? icon + kit.px(4.0f) : 0);
+		const int th = kit.text_height(this->text, 0, false);
+		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
 			button_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
 			false, -1);
 	}
@@ -748,7 +750,7 @@ void
 Button::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, button_shown(kit, *this), false, 0.0f);
+		cache_text(kit, button_shown(kit, *this), false, 0);
 }
 
 bool
@@ -812,27 +814,28 @@ Button::activate(Kit &kit)
 // --- Label -------------------------------------------------------------------
 
 void
-Label::measure(Kit &kit, float max_w, float)
+Label::measure(Kit &kit, int max_w, int)
 {
-	const float iw = max(0.0f, max_w - this->pad_x * 2.0f);
-	float w = max(kit.text_width(this->text, this->bold), this->min_w);
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int iw = max(0, max_w - pad_x * 2);
+	int w = max(kit.text_width(this->text, this->bold), kit.px(this->min_w));
 	if (this->wrap)
-		w = max(1.0f, iw < kUnlim ? iw : w);
-	this->r.w = kit.snap_size(w + this->pad_x * 2.0f);
-	this->r.h = kit.snap_size(
-		kit.text_height(this->text, this->wrap ? w : 0.0f, this->bold) +
-		this->pad_y * 2.0f);
+		w = max(1, iw < kUnlim ? iw : w);
+	this->r.w = w + pad_x * 2;
+	this->r.h =
+		kit.text_height(this->text, this->wrap ? w : 0, this->bold) +
+		pad_y * 2;
 }
 
 void
 Label::arrange(Kit &kit, Rect alloc)
 {
-	this->r = shown() ? kit.snap_rect(alloc) : Rect{};
+	this->r = shown() ? alloc : Rect{};
 	if (!shown() || !this->wrap)
 		return;
-	const float w = max(1.0f, this->r.w - this->pad_x * 2.0f);
-	this->r.h = kit.snap_size(max(this->r.h,
-		kit.text_height(this->text, w, this->bold) + this->pad_y * 2.0f));
+	const int w = max(1, this->r.w - kit.px(this->pad_x) * 2);
+	this->r.h = max(this->r.h,
+		kit.text_height(this->text, w, this->bold) + kit.px(this->pad_y) * 2);
 }
 
 void
@@ -840,21 +843,20 @@ Label::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	float tx = this->r.x + this->pad_x;
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	int tx = this->r.x + pad_x;
 	const bool wrap_center = this->wrap && this->align == Align::Center;
 	if (this->align == Align::Center && !this->wrap)
-		tx = kit.snap(this->r.x +
-			max(0.0f,
-				(this->r.w - kit.text_width(this->text, this->bold)) * 0.5f));
-	const float wrap_w =
-		this->wrap ? max(1.0f, this->r.w - this->pad_x * 2.0f) : 0.0f;
-	const float th = kit.text_height(this->text, wrap_w, this->bold);
-	float ty = this->r.y + this->pad_y;
+		tx = this->r.x +
+			max(0, (this->r.w - kit.text_width(this->text, this->bold)) / 2);
+	const int wrap_w = this->wrap ? max(1, this->r.w - pad_x * 2) : 0;
+	const int th = kit.text_height(this->text, wrap_w, this->bold);
+	int ty = this->r.y + pad_y;
 	if (this->valign == Align::Center)
-		ty = this->r.y + (this->r.h - th) * 0.5f;
+		ty = this->r.y + (this->r.h - th) / 2;
 	else if (this->valign == Align::End)
-		ty = this->r.y + this->r.h - this->pad_y - th;
-	emit_text(kit, tx, ty, this->text,
+		ty = this->r.y + this->r.h - pad_y - th;
+	emit_text(kit, float(tx), float(ty), this->text,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.0f) * kit.ink_alpha()),
 		this->bold, -1, wrap_w, wrap_center);
@@ -865,7 +867,7 @@ Label::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
 		cache_text(kit, this->text, this->bold,
-			this->wrap ? max(1.0f, this->r.w - this->pad_x * 2.0f) : 0.0f);
+			this->wrap ? max(1, this->r.w - kit.px(this->pad_x) * 2) : 0);
 }
 
 // --- Entry -------------------------------------------------------------------
@@ -928,10 +930,10 @@ blink_phase(chrono::steady_clock::time_point since)
 
 }  // namespace
 
-float
-Entry::inner_w() const
+int
+Entry::inner_w(const Kit &kit) const
 {
-	return max(1.0f, this->r.w - this->pad_x * 2.0f);
+	return max(1, this->r.w - kit.px(this->pad_x) * 2);
 }
 
 QString
@@ -956,9 +958,9 @@ Entry::rescroll(const Kit &kit)
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const float caret = kit.caret_x(full, at, false);
-	const float text_w = kit.text_width(full, false);
-	const float view = inner_w();
+	const float caret = float(kit.caret_x(full, at, false));
+	const float text_w = float(kit.text_width(full, false));
+	const float view = float(inner_w(kit));
 	if (text_w <= view) {
 		this->scroll_ = 0.0f;
 		return;
@@ -993,17 +995,17 @@ Entry::set_text(Kit &kit, const QString &next)
 }
 
 void
-Entry::measure(Kit &kit, float, float)
+Entry::measure(Kit &kit, int, int)
 {
-	const float h = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
-	this->r = {0, 0, kit.snap_size(max(this->min_w, this->pad_x * 2.0f)),
-		kit.snap_size(h + kEntryPadY * 2.0f)};
+	const int h = kit.text_height(QStringLiteral("Ag"), 0, false);
+	this->r = {0, 0, max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
+		h + kit.px(kEntryPadY) * 2};
 }
 
 void
 Entry::arrange(Kit &kit, Rect alloc)
 {
-	this->r = this->Widget::shown() ? kit.snap_rect(alloc) : Rect{};
+	this->r = this->Widget::shown() ? alloc : Rect{};
 	// Only the scroll: resetting the blink here would restart it every
 	// frame, and the caret would never reach the dark half.
 	rescroll(kit);
@@ -1015,19 +1017,18 @@ Entry::paint(Kit &kit) const
 	if (!this->Widget::shown() || this->r.w <= 0.0f || this->r.h <= 0.0f)
 		return;
 
-	const float hair = 1.0f / max(kit.dpr_, 0.01f);
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 		this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
 	kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
+		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), 1.0f);
 
-	const Rect in = this->r.inset(this->pad_x, kEntryPadY);
+	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 	kit.list_.push_clip(in.x, in.y, in.x + in.w, in.y + in.h);
 
 	const QString full = painted();
-	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
-	const float ty = this->r.y + (this->r.h - th) * 0.5f;
-	const float tx = in.x - this->scroll_;
+	const int th = kit.text_height(QStringLiteral("Ag"), 0, false);
+	const int ty = this->r.y + (this->r.h - th) / 2;
+	const float tx = float(in.x) - this->scroll_;
 	if (full.isEmpty()) {
 		if (!this->placeholder.isEmpty())
 			emit_text(kit, tx, ty, this->placeholder,
@@ -1041,20 +1042,21 @@ Entry::paint(Kit &kit) const
 	// The preedit is underlined for its whole length, the way every other
 	// toolkit marks text the input method still owns.
 	if (!this->preedit.isEmpty()) {
-		const float x0 = tx + kit.caret_x(full, this->caret, false);
+		const float x0 = tx + float(kit.caret_x(full, this->caret, false));
 		const float x1 = tx +
-			kit.caret_x(full, this->caret + int(this->preedit.size()), false);
-		const float uy = kit.snap(ty + th) - hair;
+			float(kit.caret_x(
+				full, this->caret + int(this->preedit.size()), false));
+		const float uy = float(ty + th) - 1.0f;
 		kit.list_.add_line(min(x0, x1), uy, max(x0, x1), uy,
-			col(kit.colours_[ColourInk], kit.ink_alpha()), hair);
+			col(kit.colours_[ColourInk], kit.ink_alpha()), 1.0f);
 	}
 
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-		const float cx = kit.snap(tx + kit.caret_x(full, at, false));
-		kit.list_.add_rect_filled(cx, kit.snap(ty), cx + hair,
-			kit.snap(ty + th), col(kit.colours_[ColourInk], kit.ink_alpha()));
+		const float cx = round(tx + float(kit.caret_x(full, at, false)));
+		kit.list_.add_rect_filled(cx, float(ty), cx + 1.0f, float(ty + th),
+			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
 	kit.list_.pop_clip();
@@ -1082,9 +1084,9 @@ Entry::prepare(Kit &kit)
 
 	const QString full = painted();
 	if (full.isEmpty())
-		cache_text(kit, this->placeholder, false, 0.0f);
+		cache_text(kit, this->placeholder, false, 0);
 	else
-		cache_text(kit, full, false, 0.0f);
+		cache_text(kit, full, false, 0);
 }
 
 bool
@@ -1109,9 +1111,10 @@ Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
 	// A click during composition would land in the middle of text the input
 	// method still owns; let it finish rather than fighting over the caret.
 	if (this->preedit.isEmpty()) {
-		const Rect in = this->r.inset(this->pad_x, kEntryPadY);
-		move_caret(
-			kit, kit.index_at(this->text, x - in.x + this->scroll_, false));
+		const Rect in =
+			this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
+		move_caret(kit,
+			kit.index_at(this->text, x - float(in.x) + this->scroll_, false));
 	}
 	return true;
 }
@@ -1218,9 +1221,9 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const float cx =
-		this->r.x + this->pad_x - this->scroll_ + kit.caret_x(full, at, false);
-	out.caret_rect = {cx, this->r.y, 1.0f, this->r.h};
+	const int cx = this->r.x + kit.px(this->pad_x) +
+		int(lround(-this->scroll_ + float(kit.caret_x(full, at, false))));
+	out.caret_rect = {cx, this->r.y, 1, this->r.h};
 	return true;
 }
 
@@ -1239,46 +1242,50 @@ Entry::wake_ms() const
 // --- Sep ---------------------------------------------------------------------
 
 void
-Sep::measure(Kit &, float max_w, float max_h)
+Sep::measure(Kit &kit, int max_w, int max_h)
 {
 	if (max_w > max_h)
-		this->r = {0, 0, kSepW, 0};
+		this->r = {0, 0, kit.px(kSepW), 0};
 	else
-		this->r = {0, 0, 0, kSepH};
+		this->r = {0, 0, 0, kit.px(kSepH)};
 }
 
 void
 Sep::arrange(Kit &kit, Rect alloc)
 {
-	this->r = shown() ? kit.snap_rect(alloc) : Rect{};
+	this->r = shown() ? alloc : Rect{};
 }
 
 void
 Sep::paint(Kit &kit) const
 {
-	if (!shown() || this->r.w <= 0.0f || this->r.h <= 0.0f)
+	if (!shown() || this->r.w <= 0 || this->r.h <= 0)
 		return;
 	const Colour c = col(kit.colours_[ColourDivider]);
+	// Half-pixel centres: these are drawing positions, not geometry.
+	const float cx = float(this->r.x) + float(this->r.w) * 0.5f;
+	const float cy = float(this->r.y) + float(this->r.h) * 0.5f;
+	const float inset = float(kit.px(2.0f)), gap = float(kit.px(4.0f));
 	if (this->r.h > this->r.w)
-		kit.list_.add_line(this->r.x + this->r.w * 0.5f, this->r.y + 2.0f,
-			this->r.x + this->r.w * 0.5f, this->r.y + this->r.h - 2.0f, c);
+		kit.list_.add_line(cx, float(this->r.y) + inset, cx,
+			float(this->r.y + this->r.h) - inset, c);
 	else
-		kit.list_.add_line(this->r.x + 4.0f, this->r.y + this->r.h * 0.5f,
-			this->r.x + this->r.w - 4.0f, this->r.y + this->r.h * 0.5f, c);
+		kit.list_.add_line(float(this->r.x) + gap, cy,
+			float(this->r.x + this->r.w) - gap, cy, c);
 }
 
 // --- Splitter ----------------------------------------------------------------
 
 void
-Splitter::measure(Kit &, float, float max_h)
+Splitter::measure(Kit &kit, int, int max_h)
 {
-	this->r = {0, 0, this->min_w > 0.0f ? this->min_w : 8.0f, max_h};
+	this->r = {0, 0, kit.px(this->min_w > 0.0f ? this->min_w : 8.0f), max_h};
 }
 
 void
 Splitter::arrange(Kit &kit, Rect alloc)
 {
-	this->r = shown() ? kit.snap_rect(alloc) : Rect{};
+	this->r = shown() ? alloc : Rect{};
 }
 
 void
@@ -1286,11 +1293,12 @@ Splitter::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	const float x = this->r.x + this->r.w * 0.5f;
+	const float x = float(this->r.x) + float(this->r.w) * 0.5f;
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
-	kit.list_.add_line(x, this->r.y, x, this->r.y + this->r.h, col(c));
+	kit.list_.add_line(
+		x, float(this->r.y), x, float(this->r.y + this->r.h), col(c));
 }
 
 bool
@@ -1346,12 +1354,13 @@ Composite::erase_children(size_t from)
 // --- Container ---------------------------------------------------------------
 
 void
-Container::measure_pack(Kit &kit, float max_w, float max_h, bool hz)
+Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 {
-	const float iw = max(0.0f, max_w - this->pad_x * 2.0f);
-	const float ih = max(0.0f, max_h - this->pad_y * 2.0f);
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int iw = max(0, max_w - pad_x * 2);
+	const int ih = max(0, max_h - pad_y * 2);
 	int growers = 0, vis = 0;
-	float used = 0.0f, cross = 0.0f;
+	int used = 0, cross = 0;
 	for (const auto &child : this->kids) {
 		Widget *k = child.get();
 		if (!k || !k->shown())
@@ -1366,21 +1375,27 @@ Container::measure_pack(Kit &kit, float max_w, float max_h, bool hz)
 		cross = max(cross, hz ? k->r.h : k->r.w);
 		++vis;
 	}
-	const float gaps = this->gap * float(max(0, vis - 1));
+	const int gaps = kit.px(this->gap) * max(0, vis - 1);
 	if (growers) {
-		const float share = max(0.0f, (hz ? iw : ih) - used - gaps) / growers;
+		// Integer division leaves a remainder of at most growers-1 pixels;
+		// hand one to each of the first few, so that the children fill the
+		// space exactly rather than falling short of it.
+		const int slack = max(0, (hz ? iw : ih) - used - gaps);
+		const int share = slack / growers, extra = slack % growers;
+		int i = 0;
 		for (const auto &child : this->kids) {
 			Widget *k = child.get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			k->measure(kit, hz ? share : iw, hz ? ih : share);
+			const int got = share + (i++ < extra ? 1 : 0);
+			k->measure(kit, hz ? got : iw, hz ? ih : got);
 			used += hz ? k->r.w : k->r.h;
 			cross = max(cross, hz ? k->r.h : k->r.w);
 		}
 	}
 	used += gaps;
-	this->r.w = kit.snap_size(this->pad_x * 2.0f + (hz ? used : cross));
-	this->r.h = kit.snap_size(this->pad_y * 2.0f + (hz ? cross : used));
+	this->r.w = pad_x * 2 + (hz ? used : cross);
+	this->r.h = pad_y * 2 + (hz ? cross : used);
 	if (this->grow)
 		this->r.w = max_w;
 }
@@ -1392,12 +1407,12 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		this->r = {};
 		return;
 	}
-	alloc = kit.snap_rect(alloc);
 	this->r = alloc;
-	const Rect in = alloc.inset(this->pad_x, this->pad_y);
-	const float imain = hz ? in.w : in.h;
+	const int gap = kit.px(this->gap), pad_y = kit.px(this->pad_y);
+	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
+	const int imain = hz ? in.w : in.h;
 	int growers = 0, vis = 0;
-	float used = 0.0f;
+	int used = 0;
 	for (const auto &child : this->kids) {
 		Widget *k = child.get();
 		if (!k || !k->shown())
@@ -1411,36 +1426,41 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		used += hz ? k->r.w : k->r.h;
 	}
 	if (growers) {
-		const float gaps = this->gap * float(max(0, vis - 1));
-		const float share = max(0.0f, imain - used - gaps) / growers;
+		// See measure_pack(): the remainder is spread a pixel at a time,
+		// so the growers together cover the space exactly.
+		const int gaps = gap * max(0, vis - 1);
+		const int slack = max(0, imain - used - gaps);
+		const int share = slack / growers, extra = slack % growers;
+		int i = 0;
 		for (const auto &child : this->kids) {
 			Widget *k = child.get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			k->measure(kit, hz ? share : in.w, hz ? in.h : share);
+			const int got = share + (i++ < extra ? 1 : 0);
+			k->measure(kit, hz ? got : in.w, hz ? in.h : got);
 			if (hz)
-				k->r.w = share;
+				k->r.w = got;
 			else {
-				k->r.h = share;
+				k->r.h = got;
 				k->r.w = in.w;
 			}
 		}
 	}
-	float packed = 0.0f;
+	int packed = 0;
 	int nv = 0;
 	for (const auto &k : this->kids) {
 		if (!k || !k->shown())
 			continue;
-		packed += (hz ? k->r.w : k->r.h) + this->gap;
+		packed += (hz ? k->r.w : k->r.h) + gap;
 		++nv;
 	}
 	if (nv)
-		packed -= this->gap;
-	float p = hz ? in.x : in.y;
+		packed -= gap;
+	int p = hz ? in.x : in.y;
 	if (align == Align::Center)
-		p += max(0.0f, (imain - packed) * 0.5f);
+		p += max(0, (imain - packed) / 2);
 	else if (align == Align::End)
-		p += max(0.0f, imain - packed);
+		p += max(0, imain - packed);
 	for (auto &k : this->kids) {
 		if (!k || !k->shown()) {
 			if (k)
@@ -1451,22 +1471,22 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 			k->arrange(kit, {p, in.y, k->r.w, in.h});
 		else
 			k->arrange(kit, {in.x, p, in.w, k->r.h});
-		p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + this->gap;
+		p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + gap;
 	}
 	if (this->grow)
 		return;
-	float bottom = this->r.y + this->r.h - this->pad_y;
+	int bottom = this->r.y + this->r.h - pad_y;
 	for (const auto &k : this->kids) {
 		if (k && k->shown())
 			bottom = max(bottom, k->r.y + k->r.h);
 	}
-	this->r.h = max(this->r.h, bottom + this->pad_y - this->r.y);
+	this->r.h = max(this->r.h, bottom + pad_y - this->r.y);
 }
 
 // --- Row ---------------------------------------------------------------------
 
 void
-Row::measure(Kit &kit, float max_w, float max_h)
+Row::measure(Kit &kit, int max_w, int max_h)
 {
 	measure_pack(kit, max_w, max_h, true);
 }
@@ -1480,7 +1500,7 @@ Row::arrange(Kit &kit, Rect alloc)
 // --- Column ------------------------------------------------------------------
 
 void
-Column::measure(Kit &kit, float max_w, float max_h)
+Column::measure(Kit &kit, int max_w, int max_h)
 {
 	measure_pack(kit, max_w, max_h, false);
 }
@@ -1506,10 +1526,12 @@ Scroll::clamp()
 }
 
 void
-Scroll::set_metrics(float content_h, float view_h)
+Scroll::set_metrics(const Kit &kit, float content_h, float view_h)
 {
 	this->content = max(0.0f, content_h);
 	this->view = max(0.0f, view_h);
+	this->bar_w = kit.px(kScrollBarW);
+	this->step = kit.px(kScrollStep);
 	clamp();
 }
 
@@ -1554,7 +1576,7 @@ Scroll::wake_ms() const
 Rect
 Scroll::bar_rect(Rect viewport) const
 {
-	const float w = min(kScrollBarW, viewport.w);
+	const int w = min(this->bar_w, viewport.w);
 	return {viewport.x + viewport.w - w, viewport.y, w, viewport.h};
 }
 
@@ -1562,15 +1584,17 @@ Rect
 Scroll::thumb_rect(Rect viewport) const
 {
 	const Rect bar = bar_rect(viewport);
-	if (bar.h <= 0.0f || this->content <= 0.0f)
+	if (bar.h <= 0 || this->content <= 0.0f)
 		return bar;
-	float th = bar.h * (this->view / this->content);
-	th = std::clamp(th, min(kScrollStep, bar.h), bar.h);
-	const float travel = bar.h - th;
+	// Length and position stay continuous right up to the rect: rounding
+	// the ratio itself would make the thumb jitter as content grows.
+	float th = float(bar.h) * (this->view / this->content);
+	th = std::clamp(th, float(min(this->step, bar.h)), float(bar.h));
+	const float travel = float(bar.h) - th;
 	const float range = max_offset();
 	const float ty =
 		range > 0.0f && travel > 0.0f ? (this->offset / range) * travel : 0.0f;
-	return {bar.x, bar.y + ty, bar.w, th};
+	return {bar.x, bar.y + int(lround(ty)), bar.w, int(lround(th))};
 }
 
 void
@@ -1578,13 +1602,13 @@ Scroll::set_from_y(float y, Rect viewport)
 {
 	const Rect bar = bar_rect(viewport);
 	const Rect thumb = thumb_rect(viewport);
-	const float travel = bar.h - thumb.h;
+	const float travel = float(bar.h - thumb.h);
 	const float range = max_offset();
 	if (travel <= 0.0f || range <= 0.0f) {
 		this->offset = 0.0f;
 		return;
 	}
-	const float ty = y - this->grab_ - bar.y;
+	const float ty = y - this->grab_ - float(bar.y);
 	this->offset = std::clamp(ty / travel, 0.0f, 1.0f) * range;
 }
 
@@ -1610,11 +1634,11 @@ Scroll::page(int dir)
 {
 	if (this->content <= this->view)
 		return false;
-	const float step =
-		this->view > kScrollStep ? this->view - kScrollStep : this->view;
+	const float page = float(this->step);
+	const float by = this->view > page ? this->view - page : this->view;
 	const float prev = this->offset;
 	this->offset =
-		std::clamp(this->offset + float(dir) * step, 0.0f, max_offset());
+		std::clamp(this->offset + float(dir) * by, 0.0f, max_offset());
 	reveal();
 	return this->offset != prev;
 }
@@ -1628,9 +1652,9 @@ Scroll::press(float x, float y, Qt::MouseButton button, Rect viewport)
 		return false;
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.contains(x, y))
-		this->grab_ = y - thumb.y;
+		this->grab_ = y - float(thumb.y);
 	else {
-		this->grab_ = thumb.h * 0.5f;
+		this->grab_ = float(thumb.h) * 0.5f;
 		set_from_y(y, viewport);
 	}
 	this->dragging = true;
@@ -1664,44 +1688,50 @@ Scroll::paint(Kit &kit, Rect viewport) const
 	if (!visible())
 		return;
 	const Rect thumb = thumb_rect(viewport);
-	if (thumb.w <= 0.0f || thumb.h <= 0.0f)
+	if (thumb.w <= 0 || thumb.h <= 0)
 		return;
-	kit.list_.add_rect_filled(thumb.x, thumb.y, thumb.x + thumb.w,
-		thumb.y + thumb.h, kit.colours_[ColourDivider]);
+	kit.list_.add_rect_filled(float(thumb.x), float(thumb.y),
+		float(thumb.x + thumb.w), float(thumb.y + thumb.h),
+		kit.colours_[ColourDivider]);
 }
 
 void
 ScrollColumn::arrange(Kit &kit, Rect alloc)
 {
 	Column::arrange(kit, alloc);
-	float bottom = alloc.y;
+	int bottom = alloc.y;
 	for (const auto &k : this->kids) {
 		if (k && k->shown())
 			bottom = max(bottom, k->r.y + k->r.h);
 	}
-	this->scroll_.set_metrics(max(0.0f, bottom - alloc.y), alloc.h);
+	this->scroll_.set_metrics(
+		kit, float(max(0, bottom - alloc.y)), float(alloc.h));
 	if (this->follow_focus && kit.focus_ != this->followed_) {
 		this->followed_ = kit.focus_;
 		if (Widget *f = this->followed_) {
 			for (Widget *p = f; p; p = p->parent_) {
 				if (p != this)
 					continue;
-				const float y0 = f->r.y - alloc.y;
+				const float y0 = float(f->r.y - alloc.y);
 				if (y0 < this->scroll_.offset)
 					this->scroll_.offset = y0;
-				else if (y0 + f->r.h > this->scroll_.offset + alloc.h)
-					this->scroll_.offset = y0 + f->r.h - alloc.h;
+				else if (y0 + float(f->r.h) >
+					this->scroll_.offset + float(alloc.h))
+					this->scroll_.offset =
+						y0 + float(f->r.h) - float(alloc.h);
 				this->scroll_.clamp();
 				break;
 			}
 		}
 	}
-	if (this->scroll_.offset <= 0.0f)
+	// The offset is continuous, but shifting children by a fraction would
+	// smear them: round once, here, where it turns into geometry.
+	const int by = int(lround(this->scroll_.offset));
+	if (by <= 0)
 		return;
 	for (auto &k : this->kids) {
 		if (k)
-			k->arrange(
-				kit, {k->r.x, k->r.y - this->scroll_.offset, k->r.w, k->r.h});
+			k->arrange(kit, {k->r.x, k->r.y - by, k->r.w, k->r.h});
 	}
 }
 
@@ -1755,7 +1785,7 @@ ScrollColumn::motion(Kit &, float, float y)
 bool
 ScrollColumn::scroll(Kit &, float, float, int delta)
 {
-	return this->scroll_.wheel(delta, kScrollStep * 3.0f);
+	return this->scroll_.wheel(delta, float(this->scroll_.step * 3));
 }
 
 bool
@@ -1785,11 +1815,14 @@ ScrollColumn::wake_ms() const
 // --- Panel -------------------------------------------------------------------
 
 void
-Panel::measure(Kit &kit, float avail_w, float avail_h)
+Panel::measure(Kit &kit, int avail_w, int avail_h)
 {
-	const float iw = max(0.0f, avail_w - this->pad_x * 2.0f);
-	const float ih = max(0.0f, avail_h - this->pad_y * 2.0f);
-	float w = this->min_w, h = 0.0f;
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int min_w = kit.px(this->min_w), min_h = kit.px(this->min_h);
+	const int max_h = kit.px(this->max_h);
+	const int iw = max(0, avail_w - pad_x * 2);
+	const int ih = max(0, avail_h - pad_y * 2);
+	int w = min_w, h = 0;
 	for (auto &k : this->kids) {
 		if (!k || !k->shown())
 			continue;
@@ -1797,14 +1830,14 @@ Panel::measure(Kit &kit, float avail_w, float avail_h)
 		w = max(w, k->r.w);
 		h += k->r.h;
 	}
-	this->r.w = this->grow ? avail_w : this->pad_x * 2.0f + w;
-	this->r.h = this->pad_y * 2.0f + h;
-	if (this->min_h > 0.0f)
-		this->r.h = max(this->r.h, this->min_h);
-	if (this->max_h > 0.0f)
-		this->r.h = min(this->r.h, this->max_h);
-	if (this->min_w > 0.0f)
-		this->r.w = max(this->r.w, this->min_w);
+	this->r.w = this->grow ? avail_w : pad_x * 2 + w;
+	this->r.h = pad_y * 2 + h;
+	if (min_h > 0)
+		this->r.h = max(this->r.h, min_h);
+	if (max_h > 0)
+		this->r.h = min(this->r.h, max_h);
+	if (min_w > 0)
+		this->r.w = max(this->r.w, min_w);
 	this->r.h = min(this->r.h, avail_h);
 	this->r.w = min(this->r.w, avail_w);
 }
@@ -1816,13 +1849,14 @@ Panel::arrange(Kit &kit, Rect alloc)
 		this->r = {};
 		return;
 	}
-	this->r = kit.snap_rect(alloc);
-	if (this->max_h > 0.0f && this->r.h > this->max_h)
-		this->r.h = this->max_h;
-	if (this->min_h > 0.0f && this->r.h < this->min_h)
-		this->r.h = this->min_h;
-	const Rect in = this->r.inset(this->pad_x, this->pad_y);
-	float y = in.y;
+	this->r = alloc;
+	const int min_h = kit.px(this->min_h), max_h = kit.px(this->max_h);
+	if (max_h > 0 && this->r.h > max_h)
+		this->r.h = max_h;
+	if (min_h > 0 && this->r.h < min_h)
+		this->r.h = min_h;
+	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
+	int y = in.y;
 	for (auto &k : this->kids) {
 		if (!k || !k->shown())
 			continue;
@@ -1958,40 +1992,40 @@ Popup::place(Kit &kit)
 {
 	if (this->opener)
 		this->at = this->opener->r;
-	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
+	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
 	measure(kit, cap, kUnlim);
-	float x = kit.snap(this->at.x);
-	float y = kit.snap(this->at.y + this->at.h);
+	int x = this->at.x;
+	int y = this->at.y + this->at.h;
 	if (x + this->r.w > kit.host_w_)
-		x = max(0.0f, kit.host_w_ - this->r.w);
-	if (x < 0.0f)
-		x = 0.0f;
+		x = max(0, kit.host_w_ - this->r.w);
+	if (x < 0)
+		x = 0;
 	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, this->at.y - this->r.h);
+		y = max(0, this->at.y - this->r.h);
 	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, kit.host_h_ - this->r.h);
-	if (y < 0.0f)
-		y = 0.0f;
+		y = max(0, kit.host_h_ - this->r.h);
+	if (y < 0)
+		y = 0;
 	arrange(kit, {x, y, this->r.w, this->r.h});
 }
 
 void
 Popup::place_sub(Kit &kit)
 {
-	const float cap = kit.host_w_ > 0.0f ? kit.host_w_ : kUnlim;
+	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
 	measure(kit, cap, kUnlim);
 	const Popup *owner = this->parent_popup;
 	const Widget *anchor = this->opener;
-	float x = owner ? kit.snap(owner->r.x + owner->r.w) : 0.0f;
+	int x = owner ? owner->r.x + owner->r.w : 0;
 	if (x + this->r.w > kit.host_w_)
-		x = owner ? kit.snap(owner->r.x - this->r.w) : 0.0f;
-	if (x < 0.0f)
-		x = 0.0f;
-	float y = anchor ? kit.snap(anchor->r.y) : 0.0f;
+		x = owner ? owner->r.x - this->r.w : 0;
+	if (x < 0)
+		x = 0;
+	int y = anchor ? anchor->r.y : 0;
 	if (y + this->r.h > kit.host_h_)
-		y = max(0.0f, kit.host_h_ - this->r.h);
-	if (y < 0.0f)
-		y = 0.0f;
+		y = max(0, kit.host_h_ - this->r.h);
+	if (y < 0)
+		y = 0;
 	arrange(kit, {x, y, this->r.w, this->r.h});
 }
 
@@ -2082,17 +2116,18 @@ Dialog::place(Kit &kit)
 		return;
 	}
 	this->frame->visible = true;
-	this->r = {0.0f, 0.0f, kit.host_w_, kit.host_h_};
+	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
-	const float margin = kGlowPts * 2.0f;
-	const float max_w = max(1.0f, min(560.0f, kit.host_w_ - margin * 2.0f));
-	const float avail_h = max(1.0f, kit.host_h_ - margin * 2.0f);
+	const int margin = kit.px(kGlowPts * 2.0f);
+	const int max_w =
+		max(1, min(kit.px(560.0f), kit.host_w_ - margin * 2));
+	const int avail_h = max(1, kit.host_h_ - margin * 2);
 	this->frame->measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
-	const float h = min(this->frame->r.h, avail_h);
-	const float x = max(0.0f, (kit.host_w_ - this->frame->r.w) * 0.5f);
-	const float y = margin + max(0.0f, (avail_h - h) * 0.5f);
+	const int h = min(this->frame->r.h, avail_h);
+	const int x = max(0, (kit.host_w_ - this->frame->r.w) / 2);
+	const int y = margin + max(0, (avail_h - h) / 2);
 	this->frame->arrange(kit, {x, y, this->frame->r.w, h});
 
 	// Button::focusable() wants a laid-out rect, so this cannot happen any
@@ -2155,22 +2190,22 @@ hsep()
 
 // Where an item's columns land, relative to its own left edge.
 struct MenuCols {
-	float label_x = 0.0f;
-	float accel_x = 0.0f;
-	float accel_w = 0.0f;
-	float chevron = 0.0f;
-	float avail = 0.0f;  // what the label gets before the accelerator
+	int label_x = 0;
+	int accel_x = 0;
+	int accel_w = 0;
+	int chevron = 0;
+	int avail = 0;  // what the label gets before the accelerator
 };
 
 MenuCols
 menu_cols(const Kit &kit, const MenuItem &m)
 {
 	MenuCols c;
-	c.accel_w = m.accel_col > 0.0f ? m.accel_col : m.accel_width(kit);
-	c.chevron = m.sub ? kIconPx : 0.0f;
-	c.label_x = kFramePadX + kIconPx + kFramePadX;
-	c.accel_x = m.r.w - kFramePadX - c.chevron - c.accel_w;
-	c.avail = max(1.0f, c.accel_x - kFramePadX - c.label_x);
+	c.accel_w = m.accel_col > 0 ? m.accel_col : m.accel_width(kit);
+	c.chevron = m.sub ? kit.px(kIconPts) : 0;
+	c.label_x = kit.px(kFramePadX * 2.0f + kIconPts);
+	c.accel_x = m.r.w - kit.px(kFramePadX) - c.chevron - c.accel_w;
+	c.avail = max(1, c.accel_x - kit.px(kFramePadX) - c.label_x);
 	return c;
 }
 
@@ -2428,11 +2463,11 @@ Menu::sync()
 }
 
 void
-Menu::measure(Kit &kit, float max_w, float max_h)
+Menu::measure(Kit &kit, int max_w, int max_h)
 {
 	if (this->col) {
-		float lw = 0.0f;
-		float aw = 0.0f;
+		int lw = 0;
+		int aw = 0;
 		for (const auto &k : this->col->kids) {
 			auto *item = dynamic_cast<MenuItem *>(k.get());
 			if (!item)
@@ -2473,24 +2508,23 @@ Menu::key(Kit &kit, const Key &ev)
 }
 
 void
-MenuItem::measure(Kit &kit, float, float)
+MenuItem::measure(Kit &kit, int, int)
 {
-	const float lw =
-		this->label_col > 0.0f ? this->label_col : label_width(kit);
-	const float aw =
-		this->accel_col > 0.0f ? this->accel_col : accel_width(kit);
-	float width = kFramePadX + kIconPx + kFramePadX + lw + 2 * kFramePadX + aw;
+	const int lw = this->label_col > 0 ? this->label_col : label_width(kit);
+	const int aw = this->accel_col > 0 ? this->accel_col : accel_width(kit);
+	const int icon = kit.px(kIconPts);
+	// One conversion for the whole run of padding, rather than rounding
+	// each term and accumulating the error.
+	int width = kit.px(kIconPts + kFramePadX * 5.0f) + lw + aw;
 	if (this->sub)
-		width += kIconPx;
-	width += kFramePadX;
-	float ch = kit.text_height(QStringLiteral("Ag"), 0.0f, false);
-	ch = max(ch, kIconPx);
+		width += icon;
+	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
+	ch = max(ch, icon);
 	if (!this->text.isEmpty())
-		ch = max(ch, kit.text_height(this->text, 0.0f, false));
+		ch = max(ch, kit.text_height(this->text, 0, false));
 	if (!this->accel.isEmpty())
-		ch = max(ch, kit.text_height(this->accel, 0.0f, false));
-	this->r = {
-		0, 0, kit.snap_size(width), kit.snap_size(kFramePadY * 2.0f + ch)};
+		ch = max(ch, kit.text_height(this->accel, 0, false));
+	this->r = {0, 0, width, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
@@ -2512,12 +2546,12 @@ MenuItem::paint(Kit &kit) const
 	const float th =
 		this->text.isEmpty() ? 0.0f : kit.text_height(this->text, 0.0f, false);
 	const float ty = this->r.y + (this->r.h - th) * 0.5f;
-	const float iy = this->r.y + (this->r.h - kIconPx) * 0.5f;
+	const float iy = this->r.y + (this->r.h - kIconPts) * 0.5f;
 	const Colour label_c =
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.5f);
 
 	if (this->checkable && this->checked)
-		emit_icon(kit, lead_x, iy, kIconPx, "object-select-symbolic", label_c);
+		emit_icon(kit, lead_x, iy, kIconPts, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
 		const QString shown = menu_shown(kit, *this);
 		emit_text(kit, label_x, ty, shown, label_c, false,
@@ -2532,7 +2566,7 @@ MenuItem::paint(Kit &kit) const
 	}
 	if (this->sub) {
 		emit_icon(kit, this->r.x + this->r.w - kFramePadX - cols.chevron, iy,
-			kIconPx, "go-next-symbolic",
+			kIconPts, "go-next-symbolic",
 			col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.375f));
 	}
 }
@@ -2541,14 +2575,14 @@ void
 MenuItem::prepare(Kit &kit)
 {
 	if (this->sub)
-		kit.pack_icon("go-next-symbolic", int(kIconPx * kit.dpr_));
+		kit.pack_icon("go-next-symbolic", int(kIconPts * kit.dpr_));
 	if (this->checkable)
-		kit.pack_icon("object-select-symbolic", int(kIconPx * kit.dpr_));
+		kit.pack_icon("object-select-symbolic", int(kIconPts * kit.dpr_));
 	if (this->text.isEmpty())
 		return;
-	cache_text(kit, menu_shown(kit, *this), false, 0.0f);
+	cache_text(kit, menu_shown(kit, *this), false, 0);
 	if (!this->accel.isEmpty())
-		cache_text(kit, this->accel, false, 0.0f);
+		cache_text(kit, this->accel, false, 0);
 }
 
 bool
@@ -2570,13 +2604,13 @@ MenuItem::activate(Kit &kit)
 	return true;
 }
 
-float
+int
 MenuItem::label_width(const Kit &kit) const
 {
 	return kit.text_width(this->text, false);
 }
 
-float
+int
 MenuItem::accel_width(const Kit &kit) const
 {
 	return kit.text_width(this->accel, false);
@@ -2689,7 +2723,7 @@ ToolbarSlot::item_count() const
 }
 
 void
-ToolbarSlot::measure(Kit &kit, float max_w, float max_h)
+ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
 {
 	for (size_t i = 0; i < item_count(); ++i) {
 		if (this->kids[i])
@@ -2708,18 +2742,20 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 		this->split_ = 0;
 		return;
 	}
-	const Rect in = kit.snap_rect(alloc).inset(this->pad_x, this->pad_y);
+	const int pad_x = kit.px(this->pad_x);
+	const Rect in = alloc.inset(pad_x, kit.px(this->pad_y));
 	const size_t end = item_count();
 	measure(kit, kUnlim, alloc.h);
-	const float total = max(0.0f, this->r.w - this->pad_x * 2.0f);
+	const int total = max(0, this->r.w - pad_x * 2);
 
 	this->split_ = end;
 	this->more->visible = false;
 	if (total > in.w) {
 		this->more->visible = true;
 		this->more->measure(kit, kUnlim, in.h);
-		const float budget = max(0.0f, in.w - this->more->r.w - this->gap);
-		float used = 0.0f;
+		const int gap = kit.px(this->gap);
+		const int budget = max(0, in.w - this->more->r.w - gap);
+		int used = 0;
 		int kept = 0;
 		bool full = false;
 		this->split_ = 0;
@@ -2730,7 +2766,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 					this->split_ = i + 1;
 				continue;
 			}
-			const float need = item->r.w + (kept ? this->gap : 0.0f);
+			const int need = item->r.w + (kept ? gap : 0);
 			if (full || used + need > budget) {
 				full = true;
 				continue;
@@ -2838,10 +2874,11 @@ Toolbar::sync_buttons()
 }
 
 void
-Toolbar::measure(Kit &kit, float avail_w, float avail_h)
+Toolbar::measure(Kit &kit, int avail_w, int avail_h)
 {
-	const float ih = max(0.0f, avail_h - this->pad_y * 2.0f);
-	float h = 0.0f;
+	const int pad_y = kit.px(this->pad_y);
+	const int ih = max(0, avail_h - pad_y * 2);
+	int h = 0;
 	auto slot = [&](Widget *w) {
 		if (!w)
 			return;
@@ -2852,8 +2889,8 @@ Toolbar::measure(Kit &kit, float avail_w, float avail_h)
 	slot(this->mid);
 	slot(this->right);
 	this->r.w = avail_w;
-	this->r.h = this->pad_y * 2.0f + h;
-	if (avail_h > 0.0f)
+	this->r.h = pad_y * 2 + h;
+	if (avail_h > 0)
 		this->r.h = min(this->r.h, avail_h);
 }
 
@@ -2864,50 +2901,52 @@ Toolbar::arrange(Kit &kit, Rect alloc)
 		this->r = {};
 		return;
 	}
-	this->r = kit.snap_rect(alloc);
+	this->r = alloc;
 	place_slots(kit);
 }
 
 void
 Toolbar::place_slots(Kit &kit)
 {
-	if (this->r.w <= 0.0f)
+	if (this->r.w <= 0)
 		return;
-	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
-	if (bar.w <= 0.0f)
+	const Rect bar = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
+	if (bar.w <= 0)
 		return;
-	const float avail = bar.w;
-	const float h = bar.h;
-	const float x0 = bar.x;
-	const float y0 = bar.y;
-	auto nat = [&](Widget *w) {
+	const int avail = bar.w;
+	const int h = bar.h;
+	const int x0 = bar.x;
+	const int y0 = bar.y;
+	auto nat = [&](Widget *w) -> int {
 		if (!w)
-			return 0.0f;
+			return 0;
 		w->measure(kit, kUnlim, h);
 		return w->r.w;
 	};
-	const float lw = nat(this->left);
-	const float mw = nat(this->mid);
-	const float rw = nat(this->right);
-	float mmin = 0.0f;
-	if (mw > 0.0f && this->mid && this->mid->more) {
+	const int lw = nat(this->left);
+	const int mw = nat(this->mid);
+	const int rw = nat(this->right);
+	int mmin = 0;
+	if (mw > 0 && this->mid && this->mid->more) {
 		this->mid->more->measure(kit, kUnlim, h);
 		mmin = min(mw, this->mid->more->r.w);
 	}
-	float left_w = lw;
-	float right_w = rw;
-	float mid_x;
+	int left_w = lw;
+	int right_w = rw;
+	int mid_x;
 	if (lw + mw + rw <= avail) {
-		mid_x = x0 + clamp((avail - mw) * 0.5f, lw, avail - rw - mw);
+		mid_x = x0 + clamp((avail - mw) / 2, lw, avail - rw - mw);
 	} else {
-		const float keep = min(mmin, avail);
-		const float rest = max(0.0f, avail - keep);
-		left_w = min(lw, rest * 0.5f);
+		const int keep = min(mmin, avail);
+		const int rest = max(0, avail - keep);
+		left_w = min(lw, rest / 2);
 		right_w = min(rw, rest - left_w);
 		left_w = min(lw, rest - right_w);
 		mid_x = x0 + left_w;
 	}
-	const float mid_w = x0 + avail - right_w - mid_x;
+	// The three slots tile the bar exactly: the middle takes whatever the
+	// ends leave, and no edge is rounded independently of its neighbour.
+	const int mid_w = x0 + avail - right_w - mid_x;
 	if (this->left)
 		this->left->arrange(kit, {x0, y0, left_w, h});
 	if (this->mid) {
@@ -2936,7 +2975,7 @@ namespace
 {
 
 // How far the pointer must travel before a titlebar press becomes a move.
-constexpr float kDragPx = 4.0f;
+constexpr float kDragPts = 4.0f;
 
 unique_ptr<Button>
 make_title_button(Titlebar *bar, Action action, const char *icon)
@@ -3007,14 +3046,14 @@ Titlebar::sync(Kit &kit)
 // Only the client draws its own decorations, and never over a fullscreen
 // window: this is the one widget that decides for itself whether it is there.
 void
-Titlebar::measure(Kit &kit, float avail_w, float)
+Titlebar::measure(Kit &kit, int avail_w, int)
 {
 	this->visible = kit.csd_ && !kit.fullscreen_;
 	if (!this->visible) {
 		this->r = {};
 		return;
 	}
-	float ih = 0.0f;
+	int ih = 0;
 	auto slot = [&](Button *b) {
 		if (!b)
 			return;
@@ -3025,7 +3064,7 @@ Titlebar::measure(Kit &kit, float avail_w, float)
 	slot(this->maximize);
 	slot(this->close);
 	this->r.w = avail_w;
-	this->r.h = this->pad_y * 2.0f + ih;
+	this->r.h = kit.px(this->pad_y) * 2 + ih;
 }
 
 void
@@ -3035,9 +3074,9 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 		this->r = {};
 		return;
 	}
-	this->r = kit.snap_rect(alloc);
-	const Rect bar = this->r.inset(this->pad_x, this->pad_y);
-	float x = bar.x + bar.w;
+	this->r = alloc;
+	const Rect bar = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
+	int x = bar.x + bar.w;
 	auto place = [&](Button *b) {
 		if (!b)
 			return;
@@ -3049,14 +3088,14 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 	place(this->maximize);
 	place(this->minimize);
 	if (this->title) {
-		const float left = bar.x;
-		const float right = x;
-		const float avail = max(0.0f, right - left);
+		const int left = bar.x;
+		const int right = x;
+		const int avail = max(0, right - left);
 		this->title->text =
 			kit.elide_lines(this->text, avail, 1, this->title->bold);
 		this->title->measure(kit, avail, bar.h);
-		float tw = min(this->title->r.w, avail);
-		float tx = this->r.x + (this->r.w - tw) * 0.5f;
+		const int tw = min(this->title->r.w, avail);
+		int tx = this->r.x + (this->r.w - tw) / 2;
 		if (tx < left)
 			tx = left;
 		if (tx + tw > right)
@@ -3074,7 +3113,7 @@ Titlebar::paint(Kit &kit) const
 void
 Titlebar::prepare(Kit &kit)
 {
-	const int px = max(16, int(lround(double(kIconPx) * double(kit.dpr_))));
+	const int px = max(16, int(lround(double(kIconPts) * double(kit.dpr_))));
 	kit.pack_icon("window-minimize", px);
 	kit.pack_icon("window-maximize", px);
 	kit.pack_icon("window-restore", px);
@@ -3126,7 +3165,8 @@ Titlebar::motion(Kit &kit, float x, float y)
 		return false;
 	const float dx = x - this->drag_x_;
 	const float dy = y - this->drag_y_;
-	if (dx * dx + dy * dy < kDragPx * kDragPx)
+	const float slop = float(kit.px(kDragPts));
+	if (dx * dx + dy * dy < slop * slop)
 		return false;
 	this->drag_armed_ = false;
 	kit.start_move();
@@ -3167,7 +3207,7 @@ Kit::pack_bitmap(const QImage &image)
 void
 Kit::cache_text(const QString &text, bool bold)
 {
-	::dn::cache_text(*this, text, bold, 0.0f);
+	::dn::cache_text(*this, text, bold, 0);
 }
 
 void
@@ -3236,13 +3276,9 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	const float hair = 1.0f / max(this->dpr_, 0.01f);
-
-	// Snap the edges rather than the size: snap_size() rounds up, which would
-	// push the far edges back out over the widget's own border.
-	const Rect g = w.inset(hair, hair);
-	this->list_.add_rect_stroke(snap(g.x), snap(g.y), snap(g.x + g.w),
-		snap(g.y + g.h), col(this->colours_[ColourInk]));
+	const Rect g = w.inset(1, 1);
+	this->list_.add_rect_stroke(float(g.x), float(g.y), float(g.x + g.w),
+		float(g.y + g.h), col(this->colours_[ColourInk]));
 }
 
 void
@@ -3281,28 +3317,26 @@ Kit::take_atlas_dirty()
 	return this->atlas_.take_dirty();
 }
 
-float
+int
 Kit::text_width(const QString &text, bool bold) const
 {
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	return float(QFontMetricsF(font).horizontalAdvance(text)) /
-		max(this->dpr_, 0.01f);
+	return int(ceil(QFontMetricsF(font).horizontalAdvance(text)));
 }
 
-float
+int
 Kit::caret_x(const QString &text, int index, bool bold) const
 {
-	const float dpr = max(this->dpr_, 0.01f);
 	if (text.isEmpty())
-		return 0.0f;
+		return 0;
 	const int at = clamp(index, 0, int(text.size()));
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
 	QTextLayout layout(text, font);
-	layout_text(&layout, dpr, 0.0f);
+	layout_text(&layout, 0);
 	const QTextLine line = layout.lineForTextPosition(at);
 	if (!line.isValid())
-		return 0.0f;
-	return float(line.cursorToX(at)) / dpr;
+		return 0;
+	return int(lround(line.cursorToX(at)));
 }
 
 int
@@ -3310,42 +3344,40 @@ Kit::index_at(const QString &text, float x, bool bold) const
 {
 	if (text.isEmpty())
 		return 0;
-	const float dpr = max(this->dpr_, 0.01f);
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
 	QTextLayout layout(text, font);
-	layout_text(&layout, dpr, 0.0f);
+	layout_text(&layout, 0);
 	if (layout.lineCount() < 1)
 		return 0;
 	const QTextLine line = layout.lineAt(0);
 	if (!line.isValid())
 		return 0;
-	return line.xToCursor(qreal(x * dpr));
+	return line.xToCursor(qreal(x));
 }
 
-float
+int
 Kit::text_ascent(bool bold) const
 {
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	return float(QFontMetricsF(font).ascent()) / max(this->dpr_, 0.01f);
+	return int(lround(QFontMetricsF(font).ascent()));
 }
 
 QString
 Kit::elide_lines(
-	const QString &text, float wrap_pts, int max_lines, bool bold) const
+	const QString &text, int wrap_px, int max_lines, bool bold) const
 {
 	if (text.isEmpty() || max_lines < 1)
 		return text;
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	const float dpr = max(this->dpr_, 0.01f);
-	const float wrap_px = (wrap_pts > 0.0f ? wrap_pts : 1.0e8f) * dpr;
+	const float limit = wrap_px > 0 ? float(wrap_px) : 1.0e8f;
 	QFontMetricsF fm(font);
 	if (max_lines == 1) {
-		if (fm.horizontalAdvance(text) <= wrap_px + 1.0f)
+		if (fm.horizontalAdvance(text) <= qreal(limit))
 			return text;
-		return fm.elidedText(text, Qt::ElideRight, wrap_px);
+		return fm.elidedText(text, Qt::ElideRight, qreal(limit));
 	}
 	QTextLayout layout(text, font);
-	layout_text(&layout, dpr, wrap_pts);
+	layout_text(&layout, wrap_px);
 	if (layout.lineCount() <= max_lines)
 		return text;
 	const QTextLine last = layout.lineAt(max_lines - 1);
@@ -3353,48 +3385,22 @@ Kit::elide_lines(
 		return text;
 	const int start = last.textStart();
 	return text.left(start) +
-		fm.elidedText(text.mid(start), Qt::ElideRight, wrap_px);
+		fm.elidedText(text.mid(start), Qt::ElideRight, qreal(limit));
 }
 
-float
-Kit::text_height(const QString &text, float wrap_pts, bool bold) const
+int
+Kit::text_height(const QString &text, int wrap_px, bool bold) const
 {
 	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	const float dpr = max(this->dpr_, 0.01f);
+	const int fallback = int(ceil(QFontMetricsF(font).height()));
 	if (text.isEmpty())
-		return float(QFontMetricsF(font).height()) / dpr;
+		return fallback;
 	QTextLayout layout(text, font);
-	layout_text(&layout, dpr, wrap_pts);
-	const float h = float(layout.boundingRect().height());
-	if (h <= 0.0f)
-		return float(QFontMetricsF(font).height()) / dpr;
-	return h / dpr;
-}
-
-float
-Kit::snap(float v) const
-{
-	const float d = max(this->dpr_, 0.01f);
-	return round(v * d) / d;
-}
-
-float
-Kit::snap_size(float v) const
-{
-	if (v <= 0.0f)
-		return 0.0f;
-	const float d = max(this->dpr_, 0.01f);
-	return ceil(v * d - 1e-4f) / d;
-}
-
-Rect
-Kit::snap_rect(Rect r) const
-{
-	r.x = snap(r.x);
-	r.y = snap(r.y);
-	r.w = snap_size(r.w);
-	r.h = snap_size(r.h);
-	return r;
+	layout_text(&layout, wrap_px);
+	const double h = layout.boundingRect().height();
+	if (h <= 0.0)
+		return fallback;
+	return int(ceil(h));
 }
 
 namespace
@@ -3615,6 +3621,10 @@ Kit::input_method(const QString &commit, const QString &preedit, int caret)
 bool
 Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	this->mods_ = mods;
@@ -3639,6 +3649,10 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	if (button == Qt::LeftButton)
@@ -3660,6 +3674,10 @@ Kit::mouse_release(float x, float y, Qt::MouseButton button)
 bool
 Kit::mouse_motion(float x, float y)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	this->hot_ = hit(x, y);
@@ -3700,6 +3718,10 @@ Kit::track_popups(float x, float y)
 bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	if (!delta)
@@ -3719,6 +3741,12 @@ Kit::mouse_scroll(float x, float y, int delta)
 bool
 Kit::pan(float x, float y, float dx, float dy)
 {
+	// Points in, pixels out: the deltas scale the same way as the
+	// position does.
+	x = float(px(x));
+	y = float(px(y));
+	dx = float(px(dx));
+	dy = float(px(dy));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	if (dx == 0.0f && dy == 0.0f)
@@ -3736,6 +3764,10 @@ Kit::pan(float x, float y, float dx, float dy)
 bool
 Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	Widget *h = hit(x, y);
@@ -3751,6 +3783,10 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
+	// Platform events arrive in logical points; the widget tree is
+	// device pixels.  Convert once, here.
+	x = float(px(x));
+	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	if (popup_open())
@@ -3870,7 +3906,8 @@ Kit::tooltip(const Widget *hot)
 	const QString accel = hot ? hot->tip_key() : QString();
 	const float dx = this->mouse_x_ - this->hover_x_;
 	const float dy = this->mouse_y_ - this->hover_y_;
-	const bool moved = dx * dx + dy * dy > kTooltipMovePts * kTooltipMovePts;
+	const float slop = float(px(kTooltipMovePts));
+	const bool moved = dx * dx + dy * dy > slop * slop;
 	if (tip != this->tooltip_text_ || accel != this->tooltip_accel_ || moved) {
 		this->tooltip_text_ = tip;
 		this->tooltip_accel_ = accel;
@@ -3897,28 +3934,29 @@ paint_tooltip(Kit &kit)
 		return;
 	const QString text = kit.tooltip_text_;
 	const QString accel = kit.tooltip_accel_;
-	const float gap = accel.isEmpty() ? 0.0f : 8.0f;
-	const float aw = accel.isEmpty() ? 0.0f : kit.text_width(accel, false);
-	const float tw =
-		kit.text_width(text, false) + gap + aw + kTooltipPadX * 2.0f;
-	const float th = kit.text_height(text, 0.0f, false) + kFramePadY * 2.0f;
-	float tx = kit.mouse_x_ + 16.0f;
-	float ty = kit.mouse_y_ + 8.0f;
+	const int gap = accel.isEmpty() ? 0 : kit.px(8.0f);
+	const int aw = accel.isEmpty() ? 0 : kit.text_width(accel, false);
+	const int tw = kit.text_width(text, false) + gap + aw +
+		kit.px(kTooltipPadX) * 2;
+	const int th = kit.text_height(text, 0, false) + kit.px(kFramePadY) * 2;
+	const int glow = kit.px(kGlowPts), step = kit.px(4.0f);
+	int tx = int(kit.mouse_x_) + kit.px(16.0f);
+	int ty = int(kit.mouse_y_) + kit.px(8.0f);
 	Rect a{};
 	if (kit.tooltip_anchor_)
 		a = kit.tooltip_anchor_->tip_anchor();
 	if (a.w > 0) {
 		tx = a.x;
-		ty = a.y + a.h + 4.0f;
-		if (tx + tw + kGlowPts > kit.host_w_)
-			tx = max(0.0f, kit.host_w_ - tw - kGlowPts);
+		ty = a.y + a.h + step;
+		if (tx + tw + glow > kit.host_w_)
+			tx = max(0, kit.host_w_ - tw - glow);
 		if (ty + th > kit.host_h_)
-			ty = max(0.0f, a.y - th - 4.0f);
+			ty = max(0, a.y - th - step);
 	} else {
-		if (tx + tw + kGlowPts > kit.host_w_)
-			tx = max(0.0f, kit.host_w_ - tw - kGlowPts);
+		if (tx + tw + glow > kit.host_w_)
+			tx = max(0, kit.host_w_ - tw - glow);
 		if (ty + th > kit.host_h_)
-			ty = max(0.0f, kit.mouse_y_ - th - 4.0f);
+			ty = max(0, int(kit.mouse_y_) - th - step);
 	}
 	Panel tipn;
 	tipn.pad_x = kTooltipPadX;
@@ -3926,7 +3964,7 @@ paint_tooltip(Kit &kit)
 	tipn.fill = Fill::Tooltip;
 	tipn.stroke = Stroke::All;
 	auto row = make_unique<Row>();
-	row->gap = gap;
+	row->gap = accel.isEmpty() ? 0.0f : 8.0f;
 	auto lab = make_unique<Label>();
 	lab->text = text;
 	row->add_child(std::move(lab));
@@ -4016,7 +4054,7 @@ Kit::open_popup(Popup *p)
 		this->popup_at_ = chrono::steady_clock::now();
 	this->popups_.push_back(p);
 	this->scrim_->visible = true;
-	this->scrim_->r = {0.0f, 0.0f, this->host_w_, this->host_h_};
+	this->scrim_->r = {0, 0, this->host_w_, this->host_h_};
 	this->tooltip_visible_ = false;
 }
 
@@ -4108,11 +4146,12 @@ Kit::hit(float x, float y)
 Rect
 Kit::frame() const
 {
-	const Rect host = {0.0f, 0.0f, this->host_w_, this->host_h_};
+	const Rect host = {0, 0, this->host_w_, this->host_h_};
 	if (!this->csd_shadow_)
 		return host;
 	// TODO(p): Consider if we don't want to add another 1px border.
-	return snap_rect(host.inset(kGlowPts, kGlowPts));
+	const int glow = px(kGlowPts);
+	return host.inset(glow, glow);
 }
 
 // The resize band straddles the frame's edge, and reaches outside it into
@@ -4122,20 +4161,23 @@ Kit::resize_edges(float x, float y) const
 {
 	if (!this->csd_ || this->fullscreen_ || this->maximized_)
 		return {};
-	if (x < 0.0f || y < 0.0f || x >= this->host_w_ || y >= this->host_h_)
+	// Already in pixels: the Kit input entry points converted them.
+	const int ix = int(x), iy = int(y);
+	if (ix < 0 || iy < 0 || ix >= this->host_w_ || iy >= this->host_h_)
 		return {};
 	const Rect f = frame();
-	if (this->csd_shadow_ ? f.contains(x, y) : !f.contains(x, y))
+	const bool inside = f.contains(float(ix), float(iy));
+	if (this->csd_shadow_ ? inside : !inside)
 		return {};
-	const float band = kResizeBorderPts;
+	const int band = px(kResizeBorderPts);
 	Qt::Edges e;
-	if (x < f.x + band)
+	if (ix < f.x + band)
 		e |= Qt::LeftEdge;
-	if (x >= f.x + f.w - band)
+	if (ix >= f.x + f.w - band)
 		e |= Qt::RightEdge;
-	if (y < f.y + band)
+	if (iy < f.y + band)
 		e |= Qt::TopEdge;
-	if (y >= f.y + f.h - band)
+	if (iy >= f.y + f.h - band)
 		e |= Qt::BottomEdge;
 	return e;
 }
@@ -4205,7 +4247,7 @@ Kit::relayout_popups()
 	if (this->scrim_) {
 		this->scrim_->visible = !this->popups_.empty();
 		if (this->scrim_->visible)
-			this->scrim_->r = {0.0f, 0.0f, this->host_w_, this->host_h_};
+			this->scrim_->r = {0, 0, this->host_w_, this->host_h_};
 	}
 }
 
@@ -4227,8 +4269,10 @@ Kit::paint()
 		(float(this->white_.x) + 0.5f) / float(max(this->atlas_.w, 1));
 	const float white_v =
 		(float(this->white_.y) + 0.5f) / float(max(this->atlas_.h, 1));
-	this->list_.begin(
-		this->host_w_, this->host_h_, this->dpr_, white_u, white_v);
+	// The draw list is fed device pixels now, so its own grid is 1:1 and its
+	// snapping is a no-op on what layout already produced.
+	this->list_.begin(float(this->host_w_), float(this->host_h_), 1.0f,
+		white_u, white_v);
 	if (this->csd_shadow_) {
 		// TODO(p): Consider if we don't want to add another 1px border.
 		const Rect f = frame();

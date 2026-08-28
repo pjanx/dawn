@@ -130,7 +130,7 @@ struct Page : Composite {
 		return this->app_menu && this->app_menu->visible;
 	}
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	bool key(Kit &kit, const Key &ev) override;
 	std::size_t child_count() const override;

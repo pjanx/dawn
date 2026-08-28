@@ -369,7 +369,7 @@ struct Viewer::Worker {
 static void
 pack_toolbar_icons(Viewer &v)
 {
-	const int px = max(16, int(lround(kIconPx * v.kit_.dpr_)));
+	const int px = max(16, int(lround(kIconPts * v.kit_.dpr_)));
 	for (const Spec &spec : kItems) {
 		const ActionDef &d = action_def(spec.action);
 		v.kit_.pack_icon(action_icon(d, false), px);
@@ -520,28 +520,29 @@ display_size(const Viewer &v, uint32_t *width, uint32_t *height)
 		v.image_width_, v.image_height_, v.orientation_, width, height);
 }
 
+// The well is already in device pixels, like every other widget rect.
 static float
 well_w_px(const Viewer &v)
 {
-	return max(0.0f, v.r.w * v.kit_.dpr_);
+	return float(max(0, v.r.w));
 }
 
 static float
 well_h_px(const Viewer &v)
 {
-	return max(0.0f, v.r.h * v.kit_.dpr_);
+	return float(max(0, v.r.h));
 }
 
 static float
 well_cx(const Viewer &v)
 {
-	return v.r.x + v.r.w * 0.5f;
+	return float(v.r.x) + float(v.r.w) * 0.5f;
 }
 
 static float
 well_cy(const Viewer &v)
 {
-	return v.r.y + v.r.h * 0.5f;
+	return float(v.r.y) + float(v.r.h) * 0.5f;
 }
 
 static void
@@ -759,10 +760,8 @@ static void
 layout(Viewer &v, Page &ui)
 {
 	v.kit_.root_ = &ui;
-	const float width_pts = v.kit_.host_w_;
-	const float height_pts = v.kit_.host_h_;
 	sync_ui(v, ui);
-	ui.arrange(v.kit_, {0.0f, 0.0f, width_pts, height_pts});
+	ui.arrange(v.kit_, {0, 0, v.kit_.host_w_, v.kit_.host_h_});
 	sync_scale_label(v);
 	v.kit_.relayout_popups();
 	v.kit_.sync_focus();
@@ -1313,12 +1312,13 @@ turn(float angle, Vec p)
 }
 
 // The renderer's view transform, in image pixels measured from the image
-// centre: screen = well centre + turn(angle) * (image - pan) * scale / dpr.
-// Pan therefore lives in the unturned image frame. See scale-2d.frag.
+// centre: screen = well centre + turn(angle) * (image - pan) * scale.
+// Screen is device pixels now, so no scale factor enters here beyond the
+// zoom itself.  Pan lives in the unturned image frame; see scale-2d.frag.
 static Vec
 view_to_image(const Viewer &v, Vec p)
 {
-	const float k = v.scale_ > 0.0f ? v.kit_.dpr_ / v.scale_ : 0.0f;
+	const float k = v.scale_ > 0.0f ? 1.0f / v.scale_ : 0.0f;
 	const Vec q =
 		turn(-v.angle_, {(p.x - well_cx(v)) * k, (p.y - well_cy(v)) * k});
 	return {q.x + v.pan_x_, q.y + v.pan_y_};
@@ -1327,7 +1327,7 @@ view_to_image(const Viewer &v, Vec p)
 static Vec
 image_to_view(const Viewer &v, Vec p)
 {
-	const float k = v.kit_.dpr_ > 0.0f ? v.scale_ / v.kit_.dpr_ : 0.0f;
+	const float k = v.scale_;
 	const Vec q = turn(v.angle_, {(p.x - v.pan_x_) * k, (p.y - v.pan_y_) * k});
 	return {q.x + well_cx(v), q.y + well_cy(v)};
 }
@@ -1369,29 +1369,32 @@ image_dest_rect(const Viewer &v)
 {
 	uint32_t dw = 0, dh = 0;
 	display_size(v, &dw, &dh);
-	if (v.kit_.dpr_ <= 0.0f || v.scale_ <= 0.0f || !dw || !dh)
+	if (v.scale_ <= 0.0f || !dw || !dh)
 		return {};
 	const Vec c = image_to_view(v, {});
 	// Bounding box of the turned rectangle.
-	const float k = v.scale_ / v.kit_.dpr_;
+	const float k = v.scale_;
 	const float ca = fabs(cosf(v.angle_));
 	const float sa = fabs(sinf(v.angle_));
 	const float w = (ca * float(dw) + sa * float(dh)) * k;
 	const float h = (sa * float(dw) + ca * float(dh)) * k;
-	return {c.x - w * 0.5f, c.y - h * 0.5f, w, h};
+	// Continuous all the way here -- zoom and rotation are analogue -- and
+	// rounded only as it becomes a rect to hit-test against.
+	return {int(lround(c.x - w * 0.5f)), int(lround(c.y - h * 0.5f)),
+		int(lround(w)), int(lround(h))};
 }
 
 static Rect
 context_anchor(const Viewer &v)
 {
 	const Rect dest = image_dest_rect(v);
-	const float x0 = max(dest.x, v.r.x);
-	const float y0 = max(dest.y, v.r.y);
-	const float x1 = min(dest.x + dest.w, v.r.x + v.r.w);
-	const float y1 = min(dest.y + dest.h, v.r.y + v.r.h);
+	const int x0 = max(dest.x, v.r.x);
+	const int y0 = max(dest.y, v.r.y);
+	const int x1 = min(dest.x + dest.w, v.r.x + v.r.w);
+	const int y1 = min(dest.y + dest.h, v.r.y + v.r.h);
 	if (x1 <= x0 || y1 <= y0)
-		return {well_cx(v), well_cy(v), 0.0f, 0.0f};
-	return {x0, y0, 0.0f, 0.0f};
+		return {int(lround(well_cx(v))), int(lround(well_cy(v))), 0, 0};
+	return {x0, y0, 0, 0};
 }
 
 static bool
@@ -1788,8 +1791,8 @@ apply_view(const Viewer &v)
 		const Extent vp = renderer.extent();
 		// The shader turns the image about the viewport centre; this offset
 		// moves that to the well centre, so it takes the image frame too.
-		const float ox = float(vp.width) * 0.5f - well_cx(v) * v.kit_.dpr_;
-		const float oy = float(vp.height) * 0.5f - well_cy(v) * v.kit_.dpr_;
+		const float ox = float(vp.width) * 0.5f - well_cx(v);
+		const float oy = float(vp.height) * 0.5f - well_cy(v);
 		const Vec o = turn(-v.angle_, {ox / gpu_scale, oy / gpu_scale});
 		pan_x += o.x;
 		pan_y += o.y;
@@ -1843,15 +1846,15 @@ Viewer::init()
 }
 
 void
-Viewer::measure(Kit &, float max_w, float max_h)
+Viewer::measure(Kit &, int max_w, int max_h)
 {
-	this->r = {0.0f, 0.0f, max_w, max_h};
+	this->r = {0, 0, max_w, max_h};
 }
 
 void
 Viewer::arrange(Kit &kit, Rect alloc)
 {
-	this->r = kit.snap_rect(alloc);
+	this->r = alloc;
 	if (this->scale_to_fit_)
 		fit_to_well(*this);
 	clamp_view(*this);
@@ -1910,10 +1913,12 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 void
 Viewer::set_host(float width_pts, float height_pts, float dpr)
 {
-	this->kit_.host_w_ = width_pts;
-	this->kit_.host_h_ = height_pts;
+	// The platform speaks logical points; everything past here is pixels,
+	// so the scale has to be current before the conversion.
 	if (!set_dpr(*this, dpr))
 		pack_toolbar_icons(*this);
+	this->kit_.host_w_ = this->kit_.px(width_pts);
+	this->kit_.host_h_ = this->kit_.px(height_pts);
 }
 
 void
@@ -2094,7 +2099,8 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		if (!dest.contains(x, y))
 			return false;
 		if (this->page_ && this->page_->context)
-			this->page_->context->show(kit, this->url_, {x, y, 0, 0}, false);
+			this->page_->context->show(
+				kit, this->url_, {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
@@ -2148,7 +2154,8 @@ Viewer::motion(Kit &, float x, float y)
 		const Vec p = {this->drag_pivot_x_, this->drag_pivot_y_};
 		const float r0 = hypot(x0 - p.x, y0 - p.y);
 		const float r1 = hypot(x - p.x, y - p.y);
-		if (r0 >= kRotateMinR && r1 >= kRotateMinR) {
+		const float min_r = float(this->kit_.px(kRotateMinR));
+		if (r0 >= min_r && r1 >= min_r) {
 			const float d =
 				wrap_angle(atan2(y - p.y, x - p.x) - atan2(y0 - p.y, x0 - p.x));
 			if (this->view_locked_)

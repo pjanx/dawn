@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -34,25 +35,36 @@ namespace dn
 
 class Renderer;
 
+// Widget geometry, in device pixels.  Integral by construction: layout
+// arithmetic composes exactly, and there is nothing left to snap.  Floats
+// belong to drawing, and to whatever is genuinely continuous -- a pointer
+// position, a scroll offset mid-drag, the viewer's pan and zoom.
 struct Rect {
-	float x = 0;
-	float y = 0;
-	float w = 0;
-	float h = 0;
+	int x = 0;
+	int y = 0;
+	int w = 0;
+	int h = 0;
+	// Takes floats: the pointer is continuous, and comparing it against an
+	// integral edge is exact.
 	[[nodiscard]] bool contains(float px, float py) const
 	{
-		return px >= this->x && py >= this->y && px < this->x + this->w &&
-			py < this->y + this->h;
+		return px >= float(this->x) && py >= float(this->y) &&
+			px < float(this->x + this->w) && py < float(this->y + this->h);
 	}
-	[[nodiscard]] Rect inset(float px, float py) const;
+	[[nodiscard]] Rect inset(int px, int py) const;
 };
 
 enum class Align : uint8_t { Start, Center, End };
 enum class Fill : uint8_t { None, Toolbar, Tooltip, Panel };
 enum class Stroke : uint8_t { None, All, Bottom };
 
-constexpr float kUnlim = 1.0e8f;
-constexpr float kIconPx = 16.0f;
+// Sentinel for "no constraint", in pixels: large, but far from overflowing
+// any sum it takes part in.
+constexpr int kUnlim = 1 << 24;
+
+// Design sizes, in points: they must keep their physical size across displays,
+// so they are converted to pixels on use, through Kit::px().
+constexpr float kIconPts = 16.0f;
 constexpr float kFramePadX = 6.0f;
 constexpr float kFramePadY = 4.0f;
 constexpr float kTooltipPadX = 8.0f;
@@ -116,7 +128,7 @@ struct Widget {
 	Widget *parent_ = nullptr;
 
 	virtual ~Widget() = default;
-	virtual void measure(Kit &kit, float max_w, float max_h) = 0;
+	virtual void measure(Kit &kit, int max_w, int max_h) = 0;
 	virtual void arrange(Kit &kit, Rect alloc) = 0;
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
@@ -133,7 +145,6 @@ struct Widget {
 	// focus on its own.
 	virtual bool activate(Kit &kit) { return false; }
 	virtual bool traps_focus() const { return false; }
-	virtual float min_width() const { return 0.0f; }
 	// A scrollbar is a hover effect rather than an event, so it must not
 	// depend on who ends up consuming the motion.  Neither must the cursor.
 	virtual Scroll *scrollbar() { return nullptr; }
@@ -192,7 +203,7 @@ struct Button : Widget {
 	std::function<void(Kit &)> on_click;
 
 	Button() { this->hittable = true; }
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -219,7 +230,7 @@ struct Label : Widget {
 	QString tip_text;
 	QString tip_accel;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -251,12 +262,11 @@ struct Entry : Widget {
 	bool caret_on_ = false;
 
 	Entry() { this->hittable = true; }
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool focusable() const override;
-	float min_width() const override { return this->min_w; }
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -271,13 +281,13 @@ struct Entry : Widget {
 	void touch_caret(const Kit &kit);
 	// Just the scroll: layout runs every frame, and must not touch the blink.
 	void rescroll(const Kit &kit);
-	[[nodiscard]] float inner_w() const;
+	[[nodiscard]] int inner_w(const Kit &kit) const;
 	// The text as painted: the placeholder stands in when empty.
 	[[nodiscard]] QString painted() const;
 };
 
 struct Sep : Widget {
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 };
@@ -286,10 +296,9 @@ struct Splitter : Widget {
 	float min_w = 8.0f;
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	float min_width() const override { return this->min_w; }
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
@@ -303,7 +312,7 @@ struct Container : Composite {
 	bool grow = false;
 	bool grows() const override { return this->grow; }
 
-	void measure_pack(Kit &kit, float max_w, float max_h, bool hz);
+	void measure_pack(Kit &kit, int max_w, int max_h, bool hz);
 	void arrange_pack(Kit &kit, Rect alloc, bool hz, Align align);
 };
 
@@ -324,24 +333,31 @@ context_key(int key, unsigned mods)
 struct Row : Container {
 	Align align = Align::Start;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 };
 
 struct Column : Container {
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 };
 
 struct Scroll {
+	// Continuous: a drag moves it by arbitrary amounts, and quantising it
+	// mid-drag would make the thumb stutter.  Rounded where it becomes
+	// geometry, never before.
 	float offset = 0;
 	float content = 0;
 	float view = 0;
 	bool dragging = false;
+	// Point constants resolved against the current scale, by set_metrics():
+	// the bar is drawn and hit-tested far from any Kit.
+	int bar_w = 8;
+	int step = 32;
 
 	[[nodiscard]] float max_offset() const;
 	void clamp();
-	void set_metrics(float content_h, float view_h);
+	void set_metrics(const Kit &kit, float content_h, float view_h);
 	void reveal();
 	[[nodiscard]] bool visible() const;
 	[[nodiscard]] int wake_ms() const;
@@ -394,12 +410,11 @@ struct Panel : Composite {
 	bool busy = false;
 	bool grow = false;
 	bool clip = false;
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	bool grows() const override { return this->grow; }
 	bool clips_children() const override { return this->clip; }
-	float min_width() const override { return this->min_w; }
 };
 
 // A panel that floats above the widget tree, on Kit's popup stack.
@@ -475,7 +490,7 @@ struct Menu : MenuPopup {
 	MenuItem &add_item_with_mnemonic(const QString &text);
 	void add_sep();
 	void clear();
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -485,15 +500,15 @@ struct MenuItem : Button {
 	Menu *sub = nullptr;
 	bool checked = false;
 	bool checkable = false;
-	float label_col = 0;
-	float accel_col = 0;
+	int label_col = 0;
+	int accel_col = 0;
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
-	float label_width(const Kit &kit) const;
-	float accel_width(const Kit &kit) const;
+	int label_width(const Kit &kit) const;
+	int accel_width(const Kit &kit) const;
 };
 
 // One end of a toolbar. What does not fit goes behind the "more" button.
@@ -505,7 +520,7 @@ struct ToolbarSlot : Row {
 	Widget *add_item(
 		std::unique_ptr<Widget> item, std::size_t at = std::size_t(-1));
 	[[nodiscard]] std::size_t item_count() const;
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
@@ -525,7 +540,7 @@ struct Toolbar : Panel {
 		std::unique_ptr<ToolbarSlot> right_row);
 	void sync_buttons();
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
@@ -549,7 +564,7 @@ struct Titlebar : Panel {
 	Titlebar();
 	void sync(Kit &kit);
 
-	void measure(Kit &kit, float max_w, float max_h) override;
+	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -599,8 +614,8 @@ struct Kit {
 	unsigned mods_ = 0;
 	std::vector<Popup *> popups_;
 	std::unique_ptr<Widget> scrim_;
-	float host_w_ = 0;
-	float host_h_ = 0;
+	int host_w_ = 0;
+	int host_h_ = 0;
 	Renderer *renderer_ = nullptr;
 	std::function<void(std::function<void()>)> post;
 	std::function<void()> request_render;
@@ -696,19 +711,25 @@ struct Kit {
 	void tooltip(const Widget *hot);
 	[[nodiscard]] int wake_ms() const;
 	void paint();
-	[[nodiscard]] float text_width(const QString &text, bool bold) const;
-	// Caret geometry, both in points, and both counting in UTF-16 units.
-	[[nodiscard]] float caret_x(
-		const QString &text, int index, bool bold) const;
+	// Text metrics, all in device pixels: the fonts are already rasterised at
+	// that size, so this is what Qt measures, without a round trip through
+	// points.  Extents round up, so a glyph is never clipped by a pixel.
+	[[nodiscard]] int text_width(const QString &text, bool bold) const;
+	// Caret geometry, both in pixels, and both counting in UTF-16 units.
+	[[nodiscard]] int caret_x(const QString &text, int index, bool bold) const;
 	[[nodiscard]] int index_at(const QString &text, float x, bool bold) const;
-	[[nodiscard]] float text_ascent(bool bold) const;
+	[[nodiscard]] int text_ascent(bool bold) const;
 	[[nodiscard]] QString elide_lines(
-		const QString &text, float wrap_pts, int max_lines, bool bold) const;
-	[[nodiscard]] float text_height(
-		const QString &text, float wrap_pts, bool bold) const;
-	[[nodiscard]] float snap(float v) const;
-	[[nodiscard]] float snap_size(float v) const;
-	[[nodiscard]] Rect snap_rect(Rect r) const;
+		const QString &text, int wrap_px, int max_lines, bool bold) const;
+	[[nodiscard]] int text_height(
+		const QString &text, int wrap_px, bool bold) const;
+	// Points to device pixels.  Converted on use rather than cached: a sum of
+	// point terms rounds once here, where baked-up constants would each round
+	// separately and accumulate the error.
+	[[nodiscard]] int px(float pts) const
+	{
+		return int(lround(double(pts) * double(this->dpr_)));
+	}
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
 	[[nodiscard]] bool font_pixels(
 		unsigned char **out_pixels, int *width, int *height) const;

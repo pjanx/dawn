@@ -229,7 +229,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	span<const Action> keys)
 {
 	bool seen[size_t(Action::Count)] = {};
-	float accel_w = 120.0f;
+	int accel_w = kit.px(120.0f);
 	auto consider = [&](Action action) {
 		const ActionDef &def = action_def(action);
 		if (!has_shortcut(def))
@@ -324,10 +324,10 @@ col(const Colour &c, float alpha = 1.0f)
 Rect
 intersection(Rect a, Rect b)
 {
-	const float x = max(a.x, b.x);
-	const float y = max(a.y, b.y);
-	return {x, y, max(0.0f, min(a.x + a.w, b.x + b.w) - x),
-		max(0.0f, min(a.y + a.h, b.y + b.h) - y)};
+	const int x = max(a.x, b.x);
+	const int y = max(a.y, b.y);
+	return {x, y, max(0, min(a.x + a.w, b.x + b.w) - x),
+		max(0, min(a.y + a.h, b.y + b.h) - y)};
 }
 
 Rect
@@ -428,7 +428,7 @@ void
 Hint::place(Kit &kit)
 {
 	this->visible = true;
-	this->r = {0.0f, 0.0f, kit.host_w_, kit.host_h_};
+	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	refresh_rects();
 	layout_chips(kit);
 }
@@ -459,8 +459,8 @@ Hint::paint(Kit &kit) const
 		kit.list_.add_rect_stroke(
 			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourInk]);
 		const QString rest = t.label.mid(this->typed_.size());
-		float tx = c.x + kChipPadX;
-		const float ty = c.y + max(0.0f, (c.h - th) * 0.5f);
+		float tx = float(c.x + kit.px(kChipPadX));
+		const float ty = float(c.y) + max(0.0f, float(c.h - th) * 0.5f);
 		if (!this->typed_.isEmpty()) {
 			kit.emit_text(tx, ty, this->typed_,
 				col(kit.colours_[ColourInk], 0.25f), true);
@@ -554,8 +554,8 @@ Hint::collect()
 	if (!this->page)
 		return;
 	Rect host = this->page->r;
-	if (host.w <= 0.0f || host.h <= 0.0f)
-		host = {0.0f, 0.0f, 1.0e8f, 1.0e8f};
+	if (host.w <= 0 || host.h <= 0)
+		host = {0, 0, kUnlim, kUnlim};
 	vector<Widget *> widgets;
 	collect_targets(this->page, host, widgets);
 	for (Widget *w : widgets) {
@@ -623,12 +623,12 @@ Hint::refresh_rects()
 void
 Hint::layout_chips(const Kit &kit)
 {
-	const float th = kit.text_height(QStringLiteral("Ag"), 0.0f, true);
-	const float ch = th + kChipPadY * 2.0f;
+	const int th = kit.text_height(QStringLiteral("Ag"), 0, true);
+	const int ch = th + kit.px(kChipPadY) * 2;
 	for (Target &t : this->targets_) {
-		const float tw = kit.text_width(t.label, true);
-		const float cw = tw + kChipPadX * 2.0f;
-		t.chip = kit.snap_rect({t.at.x, t.at.y, cw, ch});
+		const int tw = kit.text_width(t.label, true);
+		const int cw = tw + kit.px(kChipPadX) * 2;
+		t.chip = {t.at.x, t.at.y, cw, ch};
 	}
 }
 
@@ -694,13 +694,18 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->splitter->on_drag = [this](Kit &kit, float mx) {
 			if (!this->sidebar_open || this->sidebar_side == Side::None)
 				return;
+			// The drag happens in pixels, like the frame it is measured
+			// against; sidebar_w is stored in points, so that the sidebar
+			// keeps its physical width across displays of differing scale.
 			const Rect frame = kit.frame();
-			const float max_side = max(kMinSide, frame.w - kMinWell);
-			if (this->sidebar_side == Side::Right)
-				this->sidebar_w =
-					clamp(frame.x + frame.w - mx, kMinSide, max_side);
-			else
-				this->sidebar_w = clamp(mx - frame.x, kMinSide, max_side);
+			const float min_side = float(kit.px(kMinSide));
+			const float max_side =
+				max(min_side, float(frame.w - kit.px(kMinWell)));
+			const float want = this->sidebar_side == Side::Right
+				? float(frame.x + frame.w) - mx
+				: mx - float(frame.x);
+			const float dpr = max(kit.dpr_, 0.01f);
+			this->sidebar_w = clamp(want, min_side, max_side) / dpr;
 		};
 		add_child(std::move(split));
 	}
@@ -783,9 +788,9 @@ Page::set_banner(unique_ptr<Widget> w)
 }
 
 void
-Page::measure(Kit &, float max_w, float max_h)
+Page::measure(Kit &, int max_w, int max_h)
 {
-	this->r = {0.0f, 0.0f, max_w, max_h};
+	this->r = {0, 0, max_w, max_h};
 }
 
 void
@@ -796,11 +801,11 @@ Page::arrange(Kit &kit, Rect alloc)
 		this->well_ = {};
 		return;
 	}
-	this->r = kit.snap_rect(alloc);
+	this->r = alloc;
 	// The window may only fill the frame within its surface, the rest
 	// belonging to the shadow that a client-side decorated window casts.
 	const Rect frame = kit.frame();
-	float y = frame.y;
+	int y = frame.y;
 	if (this->titlebar) {
 		this->titlebar->measure(kit, frame.w, frame.h);
 		if (this->titlebar->visible) {
@@ -815,20 +820,22 @@ Page::arrange(Kit &kit, Rect alloc)
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
-		const float rest = max(0.0f, frame.y + frame.h - y);
+		const int rest = max(0, frame.y + frame.h - y);
 		this->banner->measure(kit, frame.w, rest);
 		this->banner->arrange(kit, {frame.x, y, frame.w, this->banner->r.h});
 		y += this->banner->r.h;
 	}
-	const float body_y = y;
-	const float body_h = max(0.0f, frame.y + frame.h - body_y);
-	float side_w = 0.0f;
+	const int body_y = y;
+	const int body_h = max(0, frame.y + frame.h - body_y);
+	int side_w = 0;
 	if (this->sidebar) {
 		this->sidebar->visible = this->sidebar_open &&
-			this->sidebar_side != Side::None && body_h > 0.0f;
+			this->sidebar_side != Side::None && body_h > 0;
 		if (this->sidebar->visible) {
-			side_w = max(0.0f, this->sidebar_w);
-			this->sidebar->min_w = side_w;
+			// sidebar_w is kept in points, so that dragging the window to a
+			// display of a different scale keeps its physical width.
+			side_w = max(0, kit.px(this->sidebar_w));
+			this->sidebar->min_w = this->sidebar_w;
 			if (this->sidebar_side == Side::Left)
 				this->sidebar->arrange(kit, {frame.x, body_y, side_w, body_h});
 			else
@@ -842,7 +849,7 @@ Page::arrange(Kit &kit, Rect alloc)
 	if (this->sidebar && this->sidebar->visible) {
 		if (this->sidebar_side == Side::Left)
 			this->well_.x += side_w;
-		this->well_.w = max(0.0f, this->well_.w - side_w);
+		this->well_.w = max(0, this->well_.w - side_w);
 	}
 	if (this->content && this->content->visible)
 		this->content->arrange(kit, this->well_);
@@ -850,11 +857,14 @@ Page::arrange(Kit &kit, Rect alloc)
 	if (this->splitter) {
 		this->splitter->visible = this->sidebar && this->sidebar->visible;
 		if (this->splitter->visible) {
-			const float sw =
-				this->splitter->min_w > 0.0f ? this->splitter->min_w : kSplitW;
-			float sx = this->sidebar_side == Side::Right
-				? this->well_.x + this->well_.w - sw * 0.5f
-				: this->well_.x - sw * 0.5f;
+			const int sw = kit.px(this->splitter->min_w > 0.0f
+					? this->splitter->min_w
+					: kSplitW);
+			// The grab strip straddles the boundary, half on each side.
+			const int sx = (this->sidebar_side == Side::Right
+					   ? this->well_.x + this->well_.w
+					   : this->well_.x) -
+				sw / 2;
 			this->splitter->arrange(kit, {sx, body_y, sw, body_h});
 		} else {
 			this->splitter->r = {};

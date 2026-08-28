@@ -40,27 +40,28 @@ constexpr Colour kWhiteCol{1.0f, 1.0f, 1.0f, 1.0f};
 const QString kSourceLab = QStringLiteral("Source");
 const QString kTargetLab = QStringLiteral("Target");
 
-float
+int
 caption_h(const Kit &kit)
 {
-	return kCapGap + kit.text_height(kSourceLab, 0.0f, false) + 4.0f;
+	return kit.px(kCapGap) + kit.text_height(kSourceLab, 0, false) +
+		kit.px(4.0f);
 }
 
+// The raster is a fixed pixel size, and so is the rect: no scale involved.
 Rect
-plot_rect(Rect r, float dpr)
+plot_rect(Rect r)
 {
-	if (r.w <= 0.0f || r.h <= 0.0f || dpr <= 0.0f)
+	if (r.w <= 0 || r.h <= 0)
 		return {};
 	const float aspect = kXMax / kYMax;
-	const float nw = float(kRasterW) / dpr;
-	const float nh = float(kRasterH) / dpr;
-	float w = min(r.w, nw);
+	float w = float(min(r.w, int(kRasterW)));
 	float h = w / aspect;
-	if (h > r.h || h > nh) {
-		h = min(r.h, nh);
+	if (h > float(r.h) || h > float(kRasterH)) {
+		h = float(min(r.h, int(kRasterH)));
 		w = h * aspect;
 	}
-	return {r.x + (r.w - w) * 0.5f, r.y, w, h};
+	const int iw = int(w), ih = int(h);
+	return {r.x + (r.w - iw) / 2, r.y, iw, ih};
 }
 
 QPointF
@@ -230,12 +231,12 @@ same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 }  // namespace
 
 void
-CieDiagram::measure(Kit &kit, float max_w, float max_h)
+CieDiagram::measure(Kit &kit, int max_w, int max_h)
 {
-	const float cap = caption_h(kit);
-	const float plot_h = max(0.0f, max_h - cap);
-	const Rect fit = plot_rect({0, 0, max_w, plot_h}, kit.dpr_);
-	const float labs = kit.text_width(kSourceLab, false) + 8.0f +
+	const int cap = caption_h(kit);
+	const int plot_h = max(0, max_h - cap);
+	const Rect fit = plot_rect({0, 0, max_w, plot_h});
+	const int labs = kit.text_width(kSourceLab, false) + kit.px(8.0f) +
 		kit.text_width(kTargetLab, false);
 	this->r.w = max(fit.w, labs);
 	this->r.h = fit.h + cap;
@@ -244,7 +245,7 @@ CieDiagram::measure(Kit &kit, float max_w, float max_h)
 void
 CieDiagram::arrange(Kit &kit, Rect alloc)
 {
-	this->r = kit.snap_rect(alloc);
+	this->r = alloc;
 }
 
 void
@@ -253,10 +254,9 @@ CieDiagram::prepare(Kit &kit)
 	kit.cache_text(kSourceLab, false);
 	kit.cache_text(kTargetLab, false);
 
-	const float cap = caption_h(kit);
-	const Rect plot =
-		plot_rect({this->r.x, this->r.y, this->r.w, max(0.0f, this->r.h - cap)},
-			kit.dpr_);
+	const int cap = caption_h(kit);
+	const Rect plot = plot_rect(
+		{this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
 	if (plot.w < 8.0f || plot.h < 8.0f)
 		return;
 
@@ -288,15 +288,14 @@ CieDiagram::prepare(Kit &kit)
 void
 CieDiagram::paint(Kit &kit) const
 {
-	const float cap = caption_h(kit);
-	const Rect plot =
-		plot_rect({this->r.x, this->r.y, this->r.w, max(0.0f, this->r.h - cap)},
-			kit.dpr_);
-	const float x0 = plot.x > 0.0f ? plot.x : this->r.x;
-	const float cap_y0 = plot.h >= 8.0f ? plot.y + plot.h : this->r.y;
-	const float y = cap_y0 + kCapGap;
-	const float th = kit.text_height(kSourceLab, 0.0f, true);
-	const float cap_w = plot.w >= 8.0f ? plot.w : this->r.w;
+	const int cap = caption_h(kit);
+	const Rect plot = plot_rect(
+		{this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
+	const int x0 = plot.x > 0 ? plot.x : this->r.x;
+	const int cap_y0 = plot.h >= 8 ? plot.y + plot.h : this->r.y;
+	const int y = cap_y0 + kit.px(kCapGap);
+	const int th = kit.text_height(kSourceLab, 0, true);
+	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
 	kit.list_.add_rect_filled(x0, y, x0 + cap_w, y + th, kMidGreyCol);
 	if (plot.w >= 8.0f && plot.h >= 8.0f && !this->slot_.empty()) {
 		float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
@@ -305,10 +304,12 @@ CieDiagram::paint(Kit &kit) const
 			u0, v0, u1, v1, {1, 1, 1, 1});
 	}
 
-	const float cx = x0 + cap_w / 2;
-	const float widthS = kit.text_width(kSourceLab, true);
-	kit.emit_text(cx - 4.0f - widthS, y, kSourceLab, kBlackCol, true);
-	kit.emit_text(cx + 4.0f, y, kTargetLab, kWhiteCol, true);
+	const int cx = x0 + cap_w / 2;
+	const int gap = kit.px(4.0f);
+	const int widthS = kit.text_width(kSourceLab, true);
+	kit.emit_text(float(cx - gap - widthS), float(y), kSourceLab, kBlackCol,
+		true);
+	kit.emit_text(float(cx + gap), float(y), kTargetLab, kWhiteCol, true);
 }
 
 }  // namespace dn
