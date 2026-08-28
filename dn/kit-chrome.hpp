@@ -81,7 +81,7 @@ private:
 		QString label;
 		Rect at{};
 		Rect chip{};
-		Button *button = nullptr;
+		Widget *widget = nullptr;
 		// TODO(p): Unwanted dependency.
 		Browser *browser = nullptr;
 		int file_i = -1;

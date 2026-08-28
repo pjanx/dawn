@@ -345,24 +345,24 @@ visible_rect(const Widget *w, Rect host)
 	return visible;
 }
 
+// Anything the keyboard can reach is worth a hint, so this asks focusable()
+// rather than testing for a type: a widget opts in by being reachable at all.
+// The three exceptions are containers that are focusable as a whole -- one
+// chip over the entire browser well would say nothing useful, and its files
+// get their own targets below.
 void
-collect_buttons(Widget *w, Rect host, vector<Button *> &out)
+collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
 		return;
 	if (dynamic_cast<Popup *>(w) || dynamic_cast<Browser *>(w) ||
 		dynamic_cast<Splitter *>(w))
 		return;
-	if (auto *b = dynamic_cast<Button *>(w)) {
-		const Rect visible = visible_rect(b, host);
-		if (b->enabled_ && b->hittable && b->on_click && visible.w > 0.0f &&
-			visible.h > 0.0f)
-			out.push_back(b);
-		return;
-	}
+	if (w->focusable() && visible_rect(w, host).w > 0.0f)
+		out.push_back(w);
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; ++i)
-		collect_buttons(w->child(i), host, out);
+		collect_targets(w->child(i), host, out);
 }
 
 QString
@@ -557,12 +557,12 @@ Hint::collect()
 	Rect host = this->page->r;
 	if (host.w <= 0.0f || host.h <= 0.0f)
 		host = {0.0f, 0.0f, 1.0e8f, 1.0e8f};
-	vector<Button *> buttons;
-	collect_buttons(this->page, host, buttons);
-	for (Button *b : buttons) {
+	vector<Widget *> widgets;
+	collect_targets(this->page, host, widgets);
+	for (Widget *w : widgets) {
 		Target t;
-		t.button = b;
-		t.at = visible_rect(b, host);
+		t.widget = w;
+		t.at = visible_rect(w, host);
 		this->targets_.push_back(t);
 	}
 	auto *browser = dynamic_cast<Browser *>(this->page->content);
@@ -599,9 +599,10 @@ Hint::refresh_rects()
 	vector<Target> keep;
 	keep.reserve(this->targets_.size());
 	for (Target &t : this->targets_) {
-		if (t.button) {
-			const Rect visible = visible_rect(t.button, this->page->r);
-			if (!t.button->enabled_ || visible.w <= 0.0f || visible.h <= 0.0f)
+		if (t.widget) {
+			const Rect visible = visible_rect(t.widget, this->page->r);
+			if (!t.widget->focusable() || visible.w <= 0.0f ||
+				visible.h <= 0.0f)
 				continue;
 			t.at = visible;
 			keep.push_back(t);
@@ -641,12 +642,19 @@ Hint::matches(const Target &t) const
 void
 Hint::fire(Kit &kit, Target t)
 {
-	Button *button = t.button;
+	Widget *widget = t.widget;
 	Browser *browser = t.browser;
 	const int file_i = t.file_i;
 	close(kit);
-	if (button) {
-		button->activate(kit);
+	if (widget) {
+		// A button's whole point is its click; anything else that can hold
+		// focus is asking to be typed into, so hand it the keyboard instead.
+		if (auto *b = dynamic_cast<Button *>(widget))
+			b->activate(kit);
+		else {
+			kit.focus_ = widget;
+			kit.focus_visible_ = true;
+		}
 		return;
 	}
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
