@@ -253,8 +253,8 @@ struct Entry : Widget {
 	int preedit_caret = 0;
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
-	// A field takes what room it is given: only a menu, which stacks and
-	// would stretch it the wrong way, turns this off.
+	// A field takes what room it is given -- in an overflow popup as much as
+	// in the bar, where it fills out the rest of the line it wrapped onto.
 	bool grow = true;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
@@ -268,6 +268,10 @@ struct Entry : Widget {
 	bool caret_on_ = false;
 
 	Entry() { this->hittable = true; }
+	// Takes over another field's contents, discarding anything this one was
+	// composing: an overflow proxy and its source hand the text back and
+	// forth, and whichever is not being typed into has no caret to keep.
+	void adopt(const Entry &from);
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -347,6 +351,29 @@ struct Row : Container {
 struct Column : Container {
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
+};
+
+// Packs sideways like a Row, but breaks onto a new line when the next child
+// would not fit.  Children keep their natural widths: this is for a strip of
+// toolbar items that ran out of bar, not for a menu.
+struct Flow : Container {
+	void measure(Kit &kit, int max_w, int max_h) override;
+	void arrange(Kit &kit, Rect alloc) override;
+
+private:
+	// One wrapped line.  Indices are into kids, and the run may contain
+	// hidden children; count is the extent, not a population.
+	struct Line {
+		std::size_t first = 0;
+		std::size_t count = 0;
+		int y = 0;
+		int h = 0;
+	};
+
+	// Measures the children and breaks them into lines for an inner width,
+	// answering the width of the widest one produced.  Both passes need the
+	// measuring and the widths; only arrange() needs the lines themselves.
+	int wrap(Kit &kit, int inner_w, int *total_h, std::vector<Line> *lines);
 };
 
 struct Scroll {
@@ -437,6 +464,9 @@ struct Popup : Panel {
 	void open_sub(Kit &kit, Popup &owner, Button &anchor);
 	virtual void close(Kit &kit);
 	virtual void place(Kit &kit);
+	// The half of place() that is not about x: drops the popup below its
+	// anchor, flips it above when it would not fit, and lays it out.
+	void place_below(Kit &kit, int x);
 	void place_sub(Kit &kit);
 	bool traps_focus() const override { return true; }
 	virtual bool captures_keys() const { return false; }
@@ -475,16 +505,32 @@ struct MenuPopup : Popup {
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
-// What a ToolbarSlot puts the items it could not fit into.
+// What a ToolbarSlot puts the items it could not fit into.  These are toolbar
+// items rather than menu entries, so they keep flowing sideways, and wrap.
 struct Overflow : MenuPopup {
-	Column *col = nullptr;
+	Flow *col = nullptr;
 	std::vector<Widget *> sources;
 	std::function<void()> fill_items;
+
+	// Set while the popup is up: a proxy field seeds itself from its source
+	// the first time round, and owns the text from then on.
+	bool seeded = false;
 
 	Overflow();
 	// The stand-in this popup shows for a toolbar item, if it has one.
 	[[nodiscard]] Widget *proxy_for(const Widget *source) const;
+	void close(Kit &kit) override;
 	void place(Kit &kit) override;
+	bool key(Kit &kit, const Key &ev) override;
+	bool motion(Kit &kit, float x, float y) override;
+
+private:
+	// Moves the focus a line up or down, keeping to one track.
+	void step_line(Kit &kit, int dir);
+
+	// Which column Up/Down aim for, so that a run of them keeps to one
+	// track across lines of differing item counts.  Negative means unset.
+	float want_x_ = -1;
 };
 
 struct Menu : MenuPopup {

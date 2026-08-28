@@ -996,6 +996,16 @@ Entry::set_text(Kit &kit, const QString &next)
 }
 
 void
+Entry::adopt(const Entry &from)
+{
+	this->text = from.text;
+	this->caret = from.caret;
+	this->preedit.clear();
+	this->preedit_caret = 0;
+	this->scroll_ = 0;
+}
+
+void
 Entry::measure(Kit &kit, int, int)
 {
 	// This is the width the field asks for, never the one it settles for:
@@ -1356,6 +1366,23 @@ Composite::erase_children(size_t from)
 
 // --- Container ---------------------------------------------------------------
 
+namespace
+{
+
+// What the i-th grower takes of the slack.  Integer division leaves a
+// remainder of at most growers-1 pixels; hand one to each of the first few,
+// so that the children together cover the space exactly rather than falling
+// short of it.
+int
+share_slack(int slack, int growers, int i)
+{
+	if (growers <= 0)
+		return 0;
+	return slack / growers + (i < slack % growers ? 1 : 0);
+}
+
+}  // namespace
+
 void
 Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 {
@@ -1383,19 +1410,15 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 		// An unbounded offer is a question about the natural size, not an
 		// allocation: there is no slack to hand out, and each grower then
 		// answers with what it would take at rest.
-		// Integer division leaves a remainder of at most growers-1 pixels;
-		// hand one to each of the first few, so that the children fill the
-		// space exactly rather than falling short of it.
 		const int slack = (hz ? max_w : max_h) < kUnlim
 			? max(0, (hz ? iw : ih) - used - gaps)
 			: 0;
-		const int share = slack / growers, extra = slack % growers;
 		int i = 0;
 		for (const auto &child : this->kids) {
 			Widget *k = child.get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			const int got = share + (i++ < extra ? 1 : 0);
+			const int got = share_slack(slack, growers, i++);
 			k->measure(kit, hz ? got : iw, hz ? ih : got);
 			used += hz ? k->r.w : k->r.h;
 			cross = max(cross, hz ? k->r.h : k->r.w);
@@ -1434,17 +1457,13 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		used += hz ? k->r.w : k->r.h;
 	}
 	if (growers) {
-		// See measure_pack(): the remainder is spread a pixel at a time,
-		// so the growers together cover the space exactly.
-		const int gaps = gap * max(0, vis - 1);
-		const int slack = max(0, imain - used - gaps);
-		const int share = slack / growers, extra = slack % growers;
+		const int slack = max(0, imain - used - gap * max(0, vis - 1));
 		int i = 0;
 		for (const auto &child : this->kids) {
 			Widget *k = child.get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			const int got = share + (i++ < extra ? 1 : 0);
+			const int got = share_slack(slack, growers, i++);
 			k->measure(kit, hz ? got : in.w, hz ? in.h : got);
 			if (hz)
 				k->r.w = got;
@@ -1517,6 +1536,127 @@ void
 Column::arrange(Kit &kit, Rect alloc)
 {
 	arrange_pack(kit, alloc, false, Align::Start);
+}
+
+// --- Flow --------------------------------------------------------------------
+
+int
+Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
+{
+	const int gap = kit.px(this->gap);
+	if (lines)
+		lines->clear();
+
+	int widest = 0, y = 0;
+	size_t first = 0;
+	int line_w = 0, line_h = 0, kept = 0;
+	auto flush = [&](size_t end) {
+		if (!kept)
+			return;
+		if (lines)
+			lines->push_back({first, end - first, y, line_h});
+		widest = max(widest, line_w);
+		y += line_h + gap;
+		first = end;
+		line_w = line_h = kept = 0;
+	};
+
+	const size_t n = this->kids.size();
+	for (size_t i = 0; i < n; ++i) {
+		Widget *k = this->kids[i].get();
+		// A hidden child keeps whatever rect it had.  Clearing it here would
+		// be measuring as a side effect: focusable() asks for a width, and
+		// the browser tests exactly that on the proxy it has just revealed,
+		// before this container has had a chance to lay it out.
+		if (!k || !k->shown())
+			continue;
+		// A separator infers its orientation from the offer, and here it
+		// stands upright between items, exactly as it does in the bar.
+		k->measure(kit, kUnlim, is_sep(k) ? 0 : kUnlim);
+		// What a child asks for is not what the line can spare: a field asks
+		// for its minimum width regardless of the offer, and a popup narrower
+		// than that would have it hanging out of the frame.
+		if (inner_w < kUnlim && k->r.w > inner_w)
+			k->r.w = inner_w;
+		const int need = k->r.w + (kept ? gap : 0);
+		// A child too wide for the line still gets one, rather than
+		// vanishing into a break that can never be satisfied.
+		if (kept && line_w + need > inner_w)
+			flush(i);
+		line_w += kept ? need : k->r.w;
+		line_h = max(line_h, k->r.h);
+		++kept;
+	}
+	flush(n);
+	if (y)
+		y -= gap;
+	if (total_h)
+		*total_h = max(0, y);
+	return widest;
+}
+
+void
+Flow::measure(Kit &kit, int max_w, int)
+{
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
+	int used_h = 0;
+	// Only as wide as the wrap actually came out: this popup is anchored by
+	// its right edge, so claiming the whole offer would shove it off-screen.
+	const int used_w = wrap(kit, iw, &used_h, nullptr);
+	this->r.w = pad_x * 2 + used_w;
+	this->r.h = pad_y * 2 + used_h;
+	if (this->grow)
+		this->r.w = max_w;
+	// The height offered is not a limit to honour: Panel::arrange re-measures
+	// its child against its own inner height, which is itself derived from
+	// this answer.  Clamping here would cut the lower lines out of r, and
+	// hit_at rejects a whole subtree whose parent does not contain the point.
+}
+
+void
+Flow::arrange(Kit &kit, Rect alloc)
+{
+	if (!shown()) {
+		this->r = {};
+		return;
+	}
+	this->r = alloc;
+	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
+	const int gap = kit.px(this->gap);
+	vector<Line> lines;
+	wrap(kit, in.w, nullptr, &lines);
+	for (const Line &line : lines) {
+		// What the line does not spend, the growers on it share -- a search
+		// field then fills its line the way it fills the bar, instead of
+		// sitting at its minimum with a ragged gap after it.
+		int used = 0, growers = 0, vis = 0;
+		for (size_t i = line.first; i < line.first + line.count; ++i) {
+			Widget *k = this->kids[i].get();
+			if (!k || !k->shown())
+				continue;
+			used += k->r.w;
+			++vis;
+			if (k->grows())
+				++growers;
+		}
+		const int slack = max(0, in.w - used - gap * max(0, vis - 1));
+
+		int x = in.x, got = 0;
+		for (size_t i = line.first; i < line.first + line.count; ++i) {
+			Widget *k = this->kids[i].get();
+			if (!k || !k->shown())
+				continue;
+			int w = k->r.w;
+			if (k->grows())
+				w += share_slack(slack, growers, got++);
+			// Items of a line differ in height -- an Entry is taller than an
+			// icon button -- so they ride its middle rather than its top.
+			const int h = is_sep(k) ? line.h : k->r.h;
+			k->arrange(kit, {x, in.y + line.y + (line.h - h) / 2, w, h});
+			x = k->r.right() + gap;
+		}
+	}
 }
 
 // --- Scroll ------------------------------------------------------------------
@@ -1992,6 +2132,20 @@ Popup::close(Kit &kit)
 }
 
 void
+Popup::place_below(Kit &kit, int x)
+{
+	const int glow = kit.px(kGlowPts);
+	int y = this->at.y + this->at.h;
+	if (y + this->r.h + glow > kit.host_h_)
+		y = max(0, this->at.y - this->r.h - glow);
+	if (y + this->r.h > kit.host_h_)
+		y = max(0, kit.host_h_ - this->r.h);
+	if (y < 0)
+		y = 0;
+	arrange(kit, {x, y, this->r.w, this->r.h});
+}
+
+void
 Popup::place(Kit &kit)
 {
 	if (this->opener)
@@ -2002,18 +2156,9 @@ Popup::place(Kit &kit)
 	measure(kit, cap, kUnlim);
 
 	int x = this->at.x;
-	int y = this->at.y + this->at.h;
 	if (x + this->r.w + glow > kit.host_w_)
 		x = max(0, kit.host_w_ - this->r.w - glow);
-	if (x < 0)
-		x = 0;
-	if (y + this->r.h + glow > kit.host_h_)
-		y = max(0, this->at.y - this->r.h - glow);
-	if (y + this->r.h > kit.host_h_)
-		y = max(0, kit.host_h_ - this->r.h);
-	if (y < 0)
-		y = 0;
-	arrange(kit, {x, y, this->r.w, this->r.h});
+	place_below(kit, max(0, x));
 }
 
 void
@@ -2234,6 +2379,18 @@ menu_mnemonic(const MenuItem &m, const QString &shown)
 	return m.mnemonic;
 }
 
+void
+collect_focusable(Widget *w, vector<Widget *> &out)
+{
+	if (!w || !w->shown())
+		return;
+	if (w->focusable())
+		out.push_back(w);
+	const size_t n = w->child_count();
+	for (size_t i = 0; i < n; ++i)
+		collect_focusable(w->child(i), out);
+}
+
 }  // namespace
 
 void
@@ -2349,7 +2506,7 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 
 Overflow::Overflow()
 {
-	auto column = make_unique<Column>();
+	auto column = make_unique<Flow>();
 	this->col = column.get();
 	this->col->gap = kItemGap;
 	this->pad_x = kMenuPad;
@@ -2359,6 +2516,15 @@ Overflow::Overflow()
 	this->hittable = true;
 	this->visible = false;
 	add_child(std::move(column));
+}
+
+void
+Overflow::close(Kit &kit)
+{
+	// A fresh opening seeds the proxy fields again; while it is up, they are
+	// the ones being typed into.
+	this->seeded = false;
+	Popup::close(kit);
 }
 
 Widget *
@@ -2379,7 +2545,120 @@ Overflow::place(Kit &kit)
 {
 	if (this->fill_items)
 		this->fill_items();
-	Popup::place(kit);
+	if (this->opener)
+		this->at = this->opener->r;
+
+	const int glow = kit.px(kGlowPts);
+	// The popup hangs from the chevron that opened it, lining its right edge
+	// up with the button's; what it may wrap against is everything to the
+	// left of that.
+	int edge = this->at.right();
+	if (kit.host_w_ > 0)
+		edge = min(edge, kit.host_w_ - glow);
+
+	measure(kit, max(0, edge - glow), kUnlim);
+	place_below(kit, max(glow, edge - this->r.w));
+}
+
+bool
+Overflow::motion(Kit &kit, float x, float y)
+{
+	// Unlike a menu, this popup can hold the field that currently has the
+	// caret.  Hover-follows-focus would then take the keyboard away from
+	// someone mid-word because the pointer crossed a neighbouring button,
+	// so while a field here is focused, the pointer only hovers.
+	if (auto *e = dynamic_cast<Entry *>(kit.focus_); e && e->parent_ == this->col)
+		return true;
+	return MenuPopup::motion(kit, x, y);
+}
+
+// Focus order is document order, which the Flow leaves as visual order: it
+// only breaks the children into lines, never reorders them.  A line boundary
+// is therefore wherever y steps, and Up/Down is a walk to the next one
+// followed by a pick along it.
+void
+Overflow::step_line(Kit &kit, int dir)
+{
+	vector<Widget *> items;
+	collect_focusable(this, items);
+	const auto it = find(items.begin(), items.end(), kit.focus_);
+	if (it == items.end()) {
+		this->want_x_ = -1;
+		kit.cycle_focus(this, dir);
+		return;
+	}
+
+	auto centre_of = [](const Widget *w) {
+		return float(w->r.x) + float(w->r.w) * 0.5f;
+	};
+	const int n = int(items.size()), i = int(it - items.begin());
+	// The column to aim for outlives a run of Up/Downs, so that crossing a
+	// short line does not drag the track sideways.
+	if (this->want_x_ < 0)
+		this->want_x_ = centre_of(items[size_t(i)]);
+
+	int j = i;
+	const int from = items[size_t(i)]->r.y;
+	do {
+		j = (j + dir + n) % n;
+	} while (j != i && items[size_t(j)]->r.y == from);
+
+	// The nearest item by centre on the line arrived at.
+	const int line_y = items[size_t(j)]->r.y;
+	int best = j;
+	float least = 1e30f;
+	for (int k = 0; k < n; ++k) {
+		if (items[size_t(k)]->r.y != line_y)
+			continue;
+		const float d = abs(centre_of(items[size_t(k)]) - this->want_x_);
+		if (d < least) {
+			least = d;
+			best = k;
+		}
+	}
+	kit.set_focus(items[size_t(best)], true);
+}
+
+bool
+Overflow::key(Kit &kit, const Key &ev)
+{
+	if (Popup::key(kit, ev))
+		return true;
+	if (ev.mods & unsigned(Qt::AltModifier | Qt::ShiftModifier |
+		Qt::ControlModifier | Qt::MetaModifier))
+		return false;
+
+	// Keys reach a popup by bubbling out of the focused widget, so a field
+	// with the caret has already taken the ones it wants -- Left and Right
+	// among them -- and what arrives here is what it turned down.  Tab needs
+	// nothing here at all: an open popup traps the focus, so Kit::key walks
+	// this same order by itself.
+	switch (ev.key) {
+	case Qt::Key_Left:
+	case Qt::Key_Right:
+		// The items read as one strip that happens to be folded.
+		this->want_x_ = -1;
+		kit.cycle_focus(this, ev.key == Qt::Key_Left ? -1 : 1);
+		break;
+	case Qt::Key_Home:
+		this->want_x_ = -1;
+		kit.focus_first(this);
+		break;
+	case Qt::Key_End:
+		// Entering the strip backwards from nowhere lands on its last item.
+		this->want_x_ = -1;
+		kit.set_focus(nullptr, true);
+		kit.cycle_focus(this, -1);
+		break;
+	case Qt::Key_Up:
+	case Qt::Key_Down:
+		step_line(kit, ev.key == Qt::Key_Up ? -1 : 1);
+		break;
+	default:
+		return MenuPopup::key(kit, ev);
+	}
+	focus_item(kit, kit.focus_, true);
+	return true;
 }
 
 Menu::Menu()
@@ -2669,30 +2948,20 @@ sync_overflow_proxy(Widget &source, Widget &proxy)
 		static_cast<Label &>(proxy) = *label;
 	else if (auto *entry = dynamic_cast<Entry *>(&source)) {
 		auto &dst = static_cast<Entry &>(proxy);
-		dst = *entry;
-		// Growing is for a toolbar, which packs sideways; the menu stacks,
-		// and would stretch the field down the popup instead.
-		dst.grow = false;
-		// The copied handlers close over the source -- the browser reads
-		// its search text back out of it -- so the proxy has to write
-		// through before handing over.  The source's own handler is never
-		// itself a wrapper, which keeps re-syncing idempotent.
-		Entry *src = entry;
-		Entry *self = &dst;
-		auto change = entry->on_change;
-		auto cancel = entry->on_cancel;
-		dst.on_change = [src, self, change](Kit &kit) {
-			src->text = self->text;
-			src->caret = self->caret;
-			if (change)
-				change(kit);
-		};
-		dst.on_cancel = [src, self, cancel](Kit &kit) {
-			src->text = self->text;
-			src->caret = self->caret;
-			if (cancel)
-				cancel(kit);
-		};
+		// Everything except what the user is editing.  This runs every frame
+		// the popup is up, so it must not touch text, caret or preedit: the
+		// proxy is the field being typed into and owns them, and it hands
+		// them to the source through on_change rather than the other way
+		// round.  Nor may it re-wrap the handlers -- wrapping a wrapper each
+		// frame builds a chain that grows without bound.
+		dst.placeholder = entry->placeholder;
+		dst.min_w = entry->min_w;
+		dst.pad_x = entry->pad_x;
+		dst.hittable = entry->hittable;
+		// A field still stretches here, as it does in the bar: Flow gives it
+		// what is left of its line, and clamps it when the popup is narrower
+		// than the width it asks for.
+		dst.grow = entry->grow;
 	}
 	proxy.parent_ = parent;
 	proxy.visible = visible;
@@ -2726,6 +2995,29 @@ add_overflow_proxies(Overflow &overflow, ToolbarSlot *row)
 		if (!proxy)
 			continue;
 		sync_overflow_proxy(*row->kids[i], *proxy);
+		// Once, here: the write-through has to survive every later re-sync,
+		// and wrapping it again each frame would nest it into itself.
+		if (auto *src = dynamic_cast<Entry *>(row->kids[i].get())) {
+			auto *self = static_cast<Entry *>(proxy.get());
+			auto change = src->on_change;
+			auto cancel = src->on_cancel;
+			self->on_change = [src, self, change](Kit &kit) {
+				src->text = self->text;
+				src->caret = self->caret;
+				if (change)
+					change(kit);
+			};
+			self->on_cancel = [src, self, cancel](Kit &kit) {
+				src->text = self->text;
+				src->caret = self->caret;
+				if (cancel)
+					cancel(kit);
+				// Cancelling is the one time the source talks back: it
+				// empties the field rather than just reading it, and the
+				// proxy holds the text now, so it has to follow.
+				self->adopt(*src);
+			};
+		}
 		proxy->visible = false;
 		if (overflow.col) {
 			overflow.sources.push_back(row->kids[i].get());
@@ -2739,6 +3031,11 @@ fill_overflow_items(ToolbarSlot &row, Overflow &overflow)
 {
 	if (!overflow.col)
 		return;
+	// Only the first pass of an opening can reseed a field: this runs on
+	// every relayout, and one being typed into must not be overwritten from
+	// a source that only hears about text, never about the caret.
+	const bool seeding = !overflow.seeded;
+	overflow.seeded = true;
 	for (auto &item : overflow.col->kids)
 		item->visible = false;
 	const size_t end = row.item_count();
@@ -2755,6 +3052,13 @@ fill_overflow_items(ToolbarSlot &row, Overflow &overflow)
 				continue;
 			Widget &proxy = *overflow.col->kids[j];
 			sync_overflow_proxy(*source, proxy);
+			// Opening, a field starts from whatever the source holds; from
+			// then on it is the one being typed into, and sync_overflow_proxy
+			// leaves its text alone.
+			if (seeding) {
+				if (auto *dst = dynamic_cast<Entry *>(&proxy))
+					dst->adopt(*static_cast<Entry *>(source));
+			}
 			proxy.visible = source->visible;
 			break;
 		}
@@ -3500,18 +3804,6 @@ Kit::text_height(const QString &text, int wrap_px, bool bold) const
 
 namespace
 {
-
-void
-collect_focusable(Widget *w, vector<Widget *> &out)
-{
-	if (!w || !w->shown())
-		return;
-	if (w->focusable())
-		out.push_back(w);
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; ++i)
-		collect_focusable(w->child(i), out);
-}
 
 bool
 focus_in_visible_tree(Widget *w, const Widget *root)
