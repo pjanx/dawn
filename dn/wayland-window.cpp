@@ -245,7 +245,8 @@ WaylandWindow::content_geometry() const
 {
 	if ((flags() & Qt::FramelessWindowHint) &&
 		!(windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))) {
-		const int glow = int(lround(double(kGlowPts)));
+		// Qt logical units here, so the glow stays unscaled.
+		const int glow = int(kGlowPts);
 		return {-glow, -glow, width() + 2 * glow, height() + 2 * glow};
 	}
 	return {QPoint(), size()};

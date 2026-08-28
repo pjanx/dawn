@@ -118,10 +118,8 @@ namespace
 {
 
 constexpr float kWinPadX = 4.0f;
-constexpr float kWinPadY = 2.0f;
 constexpr float kItemGap = 2.0f;
 constexpr float kGridPad = 8.0f;
-constexpr float kGlow = 8.0f;
 constexpr float kGlowAlpha = 0.375f;
 constexpr float kBorder = 2.0f;
 constexpr float kThumbGap = 1.0f;
@@ -360,9 +358,8 @@ void
 thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 	uint32_t *out_h)
 {
-	const float dpr = b.kit_.dpr_ > 0.0f ? b.kit_.dpr_ : 1.0f;
-	thumb_dest_params(
-		gw, gh, b.thumb_size_, dpr, thumb_atlas_max(b), out_w, out_h);
+	thumb_dest_params(gw, gh, b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b),
+		out_w, out_h);
 }
 
 int
@@ -377,7 +374,7 @@ label_h(const Browser &b)
 int
 chrome(const Kit &kit)
 {
-	return kit.px(kGlow + kBorder);
+	return kit.px(kGlowPts + kBorder);
 }
 
 QString
@@ -967,7 +964,7 @@ apply_thumb_gpu(Browser &b, uint64_t gen, GpuPurpose purpose, int tier,
 				make_shared<const vector<uint16_t>>(std::move(res.data));
 			cache.tier = tier;
 			cache.thumb_size = b.thumb_size_;
-			cache.dpr = b.kit_.dpr_ > 0.0f ? b.kit_.dpr_ : 1.0f;
+			cache.dpr = b.kit_.dpr_;
 			cache.atlas_max = thumb_atlas_max(b);
 			cache.screen_icc = screen_icc_bytes(b);
 			Thumbnailer *thumbnailer = &b.thumbnailer_;
@@ -1152,7 +1149,7 @@ enqueue_thumbs(Browser &b)
 	ThumbJob proto;
 	proto.gen = b.thumb_gen_;
 	proto.thumb_size = b.thumb_size_;
-	proto.dpr = b.kit_.dpr_ > 0.0f ? b.kit_.dpr_ : 1.0f;
+	proto.dpr = b.kit_.dpr_;
 	proto.atlas_max = thumb_atlas_max(b);
 	proto.screen_icc = screen_icc_bytes(b);
 	auto push = [&](const vector<int> &idx, Thumbnailer::Priority priority) {
@@ -1413,8 +1410,7 @@ layout_grid(Browser &b, Rect area)
 			f.cap.y = f.cell.y + band + 2 * ch;
 			x = f.cell.x + f.cell.w + gap;
 		}
-		b.rows_.push_back({row.front().i, int(row.size()), float(y),
-			float(rh)});
+		b.rows_.push_back({row.front().i, int(row.size()), y, rh});
 		y += rh + gap;
 		row.clear();
 		row_w = 0;
@@ -2027,9 +2023,7 @@ set_view(Browser &b, BrowserView view)
 void
 pack_standin_icons(Browser &b)
 {
-	const float dpr = b.kit_.dpr_ > 0.0f ? b.kit_.dpr_ : 1.0f;
-	const int px =
-		max(1, int(lround(double(b.thumb_size_) * 0.5 * double(dpr))));
+	const int px = max(1, b.kit_.px(float(b.thumb_size_) * 0.5f));
 	b.kit_.pack_icon(kPendingIcon, px);
 	b.kit_.pack_icon(kMissingIcon, px);
 }
@@ -2063,11 +2057,10 @@ pack_toolbar_icons(Browser &b)
 bool
 set_dpr(Browser &b, float dpr)
 {
-	const float prev = b.kit_.dpr_;
 	if (!b.kit_.set_dpr(dpr))
 		return false;
 	pack_toolbar_icons(b);
-	if (abs(prev - b.kit_.dpr_) >= 0.01f && !b.files_.empty()) {
+	if (!b.files_.empty()) {
 		invalidate_thumbs(b);
 		enqueue_thumbs(b);
 		for (Browser::File &f : b.files_) {

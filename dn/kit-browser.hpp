@@ -106,8 +106,8 @@ struct Browser : Widget {
 	struct GridRow {
 		int first = 0;
 		int count = 0;
-		float y = 0;
-		float h = 0;
+		int y = 0;
+		int h = 0;
 	};
 	std::vector<GridRow> rows_;
 	int cursor_ = -1;
@@ -115,7 +115,7 @@ struct Browser : Widget {
 	bool cursor_x_dirty_ = false;
 	int layout_cursor_ = -1;
 	float layout_cell_x_ = 0;
-	float layout_w_ = 0;
+	int layout_w_ = 0;
 	int mid_file_ = -1;
 
 	std::vector<File> files_;

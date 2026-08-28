@@ -414,7 +414,7 @@ rebuild_atlas(Kit &kit)
 	}
 	kit.atlas_.dirty = true;
 
-	const int gn = max(1, int(lround(double(kGlowPts) * double(kit.dpr_))));
+	const int gn = max(1, kit.px(kGlowPts));
 	const Kit::Packed glow = pack_or_grow(kit, gn, gn);
 	if (!glow.empty()) {
 		kit.glow_ = glow;
@@ -453,8 +453,7 @@ rebuild_atlas(Kit &kit)
 	kit.font_bold_ = kit.font_;
 	kit.font_bold_.setBold(true);
 	kit.font_px_ = kit.font_;
-	kit.font_px_.setPixelSize(
-		int(lround(double(logical_px) * double(kit.dpr_))));
+	kit.font_px_.setPixelSize(kit.px(float(logical_px)));
 	kit.font_bold_px_ = kit.font_px_;
 	kit.font_bold_px_.setBold(true);
 	kit.raw_ = QRawFont::fromFont(kit.font_px_);
@@ -1281,7 +1280,7 @@ Sep::paint(Kit &kit) const
 void
 Splitter::measure(Kit &kit, int, int max_h)
 {
-	this->r = {0, 0, kit.px(this->min_w > 0.0f ? this->min_w : 8.0f), max_h};
+	this->r = {0, 0, kit.px(this->min_w), max_h};
 }
 
 void
@@ -1895,7 +1894,7 @@ Panel::paint(Kit &kit) const
 		break;
 	}
 	paint_children(kit);
-	const float hair = kit.hairline();
+	const float hair = float(kit.hairline());
 	// add_line() centres an axis-aligned band on a pixel centre, so the
 	// bottom rule is pulled half its own width inside the panel's edge.
 	const float edge = float(this->r.y + this->r.h) - hair * 0.5f;
@@ -3115,7 +3114,7 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 void
 Titlebar::prepare(Kit &kit)
 {
-	const int px = max(16, int(lround(double(kIconPts) * double(kit.dpr_))));
+	const int px = max(16, kit.px(kIconPts));
 	kit.pack_icon("window-minimize", px);
 	kit.pack_icon("window-maximize", px);
 	kit.pack_icon("window-restore", px);
@@ -3281,10 +3280,10 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	const float hair = hairline();
-	const Rect g = w.inset(int(hair), int(hair));
+	const int hair = hairline();
+	const Rect g = w.inset(hair, hair);
 	this->list_.add_rect_stroke(float(g.x), float(g.y), float(g.x + g.w),
-		float(g.y + g.h), col(this->colours_[ColourInk]), hair);
+		float(g.y + g.h), col(this->colours_[ColourInk]), float(hair));
 }
 
 void

@@ -704,8 +704,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 			const float want = this->sidebar_side == Side::Right
 				? float(frame.x + frame.w) - mx
 				: mx - float(frame.x);
-			const float dpr = max(kit.dpr_, 0.01f);
-			this->sidebar_w = clamp(want, min_side, max_side) / dpr;
+			this->sidebar_w = clamp(want, min_side, max_side) / kit.dpr_;
 		};
 		add_child(std::move(split));
 	}
@@ -857,9 +856,7 @@ Page::arrange(Kit &kit, Rect alloc)
 	if (this->splitter) {
 		this->splitter->visible = this->sidebar && this->sidebar->visible;
 		if (this->splitter->visible) {
-			const int sw = kit.px(this->splitter->min_w > 0.0f
-					? this->splitter->min_w
-					: kSplitW);
+			const int sw = kit.px(this->splitter->min_w);
 			// The grab strip straddles the boundary, half on each side.
 			const int sx = (this->sidebar_side == Side::Right
 					   ? this->well_.x + this->well_.w

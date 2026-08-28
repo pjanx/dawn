@@ -1502,7 +1502,7 @@ rotate_locked(Viewer &v, float delta)
 static void
 pan_by(Viewer &v, double dx_points, double dy_points)
 {
-	if (v.kit_.dpr_ <= 0.0f || v.scale_ <= 0.0f)
+	if (v.scale_ <= 0.0f)
 		return;
 	const float k = v.kit_.dpr_ / v.scale_;
 	const Vec u = turn(-v.angle_, {float(dx_points) * k, float(dy_points) * k});

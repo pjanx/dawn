@@ -1445,8 +1445,8 @@ Window::wheelEvent(QWheelEvent *event)
 	// those should pan, while a real wheel falls through to discrete zooming.
 	if (event->device()->type() == QInputDevice::DeviceType::TouchPad &&
 		(pix.x() || pix.y())) {
-		const float dpr = kit_.dpr_ > 0.0f ? kit_.dpr_ : 1.0f;
-		if (kit_.pan(x, y, float(pix.x()) / dpr, float(pix.y()) / dpr)) {
+		if (kit_.pan(x, y, float(pix.x()) / kit_.dpr_,
+				float(pix.y()) / kit_.dpr_)) {
 			request_render();
 			event->accept();
 			return;
