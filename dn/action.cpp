@@ -86,7 +86,7 @@ constexpr ActionDef kDefs[] = {
 		{{Qt::Key_C}}, {}},
 	{kToggle, {"Sort by _Name"}, {}, {{Qt::Key_1, kCtrl | kAlt}}, {}},
 	{kToggle, {"Sort by _Time"}, {}, {{Qt::Key_2, kCtrl | kAlt}}, {}},
-	{kMenu, {"_Search"}, {}, {{Qt::Key_F, kCtrl}, {Qt::Key_Slash}}, {}},
+	{kMenu, {"_Filter"}, {}, {{Qt::Key_F, kCtrl}, {Qt::Key_Slash}}, {}},
 	{0, {"_Open"}, {}, {{Qt::Key_Return}, {Qt::Key_Enter}}, {}},
 	{kMenu, {"_Browse"}, {"blocks-symbolic"},
 		{{Qt::Key_Return}, {Qt::Key_Enter}}, {}},

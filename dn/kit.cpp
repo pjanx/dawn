@@ -1020,8 +1020,13 @@ Entry::paint(Kit &kit) const
 	if (!this->Widget::shown() || this->r.empty())
 		return;
 
-	kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
+	// The border always says where the field is; only the fill is conditional.
+	// An idle, empty field lets the toolbar show through, and text in it is a
+	// filter the listing is already obeying, so that fills even unfocused, as
+	// the only thing on screen explaining why files are missing.
 	const float hair = float(kit.hairline());
+	if (this->focused_ || !this->text.isEmpty())
+		kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
 	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
