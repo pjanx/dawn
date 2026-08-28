@@ -11,7 +11,7 @@
 
 #include <chrono>
 
-namespace dn::detail
+namespace dawn::detail
 {
 
 inline thread_local OpenTiming *open_timing = nullptr;
@@ -78,4 +78,4 @@ std::vector<std::string> glycin_media_types();
 /// no SOF is found. Does not validate the rest of the bitstream.
 int64_t jpeg_sof_pixel_count(std::span<const uint8_t> data);
 
-}  // namespace dn::detail
+}  // namespace dawn::detail

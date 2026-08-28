@@ -21,8 +21,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <cmath>
 #include <cstdint>
@@ -36,7 +36,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 
 namespace
@@ -157,7 +157,7 @@ struct WuffsLoadContext {
 	bool have_iccp = false;
 	bool have_xmp = false;
 	unordered_map<string, string> texts;  ///< PNG tEXt/zTXt/iTXt key-values
-	string pending_key;                    ///< KVP key awaiting a value
+	string pending_key;                   ///< KVP key awaiting a value
 	bool have_pending_key = false;
 	double gamma = 0;  ///< From sRGB / gAMA, 0 if unset
 
@@ -227,8 +227,8 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		ctx.gamma = 2.2;
 		break;
 	case WUFFS_BASE__FOURCC__GAMA:
-		ctx.gamma = 1e5 /
-			wuffs_base__more_information__metadata_parsed__gama(&minfo);
+		ctx.gamma =
+			1e5 / wuffs_base__more_information__metadata_parsed__gama(&minfo);
 		break;
 
 	case WUFFS_BASE__FOURCC__KVPK:
@@ -237,8 +237,8 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		break;
 	case WUFFS_BASE__FOURCC__KVPV:
 		if (ctx.have_pending_key) {
-			ctx.texts.emplace(std::move(ctx.pending_key),
-				string(bytes.begin(), bytes.end()));
+			ctx.texts.emplace(
+				std::move(ctx.pending_key), string(bytes.begin(), bytes.end()));
 			ctx.have_pending_key = false;
 		}
 		break;
@@ -559,4 +559,4 @@ detail::load_wuffs(
 	}
 }
 
-}  // namespace dn
+}  // namespace dawn

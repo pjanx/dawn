@@ -58,17 +58,17 @@ class Renderer
 	VkSemaphore image_available_ = VK_NULL_HANDLE;
 	VkSemaphore render_finished_ = VK_NULL_HANDLE;
 
-	dn::ScaleEngine engine_;
+	dawn::ScaleEngine engine_;
 	OverlayVulkan overlay_;
 	float scale_ = 1.0f;
 	float pan_x_ = 0.0f;
 	float pan_y_ = 0.0f;
 	float angle_ = 0.0f;
-	dn::Orientation orientation_ = dn::Orientation::Rotate0;
+	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	bool checkerboard_ = false;
 	bool filter_ = true;
-	dn::Filter preferred_ = dn::Filter::Expensive;
-	dn::Transfer transfer_ = dn::Transfer::Srgb;
+	dawn::Filter preferred_ = dawn::Filter::Expensive;
+	dawn::Transfer transfer_ = dawn::Transfer::Srgb;
 	float well_[4] = {0xE8 / 255.0f, 0xE8 / 255.0f, 0xE8 / 255.0f, 1.0f};
 	float checker_[3] = {0xF0 / 255.0f, 0xF0 / 255.0f, 0xF0 / 255.0f};
 	VkFormat overlay_format_ = VK_FORMAT_UNDEFINED;
@@ -108,7 +108,7 @@ public:
 		uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride);
 	void clear_image();
 	void set_view(float scale, float pan_x, float pan_y,
-		dn::Orientation orientation, float angle = 0.0f);
+		dawn::Orientation orientation, float angle = 0.0f);
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled);
 	void set_dest_inset(uint32_t px);
@@ -117,7 +117,7 @@ public:
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
 	/// Nearest.
 	void set_filter(bool enabled);
-	void set_transfer(dn::Transfer transfer);
+	void set_transfer(dawn::Transfer transfer);
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,

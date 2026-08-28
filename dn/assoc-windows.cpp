@@ -221,7 +221,7 @@ launch(const Handler &app, const QString &path)
 		const QString abs = QFileInfo(path).absoluteFilePath();
 		const wstring wpath = QDir::toNativeSeparators(abs).toStdWString();
 		return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, nullptr,
-			wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+				   wpath.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
 	}
 
 	const QString ext = extension_of(path);

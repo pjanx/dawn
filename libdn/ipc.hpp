@@ -15,10 +15,13 @@
 #include <string_view>
 #include <vector>
 
-namespace dn {
-namespace ipc {
+namespace dawn
+{
+namespace ipc
+{
 
-class Encoder {
+class Encoder
+{
 	std::vector<std::byte> &buf_;
 	bool ok_ = true;
 
@@ -48,7 +51,8 @@ enum class DecodeError : uint8_t {
 	Limit,
 };
 
-class Decoder {
+class Decoder
+{
 	std::span<const std::byte> in_;
 	size_t off_ = 0;
 	DecodeError error_ = DecodeError::Ok;
@@ -78,8 +82,7 @@ public:
 
 bool utf8_validate(std::string_view);
 
-template<typename TView>
-struct Received {
+template <typename TView> struct Received {
 	std::vector<std::byte> storage;
 	TView view;
 };
@@ -90,7 +93,8 @@ struct Received {
 // many payload bytes. It performs no I/O of its own -- the transport asks
 // where to put arriving bytes and reports how many landed -- which suits
 // readiness-based and completion-based backends equally.
-class FrameReader {
+class FrameReader
+{
 	enum class State { Length, Payload };
 
 	State state_ = State::Length;
@@ -124,7 +128,8 @@ public:
 // One serialized output queue. pending() stays valid until the next
 // consume() or push(), so a completion-based backend takes its own copy
 // of whatever it hands to the operating system.
-class FrameWriter {
+class FrameWriter
+{
 	std::vector<std::byte> q_;
 	size_t off_ = 0;
 	uint32_t limit_ = FrameReader::kMaxPayload;
@@ -160,7 +165,8 @@ using Waitable = Handle;
 // A framed full-duplex byte stream. POSIX drives it from readiness on a
 // nonblocking Unix socket, Windows from completion of overlapped named
 // pipe I/O; both present this same polled interface.
-class Connection {
+class Connection
+{
 	friend class Endpoint;
 	friend class Listener;
 
@@ -211,7 +217,8 @@ public:
 
 // A bound service endpoint. Binding it is what arbitrates between
 // instances starting simultaneously.
-class Listener {
+class Listener
+{
 	friend class Endpoint;
 
 	struct Impl;
@@ -233,7 +240,8 @@ public:
 	void close();
 };
 
-class Endpoint {
+class Endpoint
+{
 public:
 	enum class ListenStatus { Ok, InUse, Error };
 	struct Listen {
@@ -254,4 +262,4 @@ public:
 };
 
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

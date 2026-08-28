@@ -7,8 +7,8 @@
 
 #pragma once
 
-#include "kit.hpp"
 #include "kit-chrome.hpp"
+#include "kit.hpp"
 #include "sheet.hpp"
 #include "thumbnailer.hpp"
 #include "types.hpp"
@@ -53,7 +53,7 @@ struct Browser : Widget {
 		bool ram_pending = false;
 		bool cache_bypass = false;
 		bool regen_failed = false;
-		dn::Transfer transfer = dn::Transfer::Srgb;
+		dawn::Transfer transfer = dawn::Transfer::Srgb;
 		Sheet::Packed gpu;
 		bool failed = false;
 		Rect tile{};
@@ -88,8 +88,8 @@ struct Browser : Widget {
 
 	// Enumeration below is std::filesystem; this is the identity above it.
 	QUrl dir_url_;
-	std::shared_ptr<Cmm> cmm_;
-	std::shared_ptr<Profile> screen_profile_;
+	std::shared_ptr<dawn::Cmm> cmm_;
+	std::shared_ptr<dawn::Profile> screen_profile_;
 
 	bool show_names_ = false;
 	// Substring the toolbar search field narrows the listing by; it is
@@ -160,7 +160,7 @@ struct Browser : Widget {
 	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
 	void set_screen_profile(
-		std::shared_ptr<Cmm> cmm, std::shared_ptr<Profile> profile);
+		std::shared_ptr<dawn::Cmm> cmm, std::shared_ptr<dawn::Profile> profile);
 	void present(Page &ui);
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;

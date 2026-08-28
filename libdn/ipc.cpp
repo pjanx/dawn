@@ -14,7 +14,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace ipc
 {
@@ -474,6 +474,5 @@ FrameWriter::clear()
 	off_ = 0;
 }
 
-
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

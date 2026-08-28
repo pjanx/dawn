@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <jpeglib.h>
 #if DAWN_WITH_JPEG_QS
@@ -37,7 +37,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -538,15 +538,14 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 		bool converted = false;
 		if (target) {
 			const bool premul = !cmm->broken_premul();
-			converted = cmm->transform_bgra8_to_bgra16(pixels8,
-				image->data.data(), image->width, image->height,
-				source.get(), target, premul);
+			converted =
+				cmm->transform_bgra8_to_bgra16(pixels8, image->data.data(),
+					image->width, image->height, source.get(), target, premul);
 			if (converted && !premul)
 				premultiply_bgra16(*image);
 		}
 		if (!converted) {
-			widen_bgra8_to_bgra16(
-				*image, pixels8, size_t(image->width) * 4);
+			widen_bgra8_to_bgra16(*image, pixels8, size_t(image->width) * 4);
 			ensure_working_premul(*image, ctx, source.get(),
 				/*input_premul=*/false);
 		}
@@ -770,4 +769,4 @@ detail::jpeg_sof_pixel_count(span<const uint8_t> data)
 	return width * height;
 }
 
-}  // namespace dn
+}  // namespace dawn

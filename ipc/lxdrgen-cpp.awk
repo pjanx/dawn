@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # Usage: env LC_ALL=C awk -f lxdrgen.awk -f lxdrgen-cpp.awk \
-#  -v PrefixCamel=Instance -v Namespace=dn::ipc::instance \
+#  -v PrefixCamel=Instance -v Namespace=dawn::ipc::instance \
 #  common.lxdr instance.lxdr
 #
 # PrefixCamel is accepted for consistency with other backends and is not
@@ -77,7 +77,7 @@ function array_decode(f, type,    block, vt) {
 		"\t\t\treturn false;\n" \
 		"\t\tsize_t const count = n;\n" \
 		"\t\tif (count > decoder.remaining() ||\n" \
-		"\t\t    count > dn::ipc::Decoder::kMaxElements)\n" \
+		"\t\t    count > dawn::ipc::Decoder::kMaxElements)\n" \
 		"\t\t\treturn false;\n"
 	if (type == "u8")
 		return block \
@@ -127,7 +127,7 @@ function emit_preamble(    i, src) {
 	print "#include <variant>"
 	print "#include <vector>"
 	print ""
-	print "namespace dn::ipc {"
+	print "namespace dawn::ipc {"
 	print "class Encoder;"
 	print "class Decoder;"
 	print "}"
@@ -137,7 +137,7 @@ function emit_preamble(    i, src) {
 
 BEGIN {
 	if (Namespace == "")
-		Namespace = "dn::ipc"
+		Namespace = "dawn::ipc"
 }
 
 function codegen_begin() {
@@ -191,13 +191,13 @@ function codegen_enum(name, cg,    fields) {
 
 	print ""
 	print "inline void encode(const " name \
-		" &value, dn::ipc::Encoder &encoder)"
+		" &value, dawn::ipc::Encoder &encoder)"
 	print "{"
 	print "\tencoder.i8(static_cast<int8_t>(value));"
 	print "}"
 
 	print ""
-	print "inline bool decode(dn::ipc::Decoder &decoder, " name " &value)"
+	print "inline bool decode(dawn::ipc::Decoder &decoder, " name " &value)"
 	print "{"
 	print "\tint8_t raw{};"
 	print "\tif (!decoder.i8(raw) || raw == 0)"
@@ -254,27 +254,27 @@ function emit_codec(own, view, ser, des) {
 	print ""
 	if (ser) {
 		print "inline void encode(const " own \
-			" &value, dn::ipc::Encoder &encoder)"
+			" &value, dawn::ipc::Encoder &encoder)"
 		print "{"
 		printf "%s", ser
 		print "}"
 	} else {
 		print "inline void encode(const " own \
-			" &, dn::ipc::Encoder &)"
+			" &, dawn::ipc::Encoder &)"
 		print "{"
 		print "}"
 	}
 
 	print ""
 	if (des) {
-		print "inline bool decode(dn::ipc::Decoder &decoder, " \
+		print "inline bool decode(dawn::ipc::Decoder &decoder, " \
 			view " &value)"
 		print "{"
 		printf "%s", des
 		print "\treturn true;"
 		print "}"
 	} else {
-		print "inline bool decode(dn::ipc::Decoder &, " view " &)"
+		print "inline bool decode(dawn::ipc::Decoder &, " view " &)"
 		print "{"
 		print "\treturn true;"
 		print "}"
@@ -349,7 +349,7 @@ function codegen_union(name, cg,    view, n, i, own_list, view_list, tag) {
 
 	print ""
 	print "inline void encode(const " name \
-		" &value, dn::ipc::Encoder &encoder)"
+		" &value, dawn::ipc::Encoder &encoder)"
 	print "{"
 	print "\tswitch (value.value.index()) {"
 	for (i = 0; i < n; i++) {
@@ -364,7 +364,7 @@ function codegen_union(name, cg,    view, n, i, own_list, view_list, tag) {
 	print "}"
 
 	print ""
-	print "inline bool decode(dn::ipc::Decoder &decoder, " view " &value)"
+	print "inline bool decode(dawn::ipc::Decoder &decoder, " view " &value)"
 	print "{"
 	print "\tint8_t tag{};"
 	print "\tif (!decoder.i8(tag) || tag == 0)"

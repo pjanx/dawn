@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #if DAWN_WITH_LIBHEIF
 #include <libheif/heif.h>
@@ -19,7 +19,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -139,8 +139,7 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 	// heif_image_handle_get_color_profile_type(), which reports only one.
 	heif_color_profile_nclx *nclx = nullptr;
 	if (result->icc.empty() &&
-		!heif_image_handle_get_nclx_color_profile(handle, &nclx).code &&
-		nclx) {
+		!heif_image_handle_get_nclx_color_profile(handle, &nclx).code && nclx) {
 		// The enums are numerically H.273, so they pass through as-is.
 		auto profile = cmm_or_default(ctx)->get_profile_cicp(
 			uint8_t(nclx->color_primaries),
@@ -150,7 +149,8 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 		else
 			// Chiefly PQ and HLG, which have no ICC v2 equivalent; those
 			// images stay as wrong as they were before, just not more so.
-			add_warning(ctx, "unrepresentable nclx colour space, assuming sRGB");
+			add_warning(
+				ctx, "unrepresentable nclx colour space, assuming sRGB");
 	}
 	if (nclx)
 		heif_nclx_color_profile_free(nclx);
@@ -264,6 +264,6 @@ detail::load_heif(
 	return head;
 }
 
-}  // namespace dn
+}  // namespace dawn
 
 #endif  // DAWN_WITH_LIBHEIF

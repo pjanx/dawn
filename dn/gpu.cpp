@@ -27,7 +27,7 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 	if (!this->instance_ || !surface)
 		return false;
 	string err;
-	if (!vk_create_graphics_device(this->instance_, surface,
+	if (!dawn::vk_create_graphics_device(this->instance_, surface,
 			std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
 			&this->phys_, &this->device_, &this->queue_, &this->queue_family_,
 			&err)) {

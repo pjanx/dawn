@@ -16,8 +16,14 @@ class App;
 void install_macos_app_menu(App *app);
 void sync_macos_app_menu(App *app);
 #else
-inline void install_macos_app_menu(App *) {}
-inline void sync_macos_app_menu(App *) {}
+inline void
+install_macos_app_menu(App *)
+{
+}
+inline void
+sync_macos_app_menu(App *)
+{
+}
 #endif
 
 }  // namespace dn

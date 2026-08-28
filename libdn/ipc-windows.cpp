@@ -20,7 +20,7 @@
 // this file spells std::byte rather than rely on that.
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace ipc
 {
@@ -693,4 +693,4 @@ Endpoint::connect(string_view service)
 }
 
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

@@ -7,10 +7,10 @@
 
 #pragma once
 
-#include "kit.hpp"
 #include "kit-browser.hpp"
 #include "kit-chrome.hpp"
 #include "kit-viewer.hpp"
+#include "kit.hpp"
 #include "renderer.hpp"
 
 #include <QString>
@@ -97,8 +97,8 @@ class Window final : public QWindow
 	Viewer *viewer_ = nullptr;
 	Mode mode_ = Mode::View;
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-	std::shared_ptr<dn::Cmm> cmm_;
-	std::shared_ptr<dn::Profile> screen_profile_;
+	std::shared_ptr<dawn::Cmm> cmm_;
+	std::shared_ptr<dawn::Profile> screen_profile_;
 	bool renderer_ready_ = false;
 	bool exposed_ = false;
 	bool resize_pending_ = false;

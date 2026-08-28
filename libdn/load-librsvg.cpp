@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <cairo.h>
 #include <gio/gio.h>
@@ -20,14 +20,14 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 
 namespace
 {
 
 // librsvg/Cairo rendering is capped at the project pixmap limit.
-constexpr double kMaxDimension = double(dn::kMaxDimension);
+constexpr double kMaxDimension = double(dawn::kMaxDimension);
 
 // Cairo's ARGB32 is a native-endian 0xAARRGGBB word, always premultiplied--
 // exactly the layout pack_argb32_words_to_bgra16() expects, association
@@ -187,4 +187,4 @@ detail::load_librsvg(
 	return image;
 }
 
-}  // namespace dn
+}  // namespace dawn

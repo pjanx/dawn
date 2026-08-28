@@ -18,7 +18,7 @@
 #include <vector>
 
 using namespace std;
-namespace inst = dn::ipc::instance;
+namespace inst = dawn::ipc::instance;
 
 namespace
 {
@@ -39,7 +39,7 @@ vector<byte>
 encoded(const T &value)
 {
 	vector<byte> buf;
-	dn::ipc::Encoder enc(buf);
+	dawn::ipc::Encoder enc(buf);
 	encode(value, enc);
 	CHECK(enc.ok());
 	return buf;
@@ -78,7 +78,7 @@ test_round_trip_hello_reply()
 		inst::HelloReply own;
 		own.value = inst::HelloReplyAccepted{inst::Limits{0x00100000u}};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -90,7 +90,7 @@ test_round_trip_hello_reply()
 		inst::HelloReply own;
 		own.value = inst::HelloReplyVersionMismatch{2};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -103,7 +103,7 @@ test_round_trip_hello_reply()
 		inst::HelloReply own;
 		own.value = inst::HelloReplySessionMismatch{};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -119,7 +119,7 @@ test_round_trip_result()
 		inst::Result own;
 		own.value = inst::ResultDone{};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::ResultView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -130,7 +130,7 @@ test_round_trip_result()
 		own.value =
 			inst::ResultError{inst::Error{inst::ErrorCode::Busy, "nope"}};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::ResultView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -147,7 +147,7 @@ test_round_trip_frames()
 	{
 		inst::Hello hello{1, "sess"};
 		const vector<byte> buf = encoded(hello);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::HelloView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -160,7 +160,7 @@ test_round_trip_frames()
 		open.activation_token = "tok";
 		open.browse = true;
 		const vector<byte> buf = encoded(open);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::OpenRequestView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -175,7 +175,7 @@ test_round_trip_frames()
 		inst::Frame own;
 		own.payload.value = inst::PayloadHello{inst::Hello{1, "b"}};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -190,7 +190,7 @@ test_round_trip_frames()
 		inst::Frame own;
 		own.payload.value = inst::PayloadHelloReply{reply};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -212,7 +212,7 @@ test_round_trip_frames()
 		inst::Frame own;
 		own.payload.value = inst::PayloadRequest{req};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -234,7 +234,7 @@ test_round_trip_frames()
 		inst::Frame own;
 		own.payload.value = inst::PayloadResponse{resp};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -248,7 +248,7 @@ test_round_trip_frames()
 		inst::Frame own;
 		own.payload.value = inst::PayloadCancel{inst::Cancel{0x100000002ull}};
 		const vector<byte> buf = encoded(own);
-		dn::ipc::Decoder dec(buf);
+		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
@@ -301,17 +301,17 @@ test_truncation()
 	const vector<byte> full = encoded(inst::Hello{1, "b"});
 	CHECK(!full.empty());
 	for (size_t n = 0; n < full.size(); ++n) {
-		dn::ipc::Decoder dec(span<const byte>(full.data(), n));
+		dawn::ipc::Decoder dec(span<const byte>(full.data(), n));
 		inst::HelloView view{};
 		const bool ok = decode(dec, view);
 		CHECK(!ok);
-		CHECK(dec.error() == dn::ipc::DecodeError::Truncated);
+		CHECK(dec.error() == dawn::ipc::DecodeError::Truncated);
 	}
-	dn::ipc::Decoder dec(full);
+	dawn::ipc::Decoder dec(full);
 	inst::HelloView view{};
 	CHECK(decode(dec, view));
 	CHECK(dec.remaining() == 0);
-	CHECK(dec.error() == dn::ipc::DecodeError::Ok);
+	CHECK(dec.error() == dawn::ipc::DecodeError::Ok);
 	CHECK(view.protocol_version == 1);
 	CHECK(view.session == "b");
 }
@@ -321,7 +321,7 @@ test_trailing_bytes()
 {
 	vector<byte> buf = encoded(inst::Hello{1, "b"});
 	buf.push_back(byte{0x00});
-	dn::ipc::Decoder dec(buf);
+	dawn::ipc::Decoder dec(buf);
 	inst::HelloView view{};
 	const bool ok = decode(dec, view);
 	// Generated Hello decode succeeds and leaves the extra byte.
@@ -335,18 +335,18 @@ test_invalid_utf8()
 	{
 		// u32be length 2, overlong NUL (C0 80)
 		const uint8_t raw[] = {0x00, 0x00, 0x00, 0x02, 0xC0, 0x80};
-		dn::ipc::Decoder dec(as_bytes(span(raw)));
+		dawn::ipc::Decoder dec(as_bytes(span(raw)));
 		string_view s;
 		CHECK(!dec.string(s));
-		CHECK(dec.error() == dn::ipc::DecodeError::InvalidUtf8);
+		CHECK(dec.error() == dawn::ipc::DecodeError::InvalidUtf8);
 	}
 	{
 		// u32be length 1, truncated 2-byte sequence
 		const uint8_t raw[] = {0x00, 0x00, 0x00, 0x01, 0xC2};
-		dn::ipc::Decoder dec(as_bytes(span(raw)));
+		dawn::ipc::Decoder dec(as_bytes(span(raw)));
 		string_view s;
 		CHECK(!dec.string(s));
-		CHECK(dec.error() == dn::ipc::DecodeError::InvalidUtf8);
+		CHECK(dec.error() == dawn::ipc::DecodeError::InvalidUtf8);
 	}
 }
 
@@ -355,13 +355,13 @@ test_zero_and_unknown_enum()
 {
 	{
 		const byte raw[] = {byte{0}};
-		dn::ipc::Decoder dec(raw);
+		dawn::ipc::Decoder dec(raw);
 		inst::HelloResult value{};
 		CHECK(!decode(dec, value));
 	}
 	{
 		const byte raw[] = {byte{99}};
-		dn::ipc::Decoder dec(raw);
+		dawn::ipc::Decoder dec(raw);
 		inst::HelloResult value{};
 		CHECK(!decode(dec, value));
 	}
@@ -371,7 +371,7 @@ void
 test_unknown_union_tag()
 {
 	const byte raw[] = {byte{99}};
-	dn::ipc::Decoder dec(raw);
+	dawn::ipc::Decoder dec(raw);
 	inst::HelloReplyView view{};
 	CHECK(!decode(dec, view));
 }
@@ -379,19 +379,19 @@ test_unknown_union_tag()
 void
 test_huge_array_count()
 {
-	const size_t n = dn::ipc::Decoder::kMaxElements + 1;
+	const size_t n = dawn::ipc::Decoder::kMaxElements + 1;
 	{
 		const uint8_t raw[] = {0xFF, 0xFF, 0xFF, 0xFF};
-		dn::ipc::Decoder dec(as_bytes(span(raw)));
+		dawn::ipc::Decoder dec(as_bytes(span(raw)));
 		inst::OpenRequestView view{};
 		CHECK(!decode(dec, view));
 	}
 	{
 		vector<byte> raw(n);
-		dn::ipc::Decoder dec(raw);
+		dawn::ipc::Decoder dec(raw);
 		span<const byte> out;
 		CHECK(!dec.bytes(out, n));
-		CHECK(dec.error() == dn::ipc::DecodeError::Limit);
+		CHECK(dec.error() == dawn::ipc::DecodeError::Limit);
 	}
 	{
 		vector<byte> raw(4 + n, byte{0});
@@ -399,10 +399,10 @@ test_huge_array_count()
 		raw[1] = byte((n >> 16) & 0xff);
 		raw[2] = byte((n >> 8) & 0xff);
 		raw[3] = byte(n & 0xff);
-		dn::ipc::Decoder dec(raw);
+		dawn::ipc::Decoder dec(raw);
 		string_view sv;
 		CHECK(!dec.string(sv));
-		CHECK(dec.error() == dn::ipc::DecodeError::Limit);
+		CHECK(dec.error() == dawn::ipc::DecodeError::Limit);
 	}
 }
 

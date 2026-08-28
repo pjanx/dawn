@@ -8,8 +8,8 @@
 #include "encode-webp.hpp"
 #include "orient.hpp"
 
-#include "libdnvk.h"
 #include "libdn.h"
+#include "libdnvk.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -26,43 +26,47 @@
 using namespace std;
 namespace fs = filesystem;
 
-namespace {
+namespace
+{
 
 mutex io_mu;
 atomic<bool> any_fail{false};
 
-void log_err(const string &msg)
+void
+log_err(const string &msg)
 {
 	lock_guard lock(io_mu);
 	fprintf(stderr, "%s\n", msg.c_str());
 }
 
-void fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
+void
+fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 {
-	const float scale =
-		min(1.0f, min(512.0f / float(w), 256.0f / float(h)));
+	const float scale = min(1.0f, min(512.0f / float(w), 256.0f / float(h)));
 	*out_w = max(1u, uint32_t(float(w) * scale + 0.5f));
 	*out_h = max(1u, uint32_t(float(h) * scale + 0.5f));
 }
 
-fs::path thumb_path(const fs::path &input)
+fs::path
+thumb_path(const fs::path &input)
 {
 	const fs::path dir = input.parent_path();
 	const string stem = input.stem().string();
 	return dir / (stem + ".thumb.webp");
 }
 
-bool process_one(const string &path, dn::ScaleScaler *scaler)
+bool
+process_one(const string &path, dawn::ScaleScaler *scaler)
 {
-	dn::OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = path;
 	// One Cmm per job — do not share get_default() across worker threads.
-	ctx.cmm = make_shared<dn::Cmm>();
+	ctx.cmm = make_shared<dawn::Cmm>();
 	ctx.screen_profile = ctx.cmm->get_profile_sRGB();
 	ctx.first_frame_only = true;
 
-	dn::Error error;
-	dn::ImagePtr image = dn::open(ctx, &error);
+	dawn::Error error;
+	dawn::ImagePtr image = dawn::open(ctx, &error);
 	if (!image) {
 		log_err(path + ": " +
 			(error.message.empty() ? "open failed" : error.message));
@@ -81,10 +85,10 @@ bool process_one(const string &path, dn::ScaleScaler *scaler)
 	uint32_t out_w = 0, out_h = 0;
 	fit_size(image->width, image->height, &out_w, &out_h);
 
-	dn::ScaleOutput scaled;
+	dawn::ScaleOutput scaled;
 	string vk_err;
 	if (!scaler->scale(image->width, image->height, image->data.data(),
-			   image->stride, out_w, out_h, &scaled, &vk_err)) {
+			image->stride, out_w, out_h, &scaled, &vk_err)) {
 		log_err(path + ": scale failed: " + vk_err);
 		return false;
 	}
@@ -92,7 +96,7 @@ bool process_one(const string &path, dn::ScaleScaler *scaler)
 	vector<uint8_t> webp;
 	string enc_err;
 	if (!dnthumbd::encode_webp_rgba8(scaled.width, scaled.height,
-					 scaled.rgba8.data(), &webp, &enc_err)) {
+			scaled.rgba8.data(), &webp, &enc_err)) {
 		log_err(path + ": encode failed: " + enc_err);
 		return false;
 	}
@@ -112,7 +116,7 @@ bool process_one(const string &path, dn::ScaleScaler *scaler)
 
 	lock_guard lock(io_mu);
 	printf("%s -> %s (%ux%u)\n", path.c_str(), out_path.string().c_str(), out_w,
-	       out_h);
+		out_h);
 	return true;
 }
 
@@ -137,13 +141,15 @@ struct JobQueue {
 	}
 };
 
-void worker(JobQueue *jobs, dn::ScaleScaler *scaler)
+void
+worker(JobQueue *jobs, dawn::ScaleScaler *scaler)
 {
 	for (;;) {
 		string path;
 		{
 			unique_lock lock(jobs->mu);
-			jobs->cv.wait(lock, [&] { return !jobs->paths.empty() || jobs->done; });
+			jobs->cv.wait(
+				lock, [&] { return !jobs->paths.empty() || jobs->done; });
 			if (jobs->paths.empty() && jobs->done)
 				return;
 			path = std::move(jobs->paths.front());
@@ -154,14 +160,16 @@ void worker(JobQueue *jobs, dn::ScaleScaler *scaler)
 	}
 }
 
-void usage(const char *argv0)
+void
+usage(const char *argv0)
 {
 	fprintf(stderr, "Usage: %s [-j N] IMAGE...\n", argv0);
 }
 
-} // namespace
+}  // namespace
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
 	unsigned nthreads = thread::hardware_concurrency();
 	if (nthreads < 1)
@@ -198,7 +206,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	dn::ScaleScaler scaler;
+	dawn::ScaleScaler scaler;
 	string err;
 	if (!scaler.init(&err)) {
 		fprintf(stderr, "Vulkan init failed: %s\n", err.c_str());

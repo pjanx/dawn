@@ -16,7 +16,8 @@ using namespace std;
 namespace dnthumbd {
 namespace {
 
-bool invert_matrix(const dn::Matrix &m, dn::Matrix *out)
+bool
+invert_matrix(const dawn::Matrix &m, dawn::Matrix *out)
 {
 	const double det = m.xx * m.yy - m.xy * m.yx;
 	if (fabs(det) < 1e-12)
@@ -30,13 +31,15 @@ bool invert_matrix(const dn::Matrix &m, dn::Matrix *out)
 	return true;
 }
 
-void map_point(const dn::Matrix &m, double x, double y, double *ox, double *oy)
+void
+map_point(const dawn::Matrix &m, double x, double y, double *ox, double *oy)
 {
 	*ox = m.xx * x + m.xy * y + m.x0;
 	*oy = m.yx * x + m.yy * y + m.y0;
 }
 
-void copy_pixel_bgra16(uint16_t *dst, const uint16_t *src)
+void
+copy_pixel_bgra16(uint16_t *dst, const uint16_t *src)
 {
 	dst[0] = src[0];
 	dst[1] = src[1];
@@ -44,11 +47,12 @@ void copy_pixel_bgra16(uint16_t *dst, const uint16_t *src)
 	dst[3] = src[3];
 }
 
-} // namespace
+}  // namespace
 
-bool bake_orientation(dn::Image &image)
+bool
+bake_orientation(dawn::Image &image)
 {
-	using dn::Orientation;
+	using dawn::Orientation;
 
 	if (image.width == 0 || image.height == 0 || image.data.empty())
 		return false;
@@ -60,21 +64,21 @@ bool bake_orientation(dn::Image &image)
 		return true;
 
 	double nw = 0, nh = 0;
-	dn::orientation_dimensions(image, orient, &nw, &nh);
+	dawn::orientation_dimensions(image, orient, &nw, &nh);
 	const uint32_t out_w = uint32_t(nw);
 	const uint32_t out_h = uint32_t(nh);
-	if (out_w == 0 || out_h == 0 || out_w > dn::kMaxDimension ||
-	    out_h > dn::kMaxDimension)
+	if (out_w == 0 || out_h == 0 || out_w > dawn::kMaxDimension ||
+		out_h > dawn::kMaxDimension)
 		return false;
 
 	const uint32_t in_w = image.width;
 	const uint32_t in_h = image.height;
-	const size_t out_stride = size_t(out_w) * dn::kBytesPerPixel;
+	const size_t out_stride = size_t(out_w) * dawn::kBytesPerPixel;
 	if (out_h > SIZE_MAX / out_stride)
 		return false;
 
-	dn::Matrix fwd = dn::orientation_matrix(orient, nw, nh);
-	dn::Matrix inv{};
+	dawn::Matrix fwd = dawn::orientation_matrix(orient, nw, nh);
+	dawn::Matrix inv{};
 	if (!invert_matrix(fwd, &inv))
 		return false;
 
@@ -86,7 +90,7 @@ bool bake_orientation(dn::Image &image)
 	}
 
 	for (uint32_t y = 0; y < out_h; y++) {
-		uint16_t *dst_row = (uint16_t *)(out_data.data() + y * out_stride);
+		uint16_t *dst_row = (uint16_t *) (out_data.data() + y * out_stride);
 		for (uint32_t x = 0; x < out_w; x++) {
 			double sx = 0, sy = 0;
 			map_point(inv, double(x) + 0.5, double(y) + 0.5, &sx, &sy);
@@ -96,7 +100,7 @@ bool bake_orientation(dn::Image &image)
 				dst_row[0] = dst_row[1] = dst_row[2] = dst_row[3] = 0;
 			} else {
 				const uint16_t *src =
-					dn::row_u16(image, uint32_t(iy)) + size_t(ix) * 4;
+					dawn::row_u16(image, uint32_t(iy)) + size_t(ix) * 4;
 				copy_pixel_bgra16(dst_row, src);
 			}
 			dst_row += 4;
@@ -111,4 +115,4 @@ bool bake_orientation(dn::Image &image)
 	return true;
 }
 
-} // namespace dnthumbd
+}  // namespace dnthumbd

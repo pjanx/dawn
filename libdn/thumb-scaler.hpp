@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace dn
+namespace dawn
 {
 
 /// Worker-fed, GUI-submitted thumbnail scaler. Job pixels are copied into a
@@ -75,4 +75,4 @@ public:
 	[[nodiscard]] bool busy() const;
 };
 
-}  // namespace dn
+}  // namespace dawn

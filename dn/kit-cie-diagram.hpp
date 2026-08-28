@@ -15,8 +15,8 @@ namespace dn
 {
 
 struct CieDiagram : Widget {
-	Chromaticities image{};
-	Chromaticities screen{};
+	dawn::Chromaticities image{};
+	dawn::Chromaticities screen{};
 	bool show_screen = false;
 	bool screen_dashed = false;
 	bool image_dashed = false;
@@ -29,8 +29,8 @@ struct CieDiagram : Widget {
 private:
 	Kit::Packed slot_{};
 	uint32_t epoch_ = 0;
-	Chromaticities packed_image_{};
-	Chromaticities packed_screen_{};
+	dawn::Chromaticities packed_image_{};
+	dawn::Chromaticities packed_screen_{};
 	bool packed_show_screen_ = false;
 	bool packed_screen_dashed_ = false;
 	bool packed_image_dashed_ = false;

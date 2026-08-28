@@ -8,8 +8,8 @@
 #include <dawn-config.h>
 
 #include "assoc.hpp"
-#include "kit-chrome.hpp"
 #include "kit-browser.hpp"
+#include "kit-chrome.hpp"
 #include "url.hpp"
 
 #include <QFileInfo>
@@ -824,8 +824,8 @@ Page::arrange(Kit &kit, Rect alloc)
 	const float body_h = max(0.0f, frame.y + frame.h - body_y);
 	float side_w = 0.0f;
 	if (this->sidebar) {
-		this->sidebar->visible =
-			this->sidebar_open && this->sidebar_side != Side::None && body_h > 0.0f;
+		this->sidebar->visible = this->sidebar_open &&
+			this->sidebar_side != Side::None && body_h > 0.0f;
 		if (this->sidebar->visible) {
 			side_w = max(0.0f, this->sidebar_w);
 			this->sidebar->min_w = side_w;

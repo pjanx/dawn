@@ -230,7 +230,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 		return false;
 	this->renderer_ready_ = true;
 
-	this->cmm_ = dn::Cmm::get_default();
+	this->cmm_ = dawn::Cmm::get_default();
 	refresh_screen_profile(screen());
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
@@ -609,10 +609,10 @@ bool
 Window::refresh_screen_profile(QScreen *target_screen)
 {
 	if (!this->cmm_)
-		this->cmm_ = dn::Cmm::get_default();
+		this->cmm_ = dawn::Cmm::get_default();
 	DisplayProfile discovered =
 		this->app_->display_profiles.load(target_screen);
-	shared_ptr<dn::Profile> next;
+	shared_ptr<dawn::Profile> next;
 	string label = "sRGB (fallback)";
 	string source = "srgb";
 	if (!discovered.icc.empty()) {

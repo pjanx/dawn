@@ -153,8 +153,9 @@ webp_metadata(const QByteArray &bytes, Metadata *meta)
 	return ok;
 }
 
-ImagePtr
-decode_webp(const QByteArray &bytes, Cmm &cmm, Profile *source, Profile *target)
+dawn::ImagePtr
+decode_webp(const QByteArray &bytes, dawn::Cmm &cmm, dawn::Profile *source,
+	dawn::Profile *target)
 {
 	int width = 0, height = 0;
 	uint8_t *bgra =
@@ -164,7 +165,7 @@ decode_webp(const QByteArray &bytes, Cmm &cmm, Profile *source, Profile *target)
 		WebPFree(bgra);
 		return {};
 	}
-	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
+	dawn::ImagePtr image = dawn::image_new(uint32_t(width), uint32_t(height));
 	if (image &&
 		!cmm.transform_bgra8_to_bgra16(bgra, image->data.data(), image->width,
 			image->height, source, target, true))
@@ -175,7 +176,7 @@ decode_webp(const QByteArray &bytes, Cmm &cmm, Profile *source, Profile *target)
 
 ThumbnailHit
 read_wide(const QString &path, const ThumbnailSource &source, int tier,
-	int desired_tier, const shared_ptr<Cmm> &cmm, Profile *screen)
+	int desired_tier, const shared_ptr<dawn::Cmm> &cmm, dawn::Profile *screen)
 {
 	ThumbnailHit hit;
 	const QByteArray bytes = read_file(path);
@@ -185,9 +186,9 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 		return hit;
 	const string *tag = value(meta, kColorSpace);
 	const bool p3 = tag && *tag == "Display P3";
-	shared_ptr<Profile> src =
+	shared_ptr<dawn::Profile> src =
 		p3 ? cmm->get_profile_display_p3() : cmm->get_profile_sRGB();
-	ImagePtr image = decode_webp(bytes, *cmm, src.get(), screen);
+	dawn::ImagePtr image = decode_webp(bytes, *cmm, src.get(), screen);
 	if (!image)
 		return hit;
 	hit.width = image->width;
@@ -195,7 +196,7 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
 	for (uint32_t y = 0; y < hit.height; ++y)
 		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
-			row_u16(*image, y), size_t(hit.width) * kBytesPerPixel);
+			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
 	hit.tier = tier;
 	hit.interim = !p3 || tier < desired_tier;
 	read_image_dimensions(meta, &hit);
@@ -204,18 +205,18 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 
 ThumbnailHit
 read_png(const QString &path, const ThumbnailSource &source, int tier,
-	const shared_ptr<Cmm> &cmm, Profile *screen)
+	const shared_ptr<dawn::Cmm> &cmm, dawn::Profile *screen)
 {
 	ThumbnailHit hit;
 	const QByteArray bytes = read_file(path);
 	if (bytes.isEmpty() || !cmm || !screen)
 		return hit;
-	OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = path.toStdString();
 	ctx.cmm = cmm;
 	ctx.first_frame_only = true;
-	Error error;
-	ImagePtr image = open_from_data(
+	dawn::Error error;
+	dawn::ImagePtr image = open_from_data(
 		span(reinterpret_cast<const uint8_t *>(bytes.constData()),
 			size_t(bytes.size())),
 		ctx, &error);
@@ -225,7 +226,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	meta.values = image->text;
 	if (!valid_metadata(meta, source))
 		return {};
-	shared_ptr<Profile> srgb = cmm->get_profile_sRGB();
+	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB();
 	if (!cmm->transform_bgra16(image->data.data(), image->width, image->height,
 			srgb.get(), screen, true, true))
 		return {};
@@ -234,7 +235,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
 	for (uint32_t y = 0; y < hit.height; ++y)
 		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
-			row_u16(*image, y), size_t(hit.width) * kBytesPerPixel);
+			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
 	hit.tier = tier;
 	hit.interim = true;
 	read_image_dimensions(meta, &hit);
@@ -346,7 +347,7 @@ thumbnail_tier_height(int tier)
 
 ThumbnailHit
 thumbnail_cache_lookup(const ThumbnailSource &source, int desired_tier,
-	const shared_ptr<Cmm> &cmm, Profile *screen_profile)
+	const shared_ptr<dawn::Cmm> &cmm, dawn::Profile *screen_profile)
 {
 	if (thumbnail_cache_root().isEmpty() ||
 		thumbnail_cache_contains(source.path))

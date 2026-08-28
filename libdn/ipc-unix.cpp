@@ -22,7 +22,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace ipc
 {
@@ -453,4 +453,4 @@ Endpoint::connect(string_view service)
 }
 
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

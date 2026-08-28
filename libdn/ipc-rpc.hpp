@@ -17,8 +17,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace dn {
-namespace ipc {
+namespace dawn
+{
+namespace ipc
+{
 
 // Nothing here knows any schema: payloads go in and out whole. A service
 // puts its own handshake and envelope dispatch on top.
@@ -39,7 +41,8 @@ enum class HelloStatus : uint8_t {
 // A connection driven by blocking waits against a shrinking time budget.
 // This is what a one-shot client wants; an event loop drives Connection
 // directly instead.
-class Channel {
+class Channel
+{
 public:
 	static Channel connect(
 		std::string_view service, std::chrono::milliseconds &budget);
@@ -57,8 +60,8 @@ public:
 	void set_max_payload(uint32_t limit);
 
 	// Both consume budget as time passes, and fail once it runs out.
-	bool send(std::span<const std::byte> payload,
-		std::chrono::milliseconds &budget);
+	bool send(
+		std::span<const std::byte> payload, std::chrono::milliseconds &budget);
 	bool recv(
 		std::vector<std::byte> &payload, std::chrono::milliseconds &budget);
 
@@ -71,7 +74,8 @@ private:
 
 // Accepting, per-connection bookkeeping, and one serialized output queue
 // each, driven by an event loop through the watch callbacks below.
-class ServerCore {
+class ServerCore
+{
 public:
 	struct Config {
 		// Applied to every accepted connection, so that a peer cannot
@@ -79,16 +83,14 @@ public:
 		uint32_t max_payload_size = Connection::kMaxPayload;
 		// One whole payload arrived. Returning false is a protocol
 		// error and drops the connection.
-		std::function<bool(uint64_t id, std::span<const std::byte>)>
-			on_payload;
+		std::function<bool(uint64_t id, std::span<const std::byte>)> on_payload;
 		// The connection is gone; nothing can be sent on it any more.
 		std::function<void(uint64_t id)> on_closed;
 		// Event-loop hooks. Connections are named by an opaque id;
 		// the Waitable is what the loop has to watch for it.
 		std::function<void(uint64_t id, Waitable w)> watch_read;
 		std::function<void(uint64_t id)> unwatch;
-		std::function<void(uint64_t id, Waitable w, bool enable)>
-			watch_write;
+		std::function<void(uint64_t id, Waitable w, bool enable)> watch_write;
 	};
 
 	ServerCore(Listener listener, Config cfg);
@@ -126,4 +128,4 @@ private:
 };
 
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

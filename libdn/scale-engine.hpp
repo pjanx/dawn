@@ -15,7 +15,8 @@
 #include <cstdint>
 #include <string>
 
-namespace dn {
+namespace dawn
+{
 
 enum class Filter : uint8_t { Nearest, Bilinear, Expensive };
 
@@ -46,7 +47,8 @@ struct ScaleView {
 };
 
 /// Shared H→V tile scale engine. Does not own VkInstance/VkDevice/VkQueue.
-class ScaleEngine {
+class ScaleEngine
+{
 	struct Impl;
 	Impl *impl_ = nullptr;
 
@@ -58,7 +60,8 @@ public:
 	ScaleEngine &operator=(const ScaleEngine &) = delete;
 
 	/// `dest_final_layout` is `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` for swapchain
-	/// targets, or `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` for offscreen readback.
+	/// targets, or `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` for offscreen
+	/// readback.
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkFormat dest_format,
 		VkImageLayout dest_final_layout, std::string *error = nullptr);
@@ -72,10 +75,10 @@ public:
 	[[nodiscard]] uint32_t image_height() const;
 	[[nodiscard]] bool has_image() const;
 
-	bool ensure_viewport(uint32_t viewport_w, uint32_t viewport_h,
-			     std::string *error = nullptr);
-	void set_dest_inset(uint32_t left, uint32_t top, uint32_t right,
-		uint32_t bottom);
+	bool ensure_viewport(
+		uint32_t viewport_w, uint32_t viewport_h, std::string *error = nullptr);
+	void set_dest_inset(
+		uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
 
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
 		uint32_t viewport_h, const ScaleView &view, const float clear_rgba[4],
@@ -95,4 +98,4 @@ public:
 	[[nodiscard]] VkFormat dest_format() const;
 };
 
-} // namespace dn
+}  // namespace dawn

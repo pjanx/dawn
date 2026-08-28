@@ -21,9 +21,12 @@
 #include <unordered_map>
 #include <vector>
 
-namespace dn {
-namespace ipc {
-namespace instance {
+namespace dawn
+{
+namespace ipc
+{
+namespace instance
+{
 
 // The endpoint name, private to the current user, and on Windows to the
 // current session too.
@@ -36,7 +39,8 @@ class Server;
 // A request the service has been handed and has not yet answered. It may
 // be completed inline or kept and completed later; either way exactly one
 // terminal response goes out, and one goes out even if it is dropped.
-class Call {
+class Call
+{
 public:
 	struct State {
 		// Both null once the peer is gone, which is also what says the
@@ -74,7 +78,8 @@ private:
 };
 
 // The handshake, request dispatch, and cancellation, over a ServerCore.
-class Server {
+class Server
+{
 public:
 	struct Config {
 		std::string session;
@@ -85,8 +90,7 @@ public:
 		// Event-loop hooks, passed straight through to ServerCore.
 		std::function<void(uint64_t id, Waitable w)> watch_read;
 		std::function<void(uint64_t id)> unwatch;
-		std::function<void(uint64_t id, Waitable w, bool enable)>
-			watch_write;
+		std::function<void(uint64_t id, Waitable w, bool enable)> watch_write;
 	};
 
 	Server(Listener listener, Config cfg);
@@ -128,7 +132,8 @@ private:
 // One request at a time over one connection, waiting for its answer. The
 // request ID is still allocated and checked, so a server that answers the
 // wrong one is caught rather than believed.
-class Client {
+class Client
+{
 	explicit Client(Channel chan);
 
 	Channel chan_;
@@ -165,4 +170,4 @@ public:
 
 }  // namespace instance
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

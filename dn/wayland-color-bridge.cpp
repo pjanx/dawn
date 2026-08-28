@@ -24,8 +24,8 @@ namespace
 {
 
 void
-registry_note(void *data, wl_registry *, uint32_t, const char *interface,
-	uint32_t)
+registry_note(
+	void *data, wl_registry *, uint32_t, const char *interface, uint32_t)
 {
 	if (interface && strcmp(interface, "zxdg_decoration_manager_v1") == 0)
 		*static_cast<bool *>(data) = true;

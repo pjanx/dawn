@@ -11,8 +11,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
 
@@ -20,7 +20,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -88,8 +88,8 @@ detail::gdkpixbuf_media_types()
 	vector<string> types;
 	GSList *formats = gdk_pixbuf_get_formats();
 	for (GSList *iter = formats; iter; iter = iter->next) {
-		gchar **mime_types = gdk_pixbuf_format_get_mime_types(
-			(GdkPixbufFormat *) iter->data);
+		gchar **mime_types =
+			gdk_pixbuf_format_get_mime_types((GdkPixbufFormat *) iter->data);
 		for (gchar **p = mime_types; *p; p++)
 			types.push_back(*p);
 		g_strfreev(mime_types);
@@ -137,4 +137,4 @@ detail::load_gdkpixbuf(
 	return image;
 }
 
-}  // namespace dn
+}  // namespace dawn

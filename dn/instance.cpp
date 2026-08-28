@@ -33,13 +33,13 @@ namespace dn
 namespace
 {
 
-// One event-loop watch on an ipc::Waitable. Qt watches sockets on Unix and
-// overlapped completion events on Windows; nothing below cares which.
+// One event-loop watch on an dawn::ipc::Waitable. Qt watches sockets on Unix
+// and overlapped completion events on Windows; nothing below cares which.
 #ifdef Q_OS_WIN
 using Watch = QWinEventNotifier;
 
 Watch *
-make_watch(ipc::Waitable w, bool, QObject *parent)
+make_watch(dawn::ipc::Waitable w, bool, QObject *parent)
 {
 	return new QWinEventNotifier((Qt::HANDLE) w, parent);
 }
@@ -47,7 +47,7 @@ make_watch(ipc::Waitable w, bool, QObject *parent)
 using Watch = QSocketNotifier;
 
 Watch *
-make_watch(ipc::Waitable w, bool write, QObject *parent)
+make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 {
 	return new QSocketNotifier(qintptr(w),
 		write ? QSocketNotifier::Write : QSocketNotifier::Read, parent);
@@ -60,59 +60,59 @@ from_utf8(string_view s)
 	return QString::fromUtf8(s);
 }
 
-ipc::instance::ErrorCode
+dawn::ipc::instance::ErrorCode
 map_open_error(OpenResult r)
 {
 	switch (r) {
 	case OpenResult::NotFound:
-		return ipc::instance::ErrorCode::NotFound;
+		return dawn::ipc::instance::ErrorCode::NotFound;
 	case OpenResult::PermissionDenied:
-		return ipc::instance::ErrorCode::PermissionDenied;
+		return dawn::ipc::instance::ErrorCode::PermissionDenied;
 	case OpenResult::InvalidArgument:
-		return ipc::instance::ErrorCode::InvalidArgument;
+		return dawn::ipc::instance::ErrorCode::InvalidArgument;
 	case OpenResult::Ok:
 	case OpenResult::Internal:
 		break;
 	}
-	return ipc::instance::ErrorCode::Internal;
+	return dawn::ipc::instance::ErrorCode::Internal;
 }
 
 }  // namespace
 
 struct InstanceHost::Impl {
-	Impl(ipc::Listener listener, App &app, const QString &session,
+	Impl(dawn::ipc::Listener listener, App &app, const QString &session,
 		InstanceHost *host);
-	void watch_read(uint64_t id, ipc::Waitable w);
-	void watch_write(uint64_t id, ipc::Waitable w, bool enable);
+	void watch_read(uint64_t id, dawn::ipc::Waitable w);
+	void watch_write(uint64_t id, dawn::ipc::Waitable w, bool enable);
 	void unwatch(uint64_t id);
-	void on_request(
-		ipc::instance::Call call, const ipc::instance::RequestView &req);
+	void on_request(dawn::ipc::instance::Call call,
+		const dawn::ipc::instance::RequestView &req);
 
 	App &app_;
 	InstanceHost *host_;
 	unordered_map<uint64_t, Watch *> reads_;
 	unordered_map<uint64_t, Watch *> writes_;
-	unique_ptr<ipc::instance::Server> server_;
+	unique_ptr<dawn::ipc::instance::Server> server_;
 };
 
-InstanceHost::Impl::Impl(ipc::Listener listener, App &app,
+InstanceHost::Impl::Impl(dawn::ipc::Listener listener, App &app,
 	const QString &session, InstanceHost *host)
 	: app_(app), host_(host)
 {
-	ipc::instance::Server::Config cfg;
+	dawn::ipc::instance::Server::Config cfg;
 	cfg.session = session.toUtf8().toStdString();
-	cfg.on_request = [this](ipc::instance::Call call,
-						 const ipc::instance::RequestView &req) {
+	cfg.on_request = [this](dawn::ipc::instance::Call call,
+						 const dawn::ipc::instance::RequestView &req) {
 		on_request(std::move(call), req);
 	};
-	cfg.watch_read = [this](uint64_t id, ipc::Waitable w) {
+	cfg.watch_read = [this](uint64_t id, dawn::ipc::Waitable w) {
 		watch_read(id, w);
 	};
 	cfg.unwatch = [this](uint64_t id) { unwatch(id); };
-	cfg.watch_write = [this](uint64_t id, ipc::Waitable w, bool enable) {
+	cfg.watch_write = [this](uint64_t id, dawn::ipc::Waitable w, bool enable) {
 		watch_write(id, w, enable);
 	};
-	this->server_ = make_unique<ipc::instance::Server>(
+	this->server_ = make_unique<dawn::ipc::instance::Server>(
 		std::move(listener), std::move(cfg));
 
 	auto *n = make_watch(this->server_->listen_waitable(), false, this->host_);
@@ -121,7 +121,7 @@ InstanceHost::Impl::Impl(ipc::Listener listener, App &app,
 }
 
 void
-InstanceHost::Impl::watch_read(uint64_t id, ipc::Waitable w)
+InstanceHost::Impl::watch_read(uint64_t id, dawn::ipc::Waitable w)
 {
 	if (this->reads_.contains(id))
 		return;
@@ -132,7 +132,7 @@ InstanceHost::Impl::watch_read(uint64_t id, ipc::Waitable w)
 }
 
 void
-InstanceHost::Impl::watch_write(uint64_t id, ipc::Waitable w, bool enable)
+InstanceHost::Impl::watch_write(uint64_t id, dawn::ipc::Waitable w, bool enable)
 {
 	const auto it = this->writes_.find(id);
 	if (it != this->writes_.end()) {
@@ -167,12 +167,12 @@ InstanceHost::Impl::unwatch(uint64_t id)
 // dispatched, which is this call.
 void
 InstanceHost::Impl::on_request(
-	ipc::instance::Call call, const ipc::instance::RequestView &req)
+	dawn::ipc::instance::Call call, const dawn::ipc::instance::RequestView &req)
 {
 	const auto *open_body =
-		get_if<ipc::instance::RequestBodyOpenView>(&req.body.value);
+		get_if<dawn::ipc::instance::RequestBodyOpenView>(&req.body.value);
 	if (!open_body) {
-		call.fail(ipc::instance::ErrorCode::InvalidArgument, {});
+		call.fail(dawn::ipc::instance::ErrorCode::InvalidArgument, {});
 		return;
 	}
 
@@ -196,7 +196,7 @@ InstanceHost::Impl::on_request(
 }
 
 InstanceHost::InstanceHost(
-	ipc::Listener listener, App &app, QString session, QObject *parent)
+	dawn::ipc::Listener listener, App &app, QString session, QObject *parent)
 	: QObject(parent),
 	  impl_(make_unique<Impl>(std::move(listener), app, session, this))
 {

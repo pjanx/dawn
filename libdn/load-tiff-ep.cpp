@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #define TIFF_TABLES_CONSTANTS_ONLY
 #include "tiff-tables.h"
@@ -21,7 +21,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -297,4 +297,4 @@ detail::load_tiff_ep(
 	return head;
 }
 
-}  // namespace dn
+}  // namespace dawn

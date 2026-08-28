@@ -96,7 +96,10 @@ enum class Action : uint8_t {
 
 enum : uint8_t { ActionInMenu = 1, ActionToggle = 2 };
 
-struct Accel { uint32_t key = 0; uint32_t mods = 0; };
+struct Accel {
+	uint32_t key = 0;
+	uint32_t mods = 0;
+};
 
 struct ActionDef {
 	uint8_t flags = 0;
@@ -113,7 +116,9 @@ struct MenuNode {
 	MenuNode() = default;
 	MenuNode(Action a) : action(a) {}
 	MenuNode(const char *t, std::initializer_list<MenuNode> xs)
-		: title(t), items(xs) {}
+		: title(t), items(xs)
+	{
+	}
 };
 
 struct Actor {

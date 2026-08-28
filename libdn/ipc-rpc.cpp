@@ -13,7 +13,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace ipc
 {
@@ -52,8 +52,8 @@ Channel::connect(string_view service, chrono::milliseconds &budget)
 
 	const auto t0 = clock::now();
 	Endpoint::Connect ep = Endpoint::connect(service);
-	consume_elapsed(budget,
-		chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
+	consume_elapsed(
+		budget, chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
 	if (ep.status != Endpoint::ConnectStatus::Ok)
 		return Channel();
 	return Channel(std::move(ep.conn));
@@ -83,13 +83,12 @@ Channel::wait(Connection::Direction dir, chrono::milliseconds &budget)
 	using clock = chrono::steady_clock;
 	if (budget.count() < 0)
 		budget = chrono::milliseconds{0};
-	const int ms =
-		budget.count() > INT_MAX ? INT_MAX : int(budget.count());
+	const int ms = budget.count() > INT_MAX ? INT_MAX : int(budget.count());
 
 	const auto t0 = clock::now();
 	const Connection::Ready r = conn_.wait(dir, ms);
-	consume_elapsed(budget,
-		chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
+	consume_elapsed(
+		budget, chrono::duration_cast<chrono::milliseconds>(clock::now() - t0));
 	return r == Connection::Ready::Ok;
 }
 
@@ -300,4 +299,4 @@ ServerCore::drop(uint64_t id)
 }
 
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

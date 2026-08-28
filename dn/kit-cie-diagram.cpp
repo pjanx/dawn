@@ -134,7 +134,8 @@ xy_srgb(double x, double y)
 }
 
 void
-stroke_poly(QPainter &p, const QPen &pen, const Chromaticities &c, int w, int h)
+stroke_poly(
+	QPainter &p, const QPen &pen, const dawn::Chromaticities &c, int w, int h)
 {
 	if (!c.have_primaries || c.n < 2)
 		return;
@@ -147,8 +148,8 @@ stroke_poly(QPainter &p, const QPen &pen, const Chromaticities &c, int w, int h)
 }
 
 QImage
-raster_diagram(int w, int h, const Chromaticities &image,
-	const Chromaticities &screen, bool show_screen, bool screen_dashed,
+raster_diagram(int w, int h, const dawn::Chromaticities &image,
+	const dawn::Chromaticities &screen, bool show_screen, bool screen_dashed,
 	bool image_dashed)
 {
 	QImage img(w, h, QImage::Format_ARGB32_Premultiplied);
@@ -212,7 +213,7 @@ raster_diagram(int w, int h, const Chromaticities &image,
 }
 
 bool
-same_chroma(const Chromaticities &a, const Chromaticities &b)
+same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 {
 	if (a.model != b.model || a.have_white != b.have_white ||
 		a.have_primaries != b.have_primaries || a.n != b.n)

@@ -12,6 +12,6 @@
 namespace dnthumbd {
 
 /// Bake EXIF orientation into image.data (BGRA16 premul); set orientation Rotate0.
-bool bake_orientation(dn::Image &image);
+bool bake_orientation(dawn::Image &image);
 
 } // namespace dnthumbd

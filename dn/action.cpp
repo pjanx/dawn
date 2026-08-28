@@ -402,8 +402,7 @@ menu_label(const char *label, int *mnemonic_index)
 
 	QString s = QString::fromUtf8(label);
 	for (int i = 0; i + 1 < s.size(); i++) {
-		if (s[i] == QLatin1Char('_'))
-		{
+		if (s[i] == QLatin1Char('_')) {
 			if (mnemonic_index)
 				*mnemonic_index = i;
 			break;
@@ -494,8 +493,8 @@ copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
 		gnome += url.toEncoded();
 	}
 	mime->setData(QByteArrayLiteral("x-special/gnome-copied-files"), gnome);
-	mime->setData(QByteArrayLiteral("application/x-kde-cutselection"),
-		cut ? "1" : "0");
+	mime->setData(
+		QByteArrayLiteral("application/x-kde-cutselection"), cut ? "1" : "0");
 #endif
 }
 

@@ -16,9 +16,9 @@
 #include <QGuiApplication>
 #include <QPointer>
 #include <QString>
+#include <QUrl>
 #include <QVulkanInstance>
 #include <QWindow>
-#include <QUrl>
 
 #include <cstdint>
 #include <functional>

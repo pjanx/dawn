@@ -1,5 +1,5 @@
 //
-// bench-open.cpp: time dn::open() (decode + alloc + CMS)
+// bench-open.cpp: time dawn::open() (decode + alloc + CMS)
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -26,7 +26,7 @@ usage(const char *argv0)
 {
 	fprintf(stderr,
 		"usage: %s [-n N] [--no-cms] [--thumb] FILE...\n"
-		"  Time CPU dn::open() per file. Default applies an sRGB screen\n"
+		"  Time CPU dawn::open() per file. Default applies an sRGB screen\n"
 		"  profile (required for the 8-bit JPEG CMS path). --no-cms skips\n"
 		"  that, so 8-bit JPEG only widens. --thumb then GPU-scales to the\n"
 		"  dnthumbd 512x256 box. -n repeats each file.\n",
@@ -43,10 +43,10 @@ fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 }
 
 int
-bench_one(const char *path, bool cms, int repeats, dn::ScaleScaler *scaler)
+bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 {
-	auto cmm = dn::Cmm::get_default();
-	dn::OpenContext ctx;
+	auto cmm = dawn::Cmm::get_default();
+	dawn::OpenContext ctx;
 	ctx.cmm = cmm;
 	ctx.first_frame_only = true;
 	ctx.uri = path;
@@ -61,11 +61,11 @@ bench_one(const char *path, bool cms, int repeats, dn::ScaleScaler *scaler)
 
 	int rc = 0;
 	for (int i = 0; i < repeats; i++) {
-		dn::OpenTiming st;
+		dawn::OpenTiming st;
 		ctx.timing = &st;
-		dn::Error error;
+		dawn::Error error;
 		const auto t0 = chrono::steady_clock::now();
-		dn::ImagePtr img = dn::open(ctx, &error);
+		dawn::ImagePtr img = dawn::open(ctx, &error);
 		const auto t1 = chrono::steady_clock::now();
 		if (!img) {
 			fprintf(stderr, "open(%s): %s\n", path,
@@ -87,7 +87,7 @@ bench_one(const char *path, bool cms, int repeats, dn::ScaleScaler *scaler)
 		if (scaler) {
 			uint32_t ow = 0, oh = 0;
 			fit_size(img->width, img->height, &ow, &oh);
-			dn::ScaleOutput scaled;
+			dawn::ScaleOutput scaled;
 			string vk_err;
 			const auto s0 = chrono::steady_clock::now();
 			const bool ok = scaler->scale(img->width, img->height,
@@ -152,8 +152,8 @@ main(int argc, char **argv)
 		return 2;
 	}
 
-	dn::ScaleScaler scaler;
-	dn::ScaleScaler *scaler_ptr = nullptr;
+	dawn::ScaleScaler scaler;
+	dawn::ScaleScaler *scaler_ptr = nullptr;
 	if (thumb) {
 		string err;
 		if (!scaler.init(&err)) {

@@ -20,7 +20,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -418,6 +418,6 @@ detail::load_openjpeg(
 	return build_image(ctx, error);
 }
 
-}  // namespace dn
+}  // namespace dawn
 
 #endif  // DAWN_WITH_OPENJPEG

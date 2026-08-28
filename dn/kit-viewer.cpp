@@ -8,9 +8,9 @@
 #include "kit-viewer.hpp"
 
 #include "action.hpp"
-#include "kit.hpp"
 #include "kit-chrome.hpp"
 #include "kit-cie-diagram.hpp"
+#include "kit.hpp"
 #include "renderer.hpp"
 #include "url.hpp"
 
@@ -262,7 +262,7 @@ dim_text(uint32_t v)
 constexpr int kInfoFixedKids = 5;
 
 void
-fill_info_texts(Viewer &v, const Image *im)
+fill_info_texts(Viewer &v, const dawn::Image *im)
 {
 	if (!v.info_ || v.info_text_src_ == im)
 		return;
@@ -300,19 +300,20 @@ struct OpenJob {
 struct OpenLoad {
 	uint64_t epoch = 0;
 	string path;
-	ImagePtr image;
+	dawn::ImagePtr image;
 	string message;
 };
 
 struct ScaleJob {
 	uint64_t gen = 0;
-	ImagePtr page;
+	dawn::ImagePtr page;
 	float scale = 1.0f;
 	vector<uint8_t> screen_icc;
 	bool enable_cms = true;
 };
+
 string
-join_load_text(const vector<string> &warnings, const Error &error,
+join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	bool no_image, bool empty_image)
 {
 	vector<string> parts = warnings;
@@ -334,8 +335,9 @@ join_load_text(const vector<string> &warnings, const Error &error,
 	}
 	return out;
 }
-shared_ptr<Profile>
-profile_from_icc(Cmm &cmm, const vector<uint8_t> &icc)
+
+shared_ptr<dawn::Profile>
+profile_from_icc(dawn::Cmm &cmm, const vector<uint8_t> &icc)
 {
 	if (!icc.empty()) {
 		if (auto profile = cmm.get_profile(icc))
@@ -418,7 +420,7 @@ screen_icc_bytes(const Viewer &v)
 }
 
 static void
-upload_frame(const Viewer &v, const Image &image)
+upload_frame(const Viewer &v, const dawn::Image &image)
 {
 	if (!v.kit_.renderer_)
 		return;
@@ -440,7 +442,7 @@ display_delay_ms(int64_t duration)
 }
 
 static void
-set_frame(Viewer &v, ImagePtr frame)
+set_frame(Viewer &v, dawn::ImagePtr frame)
 {
 	if (!frame || frame.get() == v.frame_.get())
 		return;
@@ -710,16 +712,17 @@ sync_ui(Viewer &v, Page &ui)
 		v.width_label_->text = dim_text(v.image_width_);
 		v.height_label_->text = dim_text(v.image_height_);
 		if (v.cie_) {
-			const Image *im = v.current_ ? v.current_.get() : v.image_.get();
-			const Profile *src = im && im->effective_profile
+			const dawn::Image *im =
+				v.current_ ? v.current_.get() : v.image_.get();
+			const dawn::Profile *src = im && im->effective_profile
 				? im->effective_profile.get()
 				: nullptr;
 			const bool assumed = im && im->profile_assumed;
-			Chromaticities img = profile_chromaticities(src);
+			dawn::Chromaticities img = profile_chromaticities(src);
 			bool image_dashed = assumed || !src || !img.have_primaries;
-			shared_ptr<Profile> srgb;
+			shared_ptr<dawn::Profile> srgb;
 			if (!img.have_primaries) {
-				auto cmm = v.cmm_ ? v.cmm_ : Cmm::get_default();
+				auto cmm = v.cmm_ ? v.cmm_ : dawn::Cmm::get_default();
 				srgb = cmm->get_profile_sRGB();
 				img = profile_chromaticities(srgb.get());
 				image_dashed = true;
@@ -796,7 +799,7 @@ clear_image(Viewer &v)
 }
 
 static void
-apply_open(Viewer &v, uint64_t gen, ImagePtr image, string message)
+apply_open(Viewer &v, uint64_t gen, dawn::ImagePtr image, string message)
 {
 	if (gen != v.open_gen_)
 		return;
@@ -843,7 +846,7 @@ apply_open(Viewer &v, uint64_t gen, ImagePtr image, string message)
 }
 
 static void
-apply_scale(Viewer &v, uint64_t gen, ImagePtr image, float scale)
+apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale)
 {
 	if (!v.kit_.renderer_ || gen != v.scale_gen_)
 		return;
@@ -889,12 +892,12 @@ apply_open_result(Viewer &v, OpenLoad result)
 }
 
 static OpenLoad
-decode_open(const OpenJob &open, const shared_ptr<Cmm> &cmm)
+decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 {
 	OpenLoad result;
 	result.epoch = open.epoch;
 	result.path = open.path;
-	OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
 	ctx.screen_profile =
@@ -902,7 +905,7 @@ decode_open(const OpenJob &open, const shared_ptr<Cmm> &cmm)
 	ctx.screen_dpi = open.dpi;
 	vector<string> warnings;
 	ctx.warnings = &warnings;
-	Error error;
+	dawn::Error error;
 	QFile file(QString::fromStdString(open.path));
 	if (!file.open(QIODevice::ReadOnly)) {
 		result.message = open.path + ": " + file.errorString().toStdString();
@@ -968,7 +971,7 @@ post_open_result(Viewer &v, OpenLoad result)
 static void
 worker_loop(Viewer &v, bool foreground)
 {
-	auto cmm = make_shared<Cmm>();
+	auto cmm = make_shared<dawn::Cmm>();
 	for (;;) {
 		OpenJob open;
 		ScaleJob scale;
@@ -1008,9 +1011,9 @@ worker_loop(Viewer &v, bool foreground)
 			if (finish_decode(v, open, !foreground))
 				post_open_result(v, std::move(result));
 		} else if (have_scale) {
-			ImagePtr image;
+			dawn::ImagePtr image;
 			if (scale.page && scale.page->render) {
-				shared_ptr<Profile> profile;
+				shared_ptr<dawn::Profile> profile;
 				if (scale.enable_cms)
 					profile = profile_from_icc(*cmm, scale.screen_icc);
 				image = scale.page->render->render(
@@ -1416,15 +1419,15 @@ set_scale_to_fit(Viewer &v, bool enabled)
 
 enum class SnapDir : uint8_t { Left, Right, Mirror };
 
-static Orientation
-orientation_flip_v(Orientation orientation)
+static dawn::Orientation
+orientation_flip_v(dawn::Orientation orientation)
 {
 	return orientation_mirror(
 		orientation_rotate_left(orientation_rotate_left(orientation)));
 }
 
 static void
-set_orientation(Viewer &v, dn::Orientation next)
+set_orientation(Viewer &v, dawn::Orientation next)
 {
 	next = orientation_or_0(next);
 	if (next == v.orientation_)
@@ -1459,7 +1462,7 @@ snap_view(Viewer &v, SnapDir dir)
 	if (dir == SnapDir::Mirror) {
 		const float c = cosf(a);
 		const float s = sinf(a);
-		const Orientation next = (fabs(c) >= fabs(s))
+		const dawn::Orientation next = (fabs(c) >= fabs(s))
 			? orientation_mirror(v.orientation_)
 			: orientation_flip_v(v.orientation_);
 		set_orientation(v, next);
@@ -1547,12 +1550,12 @@ frame_step(Viewer &v, int step)
 		request_render(v);
 		return;
 	}
-	if (ImagePtr prev = v.frame_->frame_previous.lock()) {
+	if (dawn::ImagePtr prev = v.frame_->frame_previous.lock()) {
 		set_frame(v, std::move(prev));
 		request_render(v);
 		return;
 	}
-	ImagePtr last = v.current_;
+	dawn::ImagePtr last = v.current_;
 	if (!last)
 		return;
 	while (last->frame_next)
@@ -1563,7 +1566,7 @@ frame_step(Viewer &v, int step)
 }
 
 void
-switch_page(Viewer &v, ImagePtr page)
+switch_page(Viewer &v, dawn::ImagePtr page)
 {
 	if (!page || page.get() == v.current_.get())
 		return;
@@ -1588,7 +1591,7 @@ page_step(Viewer &v, int step)
 	if (!v.current_)
 		return;
 	if (step < 0) {
-		if (ImagePtr prev = v.current_->page_previous.lock())
+		if (dawn::ImagePtr prev = v.current_->page_previous.lock())
 			switch_page(v, std::move(prev));
 		return;
 	}
@@ -1599,7 +1602,7 @@ page_step(Viewer &v, int step)
 void
 page_last(Viewer &v)
 {
-	ImagePtr p = v.current_ ? v.current_ : v.image_;
+	dawn::ImagePtr p = v.current_ ? v.current_ : v.image_;
 	if (!p)
 		return;
 	while (p->page_next)
@@ -1608,7 +1611,7 @@ page_last(Viewer &v)
 }
 
 void
-copy_image(QMimeData *mime, const Image &im)
+copy_image(QMimeData *mime, const dawn::Image &im)
 {
 	if (!mime || im.data.empty() || !im.width || !im.height)
 		return;
@@ -1627,7 +1630,7 @@ copy_image(QMimeData *mime, const Image &im)
 			d += 4;
 		}
 	}
-	unpremultiply_bgra8(bgra.data(), w, h, size_t(w) * 4);
+	dawn::unpremultiply_bgra8(bgra.data(), w, h, size_t(w) * 4);
 	QImage image(int(w), int(h), QImage::Format_ARGB32);
 	for (uint32_t y = 0; y < h; ++y) {
 		const uint8_t *s = bgra.data() + size_t(y) * w * 4;
@@ -1806,7 +1809,7 @@ apply_view(const Viewer &v)
 	renderer.set_checkerboard(v.checkerboard_);
 	renderer.set_transfer(v.enable_cms_
 			? profile_transfer(v.screen_profile_.get())
-			: Transfer::Srgb);
+			: dawn::Transfer::Srgb);
 	renderer.set_view(gpu_scale, pan_x, pan_y, v.orientation_, v.angle_);
 }
 
@@ -2021,7 +2024,7 @@ Viewer::consume_open_done()
 
 void
 Viewer::set_screen_profile(
-	shared_ptr<Cmm> cmm, shared_ptr<Profile> profile, bool fallback)
+	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile, bool fallback)
 {
 	const bool reload = this->enable_cms_ && !this->url_.isEmpty() &&
 		!profiles_equal(this->screen_profile_.get(), profile.get());
@@ -2036,7 +2039,7 @@ Viewer::set_screen_profile(
 		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 		this->kit_.renderer_->set_transfer(this->enable_cms_
 				? profile_transfer(this->screen_profile_.get())
-				: Transfer::Srgb);
+				: dawn::Transfer::Srgb);
 	}
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,

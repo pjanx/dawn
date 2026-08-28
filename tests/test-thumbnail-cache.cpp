@@ -131,7 +131,7 @@ main(int argc, char **argv)
 	if (!error.isEmpty())
 		fprintf(stderr, "%s\n", qUtf8Printable(error));
 
-	auto cmm = make_shared<dn::Cmm>();
+	auto cmm = make_shared<dawn::Cmm>();
 	auto p3 = cmm->get_profile_display_p3();
 	dn::ThumbnailHit hit = dn::thumbnail_cache_lookup(source, 0, cmm, p3.get());
 	CHECK(!hit.pixels.empty());

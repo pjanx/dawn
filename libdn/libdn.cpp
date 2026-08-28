@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <lcms2.h>
 #if DAWN_WITH_LCMS2_FAST_FLOAT
@@ -41,7 +41,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 
 detail::StageClock::StageClock(double OpenTiming::*field)
@@ -124,8 +124,9 @@ cms_workers(uint32_t height)
 
 bool
 transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
-	cmsHPROFILE dst_h, cmsUInt32Number dst_fmt, const uint8_t *src, uint8_t *dst,
-	uint32_t width, uint32_t height, size_t src_bpp, size_t dst_bpp)
+	cmsHPROFILE dst_h, cmsUInt32Number dst_fmt, const uint8_t *src,
+	uint8_t *dst, uint32_t width, uint32_t height, size_t src_bpp,
+	size_t dst_bpp)
 {
 	auto create = [&]() -> cmsHTRANSFORM {
 		return cmsCreateTransformTHR(ctx, src_h, src_fmt, dst_h, dst_fmt,
@@ -736,8 +737,8 @@ xyz_xf(cmsContext ctx, cmsHPROFILE h, cmsUInt32Number fmt)
 	cmsHPROFILE xyz = cmsCreateXYZProfileTHR(ctx);
 	if (!xyz)
 		return nullptr;
-	cmsHTRANSFORM xf = cmsCreateTransformTHR(ctx, h, fmt, xyz, TYPE_XYZ_DBL,
-		INTENT_RELATIVE_COLORIMETRIC, 0);
+	cmsHTRANSFORM xf = cmsCreateTransformTHR(
+		ctx, h, fmt, xyz, TYPE_XYZ_DBL, INTENT_RELATIVE_COLORIMETRIC, 0);
 	cmsCloseProfile(xyz);
 	return xf;
 }
@@ -992,49 +993,42 @@ cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 	const double *p = nullptr;
 	switch (code) {
 	case 1: {  // BT.709 / sRGB
-		static const double v[6] = {
-			0.640, 0.330, 0.300, 0.600, 0.150, 0.060};
+		static const double v[6] = {0.640, 0.330, 0.300, 0.600, 0.150, 0.060};
 		p = v;
 		break;
 	}
 	case 4: {  // BT.470 System M, illuminant C
-		static const double v[6] = {
-			0.670, 0.330, 0.210, 0.710, 0.140, 0.080};
+		static const double v[6] = {0.670, 0.330, 0.210, 0.710, 0.140, 0.080};
 		static const double c[2] = {0.310, 0.316};
 		p = v;
 		wp = c;
 		break;
 	}
 	case 5: {  // BT.470 System B/G (EBU 3213)
-		static const double v[6] = {
-			0.640, 0.330, 0.290, 0.600, 0.150, 0.060};
+		static const double v[6] = {0.640, 0.330, 0.290, 0.600, 0.150, 0.060};
 		p = v;
 		break;
 	}
 	case 6:    // BT.601 525 / SMPTE 170M
 	case 7: {  // SMPTE 240M, identical primaries
-		static const double v[6] = {
-			0.630, 0.340, 0.310, 0.595, 0.155, 0.070};
+		static const double v[6] = {0.630, 0.340, 0.310, 0.595, 0.155, 0.070};
 		p = v;
 		break;
 	}
 	case 9: {  // BT.2020 / BT.2100
-		static const double v[6] = {
-			0.708, 0.292, 0.170, 0.797, 0.131, 0.046};
+		static const double v[6] = {0.708, 0.292, 0.170, 0.797, 0.131, 0.046};
 		p = v;
 		break;
 	}
 	case 11: {  // SMPTE RP 431-2 (DCI-P3), DCI white
-		static const double v[6] = {
-			0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
+		static const double v[6] = {0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
 		static const double dci[2] = {0.314, 0.351};
 		p = v;
 		wp = dci;
 		break;
 	}
 	case 12: {  // SMPTE EG 432-1 (Display P3), D65 white
-		static const double v[6] = {
-			0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
+		static const double v[6] = {0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
 		p = v;
 		break;
 	}
@@ -1085,8 +1079,7 @@ cicp_tone_curve(cmsContext context, uint8_t code)
 }  // namespace
 
 shared_ptr<Profile>
-Cmm::get_profile_cicp(
-	uint8_t color_primaries, uint8_t transfer_characteristics)
+Cmm::get_profile_cicp(uint8_t color_primaries, uint8_t transfer_characteristics)
 {
 	double primaries[6] = {}, whitepoint[2] = {};
 	if (!cicp_primaries(color_primaries, primaries, whitepoint))
@@ -1128,9 +1121,9 @@ Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 	cmsUInt32Number src_fmt = source_premul ? kTypeBgra16Premul : kTypeBgra16;
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
-	return transform_tiled(cmsContext(context_),
-		cmsHPROFILE(source->profile_), src_fmt, cmsHPROFILE(target->profile_),
-		dst_fmt, data, data, width, height, kBytesPerPixel, kBytesPerPixel);
+	return transform_tiled(cmsContext(context_), cmsHPROFILE(source->profile_),
+		src_fmt, cmsHPROFILE(target->profile_), dst_fmt, data, data, width,
+		height, kBytesPerPixel, kBytesPerPixel);
 }
 
 bool
@@ -1148,10 +1141,9 @@ Cmm::transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst, uint32_t width,
 	detail::StageClock clk(&OpenTiming::cms_ms);
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
-	return transform_tiled(cmsContext(context_),
-		cmsHPROFILE(source->profile_), kTypeBgra8,
-		cmsHPROFILE(target->profile_), dst_fmt, src, dst, width, height, 4,
-		kBytesPerPixel);
+	return transform_tiled(cmsContext(context_), cmsHPROFILE(source->profile_),
+		kTypeBgra8, cmsHPROFILE(target->profile_), dst_fmt, src, dst, width,
+		height, 4, kBytesPerPixel);
 }
 
 void
@@ -1361,7 +1353,7 @@ Orientation
 orientation_or_0(Orientation orientation)
 {
 	return orientation == Orientation::Unknown ? Orientation::Rotate0
-						   : orientation;
+											   : orientation;
 }
 
 void
@@ -1723,4 +1715,4 @@ open(const OpenContext &ctx, Error *error)
 	return open_from_data(data, ctx, error);
 }
 
-}  // namespace dn
+}  // namespace dawn

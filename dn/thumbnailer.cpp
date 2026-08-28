@@ -46,20 +46,20 @@ priority_index(Thumbnailer::Priority priority)
 	return size_t(priority);
 }
 
-ThumbScaler::Priority
+dawn::ThumbScaler::Priority
 scaler_priority(Thumbnailer::Priority priority)
 {
 	switch (priority) {
 	case Thumbnailer::Priority::Visible:
-		return ThumbScaler::Priority::Interactive;
+		return dawn::ThumbScaler::Priority::Interactive;
 	case Thumbnailer::Priority::Prefetch:
-		return ThumbScaler::Priority::Prefetch;
+		return dawn::ThumbScaler::Priority::Prefetch;
 	case Thumbnailer::Priority::Dimensions:
-		return ThumbScaler::Priority::Dimensions;
+		return dawn::ThumbScaler::Priority::Dimensions;
 	case Thumbnailer::Priority::Maintenance:
-		return ThumbScaler::Priority::Maintenance;
+		return dawn::ThumbScaler::Priority::Maintenance;
 	}
-	return ThumbScaler::Priority::Maintenance;
+	return dawn::ThumbScaler::Priority::Maintenance;
 }
 
 }  // namespace
@@ -98,7 +98,7 @@ struct Thumbnailer::Impl {
 		string key;
 		GpuCompletion completion;
 		shared_ptr<atomic_bool> gate;
-		optional<ThumbScaler::Result> result;
+		optional<dawn::ThumbScaler::Result> result;
 	};
 
 	Thumbnailer *owner = nullptr;
@@ -111,7 +111,7 @@ struct Thumbnailer::Impl {
 	unordered_map<uint64_t, GpuTask> gpu_tasks;
 	vector<std::thread> workers;
 	size_t worker_count = 1;
-	unique_ptr<ThumbScaler> scaler;
+	unique_ptr<dawn::ThumbScaler> scaler;
 	QTimer timer;
 	atomic_bool pump_posted = false;
 	uint64_t next_client = 1;
@@ -130,7 +130,7 @@ struct Thumbnailer::Impl {
 	void erase_gpu(Client id, ClientState &state);
 	void drop_gpu(uint64_t gpu_id);
 	void fail_gpu(uint64_t gpu_id, string path);
-	bool scaler_queue(const ThumbScaler::Job &job);
+	bool scaler_queue(const dawn::ThumbScaler::Job &job);
 };
 
 Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
@@ -326,7 +326,7 @@ Thumbnailer::Impl::fail_gpu(uint64_t gpu_id, string path)
 	auto found = gpu_tasks.find(gpu_id);
 	if (found == gpu_tasks.end())
 		return;
-	ThumbScaler::Result result;
+	dawn::ThumbScaler::Result result;
 	result.user = gpu_id;
 	result.path = std::move(path);
 	result.failed = true;
@@ -334,7 +334,7 @@ Thumbnailer::Impl::fail_gpu(uint64_t gpu_id, string path)
 }
 
 bool
-Thumbnailer::Impl::scaler_queue(const ThumbScaler::Job &job)
+Thumbnailer::Impl::scaler_queue(const dawn::ThumbScaler::Job &job)
 {
 	if (!scaler)
 		return false;
@@ -359,11 +359,11 @@ Thumbnailer::init(const GpuContext &gpu)
 		return true;
 	if (!gpu.phys() || !gpu.device() || !gpu.queue())
 		return false;
-	auto scaler = make_unique<ThumbScaler>();
+	auto scaler = make_unique<dawn::ThumbScaler>();
 	string error;
 	if (!scaler->init(gpu.phys(), gpu.device(), gpu.queue(), gpu.queue_family(),
 			kThumbRingBytes, &error)) {
-		qWarning("ThumbScaler init failed: %s", error.c_str());
+		qWarning("dawn::ThumbScaler init failed: %s", error.c_str());
 		return false;
 	}
 	impl_->scaler = std::move(scaler);
@@ -487,7 +487,7 @@ Thumbnailer::reprioritize(
 
 bool
 Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
-	ThumbScaler::Job job, GpuCompletion completion, string key)
+	dawn::ThumbScaler::Job job, GpuCompletion completion, string key)
 {
 	if (!completion)
 		return false;
@@ -597,17 +597,17 @@ Thumbnailer::pump()
 			completion();
 	}
 
-	vector<ThumbScaler::Result> results;
+	vector<dawn::ThumbScaler::Result> results;
 	if (impl_->scaler)
 		impl_->scaler->poll(&results);
-	for (ThumbScaler::Result &result : results) {
+	for (dawn::ThumbScaler::Result &result : results) {
 		lock_guard lock(impl_->mu);
 		if (auto found = impl_->gpu_tasks.find(result.user);
 			found != impl_->gpu_tasks.end())
 			found->second.result = std::move(result);
 	}
 
-	vector<pair<GpuCompletion, ThumbScaler::Result>> callbacks;
+	vector<pair<GpuCompletion, dawn::ThumbScaler::Result>> callbacks;
 	{
 		lock_guard lock(impl_->mu);
 		for (auto it = impl_->gpu_tasks.begin();

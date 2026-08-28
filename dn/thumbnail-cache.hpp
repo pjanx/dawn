@@ -46,7 +46,8 @@ int thumbnail_tier_for_height(int pixels);
 int thumbnail_tier_height(int tier);
 
 ThumbnailHit thumbnail_cache_lookup(const ThumbnailSource &source,
-	int desired_tier, const std::shared_ptr<Cmm> &cmm, Profile *screen_profile);
+	int desired_tier, const std::shared_ptr<dawn::Cmm> &cmm,
+	dawn::Profile *screen_profile);
 
 bool thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	const uint16_t *pixels, uint32_t width, uint32_t height,

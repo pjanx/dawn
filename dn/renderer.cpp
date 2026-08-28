@@ -154,7 +154,7 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	destroy();
 	this->surface_ = surface;
 	this->phys_ = gpu.phys();
-	this->preferred_ = dn::preferred_filter(this->phys_);
+	this->preferred_ = dawn::preferred_filter(this->phys_);
 	this->device_ = gpu.device();
 	this->queue_ = gpu.queue();
 	this->queue_family_ = gpu.queue_family();
@@ -484,7 +484,7 @@ Renderer::clear_image()
 
 void
 Renderer::set_view(float scale, float pan_x, float pan_y,
-	dn::Orientation orientation, float angle)
+	dawn::Orientation orientation, float angle)
 {
 	this->scale_ = scale;
 	this->pan_x_ = pan_x;
@@ -535,7 +535,7 @@ Renderer::set_filter(bool enabled)
 }
 
 void
-Renderer::set_transfer(dn::Transfer transfer)
+Renderer::set_transfer(dawn::Transfer transfer)
 {
 	this->transfer_ = transfer;
 }
@@ -606,7 +606,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	};
 	check_vk(
 		vkBeginCommandBuffer(this->cmd_, &begin_info), "vkBeginCommandBuffer");
-	dn::ScaleView view{
+	dawn::ScaleView view{
 		.scale = this->scale_,
 		.pan_x = this->pan_x_,
 		.pan_y = this->pan_y_,
@@ -619,7 +619,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.checker_b = this->checker_[2],
 		// The well is behind the image, so alpha resolves in the shader.
 		.composite = true,
-		.filter = this->filter_ ? this->preferred_ : dn::Filter::Nearest,
+		.filter = this->filter_ ? this->preferred_ : dawn::Filter::Nearest,
 	};
 	const float clear[4] = {
 		this->well_[0], this->well_[1], this->well_[2], this->well_[3]};
@@ -762,7 +762,7 @@ Renderer::create_dither()
 	VkMemoryRequirements requirements{};
 	vkGetImageMemoryRequirements(
 		this->device_, this->compose_image_, &requirements);
-	const uint32_t type = vk_memory_type(this->phys_,
+	const uint32_t type = dawn::vk_memory_type(this->phys_,
 		requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	if (type == UINT32_MAX)
 		die("dither compose: no device-local memory");

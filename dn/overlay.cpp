@@ -598,7 +598,7 @@ OverlayVulkan::compute_thumb_atlas_max()
 		vkGetImageMemoryRequirements(this->device_, image, &requirements);
 		vkDestroyImage(this->device_, image, nullptr);
 		VkDeviceSize heap = 0;
-		if (vk_memory_type(this->phys_, requirements.memoryTypeBits,
+		if (dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr,
 				&heap) == UINT32_MAX ||
 			(max_resource && requirements.size > max_resource) ||
@@ -624,7 +624,7 @@ OverlayVulkan::create_sampled(
 		"vkCreateImage overlay tex");
 	VkMemoryRequirements requirements{};
 	vkGetImageMemoryRequirements(this->device_, *image, &requirements);
-	const uint32_t image_type = vk_memory_type(this->phys_,
+	const uint32_t image_type = dawn::vk_memory_type(this->phys_,
 		requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	if (image_type == UINT32_MAX) {
 		vkDestroyImage(this->device_, *image, nullptr);
@@ -697,7 +697,7 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 	VkMemoryRequirements requirements{};
 	vkGetBufferMemoryRequirements(this->device_, staging, &requirements);
 	const uint32_t host_type =
-		vk_memory_type(this->phys_, requirements.memoryTypeBits,
+		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	if (host_type == UINT32_MAX) {
@@ -906,7 +906,7 @@ OverlayVulkan::ensure_buffers(
 		VkMemoryRequirements requirements{};
 		vkGetBufferMemoryRequirements(this->device_, *buffer, &requirements);
 		const uint32_t type =
-			vk_memory_type(this->phys_, requirements.memoryTypeBits,
+			dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 		if (type == UINT32_MAX)

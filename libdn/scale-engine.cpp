@@ -27,7 +27,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -445,8 +445,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 	};
 	VkPipelineInputAssemblyStateCreateInfo ia{
-		.sType =
-			VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
 		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
 	};
 	VkPipelineViewportStateCreateInfo vp{
@@ -469,9 +468,8 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 	// dest clear (view well, or transparent for offscreen readback) so
 	// SVG/PNG alpha sits on that background instead of replacing it.
 	VkPipelineColorBlendAttachmentState blend_replace{
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-			VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
-			VK_COLOR_COMPONENT_A_BIT,
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
 	};
 	VkPipelineColorBlendAttachmentState blend_premul_over{
 		.blendEnable = VK_TRUE,
@@ -481,39 +479,34 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
 		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
 		.alphaBlendOp = VK_BLEND_OP_ADD,
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT |
-			VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
-			VK_COLOR_COMPONENT_A_BIT,
+		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
 	};
-	array dyn_states = {
-		VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+	array dyn_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 	VkPipelineDynamicStateCreateInfo dyn{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
 		.dynamicStateCount = uint32_t(dyn_states.size()),
 		.pDynamicStates = dyn_states.data(),
 	};
 
-	auto make_pipe =
-		[&](VkShaderModule frag, VkPipelineLayout layout, VkRenderPass rp,
-			const VkPipelineColorBlendAttachmentState *blend_att,
-			VkPipeline *out) -> bool {
+	auto make_pipe = [&](VkShaderModule frag, VkPipelineLayout layout,
+						 VkRenderPass rp,
+						 const VkPipelineColorBlendAttachmentState *blend_att,
+						 VkPipeline *out) -> bool {
 		VkPipelineColorBlendStateCreateInfo cb{
-			.sType =
-				VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 			.attachmentCount = 1,
 			.pAttachments = blend_att,
 		};
 		VkPipelineShaderStageCreateInfo stages[2] = {
 			{
-				.sType =
-					VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_VERTEX_BIT,
 				.module = vert,
 				.pName = "main",
 			},
 			{
-				.sType =
-					VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
 				.module = frag,
 				.pName = "main",
@@ -547,8 +540,8 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		const uint32_t *code;
 		uint32_t words;
 	} variants[] = {
-		{&pipeline_h, pipeline_layout_tiles, mid_render_pass,
-			&blend_replace, scale_h_bilinear, scale_h_bilinear_words},
+		{&pipeline_h, pipeline_layout_tiles, mid_render_pass, &blend_replace,
+			scale_h_bilinear, scale_h_bilinear_words},
 		{&pipeline_v, pipeline_layout_horiz, dest_render_pass,
 			&blend_premul_over, scale_v_bilinear, scale_v_bilinear_words},
 		{&pipeline_2d_nearest, pipeline_layout_tiles, dest_render_pass,
@@ -605,8 +598,8 @@ ScaleEngine::Impl::split_grid(
 			}
 			const uint32_t x1 = min(x0 + tw, w);
 			const uint32_t y1 = min(y0 + th, h);
-			out.push_back({int32_t(x0), int32_t(y0), int32_t(x1 - x0),
-				int32_t(y1 - y0)});
+			out.push_back(
+				{int32_t(x0), int32_t(y0), int32_t(x1 - x0), int32_t(y1 - y0)});
 		}
 	}
 	return out;
@@ -615,8 +608,8 @@ ScaleEngine::Impl::split_grid(
 bool
 ScaleEngine::Impl::submit_upload(auto &&record, string *error)
 {
-	if (!check_vk(vkResetCommandBuffer(upload_cmd, 0),
-			"vkResetCommandBuffer", error))
+	if (!check_vk(
+			vkResetCommandBuffer(upload_cmd, 0), "vkResetCommandBuffer", error))
 		return false;
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -626,8 +619,7 @@ ScaleEngine::Impl::submit_upload(auto &&record, string *error)
 			"vkBeginCommandBuffer", error))
 		return false;
 	record();
-	if (!check_vk(
-			vkEndCommandBuffer(upload_cmd), "vkEndCommandBuffer", error))
+	if (!check_vk(vkEndCommandBuffer(upload_cmd), "vkEndCommandBuffer", error))
 		return false;
 	VkSubmitInfo submit{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -686,9 +678,8 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		uint64_t(tile_count) * tile_pad_w * tile_pad_h * kTileBytesPerPixel;
 	if (tile_bytes > kMaxDeviceBytes) {
 		if (error)
-			*error = "tiles exceed kMaxDeviceBytes (" +
-				to_string(tile_bytes) + " > " + to_string(kMaxDeviceBytes) +
-				")";
+			*error = "tiles exceed kMaxDeviceBytes (" + to_string(tile_bytes) +
+				" > " + to_string(kMaxDeviceBytes) + ")";
 		return false;
 	}
 
@@ -701,8 +692,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		.arrayLayers = tile_count,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage =
-			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
@@ -712,8 +702,8 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 
 	VkMemoryRequirements mr{};
 	vkGetImageMemoryRequirements(device, tile_image, &mr);
-	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
+	uint32_t mem_type = vk_memory_type(
+		phys, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
 	if (mem_type == UINT32_MAX)
 		return false;
 	VkMemoryAllocateInfo mai{
@@ -802,10 +792,10 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		return false;
 	}
 
-	auto transition =
-		[&](VkImageLayout from, VkImageLayout to, VkAccessFlags src_access,
-			VkAccessFlags dst_access, VkPipelineStageFlags src_stage,
-			VkPipelineStageFlags dst_stage) -> bool {
+	auto transition = [&](VkImageLayout from, VkImageLayout to,
+						  VkAccessFlags src_access, VkAccessFlags dst_access,
+						  VkPipelineStageFlags src_stage,
+						  VkPipelineStageFlags dst_stage) -> bool {
 		return submit_upload(
 			[&] {
 				VkImageMemoryBarrier barrier{
@@ -952,8 +942,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 		return false;
 	}
 
-	const uint64_t mid_bytes = uint64_t(want_layers) * want_pad_w *
-		want_pad_h * sizeof(uint16_t) * 4;
+	const uint64_t mid_bytes =
+		uint64_t(want_layers) * want_pad_w * want_pad_h * sizeof(uint16_t) * 4;
 	if (mid_bytes > kMaxDeviceBytes) {
 		if (error)
 			*error = "mid buffer exceeds kMaxDeviceBytes";
@@ -980,8 +970,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 		.arrayLayers = mid_layers,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-			VK_IMAGE_USAGE_SAMPLED_BIT,
+		.usage =
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
@@ -991,8 +981,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 
 	VkMemoryRequirements mr{};
 	vkGetImageMemoryRequirements(device, mid_image, &mr);
-	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
+	uint32_t mem_type = vk_memory_type(
+		phys, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
 	if (mem_type == UINT32_MAX)
 		return false;
 	VkMemoryAllocateInfo mai{
@@ -1039,8 +1029,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 					.layerCount = 1,
 				},
 		};
-		if (!check_vk(vkCreateImageView(
-						  device, &lvi, nullptr, &mid_layer_views[i]),
+		if (!check_vk(
+				vkCreateImageView(device, &lvi, nullptr, &mid_layer_views[i]),
 				"vkCreateImageView mid layer", error))
 			return false;
 		VkFramebufferCreateInfo fbi{
@@ -1052,8 +1042,7 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 			.height = mid_pad_h,
 			.layers = 1,
 		};
-		if (!check_vk(
-				vkCreateFramebuffer(device, &fbi, nullptr, &mid_fbs[i]),
+		if (!check_vk(vkCreateFramebuffer(device, &fbi, nullptr, &mid_fbs[i]),
 				"vkCreateFramebuffer mid", error))
 			return false;
 	}
@@ -1088,8 +1077,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 }
 
 PushConstants
-ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w, uint32_t vp_h,
-	const float clear_rgba[4]) const
+ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
+	uint32_t vp_h, const float clear_rgba[4]) const
 {
 	PushConstants pc{};
 	pc.viewport_x = float(vp_w);
@@ -1097,8 +1086,8 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w, uint32_t vp_h
 	pc.scale = view.scale;
 	pc.transfer = int32_t(view.transfer) |
 		(int32_t(orientation_or_0(view.orientation)) << 8) |
-		(view.checkerboard ? (1 << 16) : 0) |
-		(view.composite ? (1 << 17) : 0) | (image_opaque ? (1 << 18) : 0);
+		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
+		(image_opaque ? (1 << 18) : 0);
 	// Decoded here, not per fragment: the shader composites in linear.
 	pc.bg_r = transfer_decode(clear_rgba[0], view.transfer);
 	pc.bg_g = transfer_decode(clear_rgba[1], view.transfer);
@@ -1121,7 +1110,8 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w, uint32_t vp_h
 }
 
 YRange
-ScaleEngine::Impl::visible_source_y_range(const ScaleView &view, uint32_t vp_h) const
+ScaleEngine::Impl::visible_source_y_range(
+	const ScaleView &view, uint32_t vp_h) const
 {
 	uint32_t disp_w = 0, disp_h = 0;
 	orientation_display_size(
@@ -1173,8 +1163,8 @@ ScaleEngine::Impl::cmd_h_pass(
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_h);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_tiles,
-		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
+		0, sizeof(pc), &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1249,8 +1239,8 @@ ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_v);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_horiz, 0, 1, &dset_horiz, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_horiz,
-		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+	vkCmdPushConstants(cmd, pipeline_layout_horiz, VK_SHADER_STAGE_FRAGMENT_BIT,
+		0, sizeof(pc), &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1287,8 +1277,8 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_2d);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_tiles,
-		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(pc), &pc);
+	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
+		0, sizeof(pc), &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1329,10 +1319,9 @@ ScaleEngine::Impl::cmd_fill_visible_mid(VkCommandBuffer cmd,
 	return {first, last};
 }
 
-
 void
-ScaleEngine::set_dest_inset(uint32_t left, uint32_t top, uint32_t right,
-	uint32_t bottom)
+ScaleEngine::set_dest_inset(
+	uint32_t left, uint32_t top, uint32_t right, uint32_t bottom)
 {
 	if (!impl_)
 		return;
@@ -1805,4 +1794,4 @@ ScaleEngine::dest_format() const
 	return impl_ ? impl_->dest_format : VK_FORMAT_UNDEFINED;
 }
 
-}  // namespace dn
+}  // namespace dawn

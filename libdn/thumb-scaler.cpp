@@ -29,7 +29,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -1581,4 +1581,4 @@ ThumbScaler::busy() const
 	return false;
 }
 
-}  // namespace dn
+}  // namespace dawn

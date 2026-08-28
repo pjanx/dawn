@@ -23,7 +23,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -220,4 +220,4 @@ vk_add_bundled_driver_files()
 #endif
 }
 
-}  // namespace dn
+}  // namespace dawn

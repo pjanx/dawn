@@ -25,8 +25,8 @@
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QMetaObject>
-#include <QVersionNumber>
 #include <QUrl>
+#include <QVersionNumber>
 #include <QtLogging>
 
 #include <algorithm>
@@ -153,7 +153,7 @@ App::init()
 	}
 #endif
 	this->vulkan_instance.setApiVersion(QVersionNumber(1, 1));
-	vk_add_bundled_driver_files();
+	dawn::vk_add_bundled_driver_files();
 	this->vulkan_instance.setExtensions(
 		{VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME});
 	if (!this->vulkan_instance.create()) {

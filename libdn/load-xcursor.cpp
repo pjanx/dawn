@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <X11/Xcursor/Xcursor.h>
 
@@ -20,7 +20,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -190,4 +190,4 @@ detail::load_xcursor(
 	return pages;
 }
 
-}  // namespace dn
+}  // namespace dawn

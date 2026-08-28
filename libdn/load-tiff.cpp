@@ -14,8 +14,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <tiff.h>
 #include <tiffio.h>
@@ -32,7 +32,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -398,4 +398,4 @@ detail::load_tiff(
 	return head;
 }
 
-}  // namespace dn
+}  // namespace dawn

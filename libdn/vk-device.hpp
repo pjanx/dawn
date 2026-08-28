@@ -13,7 +13,7 @@
 #include <initializer_list>
 #include <string>
 
-namespace dn
+namespace dawn
 {
 
 // Rank: discrete → integrated → virtual → other → CPU.
@@ -35,4 +35,4 @@ bool vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	VkDevice *device, VkQueue *queue, uint32_t *queue_family,
 	std::string *error);
 
-}  // namespace dn
+}  // namespace dawn

@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace dn
+namespace dawn
 {
 
 /// CPU working pixmap and GPU sampling format: Wuffs BGRA_PREMUL_4X16LE —
@@ -369,4 +369,4 @@ bool read_file(
 	const std::string &path, std::vector<uint8_t> *out, Error *error);
 std::string uri_to_path(const std::string &uri);
 
-}  // namespace dn
+}  // namespace dawn

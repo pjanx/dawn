@@ -66,9 +66,9 @@ instance_session()
 }
 
 const char *
-error_fallback(dn::ipc::instance::ErrorCode code)
+error_fallback(dawn::ipc::instance::ErrorCode code)
 {
-	using dn::ipc::instance::ErrorCode;
+	using dawn::ipc::instance::ErrorCode;
 	switch (code) {
 	case ErrorCode::NotFound:
 		return "not found";
@@ -85,7 +85,7 @@ error_fallback(dn::ipc::instance::ErrorCode code)
 
 bool
 handoff_open(
-	dn::ipc::instance::Client &client, const vector<QUrl> &urls, bool browse)
+	dawn::ipc::instance::Client &client, const vector<QUrl> &urls, bool browse)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
@@ -99,9 +99,8 @@ handoff_open(
 	if (const uint32_t pid = client.server_pid())
 		AllowSetForegroundWindow(DWORD(pid));
 #endif
-	dn::ipc::instance::Error error;
-	if (client.open(
-			encoded, token, browse, &error, dn::ipc::kRequestTimeout))
+	dawn::ipc::instance::Error error;
+	if (client.open(encoded, token, browse, &error, dawn::ipc::kRequestTimeout))
 		return true;
 	if (!error.message.empty())
 		qWarning("%s", error.message.c_str());
@@ -115,14 +114,13 @@ optional<int>
 try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
-	using HelloStatus = dn::ipc::HelloStatus;
+	using HelloStatus = dawn::ipc::HelloStatus;
 	HelloStatus status = HelloStatus::Unavailable;
-	auto client = dn::ipc::instance::Client::connect(
-		session.toUtf8().toStdString(), &status, dn::ipc::kHelloTimeout);
+	auto client = dawn::ipc::instance::Client::connect(
+		session.toUtf8().toStdString(), &status, dawn::ipc::kHelloTimeout);
 	if (client) {
-		return handoff_open(*client, urls, browse)
-			? EXIT_SUCCESS
-			: EXIT_FAILURE;
+		return handoff_open(*client, urls, browse) ? EXIT_SUCCESS
+												   : EXIT_FAILURE;
 	}
 
 	const char *mismatch = nullptr;
@@ -153,8 +151,8 @@ main(int argc, char **argv)
 		"%{appname}: %{if-category}%{category}: %{endif}%{message}"));
 
 	QCommandLineParser parser;
-	parser.setApplicationDescription(QStringLiteral(
-		"Display images or browse directories."));
+	parser.setApplicationDescription(
+		QStringLiteral("Display images or browse directories."));
 	parser.addHelpOption();
 	parser.addVersionOption();
 
@@ -196,13 +194,13 @@ main(int argc, char **argv)
 			return 0;
 		}
 		if (parser.isSet(list_supported_opt)) {
-			for (const string &type : dn::supported_media_types())
+			for (const string &type : dawn::supported_media_types())
 				printf("%s\n", type.c_str());
 			return 0;
 		}
 		if (parser.isSet(list_extensions_opt)) {
 			for (const QString &glob :
-				dn::extract_mime_globs(dn::supported_media_types()))
+				dn::extract_mime_globs(dawn::supported_media_types()))
 				printf("%s\n", glob.toUtf8().constData());
 			return 0;
 		}
@@ -233,17 +231,18 @@ main(int argc, char **argv)
 	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
 		bool reported_mismatch = false;
-		if (auto code = try_remote_open(
-				session, to_open, browse, reported_mismatch))
+		if (auto code =
+				try_remote_open(session, to_open, browse, reported_mismatch))
 			return *code;
 
-		auto listen = dn::ipc::Endpoint::listen(dn::ipc::instance::kService);
-		if (listen.status == dn::ipc::Endpoint::ListenStatus::InUse) {
+		auto listen =
+			dawn::ipc::Endpoint::listen(dawn::ipc::instance::kService);
+		if (listen.status == dawn::ipc::Endpoint::ListenStatus::InUse) {
 			// Someone else bound it in the meantime.
 			if (auto code = try_remote_open(
 					session, to_open, browse, reported_mismatch))
 				return *code;
-		} else if (listen.status == dn::ipc::Endpoint::ListenStatus::Ok) {
+		} else if (listen.status == dawn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in exec().
 			// A Hello during init may time out (250ms) and isolate.
 			host = make_unique<dn::InstanceHost>(

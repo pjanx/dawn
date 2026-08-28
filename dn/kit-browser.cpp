@@ -27,14 +27,12 @@
 #include <QtLogging>
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -47,27 +45,21 @@ is_drive_ssd(wchar_t letter)
 {
 	wchar_t path[] = {L'\\', L'\\', L'.', L'\\', letter, L':', 0};
 
-	HANDLE h = CreateFileW(
-		path,
-		0, // no access rights needed
-		FILE_SHARE_READ | FILE_SHARE_WRITE,
-		nullptr, OPEN_EXISTING, 0, nullptr);
+	HANDLE h = CreateFileW(path,
+		0,  // no access rights needed
+		FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
 	if (h == INVALID_HANDLE_VALUE)
 		return false;
 
 	STORAGE_PROPERTY_QUERY query = {};
 	query.PropertyId = StorageDeviceSeekPenaltyProperty;
-	query.QueryType  = PropertyStandardQuery;
+	query.QueryType = PropertyStandardQuery;
 
 	DEVICE_SEEK_PENALTY_DESCRIPTOR result = {};
 	DWORD bytesReturned = 0;
 
-	BOOL ok = DeviceIoControl(
-		h,
-		IOCTL_STORAGE_QUERY_PROPERTY,
-		&query, sizeof query,
-		&result, sizeof result,
-		&bytesReturned, nullptr);
+	BOOL ok = DeviceIoControl(h, IOCTL_STORAGE_QUERY_PROPERTY, &query,
+		sizeof query, &result, sizeof result, &bytesReturned, nullptr);
 	CloseHandle(h);
 
 	return ok && bytesReturned >= sizeof result && !result.IncursSeekPenalty;
@@ -108,8 +100,9 @@ static std::wstring
 get_drive_label(const wchar_t *root)
 {
 	wchar_t buf[33] = {};
-    if (!GetVolumeInformationW(root, buf, sizeof buf / sizeof *buf,
-			nullptr, nullptr, nullptr, nullptr, 0) || !*buf)
+	if (!GetVolumeInformationW(root, buf, sizeof buf / sizeof *buf, nullptr,
+			nullptr, nullptr, nullptr, 0) ||
+		!*buf)
 		return root;
 	return buf;
 }
@@ -231,9 +224,9 @@ struct ThumbUpdate {
 	uint32_t ram_w = 0;
 	uint32_t ram_h = 0;
 	vector<uint16_t> ram;
-	dn::ImagePtr image;
-	dn::Orientation orientation = dn::Orientation::Rotate0;
-	dn::Transfer transfer = dn::Transfer::Srgb;
+	dawn::ImagePtr image;
+	dawn::Orientation orientation = dawn::Orientation::Rotate0;
+	dawn::Transfer transfer = dawn::Transfer::Srgb;
 	bool failed = true;
 	bool gpu_pending = false;
 	bool interim = false;
@@ -284,7 +277,8 @@ is_image_ext(const QString &name)
 	// so translate them the once, as fiv did with GPatternSpec.
 	static const vector<QRegularExpression> globs = [] {
 		vector<QRegularExpression> out;
-		for (const QString &glob : extract_mime_globs(supported_media_types())) {
+		for (const QString &glob :
+			extract_mime_globs(dawn::supported_media_types())) {
 			out.push_back(
 				QRegularExpression::fromWildcard(glob, Qt::CaseInsensitive));
 			out.back().optimize();
@@ -299,8 +293,8 @@ is_image_ext(const QString &name)
 	return false;
 }
 
-shared_ptr<Profile>
-profile_from_icc(Cmm &cmm, const vector<uint8_t> &icc)
+shared_ptr<dawn::Profile>
+profile_from_icc(dawn::Cmm &cmm, const vector<uint8_t> &icc)
 {
 	if (!icc.empty()) {
 		if (auto profile = cmm.get_profile(icc))
@@ -526,17 +520,17 @@ void layout_grid(Browser &b, Rect area);
 // --- GPU thumbnail input -----------------------------------------------------
 
 void
-copy_bgra16(const Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
+copy_bgra16(const dawn::Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
 {
-	const size_t packed = size_t(dw) * kBytesPerPixel;
+	const size_t packed = size_t(dw) * dawn::kBytesPerPixel;
 	for (uint32_t y = 0; y < dh; ++y)
-		memcpy(dst + size_t(y) * dw * 4, row_u16(src, y), packed);
+		memcpy(dst + size_t(y) * dw * 4, dawn::row_u16(src, y), packed);
 }
 
 ThumbUpdate
-make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
-	int64_t mtime, uint64_t size, int thumb_size, float dpr, int atlas_max,
-	bool skip_cache)
+make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
+	const string &path, int64_t mtime, uint64_t size, int thumb_size, float dpr,
+	int atlas_max, bool skip_cache)
 {
 	ThumbUpdate result;
 	result.regeneration = skip_cache;
@@ -544,14 +538,14 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 		return result;
 	const int tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(thumb_size) * double(dpr)))));
-	shared_ptr<Profile> screen = profile_from_icc(*cmm, icc);
+	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, icc);
 	const ThumbnailSource source =
 		thumbnail_source(QString::fromStdString(path), mtime, size);
 	if (!skip_cache) {
 		ThumbnailHit hit =
 			thumbnail_cache_lookup(source, tier, cmm, screen.get());
 		if (!hit.pixels.empty()) {
-			ImagePtr image = image_new(hit.width, hit.height);
+			dawn::ImagePtr image = dawn::image_new(hit.width, hit.height);
 			if (!image)
 				return result;
 			memcpy(image->data.data(), hit.pixels.data(),
@@ -560,7 +554,7 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 			result.geometry_h =
 				hit.image_height ? hit.image_height : hit.height;
 			result.image = std::move(image);
-			result.orientation = Orientation::Rotate0;
+			result.orientation = dawn::Orientation::Rotate0;
 			result.transfer = profile_transfer(screen.get());
 			result.interim = hit.interim;
 			result.cache_bypass = hit.interim;
@@ -569,7 +563,7 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 			return result;
 		}
 	}
-	OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = path;
 	ctx.cmm = cmm;
 	const bool cacheable = !thumbnail_cache_root().isEmpty() &&
@@ -577,11 +571,11 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 	ctx.screen_profile = cacheable ? cmm->get_profile_display_p3() : screen;
 	ctx.first_frame_only = true;
 	ctx.screen_dpi = 96;
-	Error error;
-	ImagePtr image = open(ctx, &error);
+	dawn::Error error;
+	dawn::ImagePtr image = open(ctx, &error);
 	if (!image || !image->width || !image->height)
 		return result;
-	const Orientation ori = orientation_or_0(image->orientation);
+	const dawn::Orientation ori = orientation_or_0(image->orientation);
 	orientation_display_size(image->width, image->height, ori,
 		&result.geometry_w, &result.geometry_h);
 	if (image->render && result.geometry_w && result.geometry_h) {
@@ -596,7 +590,7 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 		}
 		const double scale = min(double(ow) / double(result.geometry_w),
 			double(oh) / double(result.geometry_h));
-		if (ImagePtr raster = image->render->render(
+		if (dawn::ImagePtr raster = image->render->render(
 				cmm.get(), ctx.screen_profile.get(), scale))
 			image = std::move(raster);
 		else
@@ -618,25 +612,26 @@ make_thumb(shared_ptr<Cmm> cmm, const vector<uint8_t> &icc, const string &path,
 
 void apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update);
 void apply_thumb_gpu(Browser &b, uint64_t gen, GpuPurpose purpose, int tier,
-	ThumbScaler::Result result);
+	dawn::ThumbScaler::Result result);
 void enqueue_thumbs(Browser &b);
 
-shared_ptr<Cmm>
+shared_ptr<dawn::Cmm>
 worker_cmm()
 {
-	thread_local shared_ptr<Cmm> cmm = make_shared<Cmm>();
+	thread_local auto cmm = make_shared<dawn::Cmm>();
 	return cmm;
 }
 
 bool
 queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	Browser *browser, uint64_t gen, Thumbnailer::Priority priority,
-	GpuPurpose purpose, int tier, ThumbScaler::Job job, bool keyed = true)
+	GpuPurpose purpose, int tier, dawn::ThumbScaler::Job job, bool keyed = true)
 {
 	const string key = keyed ? job.path : string{};
 	return thumbnailer.submit_gpu(
 		client, gen, priority, std::move(job),
-		[browser, gen, purpose, tier](ThumbScaler::Result result) mutable {
+		[browser, gen, purpose, tier](
+			dawn::ThumbScaler::Result result) mutable {
 			apply_thumb_gpu(*browser, gen, purpose, tier, std::move(result));
 		},
 		key);
@@ -651,8 +646,8 @@ display_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	update.geometry_w = job.image_w;
 	update.geometry_h = job.image_h;
 	update.regeneration = true;
-	shared_ptr<Profile> p3 = cmm->get_profile_display_p3();
-	shared_ptr<Profile> screen = profile_from_icc(*cmm, job.screen_icc);
+	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
+	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
 	if (p3 && screen && !display.empty() &&
 		cmm->transform_bgra16(reinterpret_cast<uint8_t *>(display.data()),
@@ -667,14 +662,14 @@ display_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			update.ram_h = oh;
 			update.failed = false;
 		} else {
-			ThumbScaler::Job gpu;
+			dawn::ThumbScaler::Job gpu;
 			gpu.pixels = display.data();
-			gpu.stride = size_t(job.width) * kBytesPerPixel;
+			gpu.stride = size_t(job.width) * dawn::kBytesPerPixel;
 			gpu.src_w = job.width;
 			gpu.src_h = job.height;
 			gpu.out_w = ow;
 			gpu.out_h = oh;
-			gpu.orientation = Orientation::Rotate0;
+			gpu.orientation = dawn::Orientation::Rotate0;
 			gpu.transfer = update.transfer;
 			gpu.path = job.path;
 			update.gpu_pending = queue_gpu(thumbnailer, client, browser,
@@ -708,15 +703,15 @@ cache_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		const int h = thumbnail_tier_height(next);
 		thumb_dest_params(
 			job.image_w, job.image_h, h, 1.0f, h * kThumbWide, &ow, &oh);
-		ThumbScaler::Job gpu;
+		dawn::ThumbScaler::Job gpu;
 		gpu.pixels = job.pixels->data();
-		gpu.stride = size_t(job.width) * kBytesPerPixel;
+		gpu.stride = size_t(job.width) * dawn::kBytesPerPixel;
 		gpu.src_w = job.width;
 		gpu.src_h = job.height;
 		gpu.out_w = ow;
 		gpu.out_h = oh;
-		gpu.orientation = Orientation::Rotate0;
-		gpu.transfer = Transfer::Srgb;
+		gpu.orientation = dawn::Orientation::Rotate0;
+		gpu.transfer = dawn::Transfer::Srgb;
 		gpu.path = job.path;
 		(void) queue_gpu(thumbnailer, client, browser, job.gen,
 			Thumbnailer::Priority::Maintenance, GpuPurpose::CacheOnly, next,
@@ -743,17 +738,17 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			thumb_dest_params(update.geometry_w, update.geometry_h,
 				job.thumb_size, job.dpr, job.atlas_max, &ow, &oh);
 		}
-		const Image &src = *update.image;
+		const dawn::Image &src = *update.image;
 		const bool one_to_one = update.gpu_purpose == GpuPurpose::Display &&
-			update.orientation == Orientation::Rotate0 && src.width == ow &&
-			src.height == oh;
+			update.orientation == dawn::Orientation::Rotate0 &&
+			src.width == ow && src.height == oh;
 		if (one_to_one) {
 			update.ram.resize(size_t(ow) * oh * 4);
 			copy_bgra16(src, update.ram.data(), ow, oh);
 			update.ram_w = ow;
 			update.ram_h = oh;
 		} else {
-			ThumbScaler::Job gpu;
+			dawn::ThumbScaler::Job gpu;
 			gpu.pixels = reinterpret_cast<const uint16_t *>(src.data.data());
 			gpu.stride = src.stride;
 			gpu.src_w = src.width;
@@ -931,7 +926,7 @@ try_upload(Browser &b, Browser::File &f)
 
 void
 apply_thumb_gpu(Browser &b, uint64_t gen, GpuPurpose purpose, int tier,
-	ThumbScaler::Result res)
+	dawn::ThumbScaler::Result res)
 {
 	if (gen != b.thumb_gen_ || res.path.empty())
 		return;
@@ -1992,14 +1987,14 @@ set_thumb_size(Browser &b, int size)
 		f.regen_failed = false;
 		f.failed = false;
 		if (uint32_t(f.ram_w) != ow || uint32_t(f.ram_h) != oh) {
-			ThumbScaler::Job job;
+			dawn::ThumbScaler::Job job;
 			job.pixels = f.ram.data();
-			job.stride = size_t(f.ram_w) * kBytesPerPixel;
+			job.stride = size_t(f.ram_w) * dawn::kBytesPerPixel;
 			job.src_w = uint32_t(f.ram_w);
 			job.src_h = uint32_t(f.ram_h);
 			job.out_w = ow;
 			job.out_h = oh;
-			job.orientation = Orientation::Rotate0;
+			job.orientation = dawn::Orientation::Rotate0;
 			job.transfer = f.transfer;
 			job.path = f.path;
 			f.ram_pending = queue_gpu(b.thumbnailer_, b.thumbnail_client_, &b,
@@ -2574,7 +2569,7 @@ void
 Browser::paint(Kit &kit) const
 {
 	if (kit.renderer_)
-		kit.renderer_->set_view(1.0f, 0.0f, 0.0f, Orientation::Rotate0);
+		kit.renderer_->set_view(1.0f, 0.0f, 0.0f, dawn::Orientation::Rotate0);
 	kit.list_.push_clip(
 		this->r.x, this->r.y, this->r.x + this->r.w, this->r.y + this->r.h);
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
@@ -2583,8 +2578,7 @@ Browser::paint(Kit &kit) const
 	const Colour ink = kit.colours_[ColourInk];
 	const float glow_a = kit.ink_alpha();
 	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
-	const Colour glow_idle = {
-		ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
+	const Colour glow_idle = {ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
 	const Colour frame = kit.colours_[ColourFrame];
 	for (int i = 0; i < int(this->files_.size()); ++i) {
 		const File &f = this->files_[size_t(i)];
@@ -2761,7 +2755,8 @@ Browser::hist_can_forward() const
 }
 
 void
-Browser::set_screen_profile(shared_ptr<Cmm> cmm, shared_ptr<Profile> profile)
+Browser::set_screen_profile(
+	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile)
 {
 	const bool reload_thumbs =
 		!profiles_equal(this->screen_profile_.get(), profile.get());

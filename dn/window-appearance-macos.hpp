@@ -18,7 +18,10 @@ namespace dn
 #ifdef __APPLE__
 void sync_macos_window_appearance(QWindow *window, bool dark);
 #else
-inline void sync_macos_window_appearance(QWindow *, bool) {}
+inline void
+sync_macos_window_appearance(QWindow *, bool)
+{
+}
 #endif
 
 }  // namespace dn

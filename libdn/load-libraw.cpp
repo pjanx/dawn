@@ -7,8 +7,8 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #if DAWN_WITH_LIBRAW
 #include <libraw.h>
@@ -17,7 +17,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -129,6 +129,6 @@ detail::load_libraw(
 	return head;
 }
 
-}  // namespace dn
+}  // namespace dawn
 
 #endif  // DAWN_WITH_LIBRAW

@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <webp/decode.h>
 #include <webp/demux.h>
@@ -15,7 +15,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 
 namespace
@@ -263,4 +263,4 @@ detail::load_webp(
 	return image;
 }
 
-}  // namespace dn
+}  // namespace dawn

@@ -12,17 +12,17 @@
 #include <string>
 #include <vector>
 
-namespace dn {
+namespace dawn {
 
 /// Soft cap on device-local bytes for one scale() (tiles + mid + dest).
 /// Tweak in source; no CLI yet.
 inline constexpr uint64_t kMaxDeviceBytes = 4ull << 30;
 
-} // namespace dn
+} // namespace dawn
 
 #include "scale-engine.hpp"
 
-namespace dn {
+namespace dawn {
 
 struct ScaleOutput {
 	uint32_t width = 0;
@@ -53,4 +53,4 @@ public:
 		std::string *error = nullptr);
 };
 
-} // namespace dn
+} // namespace dawn

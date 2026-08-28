@@ -89,7 +89,7 @@ endif()
 # tests/test-lxdr.cpp checks it against Encoder/Decoder.
 lxdr_generate(
 	${PROJECT_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
-	dn::ipc::instance
+	dawn::ipc::instance
 	Instance
 	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 	${PROJECT_SOURCE_DIR}/ipc/instance.lxdr

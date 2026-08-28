@@ -19,7 +19,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -333,6 +333,6 @@ detail::load_jxl(
 	return ctx.result;
 }
 
-}  // namespace dn
+}  // namespace dawn
 
 #endif  // DAWN_WITH_LIBJXL

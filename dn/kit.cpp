@@ -60,7 +60,7 @@ u8_colour(uint8_t r, uint8_t g, uint8_t b)
 }
 
 Colour
-bake_rgb(Cmm *cmm, Profile *target, uint8_t r, uint8_t g, uint8_t b)
+bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 {
 	Colour colour = u8_colour(r, g, b);
 	if (!cmm || !target)
@@ -78,7 +78,7 @@ bake_rgb(Cmm *cmm, Profile *target, uint8_t r, uint8_t g, uint8_t b)
 }
 
 Colour
-bake_grey(Cmm *cmm, Profile *target, uint8_t v)
+bake_grey(dawn::Cmm *cmm, dawn::Profile *target, uint8_t v)
 {
 	return bake_rgb(cmm, target, v, v, v);
 }
@@ -145,8 +145,8 @@ raster_window_button(const char *name, int px)
 	QPainter painter(&image);
 	painter.setRenderHint(QPainter::Antialiasing, true);
 	const qreal sw = max(1.25, qreal(px) / 12.0);
-	painter.setPen(QPen(Qt::white, sw, Qt::SolidLine, Qt::SquareCap,
-		Qt::MiterJoin));
+	painter.setPen(
+		QPen(Qt::white, sw, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
 	painter.setBrush(Qt::NoBrush);
 	const qreal m = qreal(px) * 0.22;
 	const QRectF box(m, m, qreal(px) - 2.0 * m, qreal(px) - 2.0 * m);
@@ -2415,8 +2415,8 @@ Menu::sync()
 				!this->actor.enabled || this->actor.enabled(action);
 			item->checked = this->actor.checked && this->actor.checked(action);
 			const ActionDef &def = action_def(action);
-			item->text = menu_label(
-				action_label(def, item->checked), &item->mnemonic);
+			item->text =
+				menu_label(action_label(def, item->checked), &item->mnemonic);
 			item->accel = accel_label(def);
 			item->checkable = (def.flags & ActionToggle) && !def.label[1];
 		}
@@ -3818,7 +3818,7 @@ Kit::forget_tree(Widget *tree)
 }
 
 void
-Kit::bake_colours(Cmm *cmm, Profile *target)
+Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 {
 	if (this->dark_) {
 		this->colours_[ColourWell] = bake_grey(cmm, target, 0x20);

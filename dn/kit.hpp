@@ -677,7 +677,7 @@ struct Kit {
 	bool mouse_double_click(
 		float x, float y, Qt::MouseButton button, unsigned mods);
 	bool set_dpr(float dpr);
-	void bake_colours(Cmm *cmm, Profile *target);
+	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
 	void pack_icon(const char *name, int px);
 	void draw_icon(
 		float x, float y, float size, const char *name, Colour colour);

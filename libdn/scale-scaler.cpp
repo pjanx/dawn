@@ -18,7 +18,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -180,8 +180,8 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 		return false;
 	}
 
-	if (!check_vk(vkResetCommandBuffer(cmd, 0),
-			"vkResetCommandBuffer readback", error)) {
+	if (!check_vk(vkResetCommandBuffer(cmd, 0), "vkResetCommandBuffer readback",
+			error)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
@@ -214,8 +214,7 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 			},
 	};
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1,
-		&barrier);
+		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
 	VkBufferImageCopy copy{
 		.bufferOffset = 0,
@@ -228,10 +227,10 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 			},
 		.imageExtent = {out_w, out_h, 1},
 	};
-	vkCmdCopyImageToBuffer(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		staging, 1, &copy);
-	if (!check_vk(vkEndCommandBuffer(cmd), "vkEndCommandBuffer readback",
-			error)) {
+	vkCmdCopyImageToBuffer(
+		cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &copy);
+	if (!check_vk(
+			vkEndCommandBuffer(cmd), "vkEndCommandBuffer readback", error)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
@@ -247,8 +246,7 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
 	}
-	if (!check_vk(
-			vkQueueWaitIdle(queue), "vkQueueWaitIdle readback", error)) {
+	if (!check_vk(vkQueueWaitIdle(queue), "vkQueueWaitIdle readback", error)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
@@ -283,7 +281,6 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 	unpremul_rgba8(result->rgba8.data(), out_w, out_h);
 	return true;
 }
-
 
 ScaleScaler::ScaleScaler() = default;
 
@@ -539,4 +536,4 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 	return true;
 }
 
-}  // namespace dn
+}  // namespace dawn

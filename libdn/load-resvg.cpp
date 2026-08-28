@@ -19,7 +19,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 
 namespace
@@ -28,7 +28,7 @@ namespace
 namespace fs = filesystem;
 
 // resvg documents share the project pixmap dimension limit.
-constexpr double kMaxDimension = double(dn::kMaxDimension);
+constexpr double kMaxDimension = double(dawn::kMaxDimension);
 
 const char *
 resvg_error_string(int32_t err)
@@ -158,4 +158,4 @@ detail::load_resvg(
 	return image;
 }
 
-}  // namespace dn
+}  // namespace dawn

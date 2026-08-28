@@ -12,7 +12,7 @@
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace ipc
 {
@@ -138,8 +138,7 @@ Server::Server(Listener listener, Config cfg) : cfg_(std::move(cfg))
 	core.watch_read = this->cfg_.watch_read;
 	core.unwatch = this->cfg_.unwatch;
 	core.watch_write = this->cfg_.watch_write;
-	this->core_ =
-		make_unique<ServerCore>(std::move(listener), std::move(core));
+	this->core_ = make_unique<ServerCore>(std::move(listener), std::move(core));
 }
 
 Server::~Server()
@@ -459,4 +458,4 @@ Client::open(const vector<string> &urls, string_view activation_token,
 
 }  // namespace instance
 }  // namespace ipc
-}  // namespace dn
+}  // namespace dawn

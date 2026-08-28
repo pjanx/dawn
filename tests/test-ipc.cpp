@@ -28,7 +28,7 @@
 #endif
 
 using namespace std;
-namespace inst = dn::ipc::instance;
+namespace inst = dawn::ipc::instance;
 
 namespace
 {
@@ -97,7 +97,7 @@ test_fragmented()
 		++g_failures;
 		return;
 	}
-	dn::ipc::Connection conn(fds[0]);
+	dawn::ipc::Connection conn(fds[0]);
 	const int peer = fds[1];
 	CHECK(conn.ok());
 
@@ -110,9 +110,9 @@ test_fragmented()
 		CHECK(write_all(peer, &wire[i], 1));
 		const auto st = conn.read();
 		if (i + 1 < sizeof(wire))
-			CHECK(st == dn::ipc::Connection::Status::NeedMore);
+			CHECK(st == dawn::ipc::Connection::Status::NeedMore);
 		else
-			CHECK(st == dn::ipc::Connection::Status::Frame);
+			CHECK(st == dawn::ipc::Connection::Status::Frame);
 	}
 
 	vector<byte> got;
@@ -130,7 +130,7 @@ test_two_frames_one_write()
 		++g_failures;
 		return;
 	}
-	dn::ipc::Connection conn(fds[0]);
+	dawn::ipc::Connection conn(fds[0]);
 	const int peer = fds[1];
 	CHECK(conn.ok());
 
@@ -143,12 +143,12 @@ test_two_frames_one_write()
 	memcpy(wire + 13, kB, 5);
 	CHECK(write_all(peer, wire, sizeof(wire)));
 
-	CHECK(conn.read() == dn::ipc::Connection::Status::Frame);
+	CHECK(conn.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> first;
 	CHECK(conn.take_payload(first));
 	CHECK(payload_eq(first, kA));
 
-	CHECK(conn.read() == dn::ipc::Connection::Status::Frame);
+	CHECK(conn.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> second;
 	CHECK(conn.take_payload(second));
 	CHECK(payload_eq(second, kB));
@@ -164,14 +164,14 @@ test_empty_payload()
 		++g_failures;
 		return;
 	}
-	dn::ipc::Connection conn(fds[0]);
+	dawn::ipc::Connection conn(fds[0]);
 	const int peer = fds[1];
 	CHECK(conn.ok());
 
 	uint8_t len[4];
 	put_u32be(len, 0);
 	CHECK(write_all(peer, len, sizeof(len)));
-	CHECK(conn.read() == dn::ipc::Connection::Status::Error);
+	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 	::close(peer);
 }
 
@@ -184,14 +184,14 @@ test_oversize_length()
 		++g_failures;
 		return;
 	}
-	dn::ipc::Connection conn(fds[0]);
+	dawn::ipc::Connection conn(fds[0]);
 	const int peer = fds[1];
 	CHECK(conn.ok());
 
 	uint8_t len[4];
-	put_u32be(len, dn::ipc::Connection::kMaxPayload + 1);
+	put_u32be(len, dawn::ipc::Connection::kMaxPayload + 1);
 	CHECK(write_all(peer, len, sizeof(len)));
-	CHECK(conn.read() == dn::ipc::Connection::Status::Error);
+	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 	::close(peer);
 }
 
@@ -204,8 +204,8 @@ test_write_read_pair()
 		++g_failures;
 		return;
 	}
-	dn::ipc::Connection a(fds[0]);
-	dn::ipc::Connection b(fds[1]);
+	dawn::ipc::Connection a(fds[0]);
+	dawn::ipc::Connection b(fds[1]);
 	CHECK(a.ok());
 	CHECK(b.ok());
 
@@ -213,7 +213,7 @@ test_write_read_pair()
 	const auto payload = as_bytes(span(kPayload));
 	CHECK(a.write_payload(payload));
 	CHECK(a.flush());
-	CHECK(b.read() == dn::ipc::Connection::Status::Frame);
+	CHECK(b.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> got;
 	CHECK(b.take_payload(got));
 	CHECK(payload_eq(got, kPayload));
@@ -230,32 +230,32 @@ constexpr char kService[] = "test";
 void
 test_listen_arbitrates()
 {
-	auto first = dn::ipc::Endpoint::listen(kService);
-	CHECK(first.status == dn::ipc::Endpoint::ListenStatus::Ok);
+	auto first = dawn::ipc::Endpoint::listen(kService);
+	CHECK(first.status == dawn::ipc::Endpoint::ListenStatus::Ok);
 	CHECK(first.listener.ok());
-	if (first.status != dn::ipc::Endpoint::ListenStatus::Ok)
+	if (first.status != dawn::ipc::Endpoint::ListenStatus::Ok)
 		return;
 
-	const auto second = dn::ipc::Endpoint::listen(kService);
-	CHECK(second.status == dn::ipc::Endpoint::ListenStatus::InUse);
+	const auto second = dawn::ipc::Endpoint::listen(kService);
+	CHECK(second.status == dawn::ipc::Endpoint::ListenStatus::InUse);
 }
 
 void
 test_endpoint_roundtrip()
 {
-	auto listen = dn::ipc::Endpoint::listen(kService);
-	CHECK(listen.status == dn::ipc::Endpoint::ListenStatus::Ok);
-	if (listen.status != dn::ipc::Endpoint::ListenStatus::Ok)
+	auto listen = dawn::ipc::Endpoint::listen(kService);
+	CHECK(listen.status == dawn::ipc::Endpoint::ListenStatus::Ok);
+	if (listen.status != dawn::ipc::Endpoint::ListenStatus::Ok)
 		return;
 
-	auto connect = dn::ipc::Endpoint::connect(kService);
-	CHECK(connect.status == dn::ipc::Endpoint::ConnectStatus::Ok);
-	if (connect.status != dn::ipc::Endpoint::ConnectStatus::Ok)
+	auto connect = dawn::ipc::Endpoint::connect(kService);
+	CHECK(connect.status == dawn::ipc::Endpoint::ConnectStatus::Ok);
+	if (connect.status != dawn::ipc::Endpoint::ConnectStatus::Ok)
 		return;
 
 	// The connect completion may not have been posted yet; an event loop
 	// would be woken by the listener instead of spinning like this.
-	dn::ipc::Connection server;
+	dawn::ipc::Connection server;
 	for (int i = 0; i < 100 && !server.ok(); ++i)
 		server = listen.listener.accept();
 	CHECK(server.ok());
@@ -267,9 +267,9 @@ test_endpoint_roundtrip()
 	CHECK(connect.conn.write_payload(payload));
 	CHECK(connect.conn.flush());
 
-	while (server.read() == dn::ipc::Connection::Status::NeedMore) {
-		if (server.wait(dn::ipc::Connection::Direction::Read, 2000) !=
-			dn::ipc::Connection::Ready::Ok)
+	while (server.read() == dawn::ipc::Connection::Status::NeedMore) {
+		if (server.wait(dawn::ipc::Connection::Direction::Read, 2000) !=
+			dawn::ipc::Connection::Ready::Ok)
 			break;
 	}
 	vector<byte> got;
@@ -283,7 +283,7 @@ test_endpoint_roundtrip()
 
 // --- Instance service --------------------------------------------------------
 
-// Everything below drives dn::ipc::instance::Server through a hand-built
+// Everything below drives dawn::ipc::instance::Server through a hand-built
 // peer: dn's own Client cannot serve here, because it always connects to
 // the real "instance" endpoint, which a running dn may well hold.
 //
@@ -299,7 +299,7 @@ vector<byte>
 frame_bytes(const inst::Frame &frame)
 {
 	vector<byte> buf;
-	dn::ipc::Encoder enc(buf);
+	dawn::ipc::Encoder enc(buf);
 	encode(frame, enc);
 	CHECK(enc.ok());
 	return buf;
@@ -342,7 +342,7 @@ cancel_frame(uint64_t id)
 // until an answer comes back.
 struct Fixture {
 	unique_ptr<inst::Server> server;
-	dn::ipc::Connection peer;
+	dawn::ipc::Connection peer;
 	uint64_t conn_id = 0;
 	int requests = 0;
 	function<void(inst::Call, const inst::RequestView &)> handler;
@@ -369,15 +369,15 @@ Fixture::poll()
 bool
 Fixture::start()
 {
-	auto listen = dn::ipc::Endpoint::listen(kInstanceService);
-	CHECK(listen.status == dn::ipc::Endpoint::ListenStatus::Ok);
-	if (listen.status != dn::ipc::Endpoint::ListenStatus::Ok)
+	auto listen = dawn::ipc::Endpoint::listen(kInstanceService);
+	CHECK(listen.status == dawn::ipc::Endpoint::ListenStatus::Ok);
+	if (listen.status != dawn::ipc::Endpoint::ListenStatus::Ok)
 		return false;
 
 	inst::Server::Config cfg;
 	cfg.session = kSession;
 	cfg.max_payload_size = kMaxPayload;
-	cfg.watch_read = [this](uint64_t id, dn::ipc::Waitable) {
+	cfg.watch_read = [this](uint64_t id, dawn::ipc::Waitable) {
 		this->conn_id = id;
 	};
 	cfg.on_request = [this](inst::Call call, const inst::RequestView &req) {
@@ -390,9 +390,9 @@ Fixture::start()
 	this->server =
 		make_unique<inst::Server>(std::move(listen.listener), std::move(cfg));
 
-	auto connect = dn::ipc::Endpoint::connect(kInstanceService);
-	CHECK(connect.status == dn::ipc::Endpoint::ConnectStatus::Ok);
-	if (connect.status != dn::ipc::Endpoint::ConnectStatus::Ok)
+	auto connect = dawn::ipc::Endpoint::connect(kInstanceService);
+	CHECK(connect.status == dawn::ipc::Endpoint::ConnectStatus::Ok);
+	if (connect.status != dawn::ipc::Endpoint::ConnectStatus::Ok)
 		return false;
 	this->peer = std::move(connect.conn);
 
@@ -415,16 +415,16 @@ Fixture::recv(inst::FrameView &view, vector<byte> &storage)
 	for (int i = 0; i < 200; ++i) {
 		this->poll();
 		const auto st = this->peer.read();
-		if (st == dn::ipc::Connection::Status::Frame) {
+		if (st == dawn::ipc::Connection::Status::Frame) {
 			if (!this->peer.take_payload(storage))
 				return false;
-			dn::ipc::Decoder dec(storage);
+			dawn::ipc::Decoder dec(storage);
 			return decode(dec, view) && dec.remaining() == 0;
 		}
-		if (st != dn::ipc::Connection::Status::NeedMore)
+		if (st != dawn::ipc::Connection::Status::NeedMore)
 			return false;
 		// Both a short nap and an early wake-up once bytes land.
-		this->peer.wait(dn::ipc::Connection::Direction::Read, 5);
+		this->peer.wait(dawn::ipc::Connection::Direction::Read, 5);
 	}
 	return false;
 }
@@ -435,15 +435,15 @@ Fixture::closed()
 	for (int i = 0; i < 200; ++i) {
 		this->poll();
 		const auto st = this->peer.read();
-		if (st == dn::ipc::Connection::Status::Eof ||
-			st == dn::ipc::Connection::Status::Error)
+		if (st == dawn::ipc::Connection::Status::Eof ||
+			st == dawn::ipc::Connection::Status::Error)
 			return true;
-		if (st == dn::ipc::Connection::Status::Frame) {
+		if (st == dawn::ipc::Connection::Status::Frame) {
 			vector<byte> drop;
 			(void) this->peer.take_payload(drop);
 			continue;
 		}
-		this->peer.wait(dn::ipc::Connection::Direction::Read, 5);
+		this->peer.wait(dawn::ipc::Connection::Direction::Read, 5);
 	}
 	return false;
 }

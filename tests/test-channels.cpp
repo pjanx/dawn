@@ -52,16 +52,16 @@ struct Pixel {
 };
 
 Pixel
-pixel0(const dn::Image &img)
+pixel0(const dawn::Image &img)
 {
-	const uint16_t *p = dn::row_u16(img, 0);
+	const uint16_t *p = dawn::row_u16(img, 0);
 	return {p[0], p[1], p[2], p[3]};
 }
 
 Pixel
-pixel_at(const dn::Image &img, uint32_t x, uint32_t y)
+pixel_at(const dawn::Image &img, uint32_t x, uint32_t y)
 {
-	const uint16_t *p = dn::row_u16(img, y) + x * 4;
+	const uint16_t *p = dawn::row_u16(img, y) + x * 4;
 	return {p[0], p[1], p[2], p[3]};
 }
 
@@ -78,15 +78,15 @@ expect_bgra(const char *label, Pixel p, uint16_t b, uint16_t g, uint16_t r,
 	}
 }
 
-dn::ImagePtr
+dawn::ImagePtr
 load_fixture(const string &name)
 {
 	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / name;
-	dn::OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = path.string();
 	ctx.first_frame_only = true;
-	dn::Error error;
-	dn::ImagePtr img = dn::open(ctx, &error);
+	dawn::Error error;
+	dawn::ImagePtr img = dawn::open(ctx, &error);
 	if (!img) {
 		fprintf(stderr, "open(%s): %s\n", path.string().c_str(),
 			error.message.c_str());
@@ -98,55 +98,55 @@ load_fixture(const string &name)
 void
 test_pack_helpers()
 {
-	dn::ImagePtr img = dn::image_new(1, 1);
+	dawn::ImagePtr img = dawn::image_new(1, 1);
 	CHECK(img != nullptr);
 
 	// RGBA8 red → B=0 G=0 R=65535 A=65535
 	{
 		const uint8_t rgba[] = {255, 0, 0, 255};
-		dn::pack_rgba8_to_bgra16(*img, rgba, 4);
+		dawn::pack_rgba8_to_bgra16(*img, rgba, 4);
 		expect_bgra("pack_rgba8 red", pixel0(*img), 0, 0, 65535, 65535, 0);
 	}
 	{
 		const uint8_t rgba[] = {0, 255, 0, 255};
-		dn::pack_rgba8_to_bgra16(*img, rgba, 4);
+		dawn::pack_rgba8_to_bgra16(*img, rgba, 4);
 		expect_bgra("pack_rgba8 green", pixel0(*img), 0, 65535, 0, 65535, 0);
 	}
 	{
 		const uint8_t rgba[] = {0, 0, 255, 255};
-		dn::pack_rgba8_to_bgra16(*img, rgba, 4);
+		dawn::pack_rgba8_to_bgra16(*img, rgba, 4);
 		expect_bgra("pack_rgba8 blue", pixel0(*img), 65535, 0, 0, 65535, 0);
 	}
 
 	{
 		const uint8_t rgb[] = {255, 0, 0};
-		dn::pack_rgb8_to_bgra16(*img, rgb, 3);
+		dawn::pack_rgb8_to_bgra16(*img, rgb, 3);
 		expect_bgra("pack_rgb8 red", pixel0(*img), 0, 0, 65535, 65535, 0);
 	}
 
 	{
 		// Host-endian 0xAARRGGBB: opaque red
 		const uint32_t word = 0xFFFF0000u;
-		dn::pack_argb32_words_to_bgra16(*img, &word, sizeof(word));
+		dawn::pack_argb32_words_to_bgra16(*img, &word, sizeof(word));
 		expect_bgra("pack_argb32 red", pixel0(*img), 0, 0, 65535, 65535, 0);
 	}
 
 	{
 		const uint8_t bgra8[] = {0, 0, 255, 255};  // B,G,R,A
-		dn::widen_bgra8_to_bgra16(*img, bgra8, 4);
+		dawn::widen_bgra8_to_bgra16(*img, bgra8, 4);
 		expect_bgra("widen_bgra8 red", pixel0(*img), 0, 0, 65535, 65535, 0);
 	}
 
 	{
 		// LE R,G,B,A uint16 — 10-bit max red in low 10 bits → scaled
 		const uint16_t rgba16[] = {1023, 0, 0, 1023};
-		dn::pack_rgba16le_to_bgra16(*img, rgba16, 8, 10);
+		dawn::pack_rgba16le_to_bgra16(*img, rgba16, 8, 10);
 		expect_bgra(
 			"pack_rgba16le 10-bit red", pixel0(*img), 0, 0, 65535, 65535, 0);
 	}
 	{
 		const uint16_t rgb16[] = {0, 0, 65535};
-		dn::pack_rgb16le_to_bgra16(*img, rgb16, 6, 16);
+		dawn::pack_rgb16le_to_bgra16(*img, rgb16, 6, 16);
 		expect_bgra("pack_rgb16le blue", pixel0(*img), 65535, 0, 0, 65535, 0);
 	}
 }
@@ -154,7 +154,7 @@ test_pack_helpers()
 void
 test_solid(const char *path, uint16_t b, uint16_t g, uint16_t r, uint16_t tol)
 {
-	dn::ImagePtr img = load_fixture(path);
+	dawn::ImagePtr img = load_fixture(path);
 	if (!img)
 		return;
 	CHECK(img->width == 1 && img->height == 1);
@@ -204,7 +204,7 @@ test_loaders_solid()
 void
 test_jpeg_cms_8_to_16()
 {
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
@@ -216,13 +216,13 @@ test_jpeg_cms_8_to_16()
 	expect_bgra("bgra8→16 premul red", {p[0], p[1], p[2], p[3]}, 0, 0, 65535,
 		65535, 257 * 2);
 
-	dn::OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.cmm = cmm;
 	ctx.screen_profile = srgb;
 	ctx.first_frame_only = true;
 	ctx.uri = (fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg").string();
-	dn::Error error;
-	dn::ImagePtr img = dn::open(ctx, &error);
+	dawn::Error error;
+	dawn::ImagePtr img = dawn::open(ctx, &error);
 	if (!img) {
 		fprintf(stderr, "jpeg cms blue.jpg: %s\n", error.message.c_str());
 		++g_failures;
@@ -234,7 +234,7 @@ test_jpeg_cms_8_to_16()
 void
 test_cmyk_cms_opaque()
 {
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
@@ -250,7 +250,7 @@ test_cmyk_cms_opaque()
 	auto src = cmm->get_profile(bytes);
 	CHECK(src != nullptr);
 
-	dn::ImagePtr img = dn::image_new(1, 1);
+	dawn::ImagePtr img = dawn::image_new(1, 1);
 	CHECK(img != nullptr);
 	const uint8_t cmyk[4] = {0, 255, 255, 0};
 	cmm->convert_cmyk8(*img, cmyk, src.get(), srgb.get());
@@ -268,7 +268,7 @@ test_cmyk_cms_opaque()
 void
 test_cms_tiled()
 {
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
@@ -282,7 +282,7 @@ test_cms_tiled()
 		src[i + 2] = 255;
 		src[i + 3] = 255;
 	}
-	vector<uint8_t> dst(size_t(w) * h * dn::kBytesPerPixel, uint8_t(0x5a));
+	vector<uint8_t> dst(size_t(w) * h * dawn::kBytesPerPixel, uint8_t(0x5a));
 	CHECK(cmm->transform_bgra8_to_bgra16(
 		src.data(), dst.data(), w, h, srgb.get(), srgb.get(), true));
 	const uint16_t *p = reinterpret_cast<const uint16_t *>(dst.data());
@@ -302,7 +302,7 @@ test_cms_tiled()
 void
 test_rgbw_2x2()
 {
-	dn::ImagePtr img = load_fixture("rgbw_2x2.png");
+	dawn::ImagePtr img = load_fixture("rgbw_2x2.png");
 	if (!img)
 		return;
 	CHECK(img->width == 2 && img->height == 2);
@@ -316,7 +316,7 @@ test_rgbw_2x2()
 void
 test_premul_alpha()
 {
-	dn::ImagePtr img = load_fixture("red_a128.png");
+	dawn::ImagePtr img = load_fixture("red_a128.png");
 	if (!img)
 		return;
 	// Straight (255,0,0,128) → widen → premul: R=A=128*257=32896, B=G=0
@@ -334,20 +334,20 @@ test_large_icc_and_p3_red()
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
 	CHECK(!bytes.empty());
 
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	double whitepoint[2] = {0.3127, 0.3290};
 	double adobe_primaries[6] = {
 		0.6400, 0.3300, 0.2100, 0.7100, 0.1500, 0.0600};
 	auto target = cmm->get_profile_parametric(2.2, whitepoint, adobe_primaries);
 	CHECK(target != nullptr);
 
-	dn::OpenContext context;
+	dawn::OpenContext context;
 	context.uri = path.string();
 	context.cmm = cmm;
 	context.screen_profile = target;
 	context.first_frame_only = true;
-	dn::Error error;
-	dn::ImagePtr image = dn::detail::load_wuffs(bytes, context, &error);
+	dawn::Error error;
+	dawn::ImagePtr image = dawn::detail::load_wuffs(bytes, context, &error);
 	if (!image) {
 		fprintf(stderr, "Wuffs P3 fixture: %s\n", error.message.c_str());
 		++g_failures;
@@ -369,7 +369,7 @@ test_large_icc_and_p3_red()
 void
 test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 {
-	dn::ImagePtr img = load_fixture(path);
+	dawn::ImagePtr img = load_fixture(path);
 	if (!img)
 		return;
 	CHECK(img->width >= 2 && img->height >= 2);
@@ -380,7 +380,7 @@ test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 	constexpr uint16_t tol = 257;
 	expect_bgra(path, pixel_at(*img, x, y), b, g, r, 65535, tol);
 
-	dn::ImagePtr scaled = img->render->render(nullptr, nullptr, 2.0);
+	dawn::ImagePtr scaled = img->render->render(nullptr, nullptr, 2.0);
 	if (!scaled) {
 		fprintf(stderr, "%s: render(scale=2) failed\n", path);
 		++g_failures;
@@ -400,7 +400,7 @@ test_svg()
 	test_svg_solid("green.svg", 0, 65535, 0);
 	test_svg_solid("blue.svg", 65535, 0, 0);
 
-	dn::ImagePtr rgbw = load_fixture("rgbw_2x2.svg");
+	dawn::ImagePtr rgbw = load_fixture("rgbw_2x2.svg");
 	if (rgbw) {
 		CHECK(rgbw->width == 2 && rgbw->height == 2);
 		constexpr uint16_t tol = 257 * 2;
@@ -414,7 +414,7 @@ test_svg()
 			65535, tol);
 	}
 
-	dn::ImagePtr half = load_fixture("red_a128.svg");
+	dawn::ImagePtr half = load_fixture("red_a128.svg");
 	if (half) {
 		CHECK(half->render != nullptr);
 		// Cairo/resvg premul ~50% red: R≈A≈32768, B=G=0
@@ -439,13 +439,13 @@ near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 void
 test_chromaticities()
 {
-	CHECK(dn::profile_chromaticities(nullptr).model == dn::ColorModel::Unknown);
+	CHECK(dawn::profile_chromaticities(nullptr).model == dawn::ColorModel::Unknown);
 
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
-	dn::Chromaticities s = dn::profile_chromaticities(srgb.get());
-	CHECK(s.model == dn::ColorModel::Rgb);
+	dawn::Chromaticities s = dawn::profile_chromaticities(srgb.get());
+	CHECK(s.model == dawn::ColorModel::Rgb);
 	CHECK(s.have_primaries);
 	CHECK(s.n == 3);
 	near_xy("sRGB R", s.x[0], s.y[0], 0.6400, 0.3300, 0.002);
@@ -456,8 +456,8 @@ test_chromaticities()
 
 	auto display_p3 = cmm->get_profile_display_p3();
 	CHECK(display_p3 != nullptr);
-	CHECK(dn::profile_transfer(display_p3.get()) == dn::Transfer::Srgb);
-	dn::Chromaticities d = dn::profile_chromaticities(display_p3.get());
+	CHECK(dawn::profile_transfer(display_p3.get()) == dawn::Transfer::Srgb);
+	dawn::Chromaticities d = dawn::profile_chromaticities(display_p3.get());
 	CHECK(d.have_primaries && d.n == 3);
 	near_xy("Display P3 R", d.x[0], d.y[0], 0.6800, 0.3200, 0.002);
 	near_xy("Display P3 G", d.x[1], d.y[1], 0.2650, 0.6900, 0.002);
@@ -467,16 +467,16 @@ test_chromaticities()
 	double adobe[6] = {0.6400, 0.3300, 0.2100, 0.7100, 0.1500, 0.0600};
 	auto ad = cmm->get_profile_parametric(2.2, wp, adobe);
 	CHECK(ad != nullptr);
-	dn::Chromaticities a = dn::profile_chromaticities(ad.get());
+	dawn::Chromaticities a = dawn::profile_chromaticities(ad.get());
 	CHECK(a.have_primaries && a.n == 3);
 	near_xy("Adobe G", a.x[1], a.y[1], 0.2100, 0.7100, 0.002);
 
-	dn::ImagePtr red = load_fixture("red.png");
+	dawn::ImagePtr red = load_fixture("red.png");
 	if (red) {
 		CHECK(red->effective_profile != nullptr);
 		CHECK(red->profile_assumed);
-		dn::Chromaticities e =
-			dn::profile_chromaticities(red->effective_profile.get());
+		dawn::Chromaticities e =
+			dawn::profile_chromaticities(red->effective_profile.get());
 		CHECK(e.have_primaries && e.n == 3);
 		near_xy("assumed sRGB R", e.x[0], e.y[0], 0.6400, 0.3300, 0.002);
 	}
@@ -487,16 +487,16 @@ test_chromaticities()
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
 	if (!bytes.empty()) {
-		dn::OpenContext ctx;
+		dawn::OpenContext ctx;
 		ctx.uri = p3.string();
 		ctx.cmm = cmm;
 		ctx.first_frame_only = true;
-		dn::Error error;
-		dn::ImagePtr img = dn::detail::load_wuffs(bytes, ctx, &error);
+		dawn::Error error;
+		dawn::ImagePtr img = dawn::detail::load_wuffs(bytes, ctx, &error);
 		if (img && img->effective_profile) {
 			CHECK(!img->profile_assumed);
-			dn::Chromaticities p =
-				dn::profile_chromaticities(img->effective_profile.get());
+			dawn::Chromaticities p =
+				dawn::profile_chromaticities(img->effective_profile.get());
 			CHECK(p.have_primaries && p.n == 3);
 			near_xy("P3 R", p.x[0], p.y[0], 0.680, 0.320, 0.01);
 			near_xy("P3 G", p.x[1], p.y[1], 0.265, 0.690, 0.01);
@@ -516,11 +516,11 @@ test_png_text_after_idat()
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
 	CHECK(!bytes.empty());
 
-	dn::OpenContext ctx;
+	dawn::OpenContext ctx;
 	ctx.uri = path.string();
 	ctx.first_frame_only = false;
-	dn::Error error;
-	dn::ImagePtr image = dn::open_from_data(bytes, ctx, &error);
+	dawn::Error error;
+	dawn::ImagePtr image = dawn::open_from_data(bytes, ctx, &error);
 	if (!image) {
 		fprintf(stderr, "text-after-idat: %s\n", error.message.c_str());
 		++g_failures;
@@ -537,24 +537,24 @@ test_png_text_after_idat()
 void
 test_profile_transfer()
 {
-	CHECK(dn::profile_transfer(nullptr) == dn::Transfer::Srgb);
+	CHECK(dawn::profile_transfer(nullptr) == dawn::Transfer::Srgb);
 
-	auto cmm = dn::Cmm::get_default();
+	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
-	CHECK(dn::profile_transfer(srgb.get()) == dn::Transfer::Srgb);
+	CHECK(dawn::profile_transfer(srgb.get()) == dawn::Transfer::Srgb);
 
 	auto g22 = cmm->get_profile_sRGB_gamma(2.2);
 	CHECK(g22 != nullptr);
-	CHECK(dn::profile_transfer(g22.get()) == dn::Transfer::AdobeRgb);
+	CHECK(dawn::profile_transfer(g22.get()) == dawn::Transfer::AdobeRgb);
 
 	auto lin = cmm->get_profile_sRGB_gamma(1.0);
 	CHECK(lin != nullptr);
-	CHECK(dn::profile_transfer(lin.get()) == dn::Transfer::Linear);
+	CHECK(dawn::profile_transfer(lin.get()) == dawn::Transfer::Linear);
 
 	auto g18 = cmm->get_profile_sRGB_gamma(1.8);
 	CHECK(g18 != nullptr);
-	CHECK(dn::profile_transfer(g18.get()) == dn::Transfer::Srgb);
+	CHECK(dawn::profile_transfer(g18.get()) == dawn::Transfer::Srgb);
 }
 
 }  // namespace

@@ -27,7 +27,7 @@ public:
 	using Client = uint64_t;
 	using Completion = std::function<void()>;
 	using Work = std::function<Completion()>;
-	using GpuCompletion = std::function<void(ThumbScaler::Result)>;
+	using GpuCompletion = std::function<void(dawn::ThumbScaler::Result)>;
 
 	enum class Priority : uint8_t {
 		Visible,
@@ -54,7 +54,8 @@ public:
 	/// Copies job pixels on a worker. Safe on the GUI thread; keep `job.pixels`
 	/// alive until the completion runs.
 	bool submit_gpu(Client client, uint64_t epoch, Priority priority,
-		ThumbScaler::Job job, GpuCompletion completion, std::string key = {});
+		dawn::ThumbScaler::Job job, GpuCompletion completion,
+		std::string key = {});
 	[[nodiscard]] bool busy(Client client) const;
 	[[nodiscard]] size_t background_limit() const;
 

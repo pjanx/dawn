@@ -18,14 +18,14 @@
 
 #include <dawn-config.h>
 
-#include "libdn.h"
 #include "libdn-loaders.h"
+#include "libdn.h"
 
 #include <glycin.h>
 
 using namespace std;
 
-namespace dn
+namespace dawn
 {
 namespace
 {
@@ -50,10 +50,9 @@ namespace
 // so nothing here could preserve that anyway--this is a libdn-wide limit,
 // not one this list imposes.  Should the working format ever grow a float
 // variant, add those formats here and give them a packer.
-constexpr GlyMemoryFormatSelection kAcceptedFormats =
-	GlyMemoryFormatSelection(GLY_MEMORY_SELECTION_R8G8B8 |
-		GLY_MEMORY_SELECTION_R8G8B8A8 | GLY_MEMORY_SELECTION_R16G16B16 |
-		GLY_MEMORY_SELECTION_R16G16B16A16);
+constexpr GlyMemoryFormatSelection kAcceptedFormats = GlyMemoryFormatSelection(
+	GLY_MEMORY_SELECTION_R8G8B8 | GLY_MEMORY_SELECTION_R8G8B8A8 |
+	GLY_MEMORY_SELECTION_R16G16B16 | GLY_MEMORY_SELECTION_R16G16B16A16);
 
 ImagePtr
 load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
@@ -213,8 +212,7 @@ detail::load_glycin(
 		gly_frame_request_set_loop_animation(request, FALSE);
 
 		GError *ferror = nullptr;
-		GlyFrame *frame =
-			gly_image_get_specific_frame(img, request, &ferror);
+		GlyFrame *frame = gly_image_get_specific_frame(img, request, &ferror);
 		g_object_unref(request);
 		if (!frame) {
 			// Running out of frames is normal, and not always reported as
@@ -222,8 +220,8 @@ detail::load_glycin(
 			// Only a failure on the very first frame means the image itself
 			// is undecodable.
 			if (!head)
-				set_error(error,
-					ferror ? ferror->message : "glycin decoding error");
+				set_error(
+					error, ferror ? ferror->message : "glycin decoding error");
 			if (ferror)
 				g_error_free(ferror);
 			break;
@@ -264,4 +262,4 @@ detail::load_glycin(
 	return head;
 }
 
-}  // namespace dn
+}  // namespace dawn
