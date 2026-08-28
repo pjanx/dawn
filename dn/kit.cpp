@@ -3910,13 +3910,13 @@ paint_tooltip(Kit &kit)
 	if (a.w > 0) {
 		tx = a.x;
 		ty = a.y + a.h + 4.0f;
-		if (tx + tw > kit.host_w_)
-			tx = max(0.0f, kit.host_w_ - tw);
+		if (tx + tw + kGlowPts > kit.host_w_)
+			tx = max(0.0f, kit.host_w_ - tw - kGlowPts);
 		if (ty + th > kit.host_h_)
 			ty = max(0.0f, a.y - th - 4.0f);
 	} else {
-		if (tx + tw > kit.host_w_)
-			tx = max(0.0f, kit.host_w_ - tw);
+		if (tx + tw + kGlowPts > kit.host_w_)
+			tx = max(0.0f, kit.host_w_ - tw - kGlowPts);
 		if (ty + th > kit.host_h_)
 			ty = max(0.0f, kit.mouse_y_ - th - 4.0f);
 	}
