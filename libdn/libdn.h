@@ -216,6 +216,9 @@ class Cmm : public std::enable_shared_from_this<Cmm>
 	void *context_ = nullptr;  ///< cmsContext
 	bool broken_premul_ = false;
 
+	std::shared_ptr<Profile> cached_sRGB;
+	std::shared_ptr<Profile> cached_display_p3;
+
 public:
 	Cmm();
 	~Cmm();
@@ -226,8 +229,8 @@ public:
 
 	std::shared_ptr<Profile> get_profile(const void *data, size_t len);
 	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
-	std::shared_ptr<Profile> get_profile_sRGB();
-	std::shared_ptr<Profile> get_profile_display_p3();
+	std::shared_ptr<Profile> get_profile_sRGB(bool cache = false);
+	std::shared_ptr<Profile> get_profile_display_p3(bool cache = false);
 	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
 	std::shared_ptr<Profile> get_profile_parametric(
 		double gamma, double whitepoint[2], double primaries[6]);

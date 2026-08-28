@@ -534,6 +534,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 	result.regeneration = skip_cache;
 	if (!cmm)
 		return result;
+
 	const int tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(thumb_size) * double(dpr)))));
 	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, icc);
@@ -561,6 +562,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 			return result;
 		}
 	}
+
 	dawn::OpenContext ctx;
 	ctx.uri = path;
 	ctx.cmm = cmm;
@@ -573,6 +575,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 	dawn::ImagePtr image = open(ctx, &error);
 	if (!image || !image->width || !image->height)
 		return result;
+
 	const dawn::Orientation ori = orientation_or_0(image->orientation);
 	orientation_display_size(image->width, image->height, ori,
 		&result.geometry_w, &result.geometry_h);
@@ -596,6 +599,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 	}
 	if (!image || !image->width || !image->height)
 		return {};
+
 	result.image = std::move(image);
 	result.orientation = ori;
 	result.transfer = profile_transfer(ctx.screen_profile.get());

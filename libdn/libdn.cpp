@@ -910,17 +910,29 @@ Cmm::get_profile(span<const uint8_t> bytes)
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_sRGB()
+Cmm::get_profile_sRGB(bool cache)
 {
+	// We may use these a lot, no need to recreate each time.
+	if (this->cached_sRGB)
+		return this->cached_sRGB;
+
 	cmsHPROFILE p = cmsCreate_sRGBProfileTHR(cmsContext(context_));
 	if (!p)
 		return nullptr;
-	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
+
+	shared_ptr<Profile> result(new Profile(shared_from_this(), p));
+	if (cache)
+		this->cached_sRGB = result;
+	return result;
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_display_p3()
+Cmm::get_profile_display_p3(bool cache)
 {
+	// We may use these a lot, no need to recreate each time.
+	if (this->cached_display_p3)
+		return this->cached_display_p3;
+
 	constexpr size_t samples = 4096;
 	vector<cmsUInt16Number> transfer(samples);
 	for (size_t i = 0; i < samples; ++i) {
@@ -947,7 +959,11 @@ Cmm::get_profile_display_p3()
 	if (!p)
 		return nullptr;
 	cmsSetProfileVersion(p, 4.3);
-	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
+
+	shared_ptr<Profile> result(new Profile(shared_from_this(), p));
+	if (cache)
+		this->cached_display_p3 = result;
+	return result;
 }
 
 shared_ptr<Profile>

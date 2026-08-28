@@ -187,7 +187,7 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	const string *tag = value(meta, kColorSpace);
 	const bool p3 = tag && *tag == "Display P3";
 	shared_ptr<dawn::Profile> src =
-		p3 ? cmm->get_profile_display_p3() : cmm->get_profile_sRGB();
+		p3 ? cmm->get_profile_display_p3(true) : cmm->get_profile_sRGB(true);
 	dawn::ImagePtr image = decode_webp(bytes, *cmm, src.get(), screen);
 	if (!image)
 		return hit;
