@@ -1019,8 +1019,9 @@ Entry::paint(Kit &kit) const
 
 	kit.list_.add_rect_filled(this->r.x, this->r.y, this->r.x + this->r.w,
 		this->r.y + this->r.h, col(kit.colours_[ColourFrame]));
+	const float hair = kit.hairline();
 	kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), 1.0f);
+		this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
 
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 	kit.list_.push_clip(in.x, in.y, in.x + in.w, in.y + in.h);
@@ -1046,16 +1047,16 @@ Entry::paint(Kit &kit) const
 		const float x1 = tx +
 			float(kit.caret_x(
 				full, this->caret + int(this->preedit.size()), false));
-		const float uy = float(ty + th) - 1.0f;
+		const float uy = float(ty + th) - hair;
 		kit.list_.add_line(min(x0, x1), uy, max(x0, x1), uy,
-			col(kit.colours_[ColourInk], kit.ink_alpha()), 1.0f);
+			col(kit.colours_[ColourInk], kit.ink_alpha()), hair);
 	}
 
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
 		const float cx = round(tx + float(kit.caret_x(full, at, false)));
-		kit.list_.add_rect_filled(cx, float(ty), cx + 1.0f, float(ty + th),
+		kit.list_.add_rect_filled(cx, float(ty), cx + hair, float(ty + th),
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
@@ -1266,12 +1267,13 @@ Sep::paint(Kit &kit) const
 	const float cx = float(this->r.x) + float(this->r.w) * 0.5f;
 	const float cy = float(this->r.y) + float(this->r.h) * 0.5f;
 	const float inset = float(kit.px(2.0f)), gap = float(kit.px(4.0f));
+	const float hair = kit.hairline();
 	if (this->r.h > this->r.w)
 		kit.list_.add_line(cx, float(this->r.y) + inset, cx,
-			float(this->r.y + this->r.h) - inset, c);
+			float(this->r.y + this->r.h) - inset, c, hair);
 	else
 		kit.list_.add_line(float(this->r.x) + gap, cy,
-			float(this->r.x + this->r.w) - gap, cy, c);
+			float(this->r.x + this->r.w) - gap, cy, c, hair);
 }
 
 // --- Splitter ----------------------------------------------------------------
@@ -1297,8 +1299,8 @@ Splitter::paint(Kit &kit) const
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
-	kit.list_.add_line(
-		x, float(this->r.y), x, float(this->r.y + this->r.h), col(c));
+	kit.list_.add_line(x, float(this->r.y), x, float(this->r.y + this->r.h),
+		col(c), kit.hairline());
 }
 
 bool
@@ -1893,17 +1895,20 @@ Panel::paint(Kit &kit) const
 		break;
 	}
 	paint_children(kit);
-	const float hair = 0.5f / max(kit.dpr_, 0.01f);
+	const float hair = kit.hairline();
+	// add_line() centres an axis-aligned band on a pixel centre, so the
+	// bottom rule is pulled half its own width inside the panel's edge.
+	const float edge = float(this->r.y + this->r.h) - hair * 0.5f;
 	switch (this->stroke) {
 	case Stroke::All:
 		kit.list_.add_rect_stroke(this->r.x, this->r.y, this->r.x + this->r.w,
-			this->r.y + this->r.h, col(kit.colours_[ColourDivider]));
+			this->r.y + this->r.h, col(kit.colours_[ColourDivider]), hair);
 		break;
 	case Stroke::Bottom:
-		kit.list_.add_line(this->r.x, this->r.y + this->r.h - hair,
-			this->r.x + this->r.w, this->r.y + this->r.h - hair,
+		kit.list_.add_line(this->r.x, edge, this->r.x + this->r.w, edge,
 			col(this->busy ? kit.colours_[ColourBusy]
-						   : kit.colours_[ColourDivider]));
+						   : kit.colours_[ColourDivider]),
+			hair);
 		break;
 	case Stroke::None:
 		break;
@@ -2540,33 +2545,36 @@ MenuItem::paint(Kit &kit) const
 			this->r.y + this->r.h, col(kit.colours_[ColourPress]));
 
 	const MenuCols cols = menu_cols(kit, *this);
-	const float lead_x = this->r.x + kFramePadX;
-	const float label_x = this->r.x + cols.label_x;
-	const float accel_x = this->r.x + cols.accel_x;
-	const float th =
-		this->text.isEmpty() ? 0.0f : kit.text_height(this->text, 0.0f, false);
-	const float ty = this->r.y + (this->r.h - th) * 0.5f;
-	const float iy = this->r.y + (this->r.h - kIconPts) * 0.5f;
+	const int icon = kit.px(kIconPts), pad_x = kit.px(kFramePadX);
+	const int lead_x = this->r.x + pad_x;
+	const int label_x = this->r.x + cols.label_x;
+	const int accel_x = this->r.x + cols.accel_x;
+	const int th =
+		this->text.isEmpty() ? 0 : kit.text_height(this->text, 0, false);
+	const int ty = this->r.y + (this->r.h - th) / 2;
+	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.5f);
 
 	if (this->checkable && this->checked)
-		emit_icon(kit, lead_x, iy, kIconPts, "object-select-symbolic", label_c);
+		emit_icon(kit, float(lead_x), float(iy), float(icon),
+			"object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
 		const QString shown = menu_shown(kit, *this);
-		emit_text(kit, label_x, ty, shown, label_c, false,
+		emit_text(kit, float(label_x), float(ty), shown, label_c, false,
 			menu_mnemonic(*this, shown));
 	}
 	if (!this->accel.isEmpty()) {
-		const float tw = kit.text_width(this->accel, false);
-		const float ath = kit.text_height(this->accel, 0.0f, false);
-		emit_text(kit, accel_x + cols.accel_w - tw,
-			this->r.y + (this->r.h - ath) * 0.5f, this->accel,
+		const int tw = kit.text_width(this->accel, false);
+		const int ath = kit.text_height(this->accel, 0, false);
+		emit_text(kit, float(accel_x + cols.accel_w - tw),
+			float(this->r.y + (this->r.h - ath) / 2), this->accel,
 			col(kit.colours_[ColourInk], 0.5f), false, -1);
 	}
 	if (this->sub) {
-		emit_icon(kit, this->r.x + this->r.w - kFramePadX - cols.chevron, iy,
-			kIconPts, "go-next-symbolic",
+		emit_icon(kit,
+			float(this->r.x + this->r.w - pad_x - cols.chevron), float(iy),
+			float(icon), "go-next-symbolic",
 			col(kit.colours_[ColourInk], this->enabled_ ? 1.0f : 0.375f));
 	}
 }
@@ -3257,10 +3265,13 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 		(float(this->glow_.x) + float(this->glow_.w) - 0.5f) / aw;
 	const float v_in =
 		(float(this->glow_.y) + float(this->glow_.h) - 0.5f) / ah;
-	const float ox = ix - kGlowPts;
-	const float oy = iy - kGlowPts;
-	const float ox1 = ix + iw + kGlowPts;
-	const float oy1 = iy + ih + kGlowPts;
+	// The glow is rasterised at kGlowPts * dpr, so its quad has to reach
+	// exactly that far in pixels, or the ramp is squashed or stretched.
+	const float glow = float(px(kGlowPts));
+	const float ox = ix - glow;
+	const float oy = iy - glow;
+	const float ox1 = ix + iw + glow;
+	const float oy1 = iy + ih + glow;
 	const float ix1 = ix + iw;
 	const float iy1 = iy + ih;
 	this->list_.add_image(ox, oy, ix, iy, u0, v0, u1, v1, col);
@@ -3276,9 +3287,10 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	const Rect g = w.inset(1, 1);
+	const float hair = hairline();
+	const Rect g = w.inset(int(hair), int(hair));
 	this->list_.add_rect_stroke(float(g.x), float(g.y), float(g.x + g.w),
-		float(g.y + g.h), col(this->colours_[ColourInk]));
+		float(g.y + g.h), col(this->colours_[ColourInk]), hair);
 }
 
 void

@@ -456,8 +456,8 @@ Hint::paint(Kit &kit) const
 		const Rect c = t.chip;
 		kit.list_.add_rect_filled(
 			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourHint]);
-		kit.list_.add_rect_stroke(
-			c.x, c.y, c.x + c.w, c.y + c.h, kit.colours_[ColourInk]);
+		kit.list_.add_rect_stroke(c.x, c.y, c.x + c.w, c.y + c.h,
+			kit.colours_[ColourInk], kit.hairline());
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = float(c.x + kit.px(kChipPadX));
 		const float ty = float(c.y) + max(0.0f, float(c.h - th) * 0.5f);

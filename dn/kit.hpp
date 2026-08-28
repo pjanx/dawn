@@ -730,6 +730,14 @@ struct Kit {
 	{
 		return int(lround(double(pts) * double(this->dpr_)));
 	}
+	// One hairline: a rule, border or caret, in device pixels.  These are
+	// meant to look equally thin at any scale, so they track the display
+	// rather than staying a single pixel.
+	[[nodiscard]] float hairline() const
+	{
+		const int n = px(1.0f);
+		return float(n > 1 ? n : 1);
+	}
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
 	[[nodiscard]] bool font_pixels(
 		unsigned char **out_pixels, int *width, int *height) const;

@@ -2605,8 +2605,11 @@ Browser::paint(Kit &kit) const
 				float(tw) + 2.0f * border, float(thp) + 2.0f * border,
 				focused ? glow_hot : glow_idle);
 			draw_checker(kit, {tx, ty, tw, thp});
-			kit.list_.add_rect_stroke(float(tx) - 1.0f, float(ty) - 1.0f,
-				float(tx + tw) + 1.0f, float(ty + thp) + 1.0f, frame, border);
+			// The frame sits just outside the thumbnail, by half its own
+			// width on each side, so it does not eat into the image.
+			const float half = border * 0.5f;
+			kit.list_.add_rect_stroke(float(tx) - half, float(ty) - half,
+				float(tx + tw) + half, float(ty + thp) + half, frame, border);
 			float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 			this->sheet_.uv(f.gpu, &u0, &v0, &u1, &v1);
 			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1);
