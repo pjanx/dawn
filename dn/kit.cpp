@@ -3954,13 +3954,28 @@ paint_tooltip(Kit &kit)
 	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty())
 		return;
 
-	const QString text = kit.tooltip_text_;
-	const QString accel = kit.tooltip_accel_;
-	const int gap = accel.isEmpty() ? 0 : kit.px(8.0f);
-	const int aw = accel.isEmpty() ? 0 : kit.text_width(accel, false);
-	const int tw = kit.text_width(text, false) + gap + aw +
-		kit.px(kTooltipPadX) * 2;
-	const int th = kit.text_height(text, 0, false) + kit.px(kFramePadY) * 2;
+	const QString &accel = kit.tooltip_accel_;
+	Panel tipn;
+	tipn.pad_x = kTooltipPadX;
+	tipn.pad_y = kFramePadY;
+	tipn.fill = Fill::Tooltip;
+	tipn.stroke = Stroke::All;
+	auto row = make_unique<Row>();
+	row->gap = accel.isEmpty() ? 0.0f : 8.0f;
+	auto lab = make_unique<Label>();
+	lab->text = kit.tooltip_text_;
+	row->add_child(std::move(lab));
+	if (!accel.isEmpty()) {
+		auto acc = make_unique<Label>();
+		acc->text = accel;
+		acc->dim = true;
+		row->add_child(std::move(acc));
+	}
+	tipn.add_child(std::move(row));
+	// Ask the panel how big it wants to be rather than adding the same
+	// paddings up a second time by hand.
+	tipn.measure(kit, kUnlim, kUnlim);
+	const int tw = tipn.r.w, th = tipn.r.h;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.0f);
 
 	int tx = int(kit.mouse_x_) + kit.px(16.0f);
@@ -3971,34 +3986,13 @@ paint_tooltip(Kit &kit)
 	if (a.w > 0) {
 		tx = a.x;
 		ty = a.y + a.h + step;
-		if (tx + tw + glow > kit.host_w_)
-			tx = max(0, kit.host_w_ - tw - glow);
 		if (ty + th + glow > kit.host_h_)
 			ty = max(0, a.y - th - step);
-	} else {
-		if (tx + tw + glow > kit.host_w_)
-			tx = max(0, kit.host_w_ - tw - glow);
-		if (ty + th + glow > kit.host_h_)
-			ty = max(0, int(kit.mouse_y_) - th - step);
-	}
+	} else if (ty + th + glow > kit.host_h_)
+		ty = max(0, int(kit.mouse_y_) - th - step);
+	if (tx + tw + glow > kit.host_w_)
+		tx = max(0, kit.host_w_ - tw - glow);
 
-	Panel tipn;
-	tipn.pad_x = kTooltipPadX;
-	tipn.pad_y = kFramePadY;
-	tipn.fill = Fill::Tooltip;
-	tipn.stroke = Stroke::All;
-	auto row = make_unique<Row>();
-	row->gap = accel.isEmpty() ? 0.0f : 8.0f;
-	auto lab = make_unique<Label>();
-	lab->text = text;
-	row->add_child(std::move(lab));
-	if (!accel.isEmpty()) {
-		auto acc = make_unique<Label>();
-		acc->text = accel;
-		acc->dim = true;
-		row->add_child(std::move(acc));
-	}
-	tipn.add_child(std::move(row));
 	tipn.arrange(kit, {tx, ty, tw, th});
 	kit.draw_shadow(tipn.r);
 	tipn.paint(kit);
@@ -4284,6 +4278,24 @@ Kit::prepare_popups()
 		if (p)
 			p->prepare(*this);
 	}
+}
+
+void
+Kit::frame_ui(Widget &ui, const function<void()> &placed)
+{
+	if (!this->inited_)
+		return;
+	this->root_ = &ui;
+	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});
+	if (placed)
+		placed();
+	relayout_popups();
+	sync_focus();
+	ui.prepare(*this);
+	prepare_popups();
+	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
+	tooltip(this->hot_);
+	paint();
 }
 
 void

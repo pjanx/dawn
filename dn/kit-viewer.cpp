@@ -757,30 +757,6 @@ fit_to_well(Viewer &v)
 }
 
 static void
-layout(Viewer &v, Page &ui)
-{
-	v.kit_.root_ = &ui;
-	sync_ui(v, ui);
-	ui.arrange(v.kit_, {0, 0, v.kit_.host_w_, v.kit_.host_h_});
-	sync_scale_label(v);
-	v.kit_.relayout_popups();
-	v.kit_.sync_focus();
-	ui.prepare(v.kit_);
-	v.kit_.prepare_popups();
-}
-
-static void
-draw(Viewer &v, Page &ui)
-{
-	if (!v.kit_.inited_)
-		return;
-	layout(v, ui);
-	v.kit_.hot_ = v.kit_.hit(v.kit_.mouse_x_, v.kit_.mouse_y_);
-	v.kit_.tooltip(v.kit_.hot_);
-	v.kit_.paint();
-}
-
-static void
 clear_image(Viewer &v)
 {
 	stop_playback(v);
@@ -2057,7 +2033,10 @@ void
 Viewer::present(Page &ui)
 {
 	animate(*this);
-	draw(*this, ui);
+	if (!this->kit_.inited_)
+		return;
+	sync_ui(*this, ui);
+	this->kit_.frame_ui(ui, [this] { sync_scale_label(*this); });
 }
 
 int

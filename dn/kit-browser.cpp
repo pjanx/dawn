@@ -2292,30 +2292,6 @@ sync_ui(Browser &b, Page &ui)
 	}
 }
 
-void
-layout(Browser &b, Page &ui)
-{
-	b.kit_.root_ = &ui;
-	sync_ui(b, ui);
-	ui.arrange(b.kit_, {0, 0, b.kit_.host_w_, b.kit_.host_h_});
-	sync_thumbs(b);
-	b.kit_.relayout_popups();
-	b.kit_.sync_focus();
-	ui.prepare(b.kit_);
-	b.kit_.prepare_popups();
-}
-
-void
-draw(Browser &b, Page &ui)
-{
-	if (!b.kit_.inited_)
-		return;
-	layout(b, ui);
-	b.kit_.hot_ = b.kit_.hit(b.kit_.mouse_x_, b.kit_.mouse_y_);
-	b.kit_.tooltip(b.kit_.hot_);
-	b.kit_.paint();
-}
-
 bool
 apply_action(Browser &b, Action action)
 {
@@ -2784,7 +2760,10 @@ Browser::set_screen_profile(
 void
 Browser::present(Page &ui)
 {
-	draw(*this, ui);
+	if (!this->kit_.inited_)
+		return;
+	sync_ui(*this, ui);
+	this->kit_.frame_ui(ui, [this] { sync_thumbs(*this); });
 }
 
 bool
