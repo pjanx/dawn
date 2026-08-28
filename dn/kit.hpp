@@ -566,7 +566,6 @@ struct Titlebar : Panel {
 
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
-	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -718,7 +717,6 @@ struct Kit {
 	// Caret geometry, both in pixels, and both counting in UTF-16 units.
 	[[nodiscard]] int caret_x(const QString &text, int index, bool bold) const;
 	[[nodiscard]] int index_at(const QString &text, float x, bool bold) const;
-	[[nodiscard]] int text_ascent(bool bold) const;
 	[[nodiscard]] QString elide_lines(
 		const QString &text, int wrap_px, int max_lines, bool bold) const;
 	[[nodiscard]] int text_height(

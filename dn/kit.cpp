@@ -3113,12 +3113,6 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 }
 
 void
-Titlebar::paint(Kit &kit) const
-{
-	Panel::paint(kit);
-}
-
-void
 Titlebar::prepare(Kit &kit)
 {
 	const int px = max(16, int(lround(double(kIconPts) * double(kit.dpr_))));
@@ -3365,13 +3359,6 @@ Kit::index_at(const QString &text, float x, bool bold) const
 	if (!line.isValid())
 		return 0;
 	return line.xToCursor(qreal(x));
-}
-
-int
-Kit::text_ascent(bool bold) const
-{
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	return int(lround(QFontMetricsF(font).ascent()));
 }
 
 QString
