@@ -89,9 +89,11 @@ raster_symbolic(const char *name, int px)
 {
 	if (px < 1)
 		return {};
+
 	QFile file(QStringLiteral(":/dn/icons/%1.svg").arg(QLatin1String(name)));
 	if (!file.open(QIODevice::ReadOnly))
 		return {};
+
 	const QByteArray bytes = file.readAll();
 	resvg_options *opt = resvg_options_create();
 	resvg_render_tree *tree = nullptr;
@@ -100,11 +102,13 @@ raster_symbolic(const char *name, int px)
 	resvg_options_destroy(opt);
 	if (err != RESVG_OK || !tree)
 		return {};
+
 	const resvg_size size = resvg_get_image_size(tree);
 	if (size.width <= 0.f || size.height <= 0.f) {
 		resvg_tree_destroy(tree);
 		return {};
 	}
+
 	resvg_transform transform = resvg_transform_identity();
 	const float scale = float(px) / max(size.width, size.height);
 	transform.a = scale;
@@ -113,15 +117,16 @@ raster_symbolic(const char *name, int px)
 	resvg_render(tree, transform, uint32_t(px), uint32_t(px), pixmap.data());
 	resvg_tree_destroy(tree);
 
-	QImage image(px, px, QImage::Format_ARGB32);
-	constexpr int cr = 0xff, cg = 0xff, cb = 0xff;
+	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
 	const size_t stride = size_t(px) * 4;
 	for (int y = 0; y < px; ++y) {
 		auto *row = (QRgb *) image.scanLine(y);
 		const auto *src =
 			(const unsigned char *) (pixmap.data() + size_t(y) * stride);
-		for (int x = 0; x < px; ++x)
-			row[x] = qRgba(cr, cg, cb, src[x * 4 + 3]);
+		for (int x = 0; x < px; ++x) {
+			const int a = src[x * 4 + 3];
+			row[x] = qRgba(a, a, a, a);
+		}
 	}
 	return image;
 }
@@ -141,6 +146,7 @@ raster_window_button(const char *name, int px)
 		kind = Kind::Close;
 	if (kind == Kind::None || px < 1)
 		return {};
+
 	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
 	image.fill(Qt::transparent);
 	QPainter painter(&image);
