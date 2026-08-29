@@ -490,7 +490,7 @@ OverlayVulkan::create_pipeline()
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
 		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
 	};
-	VkPipelineColorBlendAttachmentState blend_attachment{
+	VkPipelineColorBlendAttachmentState blend_straight{
 		.blendEnable = VK_TRUE,
 		.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA,
 		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
@@ -501,10 +501,11 @@ OverlayVulkan::create_pipeline()
 		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
 	};
+	VkPipelineColorBlendAttachmentState blend_premul = blend_straight;
+	blend_premul.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
 	VkPipelineColorBlendStateCreateInfo blend{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
 		.attachmentCount = 1,
-		.pAttachments = &blend_attachment,
 	};
 	VkDynamicState dynamic_states[] = {
 		VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
@@ -527,9 +528,14 @@ OverlayVulkan::create_pipeline()
 		.layout = this->pipeline_layout_,
 		.renderPass = this->render_pass_,
 	};
-	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
-				 &pipeline_info, nullptr, &this->pipeline_),
-		"vkCreateGraphicsPipelines overlay");
+	const VkPipelineColorBlendAttachmentState *blend_attachments[2]{
+		&blend_straight, &blend_premul};
+	for (uint32_t i = 0; i < 2; ++i) {
+		blend.pAttachments = blend_attachments[i];
+		check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
+					 &pipeline_info, nullptr, &this->pipelines_[i]),
+			"vkCreateGraphicsPipelines overlay");
+	}
 	return true;
 }
 
@@ -930,7 +936,8 @@ OverlayVulkan::record(
 	VkCommandBuffer cmd, uint32_t image_index, const OverlayMesh &mesh)
 {
 	if (!cmd || image_index >= this->framebuffers_.size() ||
-		!this->framebuffers_[image_index] || !this->pipeline_ ||
+		!this->framebuffers_[image_index] || !this->pipelines_[0] ||
+		!this->pipelines_[1] ||
 		!this->font_view_)
 		return;
 	if (mesh.vertices.empty() || mesh.indices.empty() || mesh.cmds.empty() ||
@@ -974,7 +981,6 @@ OverlayVulkan::record(
 		.maxDepth = 1.f,
 	};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->pipeline_);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &this->vertex_buffer_, &offset);
 	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);
@@ -997,6 +1003,10 @@ OverlayVulkan::record(
 			(draw_cmd.tex == kOverlayTexFont && !this->font_view_))
 			continue;
 		if (draw_cmd.tex != bound_tex) {
+			// UI/font pixels are straight-alpha; thumbnails use libdn's
+			// premultiplied BGRA working format all the way into the atlas.
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+				this->pipelines_[draw_cmd.tex]);
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 				this->pipeline_layout_, 0, 1,
 				&this->descriptor_sets_[draw_cmd.tex], 0, nullptr);
@@ -1085,15 +1095,17 @@ OverlayVulkan::destroy_pipeline()
 {
 	if (!this->device_)
 		return;
-	if (this->pipeline_)
-		vkDestroyPipeline(this->device_, this->pipeline_, nullptr);
+	for (VkPipeline pipeline : this->pipelines_)
+		if (pipeline)
+			vkDestroyPipeline(this->device_, pipeline, nullptr);
 	if (this->pipeline_layout_)
 		vkDestroyPipelineLayout(this->device_, this->pipeline_layout_, nullptr);
 	if (this->vert_)
 		vkDestroyShaderModule(this->device_, this->vert_, nullptr);
 	if (this->frag_)
 		vkDestroyShaderModule(this->device_, this->frag_, nullptr);
-	this->pipeline_ = VK_NULL_HANDLE;
+	this->pipelines_[0] = VK_NULL_HANDLE;
+	this->pipelines_[1] = VK_NULL_HANDLE;
 	this->pipeline_layout_ = VK_NULL_HANDLE;
 	this->vert_ = VK_NULL_HANDLE;
 	this->frag_ = VK_NULL_HANDLE;
