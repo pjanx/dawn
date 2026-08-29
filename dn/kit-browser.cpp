@@ -1351,6 +1351,7 @@ move_cursor_home(Browser &b)
 {
 	if (b.rows_.empty())
 		return;
+
 	const Browser::GridRow &row = b.rows_.front();
 	b.cursor_ = row.first;
 	remember_cursor_x(b);
@@ -1363,6 +1364,7 @@ move_cursor_end(Browser &b)
 {
 	if (b.rows_.empty())
 		return;
+
 	const Browser::GridRow &row = b.rows_.back();
 	b.cursor_ = row.first + row.count - 1;
 	remember_cursor_x(b);
@@ -2800,12 +2802,13 @@ Browser::key(Kit &kit, const Key &ev)
 			open_new_window(*this, this->files_[size_t(this->cursor_)].path);
 		return true;
 	}
-	if (ev.key == Qt::Key_Escape && ev.mods == 0 && this->cursor_ >= 0) {
-		clear_cursor(*this);
-		request_render(*this);
-		return true;
-	}
-	if (ev.mods == 0) {
+	switch (ev.mods) {
+	case unsigned(Qt::NoModifier):
+		if (ev.key == Qt::Key_Escape && this->cursor_ >= 0) {
+			clear_cursor(*this);
+			request_render(*this);
+			return true;
+		}
 		switch (ev.key) {
 		case Qt::Key_Left:
 			move_cursor(*this, CursorDir::Left);
@@ -2832,6 +2835,21 @@ Browser::key(Kit &kit, const Key &ev)
 			page_scroll(*this, 1);
 			return true;
 		}
+		break;
+	case unsigned(Qt::ControlModifier):
+		// Arrows will receive different meaning as soon as we get selection
+		// as a different concept from focus (as in file managers).
+		switch (ev.key) {
+		case Qt::Key_Up:
+			this->scroll_.offset = 0;
+			request_render(*this);
+			return true;
+		case Qt::Key_Down:
+			this->scroll_.offset = this->scroll_.max_offset();
+			request_render(*this);
+			return true;
+		}
+		break;
 	}
 	return false;
 }
@@ -2845,13 +2863,14 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		if (i >= 0) {
 			this->cursor_ = i;
 			remember_cursor_x_at(*this, x);
-			show_file_context(
-				*this, kit, this->files_[size_t(i)].path, {int(x), int(y), 0, 0}, false);
+			show_file_context(*this, kit, this->files_[size_t(i)].path,
+				{int(x), int(y), 0, 0}, false);
 			return true;
 		}
 		if (this->dir_url_.isEmpty())
 			return false;
-		show_file_context(*this, kit, dir_path(*this), {int(x), int(y), 0, 0}, false);
+		show_file_context(
+			*this, kit, dir_path(*this), {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {

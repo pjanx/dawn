@@ -23,7 +23,8 @@ namespace dn
 
 enum class Action : uint8_t {
 	None,
-	// window
+
+	// Window
 	NewWindow,
 	CloseWindow,
 	Minimize,
@@ -42,7 +43,8 @@ enum class Action : uint8_t {
 	Cancel,
 	NextPane,
 	PrevPane,
-	// browser
+
+	// Browser
 	Sidebar,
 	DirPrev,
 	DirNext,
@@ -60,7 +62,8 @@ enum class Action : uint8_t {
 	SortTime,
 	Search,
 	Activate,
-	// viewer
+
+	// Viewer
 	Browse,
 	PrevFile,
 	NextFile,
@@ -91,6 +94,7 @@ enum class Action : uint8_t {
 	Copy,
 	Trash,
 	Reload,
+
 	Count,
 };
 

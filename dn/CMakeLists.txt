@@ -31,9 +31,6 @@ target_include_directories(dn PRIVATE
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	target_compile_options(dn PRIVATE -Werror=float-conversion)
 endif()
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-	target_compile_options(dn PRIVATE -Werror=implicit-int-conversion)
-endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(dn PRIVATE

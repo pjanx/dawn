@@ -45,28 +45,52 @@ constexpr ActionDef kDefs[] = {
 		{{Qt::Key_F11}}, {}},
 	{kToggle, {"_Dark Mode"}, {"dark-mode-symbolic"}, {{Qt::Key_D}}, {}},
 	{kMenu, {"_Hint"}, {}, {{Qt::Key_F}}, {}},
-	{kMenu, {"_Back in History"}, {"curved-arrow-left-symbolic"},
-		{{Qt::Key_Left, kAlt}, {Qt::Key_Backspace}}, {}},
-	{kMenu, {"_Forward in History"}, {"curved-arrow-right-symbolic"},
-		{{Qt::Key_Right, kAlt}}, {}},
+	{kMenu, {"_Back in History"}, {"curved-arrow-left-symbolic"}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_BracketLeft, kCtrl},
+#else
+		{Qt::Key_Left, kAlt},
+#endif
+		{Qt::Key_Backspace}}, {}},
+	{kMenu, {"_Forward in History"}, {"curved-arrow-right-symbolic"}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_BracketRight, kCtrl},
+#else
+		{Qt::Key_Right, kAlt},
+#endif
+		}, {}},
+	// Perhaps this should be on Command-? and keyboard shortcuts need none.
 	{kMenu, {"_Contents"}, {}, {{Qt::Key_F1}}, {}},
 	{kMenu, {"_About"}, {}, {}, {}},
 	{kMenu, {"_Keyboard Shortcuts"}, {}, {{Qt::Key_Question, kCtrl}}, {}},
+	// TODO(p): Skip on macOS entirely, as it uses the global menu.
 	{0, {"_Menu"}, {}, {{Qt::Key_F10}}, {}},
-	// Mostly documentation only.
+	// The context menu action is mostly for documentation only.
 	{0, {"_Context Menu"}, {}, {{Qt::Key_Menu}, {Qt::Key_F10, kShift}}, {}},
 	{0, {"_Cancel"}, {}, {{Qt::Key_Escape}}, {}},
 	{0, {"_Next Pane"}, {}, {{Qt::Key_F6}}, {}},
 	{0, {"_Previous Pane"}, {}, {{Qt::Key_F6, kShift}}, {}},
+
 	{kToggle, {"Show _Sidebar"}, {"sidebar-left-symbolic"},
 		{{Qt::Key_F9}}, {}},
 	{kMenu, {"_Previous Directory in Tree"}, {"go-previous-symbolic"},
 		{{Qt::Key_BracketLeft}}, {}},
 	{kMenu, {"_Next Directory in Tree"}, {"go-next-symbolic"},
 		{{Qt::Key_BracketRight}}, {}},
-	{kMenu, {"Parent _Directory"}, {"go-up-symbolic"},
-		{{Qt::Key_Up, kAlt}}, {}},
-	{kMenu, {"_Home"}, {}, {{Qt::Key_Home, kAlt}}, {}},
+	{kMenu, {"Parent _Directory"}, {"go-up-symbolic"}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_Up, kCtrl},
+#else
+		{Qt::Key_Up, kAlt},
+#endif
+		}, {}},
+	{kMenu, {"_Home"}, {}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_H, kCtrl | kShift},
+#else
+		{Qt::Key_Home, kAlt},
+#endif
+		}, {}},
 	{kMenu, {"S_maller Thumbnails"}, {"minus-framed-symbolic"},
 		{{Qt::Key_Minus}, {Qt::Key_Minus, kCtrl}}, {}},
 	{kMenu, {"_Larger Thumbnails"}, {"plus-framed-symbolic"},
@@ -87,15 +111,24 @@ constexpr ActionDef kDefs[] = {
 	{kToggle, {"Sort by _Name"}, {}, {{Qt::Key_1, kCtrl | kAlt}}, {}},
 	{kToggle, {"Sort by _Time"}, {}, {{Qt::Key_2, kCtrl | kAlt}}, {}},
 	{kMenu, {"_Filter"}, {}, {{Qt::Key_F, kCtrl}, {Qt::Key_Slash}}, {}},
-	{0, {"_Open"}, {}, {{Qt::Key_Return}, {Qt::Key_Enter}}, {}},
+	{0, {"_Open"}, {}, {
+		// In Finder, Return nonsensically renames items.
+		{Qt::Key_Return}, {Qt::Key_Enter},
+#ifdef Q_OS_MACOS
+		{Qt::Key_Down, kCtrl},
+#endif
+		}, {}},
+
 	{kMenu, {"_Browse"}, {"blocks-symbolic"},
 		{{Qt::Key_Return}, {Qt::Key_Enter}}, {}},
 	{kMenu, {"_Previous File"}, {"go-previous-symbolic"},
 		{{Qt::Key_Left}, {Qt::Key_Up}, {Qt::Key_PageUp}}, {}},
 	{kMenu, {"_Next File"}, {"go-next-symbolic"},
 		{{Qt::Key_Right}, {Qt::Key_Down}, {Qt::Key_PageDown}}, {}},
-	{kMenu, {"Zoom _In"}, {"plus-framed-symbolic"}, {{Qt::Key_Plus}}, {}},
-	{kMenu, {"Zoom _Out"}, {"minus-framed-symbolic"}, {{Qt::Key_Minus}}, {}},
+	{kMenu, {"Zoom _In"}, {"plus-framed-symbolic"},
+		{{Qt::Key_Plus}, {Qt::Key_Plus, kCtrl}}, {}},
+	{kMenu, {"Zoom _Out"}, {"minus-framed-symbolic"},
+		{{Qt::Key_Minus}, {Qt::Key_Minus, kCtrl}}, {}},
 	{kMenu, {"O_riginal Size"}, {"one-framed-symbolic"},
 		{{Qt::Key_0, kCtrl}}, {}},
 	{0, {"Zoom _Level"}, {}, {}, "1-9"},

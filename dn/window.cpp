@@ -613,6 +613,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 {
 	if (!this->cmm_)
 		this->cmm_ = dawn::Cmm::get_default();
+
 	DisplayProfile discovered =
 		this->app_->display_profiles.load(target_screen);
 	shared_ptr<dawn::Profile> next;
@@ -1261,7 +1262,7 @@ Window::handle_input_method(QInputMethodEvent *event)
 
 	// The preedit caret rides in the attribute list, in UTF-16 units from
 	// the start of the preedit string.
-	int caret = event->preeditString().size();
+	auto caret = event->preeditString().size();
 	for (const QInputMethodEvent::Attribute &a : event->attributes()) {
 		if (a.type == QInputMethodEvent::Cursor)
 			caret = a.start;

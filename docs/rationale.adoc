@@ -122,6 +122,8 @@ mess of interspersed state.
 And so there is a *hand-rolled retained mode UI*.
 Like in https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
 Vimperator-like hints outside a browser, and I've trivially received them.
+In general, keyboard navigation is
+https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
 
 As of writing, no effort has been made to have true popup windows, so we're
 somewhat GTK style, and it might actually not be too big of a problem.

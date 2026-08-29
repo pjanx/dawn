@@ -888,7 +888,7 @@ grapheme_before(const QString &text, int at)
 		return 0;
 	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
 	finder.setPosition(min(at, int(text.size())));
-	const int prev = finder.toPreviousBoundary();
+	const auto prev = finder.toPreviousBoundary();
 	return prev < 0 ? 0 : prev;
 }
 
@@ -900,7 +900,7 @@ grapheme_after(const QString &text, int at)
 		return end;
 	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
 	finder.setPosition(max(at, 0));
-	const int next = finder.toNextBoundary();
+	const auto next = finder.toNextBoundary();
 	return next < 0 ? end : next;
 }
 

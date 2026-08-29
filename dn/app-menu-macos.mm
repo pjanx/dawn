@@ -68,36 +68,6 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 
 	unichar c = 0;
 	switch (k) {
-	case Qt::Key_Plus:
-		c = '+';
-		break;
-	case Qt::Key_Minus:
-		c = '-';
-		break;
-	case Qt::Key_Equal:
-		c = '=';
-		break;
-	case Qt::Key_Less:
-		c = '<';
-		break;
-	case Qt::Key_Greater:
-		c = '>';
-		break;
-	case Qt::Key_BracketLeft:
-		c = '[';
-		break;
-	case Qt::Key_BracketRight:
-		c = ']';
-		break;
-	case Qt::Key_BraceLeft:
-		c = '{';
-		break;
-	case Qt::Key_BraceRight:
-		c = '}';
-		break;
-	case Qt::Key_Space:
-		c = ' ';
-		break;
 	case Qt::Key_Return:
 	case Qt::Key_Enter:
 		c = '\r';
@@ -135,8 +105,17 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 	case Qt::Key_PageDown:
 		c = NSPageDownFunctionKey;
 		break;
+	case Qt::Key_Insert:
+		c = NSInsertFunctionKey;
+		break;
+	case Qt::Key_Delete:
+		c = NSDeleteFunctionKey;
+		break;
 	default:
-		return @"";
+		if (k >= 32 && k < 128)
+			c = unichar(k);
+		else
+			return @"";
 	}
 	return [NSString stringWithCharacters:&c length:1];
 }

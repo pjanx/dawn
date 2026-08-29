@@ -900,6 +900,7 @@ Page::key(Kit &kit, const Key &ev)
 	}
 	if (!n)
 		return false;
+
 	const int dir = a == Action::PrevPane ? -1 : 1;
 	kit.focus_first(panes[(i + dir + n) % n]);
 	return true;

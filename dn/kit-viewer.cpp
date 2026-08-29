@@ -55,6 +55,7 @@ constexpr float kWinPadY = 2.f;
 constexpr float kItemGap = 2.f;
 constexpr float kZoomStep = 1.25f;
 constexpr float kZoomDragPts = 40.f;
+constexpr float kKeyboardPan = 50.f;
 constexpr float kRotateMinR = 8.f;
 constexpr float kScaleMin = 0.0125f;
 constexpr float kScaleMax = 64.f;
@@ -546,28 +547,35 @@ well_cy(const Viewer &v)
 }
 
 static void
-clamp_view(Viewer &v)
+get_slack_xy(Viewer &v, float &slack_x, float &slack_y)
 {
-	if (!v.view_locked_ || v.scale_ <= 0.f)
-		return;
+	slack_x = 0.;
+	slack_y = 0.;
+
 	const float well_w = well_w_px(v);
 	const float well_h = well_h_px(v);
 	if (well_w <= 0.f || well_h <= 0.f)
 		return;
+
 	uint32_t dw = 0, dh = 0;
 	display_size(v, &dw, &dh);
 	if (!dw || !dh)
 		return;
-	const float slack_x = 0.5f * float(dw) - well_w / (2.f * v.scale_);
-	const float slack_y = 0.5f * float(dh) - well_h / (2.f * v.scale_);
-	if (slack_x <= 0.f)
-		v.pan_x_ = 0;
-	else
-		v.pan_x_ = clamp(v.pan_x_, -slack_x, slack_x);
-	if (slack_y <= 0.f)
-		v.pan_y_ = 0;
-	else
-		v.pan_y_ = clamp(v.pan_y_, -slack_y, slack_y);
+
+	slack_x = 0.5f * float(dw) - well_w / (2.f * v.scale_);
+	slack_y = 0.5f * float(dh) - well_h / (2.f * v.scale_);
+}
+
+static void
+clamp_view(Viewer &v)
+{
+	if (!v.view_locked_ || v.scale_ <= 0.f)
+		return;
+
+	float slack_x = 0, slack_y = 0;
+	get_slack_xy(v, slack_x, slack_y);
+	v.pan_x_ = slack_x <= 0.f ? 0 : clamp(v.pan_x_, -slack_x, slack_x);
+	v.pan_y_ = slack_y <= 0.f ? 0 : clamp(v.pan_y_, -slack_y, slack_y);
 }
 
 static void
@@ -683,7 +691,7 @@ sync_scale_label(Viewer &v)
 	const float scale_slot =
 		max(v.kit_.text_width(QStringLiteral("100%"), false),
 			v.kit_.text_width(v.scale_text_, false));
-	v.scale_label_->min_w = scale_slot;
+	v.scale_label_->min_w = scale_slot / v.kit_.dpr_;
 	v.scale_label_->text = v.scale_text_;
 }
 
@@ -744,10 +752,12 @@ fit_to_well(Viewer &v)
 	display_size(v, &disp_w, &disp_h);
 	if (!disp_w || !disp_h)
 		return;
+
 	const float content_w = well_w_px(v);
 	const float content_h = well_h_px(v);
 	if (content_w <= 0.f || content_h <= 0.f)
 		return;
+
 	const float fit =
 		min({content_w / float(disp_w), content_h / float(disp_h), 1.f});
 	v.scale_ = clamp(fit, kScaleMin, kScaleMax);
@@ -1480,6 +1490,7 @@ pan_by(Viewer &v, double dx_points, double dy_points)
 {
 	if (v.scale_ <= 0.f)
 		return;
+
 	const float k = v.kit_.dpr_ / v.scale_;
 	const Vec u = turn(-v.angle_, {float(dx_points) * k, float(dy_points) * k});
 	v.pan_x_ -= u.x;
@@ -1492,6 +1503,7 @@ snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 {
 	if (!pan || scale <= 0.f || disp <= 0.f || vp <= 0.f)
 		return;
+
 	const float origin = 0.5f * vp - scale * (0.5f * disp + *pan);
 	*pan += (origin - round(origin)) / scale;
 }
@@ -2060,10 +2072,54 @@ Viewer::key(Kit &kit, const Key &ev)
 {
 	if (context_key(ev.key, ev.mods))
 		return show_view_context(*this, kit);
-	if (ev.mods == unsigned(Qt::NoModifier) && ev.key >= Qt::Key_1 &&
-		ev.key <= Qt::Key_9) {
-		set_scale(*this, float(ev.key - Qt::Key_0));
-		return true;
+
+	switch (ev.mods) {
+	case unsigned(Qt::NoModifier):
+		if (ev.key >= Qt::Key_1 && ev.key <= Qt::Key_9) {
+			set_scale(*this, float(ev.key - Qt::Key_0));
+			return true;
+		}
+		break;
+	case unsigned(Qt::ControlModifier): {
+		float slack_x = 0, slack_y = 0;
+		get_slack_xy(*this, slack_x, slack_y);
+		switch (ev.key) {
+		case Qt::Key_Up:
+			if (slack_y > 0.f)
+				this->pan_y_ = -slack_y;
+			return true;
+		case Qt::Key_Right:
+			if (slack_x > 0.f)
+				this->pan_x_ = +slack_x;
+			return true;
+		case Qt::Key_Down:
+			if (slack_y > 0.f)
+				this->pan_y_ = +slack_y;
+			return true;
+		case Qt::Key_Left:
+			if (slack_x > 0.f)
+				this->pan_x_ = -slack_x;
+			return true;
+		}
+		break;
+	}
+	case unsigned(Qt::ShiftModifier):
+		// Other modifiers are taken, and bare arrows iterate files.
+		switch (ev.key) {
+		case Qt::Key_Up:
+			pan_by(*this, 0., +kKeyboardPan);
+			return true;
+		case Qt::Key_Right:
+			pan_by(*this, -kKeyboardPan, 0);
+			return true;
+		case Qt::Key_Down:
+			pan_by(*this, 0., -kKeyboardPan);
+			return true;
+		case Qt::Key_Left:
+			pan_by(*this, +kKeyboardPan, 0);
+			return true;
+		}
+		break;
 	}
 	return false;
 }
