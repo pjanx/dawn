@@ -14,8 +14,10 @@ float
 bayer8(vec2 p)
 {
 	ivec2 i = ivec2(p) & 7;
-	int b = ((i.x & 1) << 5) | ((i.y & 1) << 4) | ((i.x & 2) << 2) |
-		((i.y & 2) << 1) | ((i.x & 4) >> 1) | ((i.y & 4) >> 2);
+	int diagonal = i.x ^ i.y;
+	int b = ((diagonal & 1) << 5) | ((i.x & 1) << 4) |
+		((diagonal & 2) << 2) | ((i.x & 2) << 1) |
+		((diagonal & 4) >> 1) | ((i.x & 4) >> 2);
 	return (float(b) + 0.5) / 64.0;
 }
 
