@@ -155,6 +155,9 @@ else()
 		$<BUILD_INTERFACE:${lcms2_SOURCE_DIR}/plugins/fast_float/include>)
 	target_include_directories(lcms2_threaded PUBLIC
 		$<BUILD_INTERFACE:${lcms2_SOURCE_DIR}/plugins/threaded/include>)
+
+	# FIXME: LibRaw, GdkPixbuf, Clycin may transitively link to system lcms2.
+	# What gives?  Clear in LINK_INTERFACE_LIBRARIES?
 	target_link_libraries(dawn-lcms2 INTERFACE
 		lcms2 lcms2_fast_float lcms2_threaded)
 
