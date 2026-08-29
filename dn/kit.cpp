@@ -293,7 +293,9 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 		if (img.format() != QImage::Format_Alpha8 &&
 			img.format() != QImage::Format_Grayscale8)
 			img = img.convertToFormat(QImage::Format_Alpha8);
-	}
+	} else if (img.format() != QImage::Format_ARGB32_Premultiplied)
+		img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+
 	const int rows = min(rect.h, img.height());
 	const int cols = min(rect.w, img.width());
 	for (int y = 0; y < rows; ++y) {
@@ -302,10 +304,8 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 		if (coverage) {
 			const uchar *row = img.constScanLine(y);
 			for (int x = 0; x < cols; ++x) {
-				dst[x * 4 + 0] = 65535;
-				dst[x * 4 + 1] = 65535;
-				dst[x * 4 + 2] = 65535;
-				dst[x * 4 + 3] = widen8(row[x]);
+				const uint16_t a = widen8(row[x]);
+				fill_n(dst + x * 4, 4, a);
 			}
 		} else {
 			const auto *row = (const QRgb *) img.constScanLine(y);
@@ -434,10 +434,7 @@ rebuild_atlas(Kit &kit)
 				const double yn = y_scale * double(y_max - y);
 				const double v = min(sqrt(xn * xn + yn * yn), 1.0);
 				const uint8_t a = uint8_t(lround(pow(1.0 - v, 1.5) * 255.0));
-				dst[x * 4 + 0] = 65535;
-				dst[x * 4 + 1] = 65535;
-				dst[x * 4 + 2] = 65535;
-				dst[x * 4 + 3] = widen8(a);
+				fill_n(dst + x * 4, 4, widen8(a));
 			}
 		}
 		kit.atlas_.dirty = true;
@@ -3550,14 +3547,10 @@ Kit::pack_bitmap(const QImage &image)
 {
 	if (image.isNull() || image.width() <= 0 || image.height() <= 0)
 		return {};
-	QImage src = image;
-	if (src.format() != QImage::Format_ARGB32 &&
-		src.format() != QImage::Format_ARGB32_Premultiplied)
-		src = src.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-	const Packed packed = pack_or_grow(*this, src.width(), src.height());
+	const Packed packed = pack_or_grow(*this, image.width(), image.height());
 	if (packed.empty())
 		return {};
-	blit(*this, packed, src, false);
+	blit(*this, packed, image, false);
 	return packed;
 }
 

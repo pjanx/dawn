@@ -124,7 +124,7 @@ class OverlayVulkan
 	VkRenderPass render_pass_ = VK_NULL_HANDLE;
 	VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
 	VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
-	VkPipeline pipelines_[2]{};
+	VkPipeline pipeline_ = VK_NULL_HANDLE;
 	VkSampler sampler_ = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet descriptor_sets_[2]{};
