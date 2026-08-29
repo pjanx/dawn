@@ -1,7 +1,7 @@
 //
 // instance.cpp: Qt adapter for dn single-instance IPC
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

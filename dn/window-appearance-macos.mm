@@ -1,7 +1,7 @@
 //
 // window-appearance-macos.mm: sync a window's native titlebar to dark mode
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

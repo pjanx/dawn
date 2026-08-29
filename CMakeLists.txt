@@ -263,7 +263,7 @@ if (BUILD_TESTING)
 	add_subdirectory(tests)
 endif()
 
-set(CPACK_PACKAGE_VENDOR "The dawn Authors")
+set(CPACK_PACKAGE_VENDOR "The Dawn Authors")
 set(CPACK_PACKAGE_CONTACT "Přemysl Eric Janouch <p@janouch.name>")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_GENERATOR ZIP)

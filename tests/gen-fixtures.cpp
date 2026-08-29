@@ -1,7 +1,7 @@
 //
 // gen-fixtures.cpp: generate image fixtures in the requested build directory
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

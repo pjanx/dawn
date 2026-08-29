@@ -1,7 +1,7 @@
 //
 // kit-viewer.cpp: image view (document, overlay chrome, view input)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

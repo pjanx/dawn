@@ -1,7 +1,7 @@
 //
 // vk-device.hpp: pick a graphics device and create it
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

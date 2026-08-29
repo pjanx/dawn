@@ -1,7 +1,7 @@
 //
 // test-channels.cpp: verify BGRA_PREMUL_4X16LE channel order
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

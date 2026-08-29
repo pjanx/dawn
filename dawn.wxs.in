@@ -13,12 +13,12 @@
 		Language='1033'
 		Codepage='1252'
 		Version='@PROJECT_VERSION@'
-		Manufacturer='The dawn Authors'>
+		Manufacturer='The Dawn Authors'>
 
 		<Package Id='*'
 			Keywords='Installer,Image,Browser'
 			Description='$(var.FullName) Installer'
-			Manufacturer='The dawn Authors'
+			Manufacturer='The Dawn Authors'
 			InstallerVersion='200'
 			Compressed='yes'
 			Languages='1033'

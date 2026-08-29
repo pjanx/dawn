@@ -1,7 +1,7 @@
 //
 // load-openjpeg.cpp: JPEG 2000 image loader (OpenJPEG)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

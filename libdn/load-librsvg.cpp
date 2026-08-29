@@ -1,7 +1,7 @@
 //
 // load-librsvg.cpp: SVG image loading via librsvg (GLib + Cairo allowed here)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

@@ -1,6 +1,6 @@
 // gen-icon.swift: generate a program icon for dn in the Apple icon format
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 // As an odd regression, AppKit may be necessary for JIT linking.

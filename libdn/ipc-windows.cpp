@@ -1,7 +1,7 @@
 //
 // ipc-windows.cpp: completion-based IPC transport over named pipes
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

@@ -1,7 +1,7 @@
 //
 // load-jpeg.cpp: JPEG image loader (libjpeg-turbo)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

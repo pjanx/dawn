@@ -1,7 +1,7 @@
 //
 // ipc-rpc.cpp: service-independent RPC core
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

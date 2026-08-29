@@ -1,7 +1,7 @@
 //
 // assoc.hpp: native Open With handlers for a file path
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

@@ -1,7 +1,7 @@
 #
 # embed-shader.cmake: glslang SPIR-V compile + uint32_t header embed
 #
-# Copyright The dawn Authors
+# Copyright The Dawn Authors
 # SPDX-License-Identifier: MPL-2.0
 #
 # dawn_embed_shader(<target> <src> <symbol> [glslang args...])

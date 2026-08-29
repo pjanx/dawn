@@ -1,6 +1,6 @@
 # lxdrgen-cpp.awk: C++20 LibertyXDR backend for lxdrgen.awk.
 #
-# Copyright The dawn Authors
+# Copyright The Dawn Authors
 # SPDX-License-Identifier: MPL-2.0
 #
 # Usage: env LC_ALL=C awk -f lxdrgen.awk -f lxdrgen-cpp.awk \

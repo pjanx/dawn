@@ -1,7 +1,7 @@
 //
 // scale-engine.hpp: shared H→V tile scale engine
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

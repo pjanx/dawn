@@ -1,7 +1,7 @@
 //
 // load-resvg.cpp: SVG image loading via resvg (no GLib dependency)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

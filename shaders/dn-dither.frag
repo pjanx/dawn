@@ -1,7 +1,7 @@
 //
 // dither.frag: ordered dither from 16-bit compose to 8-bit swapchain
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

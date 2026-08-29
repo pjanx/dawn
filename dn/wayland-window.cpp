@@ -1,7 +1,7 @@
 //
 // wayland-window.cpp: Wayland-specific viewer window
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

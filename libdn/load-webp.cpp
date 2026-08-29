@@ -1,7 +1,7 @@
 //
 // load-webp.cpp: WebP image loading (still and animated)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

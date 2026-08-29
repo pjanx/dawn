@@ -1,7 +1,7 @@
 #
 # embed-spirv.cmake: embed a SPIR-V binary as a C++ uint32_t array header
 #
-# Copyright The dawn Authors
+# Copyright The Dawn Authors
 # SPDX-License-Identifier: MPL-2.0
 #
 # Usage: cmake -DINPUT=foo.spv -DOUTPUT=foo-spv.h -DSYMBOL=foo_spv -P embed-spirv.cmake

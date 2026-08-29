@@ -1,7 +1,7 @@
 //
 // load-glycin.cpp: sandboxed image loading via glycin
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

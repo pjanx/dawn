@@ -1,7 +1,7 @@
 //
 // test-lxdr.cpp: LibertyXDR encode/decode and generated instance types
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

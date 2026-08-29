@@ -1,7 +1,7 @@
 #
 # lxdr-generate.cmake: build-time LibertyXDR C++ header generation
 #
-# Copyright The dawn Authors
+# Copyright The Dawn Authors
 # SPDX-License-Identifier: MPL-2.0
 #
 # lxdr_generate(<out_header> <namespace> <prefix_camel> <lxdr>...)

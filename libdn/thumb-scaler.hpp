@@ -1,7 +1,7 @@
 //
 // thumb-scaler.hpp: batched GPU thumbnail rescale
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

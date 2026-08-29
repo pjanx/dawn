@@ -1,7 +1,7 @@
 //
 // thumbnail-cache.cpp: shared thumbnail-spec cache
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

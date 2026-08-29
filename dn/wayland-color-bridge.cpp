@@ -1,7 +1,7 @@
 //
 // wayland-color-bridge.cpp: Wayland color-management-v1 bridge
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

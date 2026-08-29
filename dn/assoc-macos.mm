@@ -1,7 +1,7 @@
 //
 // assoc-macos.mm: Launch Services Open With (UTI from the file, not MIME)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

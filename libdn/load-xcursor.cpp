@@ -1,7 +1,7 @@
 //
 // load-xcursor.cpp: Xcursor image loading
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

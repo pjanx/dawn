@@ -1,7 +1,7 @@
 //
 // test-ipc.cpp: framing, and the transport each platform provides
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

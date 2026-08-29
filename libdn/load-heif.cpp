@@ -1,7 +1,7 @@
 //
 // load-heif.cpp: HEIF/AVIF image loader (libheif)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

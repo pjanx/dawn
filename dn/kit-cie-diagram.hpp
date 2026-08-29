@@ -1,7 +1,7 @@
 //
 // kit-cie-diagram.hpp: CIE 1931 xy sidebar widget
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

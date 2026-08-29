@@ -1,7 +1,7 @@
 //
 // display-profile-linux.cpp: display ICC via a long-lived colord session
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

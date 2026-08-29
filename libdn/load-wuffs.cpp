@@ -1,7 +1,7 @@
 //
 // load-wuffs.cpp: BMP/GIF/NIE/PNG/PNM/QOI/TGA/WBMP loading via Wuffs
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

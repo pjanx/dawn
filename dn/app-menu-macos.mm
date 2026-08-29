@@ -1,7 +1,7 @@
 //
 // app-menu-macos.mm: append to Qt Cocoa's QCocoaMenuLoader bar
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

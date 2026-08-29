@@ -1,7 +1,7 @@
 //
 // test-xdg.cpp: extract_mime_globs against shared-mime-info
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

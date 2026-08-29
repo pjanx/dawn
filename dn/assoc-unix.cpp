@@ -1,7 +1,7 @@
 //
 // assoc-unix.cpp: XDG MIME Applications Open With (filename types, no GIO)
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 

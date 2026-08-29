@@ -1,7 +1,7 @@
 //
 // ipc-unix.cpp: readiness-based IPC transport over Unix sockets
 //
-// Copyright The dawn Authors
+// Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
