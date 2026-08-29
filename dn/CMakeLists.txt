@@ -120,6 +120,7 @@ if (APPLE)
 	target_sources(dn PRIVATE "${DN_ICON_ICNS}")
 
 	# Mirrors supported_media_types(), restricted to macOS types.
+	# See /System/Library/CoreServices/CoreTypes.bundle/Contents/Info.plist
 	set(utis
 		com.compuserve.gif
 		com.microsoft.bmp

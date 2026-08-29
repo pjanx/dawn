@@ -1571,6 +1571,7 @@ supported_media_types()
 		"image/gif",
 		"image/png",
 		"image/x-tga",
+		"image/vnd.wap.wbmp",
 		"image/jpeg",
 		"image/webp",
 		"image/svg+xml",  // resvg is a hard dependency
@@ -1643,8 +1644,12 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	switch (fourcc) {
 	case 0x424D5020:  // BMP
 	case 0x47494620:  // GIF
+	case 0x4E494520:  // NIE
 	case 0x504E4720:  // PNG
 	case 0x54474120:  // TGA
+	case 0x57424D50:  // WBMP
+		// Note that TGA/ICO/CUR/WBMP don't start with any real magic.
+		// We will fall through on failure.
 		image = detail::load_wuffs(data, ctx, error);
 		break;
 	case 0x4A504547:  // JPEG

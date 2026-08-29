@@ -8,4 +8,4 @@ Exec=dn -- %U
 Terminal=false
 StartupNotify=true
 Categories=Graphics;2DGraphics;Viewer;
-MimeType=image/bmp;image/gif;image/png;image/x-tga;image/jpeg;image/webp;image/svg+xml;
+MimeType=image/bmp;image/gif;image/png;image/x-tga;image/vnd.wap.wbmp;image/jpeg;image/webp;image/svg+xml;

@@ -1,5 +1,5 @@
 //
-// load-wuffs.cpp: BMP/GIF/PNG/TGA loading via Wuffs
+// load-wuffs.cpp: BMP/GIF/NIE/PNG/TGA/WBMP loading via Wuffs
 //
 // Copyright The dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -14,8 +14,10 @@
 #define WUFFS_CONFIG__MODULE__DEFLATE
 #define WUFFS_CONFIG__MODULE__GIF
 #define WUFFS_CONFIG__MODULE__LZW
+#define WUFFS_CONFIG__MODULE__NIE
 #define WUFFS_CONFIG__MODULE__PNG
 #define WUFFS_CONFIG__MODULE__TGA
+#define WUFFS_CONFIG__MODULE__WBMP
 #define WUFFS_CONFIG__MODULE__ZLIB
 #include "wuffs-v0.3.c"
 
@@ -545,6 +547,10 @@ detail::load_wuffs(
 		return open_wuffs_using(
 			wuffs_gif__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
+	case WUFFS_BASE__FOURCC__NIE:
+		return open_wuffs_using(
+			wuffs_nie__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
+			error);
 	case WUFFS_BASE__FOURCC__PNG:
 		return open_wuffs_using(
 			wuffs_png__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
@@ -552,6 +558,10 @@ detail::load_wuffs(
 	case WUFFS_BASE__FOURCC__TGA:
 		return open_wuffs_using(
 			wuffs_tga__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
+			error);
+	case WUFFS_BASE__FOURCC__WBMP:
+		return open_wuffs_using(
+			wuffs_wbmp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
 	default:
 		set_error(error, "unsupported or unrecognized Wuffs format");
