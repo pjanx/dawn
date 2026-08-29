@@ -1570,6 +1570,9 @@ supported_media_types()
 		"image/bmp",
 		"image/gif",
 		"image/png",
+		"image/qoi",
+		// Only binary P5/P6 in practice, which Wuffs is limited to.
+		"image/x-portable-anymap",
 		"image/x-tga",
 		"image/vnd.wap.wbmp",
 		"image/jpeg",
@@ -1645,7 +1648,9 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	case 0x424D5020:  // BMP
 	case 0x47494620:  // GIF
 	case 0x4E494520:  // NIE
+	case 0x4E50424D:  // NPBM
 	case 0x504E4720:  // PNG
+	case 0x514F4920:  // QOI
 	case 0x54474120:  // TGA
 	case 0x57424D50:  // WBMP
 		// Note that TGA/ICO/CUR/WBMP don't start with any real magic.
