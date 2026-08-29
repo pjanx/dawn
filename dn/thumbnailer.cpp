@@ -122,6 +122,7 @@ struct Thumbnailer::Impl {
 
 	explicit Impl(Thumbnailer *thumbnailer, unsigned worker_count);
 	~Impl();
+	void shutdown();
 	bool have_cpu() const;
 	bool pop_cpu(shared_ptr<CpuTask> *task);
 	void worker_loop();
@@ -151,6 +152,12 @@ Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
 }
 
 Thumbnailer::Impl::~Impl()
+{
+	shutdown();
+}
+
+void
+Thumbnailer::Impl::shutdown()
 {
 	{
 		lock_guard lock(mu);
@@ -350,7 +357,12 @@ Thumbnailer::Thumbnailer(QObject *parent, unsigned workers)
 {
 }
 
-Thumbnailer::~Thumbnailer() = default;
+Thumbnailer::~Thumbnailer()
+{
+	// Keep impl_ published while workers finish: running work schedules GUI
+	// pumping through the owning Thumbnailer before it exits.
+	impl_->shutdown();
+}
 
 bool
 Thumbnailer::init(const GpuContext &gpu)
