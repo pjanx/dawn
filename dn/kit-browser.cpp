@@ -479,6 +479,8 @@ show_cursor_context(Browser &b, Kit &kit)
 struct SideRow : Button {
 	string path;
 	Browser *browser = nullptr;
+
+	SideRow() { this->flat = true; }
 	void measure(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -1875,6 +1877,7 @@ scan_dir(Browser &b)
 	for (const auto &ent : filesystem::directory_iterator(root, ec)) {
 		if (ec)
 			break;
+
 		error_code fec;
 		const string name = ent.path().filename().string();
 		if (b.setup_.filter_files && hidden_name(name))
@@ -1894,6 +1897,7 @@ scan_dir(Browser &b)
 			continue;
 		if (!matches_search(b, name))
 			continue;
+
 		Browser::File f;
 		f.path = ent.path().string();
 		f.name = name;
@@ -2014,10 +2018,11 @@ scan_dir(Browser &b)
 
 	vector<filesystem::path> ancestors;
 	filesystem::path cur = without_trailing_sep(root);
-	for (;;) {
+	while (true) {
 		filesystem::path parent = cur.parent_path();
 		if (parent.empty() || parent == cur)
 			break;
+
 		ancestors.push_back(parent);
 		cur = parent;
 		if (ancestors.size() > 64)
@@ -2262,6 +2267,7 @@ make_item(Browser &b, const Spec &spec)
 		return e;
 	}
 	auto n = make_unique<Button>();
+	n->flat = true;
 	const Action action = spec.action;
 	const ActionDef &d = action_def(action);
 	const bool on = spec_active(b, action);

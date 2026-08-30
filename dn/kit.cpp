@@ -730,6 +730,9 @@ Button::paint(Kit &kit) const
 		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
 	else if (this->enabled_ && hot)
 		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
+	if (!this->flat)
+		kit.draw_border(
+			this->r, col(kit.colours_[ColourDivider]), kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.px(kIconPts);
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
@@ -2953,6 +2956,7 @@ ToolbarSlot::ToolbarSlot()
 {
 	auto button = make_unique<Button>();
 	button->visible = false;
+	button->flat = true;
 	button->icon = "disclose-arrow-down-symbolic";
 	button->tip_text = "More";
 	this->more = button.get();

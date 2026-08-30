@@ -218,6 +218,7 @@ make_item(Viewer &v, const Spec &spec)
 		return n;
 	}
 	auto n = make_unique<Button>();
+	n->flat = true;
 	const Action action = spec.action;
 	const ActionDef &d = action_def(action);
 	const bool on = spec_active(v, action);

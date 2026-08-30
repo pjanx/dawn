@@ -203,6 +203,7 @@ struct Button : Widget {
 	bool enabled_ = true;
 	bool active = false;
 	bool dim = false;
+	bool flat = false;
 	bool activate_on_press = false;
 	float pad_x = 0;
 	std::function<void(Kit &)> on_click;
