@@ -185,20 +185,36 @@ spec_active(const Viewer &v, Action action)
 	}
 }
 
+static void
+sync_scale_label(Viewer &v)
+{
+	char scale_buf[16];
+	snprintf(scale_buf, sizeof(scale_buf), "%.f%%", double(v.scale_ * 100.f));
+	v.scale_text_ = QString::fromUtf8(scale_buf);
+	if (!v.scale_label_)
+		return;
+
+	const float scale_slot =
+		max(v.kit_.text_width(QStringLiteral("100%"), false),
+			v.kit_.text_width(v.scale_text_, false));
+	v.scale_label_->min_w = scale_slot / v.kit_.dpr_;
+	v.scale_label_->text = v.scale_text_;
+}
+
 unique_ptr<Widget>
-make_item(Viewer &v, const Spec &spec, float scale_slot)
+make_item(Viewer &v, const Spec &spec)
 {
 	if (spec.kind == Kind::Sep)
 		return make_unique<Sep>();
 	if (spec.kind == Kind::Scale) {
 		auto n = make_unique<Label>();
 		n->hittable = true;
-		n->min_w = scale_slot;
 		n->align = Align::Center;
-		n->text = v.scale_text_;
 		n->tip_text = action_tip(action_def(Action::ZoomLevel), false);
 		n->tip_accel = action_accel(action_def(Action::ZoomLevel));
 		v.scale_label_ = n.get();
+
+		sync_scale_label(v);
 		return n;
 	}
 	auto n = make_unique<Button>();
@@ -219,13 +235,13 @@ make_item(Viewer &v, const Spec &spec, float scale_slot)
 }
 
 unique_ptr<ToolbarSlot>
-make_slot_row(Viewer &v, Slot slot, float scale_slot)
+make_slot_row(Viewer &v, Slot slot)
 {
 	auto row = make_unique<ToolbarSlot>();
 	row->gap = kItemGap;
 	for (const Spec &spec : kItems) {
 		if (spec.slot == slot)
-			row->add_item(make_item(v, spec, scale_slot));
+			row->add_item(make_item(v, spec));
 	}
 	return row;
 }
@@ -600,10 +616,9 @@ stop_worker(Viewer &v)
 static unique_ptr<Toolbar>
 make_toolbar(Viewer &v)
 {
-	const float scale_slot = v.kit_.text_width(QStringLiteral("100%"), false);
-	auto left = make_slot_row(v, Slot::Left, scale_slot);
-	auto mid = make_slot_row(v, Slot::Middle, scale_slot);
-	auto right = make_slot_row(v, Slot::Right, scale_slot);
+	auto left = make_slot_row(v, Slot::Left);
+	auto mid = make_slot_row(v, Slot::Middle);
+	auto right = make_slot_row(v, Slot::Right);
 	right->align = Align::End;
 	return make_unique<Toolbar>(
 		std::move(left), std::move(mid), std::move(right));
@@ -671,21 +686,6 @@ make_sidebar(Viewer &v)
 	side->min_w = kInfoSidebarPts;
 	side->visible = false;
 	return side;
-}
-
-static void
-sync_scale_label(Viewer &v)
-{
-	char scale_buf[16];
-	snprintf(scale_buf, sizeof(scale_buf), "%.f%%", double(v.scale_ * 100.f));
-	v.scale_text_ = QString::fromUtf8(scale_buf);
-	if (!v.scale_label_)
-		return;
-	const float scale_slot =
-		max(v.kit_.text_width(QStringLiteral("100%"), false),
-			v.kit_.text_width(v.scale_text_, false));
-	v.scale_label_->min_w = scale_slot / v.kit_.dpr_;
-	v.scale_label_->text = v.scale_text_;
 }
 
 static void
