@@ -469,32 +469,22 @@ to_app(const Desktop &d)
 	return a;
 }
 
-vector<QString>
-filename_types(const QString &path)
+QMimeDatabase &
+db()
 {
-	// Content sniff (mime/magic / QMimeDatabase::mimeTypeForFile) is a later
-	// follow-up. Directories are inode/directory from stat (GIO
-	// get_content_type). Regular files use filename globs only.
-	if (QFileInfo(path).isDir())
-		return {QStringLiteral("inode/directory")};
-	return types_for_filename(path);
+	static QMimeDatabase mime;
+	return mime;
 }
 
 vector<QString>
-ancestor_types(const vector<QString> &types)
+ancestor_types(const QString &type)
 {
 	vector<QString> ancestors;
-	QMimeDatabase mime;
-	for (const QString &type : types) {
-		const QMimeType mt = mime.mimeTypeForName(type);
-		if (!mt.isValid())
-			continue;
-		for (const QString &a : mt.allAncestors()) {
-			if (find(types.begin(), types.end(), a) != types.end())
-				continue;
-			append_unique(ancestors, a);
-		}
-	}
+	const QMimeType mt = db().mimeTypeForName(type);
+	if (!mt.isValid())
+		return ancestors;
+	for (const QString &a : mt.allAncestors())
+		append_unique(ancestors, a);
 	return ancestors;
 }
 
@@ -655,10 +645,8 @@ prepend_id(const QString &value, const QString &id)
 Handler
 default_for(const QString &path)
 {
-	const vector<QString> types = filename_types(path);
-	AssocSets acc;
-	for (const QString &type : types)
-		merge_assoc(acc, associations_for_type(type));
+	const QString type = db().mimeTypeForFile(path).name();
+	const AssocSets acc = associations_for_type(type);
 	for (const QString &id : acc.defaults) {
 		if (!usable_id(id, acc.removed))
 			continue;
@@ -670,14 +658,9 @@ default_for(const QString &path)
 vector<Handler>
 recommended_for(const QString &path)
 {
-	const vector<QString> types = filename_types(path);
-	AssocSets acc;
-	vector<QString> cache_ids;
-	for (const QString &type : types) {
-		merge_assoc(acc, associations_for_type(type));
-		for (const QString &id : cache_ids_for_type(type))
-			append_unique(cache_ids, id);
-	}
+	const QString type = db().mimeTypeForFile(path).name();
+	const AssocSets acc = associations_for_type(type);
+	const vector<QString> cache_ids = cache_ids_for_type(type);
 
 	const Handler def = default_for(path);
 	vector<Handler> out;
@@ -700,11 +683,9 @@ recommended_for(const QString &path)
 vector<Handler>
 fallback_for(const QString &path)
 {
-	const vector<QString> types = filename_types(path);
-	const vector<QString> ancestors = ancestor_types(types);
-	AssocSets acc;
-	for (const QString &type : types)
-		merge_assoc(acc, associations_for_type(type));
+	const QString type = db().mimeTypeForFile(path).name();
+	const vector<QString> ancestors = ancestor_types(type);
+	AssocSets acc = associations_for_type(type);
 	for (const QString &type : ancestors)
 		merge_assoc(acc, associations_for_type(type));
 
@@ -751,9 +732,8 @@ set_last_used(const Handler &app, const QString &path)
 	const QString id = normalize_desktop_id(app.id);
 	if (id.isEmpty() || id == kSelfDesktop)
 		return;
-	const vector<QString> types = filename_types(path);
-	if (types.empty())
-		return;
+
+	const QString type = db().mimeTypeForFile(path).name();
 	const QString dest = user_mimeapps_path();
 	if (dest.isEmpty())
 		return;
@@ -798,15 +778,13 @@ set_last_used(const Handler &app, const QString &path)
 				group, type_utf8, value.toUtf8().toStdString());
 		}
 	};
-	for (const QString &type : types) {
-		const string type_utf8 = type.toUtf8().toStdString();
-		const QString previous = QString::fromStdString(
-			dawn::detail::ini_get(*added, type_utf8));
-		dawn::detail::ini_set(*added, type_utf8,
-			prepend_id(previous, id).toUtf8().toStdString());
-		if (removed)
-			drop_id(*removed, type);
-	}
+	const string type_utf8 = type.toUtf8().toStdString();
+	const QString previous = QString::fromStdString(
+		dawn::detail::ini_get(*added, type_utf8));
+	dawn::detail::ini_set(*added, type_utf8,
+		prepend_id(previous, id).toUtf8().toStdString());
+	if (removed)
+		drop_id(*removed, type);
 	write_text_file(dest, dawn::detail::ini_serialize(ini));
 }
 

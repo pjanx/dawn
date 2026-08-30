@@ -267,39 +267,4 @@ extract_mime_globs(const vector<string> &media_types)
 	return out;
 }
 
-vector<QString>
-types_for_filename(const QString &path)
-{
-	if (path.isEmpty())
-		return {};
-	const QString name = QFileInfo(path).fileName().toLower();
-	if (name.isEmpty())
-		return {};
-
-	const MimeDb &db = mime_db();
-	unordered_map<QString, int> best_weight;
-	for (const MimeGlob &g : db.globs) {
-		if (!g.glob_re.match(name).hasMatch())
-			continue;
-		auto it = best_weight.find(g.type);
-		if (it == best_weight.end())
-			best_weight.insert({g.type, g.weight});
-		else if (g.weight > it->second)
-			it->second = g.weight;
-	}
-
-	vector<QString> out;
-	out.reserve(best_weight.size());
-	for (const auto &kv : best_weight)
-		out.push_back(kv.first);
-	sort(out.begin(), out.end(), [&](const QString &a, const QString &b) {
-		const int wa = best_weight.at(a);
-		const int wb = best_weight.at(b);
-		if (wa != wb)
-			return wa > wb;
-		return a < b;
-	});
-	return out;
-}
-
 }  // namespace dn

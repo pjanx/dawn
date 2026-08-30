@@ -25,15 +25,6 @@ test_mime_globs()
 		globs.end());
 }
 
-void
-test_types_for_filename()
-{
-	const vector<QString> types =
-		dn::types_for_filename(QStringLiteral("photo.jpg"));
-	CHECK(find(types.begin(), types.end(), QLatin1String("image/jpeg")) !=
-		types.end());
-}
-
 }  // namespace
 
 int
@@ -41,6 +32,5 @@ main()
 {
 	return test::run({
 		{"MIME globs", test_mime_globs},
-		{"filename types", test_types_for_filename},
 	});
 }
