@@ -160,11 +160,26 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 
 }  // namespace
 
-@interface DawnMenuDelegate : NSObject <NSMenuDelegate>
+@interface DnMenuDelegate : NSObject <NSMenuDelegate>
 @property(nonatomic, assign) dn::App *app;
 @end
 
-@implementation DawnMenuDelegate
+// Keep native key equivalents for their standard menu presentation, but let
+// Qt deliver the actual key event through Dawn's normal shortcut path.
+@interface DnMenu : NSMenu
+@end
+
+@implementation DnMenu
+
+- (BOOL)performKeyEquivalent:(NSEvent *)event
+{
+	(void)event;
+	return NO;
+}
+
+@end
+
+@implementation DnMenuDelegate
 
 - (dn::Window *)window
 {
@@ -262,7 +277,7 @@ namespace dn
 namespace
 {
 
-DawnMenuDelegate *g_menu_delegate;
+DnMenuDelegate *g_menu_delegate;
 
 bool
 has_menu(NSMenu *main, NSString *title)
@@ -282,7 +297,7 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:title
 												  action:nil
 										   keyEquivalent:@""] autorelease];
-	NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
+	NSMenu *sub = [[[DnMenu alloc] initWithTitle:title] autorelease];
 	sub.delegate = delegate;
 	top.submenu = sub;
 	[main addItem:top];
@@ -328,8 +343,8 @@ install_macos_app_menu(App *app)
 		return;
 
 	if (!g_menu_delegate)
-		g_menu_delegate = [[DawnMenuDelegate alloc] init];
-	DawnMenuDelegate *delegate = g_menu_delegate;
+		g_menu_delegate = [[DnMenuDelegate alloc] init];
+	DnMenuDelegate *delegate = g_menu_delegate;
 	delegate.app = app;
 
 	if (NSMenuItem *first = [main itemAtIndex:0]) {

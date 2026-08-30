@@ -2929,6 +2929,7 @@ Browser::key(Kit &kit, const Key &ev)
 		}
 		break;
 	case unsigned(Qt::ControlModifier):
+#ifndef Q_OS_MACOS
 		// Arrows will receive different meaning as soon as we get selection
 		// as a different concept from focus (as in file managers).
 		switch (ev.key) {
@@ -2941,6 +2942,7 @@ Browser::key(Kit &kit, const Key &ev)
 			request_render(*this);
 			return true;
 		}
+#endif
 		break;
 	}
 	return false;
