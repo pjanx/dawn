@@ -268,8 +268,7 @@ Renderer::destroy()
 bool
 Renderer::dithering() const
 {
-	// TODO(p): User should be able to disable that.
-	return is_unorm8(this->format_);
+	return this->dither_enabled_ && is_unorm8(this->format_);
 }
 
 void
@@ -326,7 +325,7 @@ Renderer::create_swapchain()
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
 	}
-	const bool dither = is_unorm8(this->format_);
+	const bool dither = dithering();
 	const VkFormat dest_format =
 		dither ? VK_FORMAT_R16G16B16A16_UNORM : this->format_;
 	const VkImageLayout dest_layout = dither

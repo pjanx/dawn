@@ -4,6 +4,7 @@ project(Dawn
 	DESCRIPTION "Colour-managed image browser"
 	LANGUAGES C CXX
 )
+set(DAWN_NAMESPACE "name.janouch.dawn")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

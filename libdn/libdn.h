@@ -10,9 +10,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace dawn
@@ -73,6 +76,34 @@ struct Error {
 		return code != Code::Ok;
 	}
 };
+
+/// Read and write an opaque application configuration value.
+/// A missing value is not an error and returns std::nullopt.
+std::optional<std::string> config_get(std::string_view key, Error *error = nullptr);
+bool config_set(
+	std::string_view key, std::string_view value, Error *error = nullptr);
+
+namespace detail
+{
+
+struct IniGroup {
+	std::string name;
+	std::vector<std::pair<std::string, std::string>> keys;
+};
+
+struct IniFile {
+	std::vector<std::string> preamble;
+	std::vector<IniGroup> groups;
+};
+
+IniFile ini_parse(std::string_view text);
+std::string ini_serialize(const IniFile &ini);
+std::string ini_get(const IniGroup &group, std::string_view key);
+void ini_set(IniGroup &group, std::string_view key, std::string_view value);
+std::string desktop_unescape(std::string_view value);
+std::string desktop_escape(std::string_view value);
+
+}  // namespace detail
 
 class Cmm;
 class Profile;

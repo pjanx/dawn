@@ -225,6 +225,8 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	// TODO: Pass an explicit presentation policy from WaylandWindow instead of
 	// using parenthood as this platform/role proxy.
 	this->renderer_.set_prefer_premultiplied(this->csd_);
+	this->renderer_.set_dither_enabled(
+		!this->app_->settings.disable_dithering);
 	if (!this->renderer_.init(
 			this->app_->gpu, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
@@ -254,6 +256,10 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	if (this->browser_) {
 		this->browser_->set_screen_profile(this->cmm_, this->screen_profile_);
 		this->browser_->setup_ = setup;
+		this->browser_->show_names_ =
+			this->app_->settings.browser_show_filenames;
+		this->browser_->thumb_size_ =
+			this->app_->settings.browser_thumbnail_size;
 	}
 
 	open_any(url.isEmpty() ? path_to_url(QDir::currentPath()) : url, browse);
@@ -385,7 +391,7 @@ Window::bind_host()
 	};
 	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
 	this->host_.trash = [this](QUrl url) { trash_url(url); };
-	this->host_.bookmarks = [this] { return this->app_->settings.bookmarks(); };
+	this->host_.bookmarks = [this] { return this->app_->settings.bookmarks; };
 	this->host_.bookmarked = [this](const QUrl &url) {
 		return this->app_->settings.bookmarked(url_to_path(url).toStdString());
 	};
@@ -614,17 +620,30 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	if (!this->cmm_)
 		this->cmm_ = dawn::Cmm::get_default();
 
-	DisplayProfile discovered =
-		this->app_->display_profiles.load(target_screen);
 	shared_ptr<dawn::Profile> next;
 	string label = "sRGB (fallback)";
 	string source = "srgb";
-	if (!discovered.icc.empty()) {
-		next = this->cmm_->get_profile(discovered.icc);
+	const vector<unsigned char> &override =
+		this->app_->settings.icc_profile_override;
+	if (!override.empty()) {
+		next = this->cmm_->get_profile(override);
 		if (next) {
-			label =
-				discovered.label.empty() ? discovered.source : discovered.label;
-			source = discovered.source;
+			label = this->app_->settings.icc_profile_override_path;
+			source = "configuration";
+		} else {
+			qWarning("configuration dn/ICCProfileOverride: invalid ICC profile");
+		}
+	}
+	if (!next) {
+		DisplayProfile discovered =
+			this->app_->display_profiles.load(target_screen);
+		if (!discovered.icc.empty()) {
+			next = this->cmm_->get_profile(discovered.icc);
+			if (next) {
+				label = discovered.label.empty() ? discovered.source
+												 : discovered.label;
+				source = discovered.source;
+			}
 		}
 	}
 	if (!next)

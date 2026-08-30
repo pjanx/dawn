@@ -21,6 +21,7 @@
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
@@ -30,8 +31,11 @@
 #include <QtLogging>
 
 #include <algorithm>
+#include <charconv>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
@@ -43,6 +47,49 @@ using namespace std;
 
 namespace dn
 {
+
+namespace
+{
+
+constexpr string_view kBookmarksKey = "dn/Bookmarks";
+
+optional<string>
+setting(string_view key)
+{
+	dawn::Error error;
+	optional<string> value = dawn::config_get(key, &error);
+	if (error)
+		qWarning("configuration %.*s: %s", int(key.size()), key.data(),
+			error.message.c_str());
+	return value;
+}
+
+bool
+boolean_setting(string_view key, bool fallback)
+{
+	const optional<string> value = setting(key);
+	if (!value)
+		return fallback;
+	if (*value == "true" || *value == "1")
+		return true;
+	if (*value == "false" || *value == "0")
+		return false;
+	qWarning("configuration %.*s: expected true, false, 1, or 0",
+		int(key.size()), key.data());
+	return fallback;
+}
+
+char
+bookmark_separator()
+{
+#ifdef Q_OS_WIN
+	return ';';
+#else
+	return ':';
+#endif
+}
+
+}  // namespace
 
 // Bookmarks are compared by path, so they are stored canonicalised: the
 // sidebar highlights the open directory by std::filesystem::equivalent,
@@ -63,12 +110,66 @@ canonical_dir(const string &path)
 	return p.string();
 }
 
+void
+Settings::load()
+{
+	this->disable_dithering =
+		boolean_setting("dn/DisableDithering", false);
+	this->browser_show_filenames =
+		boolean_setting("dn/BrowserShowFilenames", true);
+	if (const optional<string> value = setting("dn/BrowserThumbnailSize")) {
+		int size = 0;
+		const auto parsed = from_chars(
+			value->data(), value->data() + value->size(), size);
+		if (parsed.ec == errc{} && parsed.ptr == value->data() + value->size() &&
+			(size == 128 || size == 256 || size == 512 || size == 1024)) {
+			this->browser_thumbnail_size = size;
+		} else {
+			qWarning("configuration dn/BrowserThumbnailSize: unsupported size");
+		}
+	}
+
+	this->bookmarks.clear();
+	if (const optional<string> value = setting(kBookmarksKey)) {
+		const char separator = bookmark_separator();
+		for (size_t offset = 0; offset <= value->size();) {
+			const size_t end = value->find(separator, offset);
+			const string item = value->substr(offset,
+				end == string::npos ? string::npos : end - offset);
+			if (!item.empty())
+				this->bookmarks.push_back(item);
+			if (end == string::npos)
+				break;
+			offset = end + 1;
+		}
+	}
+
+	this->icc_profile_override.clear();
+	this->icc_profile_override_path.clear();
+	if (const optional<string> value = setting("dn/ICCProfileOverride");
+		value && !value->empty()) {
+		QFile file(QString::fromUtf8(value->data(), qsizetype(value->size())));
+		if (!file.open(QIODevice::ReadOnly)) {
+			qWarning("configuration dn/ICCProfileOverride: cannot open %s",
+				value->c_str());
+		} else {
+			const QByteArray bytes = file.readAll();
+			if (bytes.isEmpty()) {
+				qWarning("configuration dn/ICCProfileOverride: empty ICC profile");
+			} else {
+				this->icc_profile_override.assign(bytes.begin(), bytes.end());
+				this->icc_profile_override_path = *value;
+			}
+		}
+	}
+}
+
 bool
 Settings::bookmarked(const string &path) const
 {
 	const string want = canonical_dir(path);
-	return find(this->bookmarks_.begin(), this->bookmarks_.end(), want) !=
-		this->bookmarks_.end();
+	return find(this->bookmarks.begin(), this->bookmarks.end(), want) !=
+		this->bookmarks.end();
 }
 
 void
@@ -76,12 +177,23 @@ Settings::toggle_bookmark(const string &path)
 {
 	const string want = canonical_dir(path);
 	const auto it =
-		find(this->bookmarks_.begin(), this->bookmarks_.end(), want);
-	if (it != this->bookmarks_.end())
-		this->bookmarks_.erase(it);
+		find(this->bookmarks.begin(), this->bookmarks.end(), want);
+	if (it != this->bookmarks.end())
+		this->bookmarks.erase(it);
 	else
-		this->bookmarks_.push_back(want);
+		this->bookmarks.push_back(want);
 	notify();
+
+	string value;
+	for (const string &bookmark : this->bookmarks) {
+		if (!value.empty())
+			value += bookmark_separator();
+		value += bookmark;
+	}
+	dawn::Error error;
+	if (!dawn::config_set(kBookmarksKey, value, &error))
+		qWarning("configuration %.*s: %s", int(kBookmarksKey.size()),
+			kBookmarksKey.data(), error.message.c_str());
 }
 
 void
@@ -123,6 +235,7 @@ App::event(QEvent *event)
 bool
 App::init()
 {
+	this->settings.load();
 #if DN_WITH_WAYLAND
 	// Vulkan content is a wl_subsurface. Qt's presentAboutToBeQueued waits on
 	// wl_surface.frame and marks the window unexposed on timeout; that

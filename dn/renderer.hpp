@@ -89,6 +89,7 @@ class Renderer
 	VkShaderModule dither_frag_ = VK_NULL_HANDLE;
 	bool needs_resize_ = false;
 	bool prefer_premultiplied_ = false;
+	bool dither_enabled_ = true;
 	uint32_t dest_inset_ = 0;
 	std::function<void()> present_about_to_queue_;
 	std::function<void()> present_queued_;
@@ -111,6 +112,7 @@ public:
 		dawn::Orientation orientation, float angle = 0.f);
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled);
+	void set_dither_enabled(bool enabled) { this->dither_enabled_ = enabled; }
 	void set_dest_inset(uint32_t px);
 	void set_checker_colour(float r, float g, float b);
 	void set_checkerboard(bool enabled);

@@ -44,16 +44,19 @@ enum class OpenResult : uint8_t {
 /// Notification is coarse: any change notifies all listeners.
 class Settings
 {
-	std::vector<std::string> bookmarks_;
 	std::vector<std::pair<void *, std::function<void()>>> listeners_;
 
 	void notify() const;
 
 public:
-	[[nodiscard]] const std::vector<std::string> &bookmarks() const
-	{
-		return this->bookmarks_;
-	}
+	std::vector<std::string> bookmarks;
+	std::vector<unsigned char> icc_profile_override;
+	std::string icc_profile_override_path;
+	bool disable_dithering = false;
+	bool browser_show_filenames = true;
+	int browser_thumbnail_size = 256;
+
+	void load();
 	[[nodiscard]] bool bookmarked(const std::string &path) const;
 	void toggle_bookmark(const std::string &path);
 	void listen(void *key, std::function<void()> fn);
