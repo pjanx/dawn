@@ -50,6 +50,8 @@ private:
 void dialog_about(Kit &kit, Dialog &dialog);
 void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
 	std::span<const Action> keys);
+void dialog_location(Kit &kit, Dialog &dialog,
+	std::function<void(const QString &)> on_open);
 
 struct Sidebar : Panel {
 	Widget *content = nullptr;

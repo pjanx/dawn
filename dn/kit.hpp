@@ -260,6 +260,7 @@ struct Entry : Widget {
 	// wrapped onto.
 	bool grow = true;
 	std::function<void(Kit &)> on_change;
+	std::function<void(Kit &)> on_submit;
 	std::function<void(Kit &)> on_cancel;
 
 	// Horizontal scroll, in points, kept so that the caret stays visible.
@@ -476,14 +477,16 @@ struct Popup : Panel {
 	bool key(Kit &kit, const Key &ev) override;
 };
 
-// Dismissed by Escape or its Close button only; the caller fills the body
-// with whatever the case needs, see dialog_about() and dialog_shortcuts().
+// Dismissed by Escape or a footer button; the caller fills the body and may
+// replace the default Close action.
 struct Dialog : Popup {
 	Panel *frame = nullptr;
 	ScrollColumn *body = nullptr;
+	Row *footer = nullptr;
 
 	Dialog();
-	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w);
+	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w,
+		std::unique_ptr<Widget> actions);
 	void close(Kit &kit) override;
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;

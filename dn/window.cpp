@@ -322,6 +322,18 @@ Window::bind_host()
 		case Action::Forward:
 			go_forward();
 			break;
+		case Action::Location: {
+			Page *ui = active_ui();
+			if (!ui || !ui->dialog)
+				break;
+			dialog_location(this->kit_, *ui->dialog,
+				[this](const QString &location) {
+					open_any(url_from_user_input(
+						location, QDir::currentPath()));
+				});
+			request_render();
+			break;
+		}
 		case Action::PrevFile:
 			open_sibling(-1);
 			break;
@@ -1172,7 +1184,8 @@ void
 Window::open_any(const QUrl &url, bool browse)
 {
 	// The browser always wants a directory: a file opens the one holding it.
-	const QFileInfo info(url_to_path(url));
+	const QString path = url_to_path(url);
+	const QFileInfo info(path);
 	if (info.isDir()) {
 		if (this->browser_)
 			this->browser_->open_dir(url);
@@ -1191,8 +1204,12 @@ Window::open_any(const QUrl &url, bool browse)
 		if (this->viewer_)
 			this->viewer_->open(url);
 		set_mode(Mode::View);
-		if (this->browser_)
-			this->browser_->open_dir(path_to_url(info.absolutePath()));
+		if (this->browser_ && !path.isEmpty()) {
+			const QFileInfo parent(info.absolutePath());
+			if (parent.exists() && parent.isDir() && parent.isReadable())
+				this->browser_->open_dir(
+					path_to_url(parent.absoluteFilePath()));
+		}
 		sync_viewer_preloads();
 	}
 	request_render();

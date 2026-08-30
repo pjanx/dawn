@@ -59,6 +59,13 @@ constexpr ActionDef kDefs[] = {
 		{Qt::Key_Right, kAlt},
 #endif
 		}, {}},
+	{kMenu, {"_Location..."}, {}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_G, kCtrl | kShift},
+#else
+		{Qt::Key_L, kCtrl},
+#endif
+		}, {}},
 	// Perhaps this should be on Command-? and keyboard shortcuts need none.
 	{kMenu, {"_Contents"}, {}, {{Qt::Key_F1}}, {}},
 	{kMenu, {"_About"}, {}, {}, {}},
@@ -213,6 +220,7 @@ constexpr Action kWindowKeys[] = {
 	Action::Hint,
 	Action::Back,
 	Action::Forward,
+	Action::Location,
 	Action::Help,
 	Action::About,
 	Action::Shortcuts,
@@ -298,6 +306,7 @@ const MenuNode kBrowserMenu[] = {
 	{"_Go", {
 		Action::Back,
 		Action::Forward,
+		Action::Location,
 		{},
 		Action::DirPrev,
 		Action::DirNext,
@@ -334,6 +343,7 @@ const MenuNode kViewerMenu[] = {
 	{"_Go", {
 		Action::Back,
 		Action::Forward,
+		Action::Location,
 		{},
 		Action::Browse,
 		Action::PrevFile,

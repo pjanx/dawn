@@ -19,6 +19,7 @@ namespace dn
 
 QUrl path_to_url(const QString &path);
 QUrl url_normalized(const QUrl &url);
+QUrl url_from_user_input(const QString &input, const QString &working_dir);
 QString url_to_path(const QUrl &url);
 QString url_basename(const QUrl &url);
 QString url_parse_name(const QUrl &url);

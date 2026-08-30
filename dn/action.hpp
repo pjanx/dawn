@@ -35,6 +35,7 @@ enum class Action : uint8_t {
 	Hint,
 	Back,
 	Forward,
+	Location,
 	Help,
 	About,
 	Shortcuts,

@@ -34,6 +34,17 @@ url_normalized(const QUrl &url)
 	return url.adjusted(QUrl::NormalizePathSegments);
 }
 
+// Interpret a location exactly as a positional command-line argument.
+QUrl
+url_from_user_input(const QString &input, const QString &working_dir)
+{
+	auto url =
+		QUrl::fromUserInput(input, working_dir, QUrl::AssumeLocalFile);
+	if (!url.isValid())
+		url = path_to_url(QDir(working_dir).absoluteFilePath(input));
+	return url_normalized(url);
+}
+
 // Empty for anything the local filesystem cannot name.
 QString
 url_to_path(const QUrl &url)

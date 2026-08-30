@@ -217,12 +217,8 @@ main(int argc, char **argv)
 	const QString cwd = QDir::currentPath();
 
 	vector<QUrl> to_open;
-	for (const QString &arg : raw) {
-		auto url = QUrl::fromUserInput(arg, cwd, QUrl::AssumeLocalFile);
-		if (!url.isValid())
-			url = dn::path_to_url(QDir(cwd).absoluteFilePath(arg));
-		to_open.push_back(dn::url_normalized(url));
-	}
+	for (const QString &arg : raw)
+		to_open.push_back(dn::url_from_user_input(arg, cwd));
 
 	const bool browse = parser.isSet(browse_opt);
 

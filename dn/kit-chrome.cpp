@@ -150,6 +150,8 @@ ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 namespace
 {
 
+constexpr float kDialogActionPad = 16.f;
+
 unique_ptr<Label>
 dialog_label(const QString &text, bool bold = false, bool wrap = false)
 {
@@ -158,6 +160,16 @@ dialog_label(const QString &text, bool bold = false, bool wrap = false)
 	label->bold = bold;
 	label->wrap = wrap;
 	return label;
+}
+
+unique_ptr<Button>
+dialog_close_action(Dialog &dialog)
+{
+	auto close = make_unique<Button>();
+	close->text = QStringLiteral("Close");
+	close->pad_x = kDialogActionPad;
+	close->on_click = [&dialog](Kit &kit) { dialog.close(kit); };
+	return close;
 }
 
 QString
@@ -221,7 +233,46 @@ dialog_about(Kit &kit, Dialog &dialog)
 	col->add_child(
 		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
 			false, true));
-	dialog.show(kit, std::move(col), 360.f);
+	dialog.show(
+		kit, std::move(col), 360.f, dialog_close_action(dialog));
+}
+
+void
+dialog_location(Kit &kit, Dialog &dialog,
+	function<void(const QString &)> on_open)
+{
+	auto col = make_unique<Column>();
+	col->gap = 8.f;
+	col->add_child(dialog_label(QStringLiteral("Enter location"), true));
+
+	auto entry = make_unique<Entry>();
+	Entry *field = entry.get();
+	col->add_child(std::move(entry));
+
+	function<void(Kit &)> submit =
+		[field, &dialog, on_open = std::move(on_open)](Kit &inner) {
+			const QString location = field->text;
+			dialog.close(inner);
+			on_open(location);
+		};
+	field->on_submit = submit;
+	field->on_cancel = [&dialog](Kit &inner) { dialog.close(inner); };
+
+	auto open = make_unique<Button>();
+	open->text = QStringLiteral("Open");
+	open->pad_x = kDialogActionPad;
+	open->on_click = submit;
+
+	auto cancel = make_unique<Button>();
+	cancel->text = QStringLiteral("Cancel");
+	cancel->pad_x = kDialogActionPad;
+	cancel->on_click = [&dialog](Kit &inner) { dialog.close(inner); };
+
+	auto actions = make_unique<Row>();
+	actions->gap = 8.f;
+	actions->add_child(std::move(open));
+	actions->add_child(std::move(cancel));
+	dialog.show(kit, std::move(col), 420.f, std::move(actions));
 }
 
 void
@@ -302,7 +353,8 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	emit_other(Action::Cancel);
 	if (viewer)
 		emit_other(Action::ZoomLevel);
-	dialog.show(kit, std::move(col), 520.f);
+	dialog.show(
+		kit, std::move(col), 520.f, dialog_close_action(dialog));
 }
 
 // --- Hint -------------------------------------------------------------------

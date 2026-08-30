@@ -1174,6 +1174,13 @@ Entry::key(Kit &kit, const Key &ev)
 		set_text(kit, next);
 		return true;
 	}
+	case Qt::Key_Return:
+	case Qt::Key_Enter:
+		if (this->on_submit) {
+			this->on_submit(kit);
+			return true;
+		}
+		return false;
 	case Qt::Key_Escape:
 		if (this->on_cancel)
 			this->on_cancel(kit);
@@ -2234,14 +2241,9 @@ Dialog::Dialog()
 	this->body = body.get();
 	stack->add_child(std::move(body));
 
-	auto close_btn = make_unique<Button>();
-	close_btn->text = QStringLiteral("Close");
-	close_btn->pad_x = kDialogPad;
-	close_btn->on_click = [this](Kit &kit) { close(kit); };
-
 	auto footer = make_unique<Row>();
 	footer->align = Align::End;
-	footer->add_child(std::move(close_btn));
+	this->footer = footer.get();
 	stack->add_child(std::move(footer));
 
 	f->add_child(std::move(stack));
@@ -2249,14 +2251,18 @@ Dialog::Dialog()
 }
 
 void
-Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w)
+Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
+	unique_ptr<Widget> actions)
 {
-	if (!this->body || !this->frame)
+	if (!this->body || !this->footer || !this->frame)
 		return;
 
 	kit.forget_tree(this->body);
 	this->body->erase_children();
 	this->body->add_child(std::move(content));
+	kit.forget_tree(this->footer);
+	this->footer->erase_children();
+	this->footer->add_child(std::move(actions));
 	this->frame->min_w = min_w;
 	Popup::open(kit);
 	this->frame->visible = true;
