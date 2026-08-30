@@ -22,7 +22,7 @@ path_to_url(const QString &path)
 	if (path.isEmpty())
 		return {};
 	const QString abs = QFileInfo(path).absoluteFilePath();
-	return QUrl::fromLocalFile(abs.isEmpty() ? path : abs);
+	return QUrl::fromLocalFile(QDir::cleanPath(abs.isEmpty() ? path : abs));
 }
 
 // Command lines and drops deliver URLs in whatever shape the sender chose.
