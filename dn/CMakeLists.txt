@@ -62,6 +62,7 @@ add_dependencies(dn dn-cmf-header)
 
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
+dawn_embed_shader(dn dn-thumb.frag dn_thumb_frag)
 dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
 dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
 
@@ -327,7 +328,5 @@ else()
 endif()
 
 if (BUILD_TESTING)
-	add_test(NAME dn-help COMMAND dn --help)
-	set_tests_properties(dn-help PROPERTIES
-		ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+	add_test(NAME dn-help COMMAND $<TARGET_FILE:dn> --help)
 endif()

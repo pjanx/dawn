@@ -560,6 +560,12 @@ Renderer::upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
 		pixels, width, height, dst_x, dst_y, atlas_side, recreated);
 }
 
+bool
+Renderer::rebuild_thumbs(const vector<ThumbUpload> &uploads, int atlas_side)
+{
+	return this->overlay_.rebuild_thumbs(uploads, atlas_side);
+}
+
 void
 Renderer::reset_thumbs()
 {

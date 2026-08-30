@@ -74,6 +74,7 @@ struct Viewer : Widget {
 	std::string basename_;
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
+	std::shared_ptr<const std::vector<uint8_t>> screen_icc_;
 	bool screen_profile_fallback_ = true;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;

@@ -8,6 +8,7 @@
 #include "thumbnailer.hpp"
 
 #include <QCoreApplication>
+#include <QTemporaryDir>
 #include <QTimer>
 
 #include <chrono>
@@ -22,6 +23,17 @@ using namespace std::chrono_literals;
 
 namespace
 {
+
+int failures = 0;
+
+#define CHECK(x)                                                               \
+	do {                                                                       \
+		if (!(x)) {                                                            \
+			fprintf(                                                           \
+				stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #x);  \
+			++failures;                                                        \
+		}                                                                      \
+	} while (0)
 
 bool
 wait_for(condition_variable &cv, unique_lock<mutex> &lock,
@@ -231,14 +243,53 @@ test_reprioritization_order()
 	return true;
 }
 
+bool
+test_bundle_reservations()
+{
+	dn::Thumbnailer thumbnailer(nullptr, 2);
+	const auto client = thumbnailer.add_client(7);
+	dn::ThumbnailSource a;
+	a.uri = QByteArrayLiteral("file:///a");
+	a.mtime = 1;
+	a.size = 2;
+	dn::ThumbnailSource b = a;
+	b.uri = QByteArrayLiteral("file:///b");
+	dn::ThumbnailSource c = a;
+	c.uri = QByteArrayLiteral("file:///c");
+	const auto first = thumbnailer.reserve_bundle(client, 7, a, 2, 4096,
+		dn::Thumbnailer::Priority::Dimensions);
+	const auto second = thumbnailer.reserve_bundle(client, 7, b, 2, 8192,
+		dn::Thumbnailer::Priority::Visible);
+	if (!first || !second || thumbnailer.pending_bundle_limit() != 2 ||
+		thumbnailer.pending_bundle_bytes() != 12288 ||
+		thumbnailer.reserve_bundle(client, 7, c, 2, 4096,
+			dn::Thumbnailer::Priority::Prefetch))
+		return false;
+	thumbnailer.cancel_bundle(first);
+	const auto third = thumbnailer.reserve_bundle(client, 7, c, 2, 4096,
+		dn::Thumbnailer::Priority::Prefetch);
+	if (!third || thumbnailer.pending_bundle_bytes() != 12288)
+		return false;
+	thumbnailer.set_epoch(client, 8);
+	if (thumbnailer.pending_bundle_bytes() != 0)
+		return false;
+	thumbnailer.remove_client(client);
+	return true;
+}
+
 }  // namespace
 
 int
 main(int argc, char **argv)
 {
+	QTemporaryDir cache;
+	QTemporaryDir inputs;
+	CHECK(cache.isValid());
+	CHECK(inputs.isValid());
+	qputenv("XDG_CACHE_HOME", cache.path().toUtf8());
 	QCoreApplication app(argc, argv);
 	if (!test_background_reserve() || !test_visible_reserve() ||
-		!test_reprioritization_order())
+		!test_reprioritization_order() || !test_bundle_reservations())
 		return 1;
 	dn::Thumbnailer thumbnailer;
 

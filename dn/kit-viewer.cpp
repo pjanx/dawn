@@ -293,7 +293,7 @@ struct OpenJob {
 	uint64_t epoch = 0;
 	string path;
 	string uri;
-	vector<uint8_t> screen_icc;
+	shared_ptr<const vector<uint8_t>> screen_icc;
 	int dpi = 96;
 	bool enable_cms = true;
 };
@@ -309,7 +309,7 @@ struct ScaleJob {
 	uint64_t gen = 0;
 	dawn::ImagePtr page;
 	float scale = 1.f;
-	vector<uint8_t> screen_icc;
+	shared_ptr<const vector<uint8_t>> screen_icc;
 	bool enable_cms = true;
 };
 
@@ -338,10 +338,11 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 }
 
 shared_ptr<dawn::Profile>
-profile_from_icc(dawn::Cmm &cmm, const vector<uint8_t> &icc)
+profile_from_icc(
+	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
-	if (!icc.empty()) {
-		if (auto profile = cmm.get_profile(icc))
+	if (icc && !icc->empty()) {
+		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
 	return cmm.get_profile_sRGB();
@@ -410,14 +411,6 @@ post_gui(const Viewer &v, function<void()> fn)
 {
 	if (v.kit_.post)
 		v.kit_.post(std::move(fn));
-}
-
-static vector<uint8_t>
-screen_icc_bytes(const Viewer &v)
-{
-	if (!v.screen_profile_)
-		return {};
-	return v.screen_profile_->to_bytes();
 }
 
 static void
@@ -1035,7 +1028,7 @@ make_open_job(const Viewer &v, const string &path)
 		path_to_url(QString::fromStdString(path)).toEncoded().toStdString();
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
-	job.screen_icc = v.enable_cms_ ? screen_icc_bytes(v) : vector<uint8_t>{};
+	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
 	return job;
 }
 
@@ -1178,7 +1171,7 @@ post_scale(Viewer &v)
 	job.page = v.current_;
 	job.scale = v.scale_;
 	job.enable_cms = v.enable_cms_;
-	job.screen_icc = v.enable_cms_ ? screen_icc_bytes(v) : vector<uint8_t>{};
+	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
 	{
 		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale = std::move(job);
@@ -2019,9 +2012,15 @@ void
 Viewer::set_screen_profile(
 	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile, bool fallback)
 {
-	const bool reload = this->enable_cms_ && !this->url_.isEmpty() &&
-		!profiles_equal(this->screen_profile_.get(), profile.get());
+	auto screen_icc = profile
+		? make_shared<const vector<uint8_t>>(profile->to_bytes())
+		: nullptr;
+	const bool changed = bool(this->screen_icc_) != bool(screen_icc) ||
+		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
+	const bool reload =
+		this->enable_cms_ && !this->url_.isEmpty() && changed;
 	this->cmm_ = std::move(cmm);
+	this->screen_icc_ = std::move(screen_icc);
 	this->screen_profile_ = std::move(profile);
 	this->screen_profile_fallback_ = fallback;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());

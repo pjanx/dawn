@@ -1,5 +1,5 @@
 //
-// thumbnail-cache.hpp: shared thumbnail-spec cache
+// thumbnail-cache.hpp: shared {wide-,}thumbnail-spec cache
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -42,6 +42,7 @@ ThumbnailSource thumbnail_source(
 	const QString &path, int64_t mtime_ms, uint64_t size);
 bool thumbnail_cache_contains(const QString &path);
 
+/// Return the appropriate "tier" while respecting high-DPI.
 int thumbnail_tier_for_height(int pixels);
 int thumbnail_tier_height(int tier);
 

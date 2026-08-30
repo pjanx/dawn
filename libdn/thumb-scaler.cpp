@@ -24,6 +24,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -120,15 +121,21 @@ make_shader(
 bool
 job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 {
-	if (!job.pixels || !job.src_w || !job.src_h || !job.out_w || !job.out_h)
+	if (!job.pixels || job.pixels->empty() || !job.src_w || !job.src_h ||
+		job.outputs.empty() || job.outputs.size() > kMaxBatchReqs)
 		return false;
+	for (const ThumbScaler::Job::Output &output : job.outputs)
+		if (!output.width || !output.height)
+			return false;
 	const uint64_t row_bytes = uint64_t(job.src_w) * kBytesPerPixel;
 	if (row_bytes > job.stride || row_bytes > UINT64_MAX / job.src_h)
 		return false;
 	if (row)
 		*row = row_bytes;
 	*bytes = row_bytes * job.src_h;
-	return *bytes <= SIZE_MAX;
+	const uint64_t available = job.pixels->size() * sizeof(uint16_t);
+	const uint64_t needed = uint64_t(job.stride) * (job.src_h - 1) + row_bytes;
+	return *bytes <= SIZE_MAX && needed <= available;
 }
 
 }  // namespace
@@ -145,6 +152,8 @@ struct ThumbScaler::Impl {
 		Transfer transfer = Transfer::Srgb;
 		bool opaque = true;
 		uint32_t out_w = 0, out_h = 0;
+		int output_tag = 0;
+		vector<Job::Output> outputs;
 		uint64_t user = 0;
 		Priority priority = Priority::Maintenance;
 		string path;
@@ -159,7 +168,7 @@ struct ThumbScaler::Impl {
 		uint64_t user = 0;
 		Priority priority = Priority::Maintenance;
 		uint32_t src_w = 0, src_h = 0;
-		uint32_t out_w = 0, out_h = 0;
+		vector<Job::Output> outputs;
 		uint32_t k = 0, tile_count = 0;
 		Orientation orientation = Orientation::Rotate0;
 		Transfer transfer = Transfer::Srgb;
@@ -246,6 +255,7 @@ struct ThumbScaler::Impl {
 	unordered_map<uint32_t, Range> live;
 	vector<Waiter *> waiters;
 	unordered_map<uint64_t, Priority> priority_overrides;
+	unordered_set<uint64_t> canceled;
 	vector<Pending> pending;
 	vector<Result> failed_results;
 	array<Batch, kBatchSlots> batches;
@@ -771,7 +781,7 @@ ThumbScaler::Impl::fail_items(Batch &b)
 	for (const Item &item : b.items) {
 		if (item.slot)
 			release_range(item.slot);
-		if (item.kind == Item::Kind::Full)
+		if (item.kind == Item::Kind::Full && item.slot)
 			fail_result(item.req);
 		else if (Session *s = session(item.session))
 			fail_session(*s);
@@ -786,13 +796,15 @@ ThumbScaler::Impl::build_batch(
 	VkDeviceSize source_bytes = 0, mid_bytes = 0, output_bytes = 0;
 	VkDeviceSize readback_bytes = 0, scratch_bytes = 0;
 	for (Pending &job : jobs) {
-		Item item;
-		item.req = std::move(job.req);
-		item.ring = job.ring;
-		item.slot = item.req.slot;
-		item.source_off = align_up(source_bytes, alignment);
-		source_bytes = item.source_off + item.ring.size;
-		if (item.req.session) {
+		Request request = std::move(job.req);
+		const VkDeviceSize source_off = align_up(source_bytes, alignment);
+		source_bytes = source_off + job.ring.size;
+		if (request.session) {
+			Item item;
+			item.req = std::move(request);
+			item.ring = job.ring;
+			item.slot = item.req.slot;
+			item.source_off = source_off;
 			item.kind = Item::Kind::Tile;
 			item.session = item.req.session;
 			Session *s = nullptr;
@@ -817,7 +829,22 @@ ThumbScaler::Impl::build_batch(
 			const uint32_t rh = ceil_div(item.req.tile_h, 2);
 			scratch_bytes =
 				max(scratch_bytes, VkDeviceSize(rw) * rh * kBytesPerPixel);
-		} else {
+			b.items.push_back(std::move(item));
+			continue;
+		}
+
+		bool owns_slot = true;
+		for (const Job::Output &output : request.outputs) {
+			Item item;
+			item.req = request;
+			item.req.outputs.clear();
+			item.req.out_w = output.width;
+			item.req.out_h = output.height;
+			item.req.output_tag = output.tag;
+			item.ring = job.ring;
+			item.slot = owns_slot ? request.slot : 0;
+			item.source_off = source_off;
+			owns_slot = false;
 			item.kind = Item::Kind::Full;
 			orientation_display_size(item.req.src_w, item.req.src_h,
 				item.req.orientation, &item.display_w, &item.display_h);
@@ -830,8 +857,8 @@ ThumbScaler::Impl::build_batch(
 				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
 			output_bytes = item.output_off + n;
 			readback_bytes = item.readback_off + n;
+			b.items.push_back(std::move(item));
 		}
-		b.items.push_back(std::move(item));
 	}
 	for (uint32_t id : fits) {
 		Session *s = nullptr;
@@ -844,31 +871,34 @@ ThumbScaler::Impl::build_batch(
 		if (!ensure_reduced(*s, error))
 			continue;
 
-		Item item;
-		item.kind = Item::Kind::Fit;
-		item.session = id;
-		item.owner = s;
-		item.req.user = s->info.user;
-		item.req.path = s->info.path;
-		item.req.src_w = s->reduced_w;
-		item.req.src_h = s->reduced_h;
-		item.req.out_w = s->info.out_w;
-		item.req.out_h = s->info.out_h;
-		item.req.orientation = s->info.orientation;
-		item.req.transfer = s->info.transfer;
-		item.req.opaque = s->info.opaque;
-		orientation_display_size(item.req.src_w, item.req.src_h,
-			item.req.orientation, &item.display_w, &item.display_h);
-		item.mid_off = align_up(mid_bytes, alignment);
-		mid_bytes = item.mid_off +
-			VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-		item.output_off = align_up(output_bytes, alignment);
-		item.readback_off = align_up(readback_bytes, alignment);
-		const VkDeviceSize n =
-			VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
-		output_bytes = item.output_off + n;
-		readback_bytes = item.readback_off + n;
-		b.items.push_back(std::move(item));
+		for (const Job::Output &output : s->info.outputs) {
+			Item item;
+			item.kind = Item::Kind::Fit;
+			item.session = id;
+			item.owner = s;
+			item.req.user = s->info.user;
+			item.req.path = s->info.path;
+			item.req.src_w = s->reduced_w;
+			item.req.src_h = s->reduced_h;
+			item.req.out_w = output.width;
+			item.req.out_h = output.height;
+			item.req.output_tag = output.tag;
+			item.req.orientation = s->info.orientation;
+			item.req.transfer = s->info.transfer;
+			item.req.opaque = s->info.opaque;
+			orientation_display_size(item.req.src_w, item.req.src_h,
+				item.req.orientation, &item.display_w, &item.display_h);
+			item.mid_off = align_up(mid_bytes, alignment);
+			mid_bytes = item.mid_off + VkDeviceSize(item.req.out_w) *
+				item.display_h * kBytesPerPixel;
+			item.output_off = align_up(output_bytes, alignment);
+			item.readback_off = align_up(readback_bytes, alignment);
+			const VkDeviceSize n = VkDeviceSize(item.req.out_w) *
+				item.req.out_h * kBytesPerPixel;
+			output_bytes = item.output_off + n;
+			readback_bytes = item.readback_off + n;
+			b.items.push_back(std::move(item));
+		}
 	}
 	if (b.items.empty())
 		return false;
@@ -1104,6 +1134,8 @@ ThumbScaler::Impl::claim(
 	if (!ready || !bytes || align_up(bytes, alignment) > ring_bytes)
 		return false;
 	unique_lock lock(mu);
+	if (canceled.contains(user))
+		return false;
 	if (auto found = priority_overrides.find(user);
 		found != priority_overrides.end())
 		priority = found->second;
@@ -1112,6 +1144,11 @@ ThumbScaler::Impl::claim(
 		next_waiter = 1;
 	waiters.push_back(&waiter);
 	while (!stop) {
+		if (canceled.contains(user)) {
+			erase(waiters, &waiter);
+			cv.notify_all();
+			return false;
+		}
 		if (auto found = priority_overrides.find(user);
 			found != priority_overrides.end())
 			waiter.priority = found->second;
@@ -1138,7 +1175,7 @@ ThumbScaler::Impl::enqueue(const Request &req)
 	lock_guard lock(mu);
 	auto found = live.find(req.slot);
 	if (!ready || stop || found == live.end() || !req.src_w || !req.src_h ||
-		!req.out_w || !req.out_h) {
+		(!req.session && req.outputs.empty()) || canceled.contains(req.user)) {
 		release_range(req.slot);
 		return false;
 	}
@@ -1174,8 +1211,8 @@ ThumbScaler::Impl::plan_tiles(
 bool
 ThumbScaler::Impl::begin_session(const SessionInfo &info, uint32_t *id)
 {
-	if (!ready || !id || !info.src_w || !info.src_h || !info.out_w ||
-		!info.out_h || !info.tile_count)
+	if (!ready || !id || !info.src_w || !info.src_h || info.outputs.empty() ||
+		!info.tile_count)
 		return false;
 
 	auto s = make_unique<Session>();
@@ -1222,7 +1259,7 @@ ThumbScaler::Impl::queue_full(const Job &job)
 
 	bool opaque = true;
 	auto *dst = static_cast<uint8_t *>(slot.mapped);
-	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels);
+	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels->data());
 	for (uint32_t y = 0; y < job.src_h; ++y) {
 		const auto *row =
 			reinterpret_cast<const uint16_t *>(src + y * job.stride);
@@ -1242,8 +1279,7 @@ ThumbScaler::Impl::queue_full(const Job &job)
 	req.slot = slot.id;
 	req.src_w = job.src_w;
 	req.src_h = job.src_h;
-	req.out_w = job.out_w;
-	req.out_h = job.out_h;
+	req.outputs = job.outputs;
 	req.orientation = job.orientation;
 	req.transfer = job.transfer;
 	req.opaque = opaque;
@@ -1285,8 +1321,7 @@ ThumbScaler::queue(const Job &job)
 	info.priority = job.priority;
 	info.src_w = job.src_w;
 	info.src_h = job.src_h;
-	info.out_w = job.out_w;
-	info.out_h = job.out_h;
+	info.outputs = job.outputs;
 	info.k = k;
 	info.tile_count = uint32_t(tiles.size());
 	info.orientation = job.orientation;
@@ -1298,7 +1333,7 @@ ThumbScaler::queue(const Job &job)
 	if (!e.begin_session(info, &session))
 		return fail();
 
-	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels);
+	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
 	for (const Impl::Tile &tile : tiles) {
 		Impl::Slot slot;
 		const size_t tile_row = size_t(tile.w) * kBytesPerPixel;
@@ -1315,8 +1350,6 @@ ThumbScaler::queue(const Job &job)
 		req.slot = slot.id;
 		req.src_w = tile.w;
 		req.src_h = tile.h;
-		req.out_w = job.out_w;
-		req.out_h = job.out_h;
 		req.orientation = job.orientation;
 		req.transfer = job.transfer;
 		req.opaque = false;
@@ -1367,6 +1400,39 @@ ThumbScaler::reprioritize(uint64_t user, Priority priority)
 	return found;
 }
 
+bool
+ThumbScaler::cancel(uint64_t user)
+{
+	if (!impl_ || !user)
+		return false;
+	Impl &e = *impl_;
+	lock_guard lock(e.mu);
+	bool found = false;
+	e.canceled.insert(user);
+	for (auto it = e.pending.begin(); it != e.pending.end();) {
+		if (it->req.user != user) {
+			++it;
+			continue;
+		}
+		found = true;
+		e.release_range(it->req.slot);
+		it = e.pending.erase(it);
+	}
+	for (auto &[id, session] : e.sessions) {
+		(void) id;
+		if (session->info.user != user)
+			continue;
+		found = true;
+		session->failed = true;
+		session->emitted = true;
+	}
+	for (Impl::Waiter *waiter : e.waiters)
+		found |= waiter->user == user;
+	e.priority_overrides.erase(user);
+	e.cv.notify_all();
+	return found;
+}
+
 void
 ThumbScaler::flush()
 {
@@ -1399,23 +1465,25 @@ ThumbScaler::flush()
 		}
 		if (!selected)
 			return;
-		for (auto it = e.pending.begin();
-			it != e.pending.end() && jobs.size() < kMaxBatchReqs;) {
-			if (it->req.priority == *selected) {
+		size_t item_room = kMaxBatchReqs;
+		for (auto it = e.pending.begin(); it != e.pending.end();) {
+			const size_t cost = it->req.session ? 1 : it->req.outputs.size();
+			if (it->req.priority == *selected && cost <= item_room) {
 				jobs.push_back(std::move(*it));
 				it = e.pending.erase(it);
+				item_room -= cost;
 			} else {
 				++it;
 			}
 		}
-		size_t fit_room = kMaxBatchReqs - jobs.size();
 		for (auto &entry : e.sessions) {
 			Impl::Session &s = *entry.second;
-			if (fit_room && s.ended && !s.failed && !s.fitted &&
+			const size_t cost = s.info.outputs.size();
+			if (cost <= item_room && s.ended && !s.failed && !s.fitted &&
 				s.done == s.info.tile_count && s.info.priority == *selected) {
 				s.fitted = true;
 				fits.push_back(s.id);
-				--fit_room;
+				item_room -= cost;
 			}
 		}
 	}
@@ -1478,6 +1546,8 @@ ThumbScaler::poll(vector<Result> *done)
 			vkInvalidateMappedMemoryRanges(e.device, 1, &range);
 		}
 		vector<uint32_t> finished;
+		vector<Result> batch_results;
+		unordered_map<uint64_t, size_t> result_index;
 		for (const Impl::Item &item : batch.items) {
 			if (item.kind == Impl::Item::Kind::Tile) {
 				lock_guard lock(e.mu);
@@ -1485,30 +1555,47 @@ ThumbScaler::poll(vector<Result> *done)
 					s->done++;
 				continue;
 			}
-			Result result;
-			result.user = item.req.user;
-			result.path = item.req.path;
-			result.out_w = item.req.out_w;
-			result.out_h = item.req.out_h;
-			const size_t values = size_t(result.out_w) * result.out_h * 4;
-			result.data.resize(values);
-			memcpy(result.data.data(),
+			size_t index = 0;
+			if (auto found = result_index.find(item.req.user);
+				found != result_index.end()) {
+				index = found->second;
+			} else {
+				index = batch_results.size();
+				result_index.emplace(item.req.user, index);
+				Result result;
+				result.user = item.req.user;
+				result.path = item.req.path;
+				batch_results.push_back(std::move(result));
+			}
+			Result::Output output;
+			output.width = item.req.out_w;
+			output.height = item.req.out_h;
+			output.tag = item.req.output_tag;
+			const size_t values = size_t(output.width) * output.height * 4;
+			output.data.resize(values);
+			memcpy(output.data.data(),
 				static_cast<const uint8_t *>(batch.readback.mapped) +
 					item.readback_off,
 				values * sizeof(uint16_t));
+			batch_results[index].outputs.push_back(std::move(output));
 			if (item.kind == Impl::Item::Kind::Fit) {
 				lock_guard lock(e.mu);
 				if (Impl::Session *s = e.session(item.session)) {
 					s->emitted = true;
-					finished.push_back(s->id);
+					if (find(finished.begin(), finished.end(), s->id) ==
+						finished.end())
+						finished.push_back(s->id);
 				}
-				e.priority_overrides.erase(result.user);
+				e.priority_overrides.erase(item.req.user);
+				e.canceled.erase(item.req.user);
 			} else {
 				lock_guard lock(e.mu);
-				e.priority_overrides.erase(result.user);
+				e.priority_overrides.erase(item.req.user);
+				e.canceled.erase(item.req.user);
 			}
-			done->push_back(std::move(result));
 		}
+		for (Result &result : batch_results)
+			done->push_back(std::move(result));
 		{
 			lock_guard lock(e.mu);
 			for (const Impl::Item &item : batch.items)
@@ -1532,6 +1619,7 @@ ThumbScaler::poll(vector<Result> *done)
 		lock_guard lock(e.mu);
 		for (Result &result : e.failed_results) {
 			e.priority_overrides.erase(result.user);
+			e.canceled.erase(result.user);
 			done->push_back(std::move(result));
 		}
 		e.failed_results.clear();

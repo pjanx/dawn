@@ -153,7 +153,7 @@ main(int argc, char **argv)
 	CHECK(dn::thumbnail_cache_write(
 		source, 2, pixels.data(), 2, 1, 2, 1, &error));
 	hit = dn::thumbnail_cache_lookup(source, 1, cmm, p3.get());
-	CHECK(!hit.pixels.empty() && hit.tier == 2 && !hit.interim);
+	CHECK(!hit.pixels.empty() && hit.tier == 2 && hit.interim);
 
 	const QString png_input =
 		QDir(inputs.path()).filePath(QStringLiteral("legacy-source.png"));

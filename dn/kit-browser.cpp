@@ -181,8 +181,8 @@ constexpr Spec kItems[] = {
 
 bool apply_action(Browser &b, Action action);
 
-// Below this line the browser enumerates the local filesystem; above it, and
-// towards the host, everything is identified by URL.
+// Below this line the browser enumerates the local filesystem;
+// above it, and towards the host, everything is identified by URL.
 string
 dir_path(const Browser &b)
 {
@@ -204,16 +204,17 @@ struct ThumbJob {
 	int thumb_size = 0;
 	float dpr = 1.f;
 	int atlas_max = 0;
-	vector<uint8_t> screen_icc;
+	shared_ptr<const vector<uint8_t>> screen_icc;
 	bool skip_cache = false;
+	bool cacheable = false;
+	Thumbnailer::Reservation reservation = 0;
+	shared_ptr<const ThumbnailBundle> pending;
 };
 
 enum class GpuPurpose : uint8_t {
 	Display,
 	CacheDisplay,
 	CacheOnly,
-	DisplayInterim,
-	DisplayRefit,
 };
 
 struct ThumbUpdate {
@@ -228,10 +229,12 @@ struct ThumbUpdate {
 	bool failed = true;
 	bool gpu_pending = false;
 	bool interim = false;
-	bool cache_bypass = false;
 	bool regeneration = false;
+	bool persistent_checked = false;
+	bool generation_needed = false;
 	GpuPurpose gpu_purpose = GpuPurpose::Display;
 	int tier = 0;
+	int ram_tier = -1;
 };
 
 struct FinishJob {
@@ -244,10 +247,18 @@ struct FinishJob {
 	uint32_t width = 0, height = 0;
 	shared_ptr<const vector<uint16_t>> pixels;
 	int tier = 0;
-	int thumb_size = 0;
-	float dpr = 1.f;
-	int atlas_max = 0;
-	vector<uint8_t> screen_icc;
+	shared_ptr<const vector<uint8_t>> screen_icc;
+};
+
+struct GpuFinish {
+	uint64_t gen = 0;
+	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
+	GpuPurpose purpose = GpuPurpose::Display;
+	Thumbnailer::Reservation reservation = 0;
+	ThumbnailSource source;
+	uint32_t image_w = 0, image_h = 0;
+	int requested_tier = 0;
+	shared_ptr<const vector<uint8_t>> screen_icc;
 };
 
 int
@@ -292,21 +303,14 @@ is_image_filename(const QString &name)
 }
 
 shared_ptr<dawn::Profile>
-profile_from_icc(dawn::Cmm &cmm, const vector<uint8_t> &icc)
+profile_from_icc(
+	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
-	if (!icc.empty()) {
-		if (auto profile = cmm.get_profile(icc))
+	if (icc && !icc->empty()) {
+		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
 	return cmm.get_profile_sRGB();
-}
-
-vector<uint8_t>
-screen_icc_bytes(const Browser &b)
-{
-	if (!b.screen_profile_)
-		return {};
-	return b.screen_profile_->to_bytes();
 }
 
 int
@@ -329,9 +333,7 @@ thumb_dest_params(uint32_t gw, uint32_t gh, int thumb_size, float dpr,
 		return;
 	}
 	const float d = dpr > 0.f ? dpr : 1.f;
-	float cap_h = float(thumb_size) * d;
-	if (cap_h < 1.f)
-		cap_h = 1.f;
+	float cap_h = max(1.f, float(thumb_size) * d);
 	const float cap_w = float(kThumbWide) * cap_h;
 	const float s = min(cap_w / float(gw), cap_h / float(gh));
 	int w = max(1, int(lround(double(gw) * double(s))));
@@ -360,6 +362,31 @@ thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 {
 	thumb_dest_params(gw, gh, b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b),
 		out_w, out_h);
+}
+
+size_t
+bundle_reservation_bytes(int top_tier)
+{
+	size_t bytes = 0;
+	for (int tier = max(0, top_tier); tier >= 0; --tier) {
+		const size_t h = size_t(thumbnail_tier_height(tier));
+		bytes += 2 * h * h * dawn::kBytesPerPixel;
+	}
+	return bytes;
+}
+
+vector<dawn::ThumbScaler::Job::Output>
+bundle_outputs(uint32_t image_w, uint32_t image_h, int top_tier)
+{
+	vector<dawn::ThumbScaler::Job::Output> outputs;
+	for (int tier = max(0, top_tier); tier >= 0; --tier) {
+		const int h = thumbnail_tier_height(tier);
+		uint32_t width = 1, height = 1;
+		thumb_dest_params(
+			image_w, image_h, h, 1.f, h * kThumbWide, &width, &height);
+		outputs.push_back({width, height, tier});
+	}
+	return outputs;
 }
 
 int
@@ -526,51 +553,75 @@ copy_bgra16(const dawn::Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
 }
 
 ThumbUpdate
-make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
-	const string &path, int64_t mtime, uint64_t size, int thumb_size, float dpr,
-	int atlas_max, bool skip_cache)
+make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 {
 	ThumbUpdate result;
-	result.regeneration = skip_cache;
+	result.regeneration = job.skip_cache;
 	if (!cmm)
 		return result;
 
 	const int tier = thumbnail_tier_for_height(
-		max(1, int(ceil(double(thumb_size) * double(dpr)))));
-	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, icc);
-	const ThumbnailSource source =
-		thumbnail_source(QString::fromStdString(path), mtime, size);
-	if (!skip_cache) {
+		max(1, int(ceil(double(job.thumb_size) * double(job.dpr)))));
+	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
+	const ThumbnailSource source = thumbnail_source(
+		QString::fromStdString(job.path), job.mtime, job.size);
+	if (job.pending) {
+		if (const ThumbnailTierPixels *pixels = job.pending->find(tier)) {
+			result.ram = *pixels->pixels;
+			shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
+			if (p3 && screen && !result.ram.empty() &&
+				cmm->transform_bgra16(
+					reinterpret_cast<uint8_t *>(result.ram.data()),
+					pixels->width, pixels->height, p3.get(), screen.get(), true,
+					true)) {
+				result.geometry_w = job.pending->image_width;
+				result.geometry_h = job.pending->image_height;
+				result.ram_w = pixels->width;
+				result.ram_h = pixels->height;
+				result.ram_tier = tier;
+				result.tier = tier;
+				result.transfer = profile_transfer(screen.get());
+				result.persistent_checked = true;
+				result.failed = false;
+				return result;
+			}
+			result.ram.clear();
+		}
+	}
+	if (job.cacheable && !job.skip_cache) {
 		ThumbnailHit hit =
 			thumbnail_cache_lookup(source, tier, cmm, screen.get());
 		if (!hit.pixels.empty()) {
-			dawn::ImagePtr image = dawn::image_new(hit.width, hit.height);
-			if (!image)
-				return result;
-			memcpy(image->data.data(), hit.pixels.data(),
-				hit.pixels.size() * sizeof(uint16_t));
 			result.geometry_w = hit.image_width ? hit.image_width : hit.width;
 			result.geometry_h =
 				hit.image_height ? hit.image_height : hit.height;
-			result.image = std::move(image);
-			result.orientation = dawn::Orientation::Rotate0;
+			result.ram = std::move(hit.pixels);
+			result.ram_w = hit.width;
+			result.ram_h = hit.height;
+			result.ram_tier = hit.tier;
 			result.transfer = profile_transfer(screen.get());
 			result.interim = hit.interim;
-			result.cache_bypass = hit.interim;
+			result.generation_needed = hit.interim;
+			result.persistent_checked = true;
 			result.tier = tier;
 			result.failed = false;
 			return result;
 		}
+		result.tier = tier;
+		result.persistent_checked = true;
+		result.generation_needed = true;
+		result.failed = false;
+		return result;
 	}
 
 	dawn::OpenContext ctx;
-	ctx.uri = path;
+	ctx.uri = job.path;
 	ctx.cmm = cmm;
-	const bool cacheable = !thumbnail_cache_root().isEmpty() &&
-		!thumbnail_cache_contains(QString::fromStdString(path));
-	ctx.screen_profile = cacheable ? cmm->get_profile_display_p3() : screen;
+	ctx.screen_profile =
+		job.cacheable ? cmm->get_profile_display_p3() : screen;
 	ctx.first_frame_only = true;
 	ctx.screen_dpi = 96;
+
 	dawn::Error error;
 	dawn::ImagePtr image = open(ctx, &error);
 	if (!image || !image->width || !image->height)
@@ -581,13 +632,13 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 		&result.geometry_w, &result.geometry_h);
 	if (image->render && result.geometry_w && result.geometry_h) {
 		uint32_t ow = 1, oh = 1;
-		if (cacheable) {
+		if (job.cacheable) {
 			const int h = thumbnail_tier_height(tier);
 			thumb_dest_params(result.geometry_w, result.geometry_h, h, 1.f,
 				h * kThumbWide, &ow, &oh);
 		} else {
-			thumb_dest_params(result.geometry_w, result.geometry_h, thumb_size,
-				dpr, atlas_max, &ow, &oh);
+			thumb_dest_params(result.geometry_w, result.geometry_h, job.thumb_size,
+				job.dpr, job.atlas_max, &ow, &oh);
 		}
 		const double scale = min(double(ow) / double(result.geometry_w),
 			double(oh) / double(result.geometry_h));
@@ -603,9 +654,13 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 	result.image = std::move(image);
 	result.orientation = ori;
 	result.transfer = profile_transfer(ctx.screen_profile.get());
-	result.gpu_purpose =
-		cacheable ? GpuPurpose::CacheDisplay : GpuPurpose::Display;
+	result.gpu_purpose = job.cacheable
+		? (job.priority == Thumbnailer::Priority::Dimensions
+				? GpuPurpose::CacheOnly
+				: GpuPurpose::CacheDisplay)
+		: GpuPurpose::Display;
 	result.tier = tier;
+	result.persistent_checked = job.cacheable;
 	result.failed = false;
 	return result;
 }
@@ -613,8 +668,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const vector<uint8_t> &icc,
 // --- Global execution --------------------------------------------------------
 
 void apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update);
-void apply_thumb_gpu(Browser &b, uint64_t gen, GpuPurpose purpose, int tier,
-	dawn::ThumbScaler::Result result);
+void apply_thumb_gpu(
+	Browser &b, GpuFinish finish, dawn::ThumbScaler::Result result);
 void enqueue_thumbs(Browser &b);
 
 shared_ptr<dawn::Cmm>
@@ -626,28 +681,30 @@ worker_cmm()
 
 bool
 queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
-	Browser *browser, uint64_t gen, Thumbnailer::Priority priority,
-	GpuPurpose purpose, int tier, dawn::ThumbScaler::Job job, bool keyed = true)
+	Browser *browser, GpuFinish finish, dawn::ThumbScaler::Job job)
 {
-	const string key = keyed ? job.path : string{};
+	const string key = job.path;
 	return thumbnailer.submit_gpu(
-		client, gen, priority, std::move(job),
-		[browser, gen, purpose, tier](
+		client, finish.gen, finish.priority, std::move(job),
+		[browser, finish = std::move(finish)](
 			dawn::ThumbScaler::Result result) mutable {
-			apply_thumb_gpu(*browser, gen, purpose, tier, std::move(result));
+			apply_thumb_gpu(*browser, std::move(finish), std::move(result));
 		},
 		key);
 }
 
 Thumbnailer::Completion
-display_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
-	Browser *browser, FinishJob job)
+display_thumb(Browser *browser, FinishJob job)
 {
-	auto cmm = worker_cmm();
 	ThumbUpdate update;
 	update.geometry_w = job.image_w;
 	update.geometry_h = job.image_h;
 	update.regeneration = true;
+	update.persistent_checked = true;
+	update.tier = job.tier;
+	update.ram_tier = job.tier;
+
+	auto cmm = worker_cmm();
 	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
 	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
@@ -655,29 +712,10 @@ display_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		cmm->transform_bgra16(reinterpret_cast<uint8_t *>(display.data()),
 			job.width, job.height, p3.get(), screen.get(), true, true)) {
 		update.transfer = profile_transfer(screen.get());
-		uint32_t ow = 1, oh = 1;
-		thumb_dest_params(job.image_w, job.image_h, job.thumb_size, job.dpr,
-			job.atlas_max, &ow, &oh);
-		if (job.width == ow && job.height == oh) {
-			update.ram = std::move(display);
-			update.ram_w = ow;
-			update.ram_h = oh;
-			update.failed = false;
-		} else {
-			dawn::ThumbScaler::Job gpu;
-			gpu.pixels = display.data();
-			gpu.stride = size_t(job.width) * dawn::kBytesPerPixel;
-			gpu.src_w = job.width;
-			gpu.src_h = job.height;
-			gpu.out_w = ow;
-			gpu.out_h = oh;
-			gpu.orientation = dawn::Orientation::Rotate0;
-			gpu.transfer = update.transfer;
-			gpu.path = job.path;
-			update.gpu_pending = queue_gpu(thumbnailer, client, browser,
-				job.gen, job.priority, GpuPurpose::Display, 0, std::move(gpu));
-			update.failed = !update.gpu_pending;
-		}
+		update.ram = std::move(display);
+		update.ram_w = job.width;
+		update.ram_h = job.height;
+		update.failed = false;
 	}
 	return [browser, gen = job.gen, path = std::move(job.path),
 			   update = std::move(update)]() mutable {
@@ -686,62 +724,18 @@ display_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 }
 
 Thumbnailer::Completion
-cache_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
-	Browser *browser, FinishJob job)
-{
-	if (!job.pixels || job.pixels->empty())
-		return {};
-	const ThumbnailSource source =
-		thumbnail_source(QString::fromStdString(job.path), job.mtime, job.size);
-	QString error;
-	if (!thumbnail_cache_write(source, job.tier, job.pixels->data(), job.width,
-			job.height, job.image_w, job.image_h, &error) &&
-		!error.isEmpty())
-		qWarning("%s: %s", job.path.c_str(), qUtf8Printable(error));
-
-	if (job.tier > 0) {
-		uint32_t ow = 1, oh = 1;
-		const int next = job.tier - 1;
-		const int h = thumbnail_tier_height(next);
-		thumb_dest_params(
-			job.image_w, job.image_h, h, 1.f, h * kThumbWide, &ow, &oh);
-		dawn::ThumbScaler::Job gpu;
-		gpu.pixels = job.pixels->data();
-		gpu.stride = size_t(job.width) * dawn::kBytesPerPixel;
-		gpu.src_w = job.width;
-		gpu.src_h = job.height;
-		gpu.out_w = ow;
-		gpu.out_h = oh;
-		gpu.orientation = dawn::Orientation::Rotate0;
-		gpu.transfer = dawn::Transfer::Srgb;
-		gpu.path = job.path;
-		(void) queue_gpu(thumbnailer, client, browser, job.gen,
-			Thumbnailer::Priority::Maintenance, GpuPurpose::CacheOnly, next,
-			std::move(gpu), false);
-	}
-	return {};
-}
-
-Thumbnailer::Completion
 load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	Browser *browser, ThumbJob job)
 {
 	auto cmm = worker_cmm();
-	ThumbUpdate update = make_thumb(cmm, job.screen_icc, job.path, job.mtime,
-		job.size, job.thumb_size, job.dpr, job.atlas_max, job.skip_cache);
+	ThumbUpdate update = make_thumb(cmm, job);
 	if (!update.failed && update.image && update.image->width &&
 		update.image->height) {
-		uint32_t ow = 1, oh = 1;
-		if (update.gpu_purpose == GpuPurpose::CacheDisplay) {
-			const int h = thumbnail_tier_height(update.tier);
-			thumb_dest_params(update.geometry_w, update.geometry_h, h, 1.f,
-				h * kThumbWide, &ow, &oh);
-		} else {
-			thumb_dest_params(update.geometry_w, update.geometry_h,
-				job.thumb_size, job.dpr, job.atlas_max, &ow, &oh);
-		}
 		const dawn::Image &src = *update.image;
-		const bool one_to_one = update.gpu_purpose == GpuPurpose::Display &&
+		uint32_t ow = 1, oh = 1;
+		thumb_dest_params(update.geometry_w, update.geometry_h, job.thumb_size,
+			job.dpr, job.atlas_max, &ow, &oh);
+		const bool one_to_one = !job.cacheable &&
 			update.orientation == dawn::Orientation::Rotate0 &&
 			src.width == ow && src.height == oh;
 		if (one_to_one) {
@@ -749,27 +743,44 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			copy_bgra16(src, update.ram.data(), ow, oh);
 			update.ram_w = ow;
 			update.ram_h = oh;
+			update.ram_tier = -1;
 		} else {
 			dawn::ThumbScaler::Job gpu;
-			gpu.pixels = reinterpret_cast<const uint16_t *>(src.data.data());
-			gpu.stride = src.stride;
+			auto owned = make_shared<vector<uint16_t>>(
+				size_t(src.width) * src.height * 4);
+			copy_bgra16(src, owned->data(), src.width, src.height);
+			gpu.pixels = std::move(owned);
+			gpu.stride = size_t(src.width) * dawn::kBytesPerPixel;
 			gpu.src_w = src.width;
 			gpu.src_h = src.height;
-			gpu.out_w = ow;
-			gpu.out_h = oh;
+			gpu.outputs = job.cacheable
+				? bundle_outputs(
+					update.geometry_w, update.geometry_h, update.tier)
+				: vector<dawn::ThumbScaler::Job::Output>{{ow, oh, -1}};
 			gpu.orientation = update.orientation;
 			gpu.transfer = update.transfer;
 			gpu.path = job.path;
-			const GpuPurpose purpose =
-				update.gpu_purpose == GpuPurpose::Display && update.interim
-				? GpuPurpose::DisplayInterim
-				: update.gpu_purpose;
+			GpuFinish finish;
+			finish.gen = job.gen;
+			finish.priority = job.priority;
+			finish.purpose = update.gpu_purpose;
+			finish.reservation = job.reservation;
+			finish.source = thumbnail_source(
+				QString::fromStdString(job.path), job.mtime, job.size);
+			finish.image_w = update.geometry_w;
+			finish.image_h = update.geometry_h;
+			finish.requested_tier = update.tier;
+			finish.screen_icc = std::move(job.screen_icc);
 			update.gpu_pending = queue_gpu(thumbnailer, client, browser,
-				job.gen, job.priority, purpose, update.tier, std::move(gpu));
+				std::move(finish), std::move(gpu));
 			update.failed = !update.gpu_pending;
+			if (!update.gpu_pending && job.reservation)
+				thumbnailer.cancel_bundle(job.reservation);
 		}
 		update.image.reset();
 	}
+	if (job.reservation && !update.gpu_pending)
+		thumbnailer.cancel_bundle(job.reservation);
 	return [browser, gen = job.gen, path = std::move(job.path),
 			   update = std::move(update)]() mutable {
 		apply_thumb(*browser, gen, std::move(path), std::move(update));
@@ -808,9 +819,12 @@ invalidate_thumbs(Browser &b)
 	for (Browser::File &f : b.files_) {
 		vector<uint16_t>().swap(f.ram);
 		f.ram_w = f.ram_h = 0;
+		f.ram_tier = -1;
 		f.ram_interim = false;
 		f.ram_pending = false;
-		f.cache_bypass = false;
+		f.persistent_checked = false;
+		f.generation_needed = false;
+		f.reservation = 0;
 		f.regen_failed = false;
 		f.failed = false;
 	}
@@ -830,6 +844,7 @@ trim_ram(Browser &b)
 		total += ram_bytes(f);
 	if (total <= kThumbRamBudget)
 		return;
+
 	const float pad = row_h(b) * kPrefetchRows;
 	const float mid = b.r.y + b.r.h * 0.5f;
 	vector<int> idx;
@@ -853,19 +868,9 @@ trim_ram(Browser &b)
 		total -= ram_bytes(f);
 		vector<uint16_t>().swap(f.ram);
 		f.ram_w = f.ram_h = 0;
+		f.ram_tier = -1;
 		f.ram_interim = false;
-		f.cache_bypass = false;
 	}
-}
-
-bool
-try_grow_sheet(Browser &b)
-{
-	const int cap = thumb_atlas_max(b);
-	if (b.sheet_.w >= cap)
-		return false;
-	b.sheet_.grow(min(cap, b.sheet_.w * 2));
-	return true;
 }
 
 bool
@@ -874,6 +879,7 @@ push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 	Renderer *r = b.kit_.renderer_;
 	if (!r)
 		return false;
+
 	bool recreated = false;
 	if (!r->upload_thumb(f.ram.data(), f.ram_w, f.ram_h, slot.x, slot.y,
 			b.sheet_.w, &recreated))
@@ -890,35 +896,77 @@ push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 	return true;
 }
 
+bool
+repack_atlas(Browser &b, Browser::File &wanted)
+{
+	Renderer *renderer = b.kit_.renderer_;
+	if (!renderer)
+		return false;
+
+	const int cap = thumb_atlas_max(b);
+	const float bands[] = {row_h(b) * kPrefetchRows, 0.f};
+	for (float pad : bands) {
+		vector<Browser::File *> active;
+		for (Browser::File &f : b.files_) {
+			if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0)
+				continue;
+			if (&f == &wanted || thumb_in_band(b, f, pad))
+				active.push_back(&f);
+		}
+		sort(active.begin(), active.end(), [](const Browser::File *a,
+										 const Browser::File *other) {
+			if (a->ram_h != other->ram_h)
+				return a->ram_h > other->ram_h;
+			return a->ram_w > other->ram_w;
+		});
+		for (int side = max(Sheet::kSize, b.sheet_.w); side <= cap;
+			 side = side < cap ? min(cap, side * 2) : cap + 1) {
+			Sheet fresh(side, false);
+			vector<Sheet::Packed> placements;
+			placements.reserve(active.size());
+			bool fits = true;
+			for (Browser::File *f : active) {
+				Sheet::Packed slot = fresh.alloc(f->ram_w, f->ram_h);
+				if (slot.empty()) {
+					fits = false;
+					break;
+				}
+				placements.push_back(slot);
+			}
+			if (!fits)
+				continue;
+			vector<ThumbUpload> uploads;
+			uploads.reserve(active.size());
+			for (size_t i = 0; i < active.size(); ++i) {
+				Browser::File &f = *active[i];
+				const Sheet::Packed &slot = placements[i];
+				uploads.push_back({f.ram.data(), f.ram_w, f.ram_h,
+					slot.x, slot.y});
+			}
+			if (uploads.empty() || !renderer->rebuild_thumbs(uploads, side))
+				return false;
+			for (Browser::File &f : b.files_)
+				f.gpu = {};
+			for (size_t i = 0; i < active.size(); ++i)
+				active[i]->gpu = placements[i];
+			b.sheet_ = std::move(fresh);
+			return !wanted.gpu.empty();
+		}
+	}
+	return false;
+}
+
 void
 try_upload(Browser &b, Browser::File &f)
 {
 	if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0 || !f.gpu.empty())
 		return;
+
 	Sheet::Packed slot = b.sheet_.alloc(f.ram_w, f.ram_h);
-	while (slot.empty() && try_grow_sheet(b))
-		slot = b.sheet_.alloc(f.ram_w, f.ram_h);
 	if (slot.empty()) {
-		const float pad = row_h(b) * kPrefetchRows;
-		for (Browser::File &o : b.files_) {
-			if (o.gpu.empty() || thumb_in_band(b, o, pad))
-				continue;
-			b.sheet_.release(o.gpu);
-			o.gpu = {};
-		}
-		slot = b.sheet_.alloc(f.ram_w, f.ram_h);
-	}
-	if (slot.empty()) {
-		for (Browser::File &o : b.files_) {
-			if (o.gpu.empty() || thumb_in_band(b, o, 0.f))
-				continue;
-			b.sheet_.release(o.gpu);
-			o.gpu = {};
-		}
-		slot = b.sheet_.alloc(f.ram_w, f.ram_h);
-	}
-	if (slot.empty())
+		repack_atlas(b, f);
 		return;
+	}
 	if (!push_gpu(b, f, slot)) {
 		b.sheet_.release(slot);
 		return;
@@ -927,107 +975,121 @@ try_upload(Browser &b, Browser::File &f)
 }
 
 void
-apply_thumb_gpu(Browser &b, uint64_t gen, GpuPurpose purpose, int tier,
-	dawn::ThumbScaler::Result res)
+apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 {
-	if (gen != b.thumb_gen_ || res.path.empty())
+	if (finish.gen != b.thumb_gen_ || res.path.empty())
 		return;
+
+	bool matched = false;
 	for (Browser::File &f : b.files_) {
 		if (f.path != res.path)
 			continue;
-		Thumbnailer::Priority display_priority =
-			Thumbnailer::Priority::Maintenance;
-		if (auto active = b.thumb_inflight_.find(f.path);
-			active != b.thumb_inflight_.end())
-			display_priority = active->second;
-		if (purpose == GpuPurpose::CacheDisplay ||
-			purpose == GpuPurpose::CacheOnly) {
-			if (res.failed || !res.out_w || !res.out_h || res.data.empty()) {
-				if (purpose == GpuPurpose::CacheDisplay) {
-					f.ram_pending = false;
-					if (!f.ram.empty() && f.ram_interim)
-						f.regen_failed = true;
-					else
-						f.failed = true;
-					b.thumb_inflight_.erase(f.path);
-				}
-				break;
-			}
-			FinishJob cache;
-			cache.gen = gen;
-			cache.priority = Thumbnailer::Priority::Maintenance;
-			cache.path = f.path;
-			cache.mtime = f.mtime;
-			cache.size = f.size;
-			cache.image_w = f.image_w;
-			cache.image_h = f.image_h;
-			cache.width = res.out_w;
-			cache.height = res.out_h;
-			cache.pixels =
-				make_shared<const vector<uint16_t>>(std::move(res.data));
-			cache.tier = tier;
-			cache.thumb_size = b.thumb_size_;
-			cache.dpr = b.kit_.dpr_;
-			cache.atlas_max = thumb_atlas_max(b);
-			cache.screen_icc = screen_icc_bytes(b);
-			Thumbnailer *thumbnailer = &b.thumbnailer_;
-			const auto client = b.thumbnail_client_;
-			Browser *browser = &b;
-			if (purpose == GpuPurpose::CacheDisplay) {
-				FinishJob display = cache;
-				display.priority = display_priority;
-				if (!thumbnailer->submit(
-						client, gen, display_priority,
-						[thumbnailer, client, browser,
-							display = std::move(display)]() mutable {
-							return display_thumb(*thumbnailer, client, browser,
-								std::move(display));
-						},
-						f.path)) {
-					f.ram_pending = false;
-					f.failed = f.ram.empty();
-					b.thumb_inflight_.erase(f.path);
-				}
-			}
-			(void) thumbnailer->submit(client, gen,
-				Thumbnailer::Priority::Maintenance,
-				[thumbnailer, client, browser,
-					cache = std::move(cache)]() mutable {
-					return cache_thumb(
-						*thumbnailer, client, browser, std::move(cache));
-				});
+		matched = true;
+		if (res.failed || res.outputs.empty()) {
+			if (finish.reservation)
+				b.thumbnailer_.cancel_bundle(finish.reservation);
+			f.reservation = 0;
+			f.ram_pending = false;
+			f.regen_failed = !f.ram.empty() && f.ram_interim;
+			f.failed = f.ram.empty();
+			b.thumb_inflight_.erase(f.path);
 			break;
 		}
 
-		f.ram_pending = false;
-		b.thumb_inflight_.erase(f.path);
-		if (res.failed) {
-			if (purpose == GpuPurpose::DisplayRefit)
-				f.regen_failed = false;
-			else if (!f.ram.empty() && f.ram_interim)
-				f.regen_failed = true;
-			else
-				f.failed = true;
+		if (finish.purpose == GpuPurpose::CacheDisplay ||
+			finish.purpose == GpuPurpose::CacheOnly) {
+			auto bundle = make_shared<ThumbnailBundle>();
+			bundle->source = finish.source;
+			bundle->image_width = finish.image_w;
+			bundle->image_height = finish.image_h;
+			bundle->top_tier = finish.requested_tier;
+			for (dawn::ThumbScaler::Result::Output &output : res.outputs) {
+				auto pixels = make_shared<const vector<uint16_t>>(
+					std::move(output.data));
+				bundle->tiers.push_back({output.tag, output.width,
+					output.height, std::move(pixels)});
+			}
+			if (!b.thumbnailer_.publish_bundle(finish.reservation, bundle)) {
+				b.thumbnailer_.cancel_bundle(finish.reservation);
+				f.reservation = 0;
+				f.ram_pending = false;
+				f.failed = f.ram.empty();
+				b.thumb_inflight_.erase(f.path);
+				break;
+			}
+			f.reservation = 0;
+			f.persistent_checked = true;
+			f.generation_needed = false;
+			f.regen_failed = false;
+			if (finish.purpose == GpuPurpose::CacheOnly) {
+				f.ram_pending = false;
+				b.thumb_inflight_.erase(f.path);
+				break;
+			}
+
+			const ThumbnailTierPixels *pixels =
+				bundle->find(finish.requested_tier);
+			if (!pixels) {
+				f.ram_pending = false;
+				f.failed = f.ram.empty();
+				b.thumb_inflight_.erase(f.path);
+				break;
+			}
+			FinishJob display;
+			display.gen = finish.gen;
+			display.priority = finish.priority;
+			display.path = f.path;
+			display.image_w = finish.image_w;
+			display.image_h = finish.image_h;
+			display.width = pixels->width;
+			display.height = pixels->height;
+			display.pixels = pixels->pixels;
+			display.tier = finish.requested_tier;
+			display.screen_icc = std::move(finish.screen_icc);
+			Browser *browser = &b;
+			if (!b.thumbnailer_.submit(b.thumbnail_client_, finish.gen,
+					finish.priority,
+					[browser, display = std::move(display)]() mutable {
+						return display_thumb(browser, std::move(display));
+					},
+					f.path)) {
+				f.ram_pending = false;
+				f.failed = f.ram.empty();
+				b.thumb_inflight_.erase(f.path);
+			}
 			break;
 		}
-		if (!res.out_w || !res.out_h || res.data.empty())
+
+		dawn::ThumbScaler::Result::Output &output = res.outputs.front();
+		if (!output.width || !output.height || output.data.empty()) {
+			f.ram_pending = false;
+			f.failed = f.ram.empty();
+			b.thumb_inflight_.erase(f.path);
 			break;
+		}
 		if (!f.gpu.empty())
 			b.sheet_.release(f.gpu);
 		f.gpu = {};
-		f.ram = std::move(res.data);
-		f.ram_w = int(res.out_w);
-		f.ram_h = int(res.out_h);
-		f.ram_interim = purpose == GpuPurpose::DisplayInterim ||
-			purpose == GpuPurpose::DisplayRefit;
-		f.cache_bypass = purpose == GpuPurpose::DisplayInterim;
+		f.ram = std::move(output.data);
+		f.ram_w = int(output.width);
+		f.ram_h = int(output.height);
+		f.ram_tier = -1;
+		f.ram_interim = false;
+		f.ram_pending = false;
 		f.regen_failed = false;
 		f.failed = false;
+		b.thumb_inflight_.erase(f.path);
 		if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
 			try_upload(b, f);
 		break;
 	}
+	if (!matched) {
+		if (finish.reservation)
+			b.thumbnailer_.cancel_bundle(finish.reservation);
+		b.thumb_inflight_.erase(res.path);
+	}
 	trim_ram(b);
+	enqueue_thumbs(b);
 	request_render(b);
 }
 
@@ -1057,6 +1119,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 		b.thumb_inflight_.erase(path);
 	if (gen != b.thumb_gen_)
 		return;
+
 	for (Browser::File &f : b.files_) {
 		if (f.path != path)
 			continue;
@@ -1067,11 +1130,13 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 			break;
 		}
 		f.failed = update.failed;
+		f.persistent_checked |= update.persistent_checked;
+		f.generation_needed = update.generation_needed;
 		if (update.failed) {
 			f.image_w = 0;
 			f.image_h = 0;
 			b.size_cache_.erase(f.path);
-		} else {
+		} else if (update.geometry_w && update.geometry_h) {
 			f.image_w = update.geometry_w;
 			f.image_h = update.geometry_h;
 			b.size_cache_[f.path] = {
@@ -1086,22 +1151,20 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 		if (update.failed) {
 			vector<uint16_t>().swap(f.ram);
 			f.ram_w = f.ram_h = 0;
+			f.ram_tier = -1;
 			f.ram_interim = false;
 			f.ram_pending = false;
-			f.cache_bypass = false;
 		} else if (update.gpu_pending) {
 			f.ram_pending = true;
 			f.transfer = update.transfer;
 			if (!update.regeneration)
 				f.ram_interim = update.interim;
-			if (!update.regeneration)
-				f.cache_bypass = update.cache_bypass;
 		} else if (!update.ram.empty() && update.ram_w && update.ram_h) {
 			f.ram = std::move(update.ram);
 			f.ram_w = int(update.ram_w);
 			f.ram_h = int(update.ram_h);
+			f.ram_tier = update.ram_tier;
 			f.ram_interim = update.interim;
-			f.cache_bypass = update.cache_bypass;
 			f.ram_pending = false;
 			f.regen_failed = false;
 			f.transfer = update.transfer;
@@ -1111,6 +1174,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 		}
 		break;
 	}
+	enqueue_thumbs(b);
 	request_render(b);
 }
 
@@ -1121,7 +1185,9 @@ enqueue_thumbs(Browser &b)
 		return;
 
 	const float pad = row_h(b) * kPrefetchRows;
-	vector<int> vis, pre, sizes;
+	const int target_tier = thumbnail_tier_for_height(max(
+		1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
+	vector<int> vis, pre, background;
 	for (int i = 0; i < int(b.files_.size()); ++i) {
 		const Browser::File &f = b.files_[size_t(i)];
 		const bool visible = thumb_in_band(b, f, 0.f);
@@ -1130,25 +1196,39 @@ enqueue_thumbs(Browser &b)
 		// demote work from the old viewport before adding new visible jobs.
 		if (auto active = b.thumb_inflight_.find(f.path);
 			active != b.thumb_inflight_.end()) {
-			const Thumbnailer::Priority desired = visible
-				? Thumbnailer::Priority::Visible
-				: prefetched ? Thumbnailer::Priority::Prefetch
-							 : Thumbnailer::Priority::Dimensions;
-			if (desired != active->second &&
-				b.thumbnailer_.reprioritize(
-					b.thumbnail_client_, b.thumb_gen_, desired, f.path))
-				active->second = desired;
-			continue;
+			const bool same = active->second.generation == b.thumb_gen_ &&
+				active->second.mtime == f.mtime &&
+				active->second.size == f.size &&
+				active->second.tier == target_tier;
+			if (!same) {
+				b.thumb_inflight_.erase(active);
+			} else {
+				const Thumbnailer::Priority desired = visible
+					? Thumbnailer::Priority::Visible
+					: prefetched ? Thumbnailer::Priority::Prefetch
+								 : Thumbnailer::Priority::Dimensions;
+				if (desired != active->second.priority &&
+					b.thumbnailer_.reprioritize(
+						b.thumbnail_client_, b.thumb_gen_, desired, f.path))
+					active->second.priority = desired;
+				continue;
+			}
 		}
-		if (f.failed || f.ram_pending || (f.regen_failed && f.ram_interim) ||
-			(!f.ram.empty() && !f.ram_interim))
+		if (f.failed || f.ram_pending ||
+			(f.regen_failed && f.generation_needed))
+			continue;
+		bool needed = f.generation_needed || !f.persistent_checked;
+		if (visible || prefetched)
+			needed |= f.ram.empty() || f.ram_interim ||
+				(f.ram_tier >= 0 && f.ram_tier != target_tier);
+		if (!needed)
 			continue;
 		if (visible)
 			vis.push_back(i);
 		else if (prefetched)
 			pre.push_back(i);
-		else if (!f.image_w || !f.image_h)
-			sizes.push_back(i);
+		else
+			background.push_back(i);
 	}
 
 	ThumbJob proto;
@@ -1156,19 +1236,34 @@ enqueue_thumbs(Browser &b)
 	proto.thumb_size = b.thumb_size_;
 	proto.dpr = b.kit_.dpr_;
 	proto.atlas_max = thumb_atlas_max(b);
-	proto.screen_icc = screen_icc_bytes(b);
+	proto.screen_icc = b.screen_icc_;
 	auto push = [&](const vector<int> &idx, Thumbnailer::Priority priority) {
 		for (int i : idx) {
-			const Browser::File &f = b.files_[size_t(i)];
+			Browser::File &f = b.files_[size_t(i)];
 			ThumbJob job = proto;
 			job.priority = priority;
 			job.path = f.path;
 			job.mtime = f.mtime;
 			job.size = f.size;
-			job.skip_cache = f.cache_bypass;
+			job.cacheable = !thumbnail_cache_root().isEmpty() &&
+				!thumbnail_cache_contains(QString::fromStdString(f.path));
+			const ThumbnailSource source = thumbnail_source(
+				QString::fromStdString(f.path), f.mtime, f.size);
+			job.pending = b.thumbnailer_.pending_bundle(source, target_tier);
+			job.skip_cache = f.generation_needed && !job.pending;
+			if (job.cacheable && job.skip_cache) {
+				job.reservation = b.thumbnailer_.reserve_bundle(
+					b.thumbnail_client_, job.gen, source, target_tier,
+					bundle_reservation_bytes(target_tier), priority);
+				if (!job.reservation)
+					continue;
+				f.reservation = job.reservation;
+			}
 			Thumbnailer *thumbnailer = &b.thumbnailer_;
 			const auto client = b.thumbnail_client_;
 			Browser *browser = &b;
+			const bool regeneration = job.skip_cache;
+			const auto reservation = job.reservation;
 			if (thumbnailer->submit(
 					client, job.gen, priority,
 					[thumbnailer, client, browser,
@@ -1176,25 +1271,30 @@ enqueue_thumbs(Browser &b)
 						return load_thumb(
 							*thumbnailer, client, browser, std::move(job));
 					},
-					f.path))
-				b.thumb_inflight_.emplace(f.path, priority);
+					f.path)) {
+				b.thumb_inflight_[f.path] = {b.thumb_gen_, f.mtime, f.size,
+					target_tier, priority, regeneration};
+			} else if (reservation) {
+				b.thumbnailer_.cancel_bundle(reservation);
+				f.reservation = 0;
+			}
 		}
 	};
 	push(vis, Thumbnailer::Priority::Visible);
 	push(pre, Thumbnailer::Priority::Prefetch);
 	size_t dimensions = 0;
-	for (const auto &[path, priority] : b.thumb_inflight_) {
+	for (const auto &[path, active] : b.thumb_inflight_) {
 		(void) path;
-		if (priority == Thumbnailer::Priority::Dimensions)
+		if (active.priority == Thumbnailer::Priority::Dimensions)
 			dimensions++;
 	}
 
 	const size_t limit = b.thumbnailer_.background_limit();
 	if (dimensions < limit) {
 		const size_t room = limit - dimensions;
-		if (sizes.size() > room)
-			sizes.resize(room);
-		push(sizes, Thumbnailer::Priority::Dimensions);
+		if (background.size() > room)
+			background.resize(room);
+		push(background, Thumbnailer::Priority::Dimensions);
 	}
 }
 
@@ -1499,7 +1599,7 @@ layout_grid(Browser &b, Rect area)
 }
 
 void
-draw_checker(Kit &kit, const Rect &tile)
+draw_checkers(Kit &kit, const Rect &tile)
 {
 	if (tile.empty())
 		return;
@@ -1838,9 +1938,12 @@ scan_dir(Browser &b)
 		f.ram = std::move(o.ram);
 		f.ram_w = o.ram_w;
 		f.ram_h = o.ram_h;
+		f.ram_tier = o.ram_tier;
 		f.ram_interim = o.ram_interim;
 		f.ram_pending = o.ram_pending;
-		f.cache_bypass = o.cache_bypass;
+		f.persistent_checked = o.persistent_checked;
+		f.generation_needed = o.generation_needed;
+		f.reservation = o.reservation;
 		f.regen_failed = o.regen_failed;
 		f.transfer = o.transfer;
 		f.gpu = o.gpu;
@@ -1997,33 +2100,17 @@ set_thumb_size(Browser &b, int size)
 	++b.thumb_gen_;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
-	clear_gpu(b);
+	const int target_tier = thumbnail_tier_for_height(max(
+		1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
 	for (Browser::File &f : b.files_) {
 		f.ram_pending = false;
-		if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0 || !f.image_w ||
-			!f.image_h)
-			continue;
-		uint32_t ow = 1, oh = 1;
-		thumb_dest(b, f.image_w, f.image_h, &ow, &oh);
-		f.ram_interim = true;
-		f.cache_bypass = false;
+		f.reservation = 0;
+		f.persistent_checked = false;
+		f.generation_needed = false;
+		if (!f.ram.empty())
+			f.ram_interim = f.ram_tier != target_tier;
 		f.regen_failed = false;
 		f.failed = false;
-		if (uint32_t(f.ram_w) != ow || uint32_t(f.ram_h) != oh) {
-			dawn::ThumbScaler::Job job;
-			job.pixels = f.ram.data();
-			job.stride = size_t(f.ram_w) * dawn::kBytesPerPixel;
-			job.src_w = uint32_t(f.ram_w);
-			job.src_h = uint32_t(f.ram_h);
-			job.out_w = ow;
-			job.out_h = oh;
-			job.orientation = dawn::Orientation::Rotate0;
-			job.transfer = f.transfer;
-			job.path = f.path;
-			f.ram_pending = queue_gpu(b.thumbnailer_, b.thumbnail_client_, &b,
-				b.thumb_gen_, Thumbnailer::Priority::Visible,
-				GpuPurpose::DisplayRefit, 0, std::move(job));
-		}
 	}
 	enqueue_thumbs(b);
 	request_render(b);
@@ -2595,7 +2682,7 @@ Browser::paint(Kit &kit) const
 			kit.draw_glow(float(tx) - border, float(ty) - border,
 				float(tw) + 2.f * border, float(thp) + 2.f * border,
 				focused ? glow_hot : glow_idle);
-			draw_checker(kit, {tx, ty, tw, thp});
+			draw_checkers(kit, {tx, ty, tw, thp});
 			// The frame sits just outside the thumbnail, by half its own
 			// width on each side, so it does not eat into the image.
 			const float half = border * 0.5f;
@@ -2603,7 +2690,8 @@ Browser::paint(Kit &kit) const
 				float(tx + tw) + half, float(ty + thp) + half, frame, border);
 			float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
 			this->sheet_.uv(f.gpu, &u0, &v0, &u1, &v1);
-			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1);
+			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1,
+				int(f.transfer));
 		} else {
 			kit.list_.add_rect_filled(tx, ty, tx + tw, ty + thp,
 				focused ? kit.colours_[ColourPress]
@@ -2631,7 +2719,7 @@ Browser::paint(Kit &kit) const
 bool
 Browser::thumbs_busy() const
 {
-	return this->thumbnailer_.busy(this->thumbnail_client_);
+	return this->thumbnailer_.foreground_busy(this->thumbnail_client_);
 }
 
 unique_ptr<Page>
@@ -2762,9 +2850,13 @@ void
 Browser::set_screen_profile(
 	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile)
 {
-	const bool reload_thumbs =
-		!profiles_equal(this->screen_profile_.get(), profile.get());
+	auto screen_icc = profile
+		? make_shared<const vector<uint8_t>>(profile->to_bytes())
+		: nullptr;
+	const bool reload_thumbs = bool(this->screen_icc_) != bool(screen_icc) ||
+		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
 	this->cmm_ = std::move(cmm);
+	this->screen_icc_ = std::move(screen_icc);
 	this->screen_profile_ = std::move(profile);
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	if (this->kit_.renderer_) {

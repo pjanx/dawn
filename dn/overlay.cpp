@@ -9,6 +9,7 @@
 
 #include "dn-overlay-frag-spv.h"
 #include "dn-overlay-vert-spv.h"
+#include "dn-thumb-frag-spv.h"
 #include "libdn/vk-device.hpp"
 
 #include <QtLogging>
@@ -282,10 +283,21 @@ OverlayList::add_image(float x0, float y0, float x1, float y1, float u0,
 
 void
 OverlayList::add_thumb(float x0, float y0, float x1, float y1, float u0,
-	float v0, float u1, float v1, Colour col)
+	float v0, float u1, float v1, int transfer, Colour col)
 {
 	this->tex_ = kOverlayTexThumbs;
 	add_quad(x0, y0, x1, y1, u0, v0, u1, v1, col, col, col, col);
+	const size_t first = this->mesh_.vertices.size() - 4;
+	for (size_t i = first; i < this->mesh_.vertices.size(); ++i) {
+		OverlayVertex &vertex = this->mesh_.vertices[i];
+		vertex.atlas_x0 = u0;
+		vertex.atlas_y0 = v0;
+		vertex.atlas_x1 = u1;
+		vertex.atlas_y1 = v1;
+		vertex.dest_w = abs(x1 - x0);
+		vertex.dest_h = abs(y1 - y0);
+		vertex.transfer = float(transfer);
+	}
 }
 
 bool
@@ -422,12 +434,20 @@ OverlayVulkan::create_pipeline()
 		.codeSize = dn_overlay_frag_words * sizeof(uint32_t),
 		.pCode = dn_overlay_frag,
 	};
+	VkShaderModuleCreateInfo thumb_frag_info{
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = dn_thumb_frag_words * sizeof(uint32_t),
+		.pCode = dn_thumb_frag,
+	};
 	check_vk(
 		vkCreateShaderModule(this->device_, &vert_info, nullptr, &this->vert_),
 		"vkCreateShaderModule overlay vert");
 	check_vk(
 		vkCreateShaderModule(this->device_, &frag_info, nullptr, &this->frag_),
 		"vkCreateShaderModule overlay frag");
+	check_vk(vkCreateShaderModule(this->device_, &thumb_frag_info, nullptr,
+				 &this->thumb_frag_),
+		"vkCreateShaderModule thumb frag");
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -460,7 +480,7 @@ OverlayVulkan::create_pipeline()
 		.stride = sizeof(OverlayVertex),
 		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
 	};
-	VkVertexInputAttributeDescription attributes[3]{
+	VkVertexInputAttributeDescription attributes[6]{
 		{.location = 0,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32_SFLOAT,
@@ -473,12 +493,24 @@ OverlayVulkan::create_pipeline()
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
 			.offset = offsetof(OverlayVertex, col)},
+		{.location = 3,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset = offsetof(OverlayVertex, atlas_x0)},
+		{.location = 4,
+			.binding = 0,
+			.format = VK_FORMAT_R32G32_SFLOAT,
+			.offset = offsetof(OverlayVertex, dest_w)},
+		{.location = 5,
+			.binding = 0,
+			.format = VK_FORMAT_R32_SFLOAT,
+			.offset = offsetof(OverlayVertex, transfer)},
 	};
 	VkPipelineVertexInputStateCreateInfo vertex_input{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1,
 		.pVertexBindingDescriptions = &binding,
-		.vertexAttributeDescriptionCount = 3,
+		.vertexAttributeDescriptionCount = 6,
 		.pVertexAttributeDescriptions = attributes,
 	};
 	VkPipelineInputAssemblyStateCreateInfo input_assembly{
@@ -541,6 +573,10 @@ OverlayVulkan::create_pipeline()
 	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
 				 &pipeline_info, nullptr, &this->pipeline_),
 		"vkCreateGraphicsPipelines overlay");
+	stages[1].module = this->thumb_frag_;
+	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
+				 &pipeline_info, nullptr, &this->thumb_pipeline_),
+		"vkCreateGraphicsPipelines thumbnails");
 	return true;
 }
 
@@ -818,10 +854,12 @@ OverlayVulkan::upload_thumb(const uint16_t *pixels, int width, int height,
 {
 	if (recreated)
 		*recreated = false;
+
 	if (!this->device_ || !pixels || width <= 0 || height <= 0 || dst_x < 0 ||
 		dst_y < 0 || atlas_side <= 0 || dst_x + width > atlas_side ||
 		dst_y + height > atlas_side)
 		return false;
+
 	const bool fresh = !this->thumb_image_ || this->thumb_side_ != atlas_side;
 	if (fresh) {
 		vkDeviceWaitIdle(this->device_);
@@ -848,6 +886,48 @@ OverlayVulkan::upload_thumb(const uint16_t *pixels, int width, int height,
 		if (recreated)
 			*recreated = true;
 	}
+	return true;
+}
+
+bool
+OverlayVulkan::rebuild_thumbs(
+	const vector<ThumbUpload> &uploads, int atlas_side)
+{
+	if (!this->device_ || atlas_side <= 0 || uploads.empty())
+		return false;
+
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkImageView view = VK_NULL_HANDLE;
+	if (!create_sampled(atlas_side, atlas_side, &image, &memory))
+		return false;
+
+	bool first = true;
+	for (const ThumbUpload &upload : uploads) {
+		if (!upload.pixels || upload.width <= 0 || upload.height <= 0 ||
+			upload.x < 0 || upload.y < 0 ||
+			upload.x + upload.width > atlas_side ||
+			upload.y + upload.height > atlas_side ||
+			!copy_rgba16(upload.pixels, upload.width, upload.height, image,
+				first ? VK_IMAGE_LAYOUT_UNDEFINED
+					  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+				upload.x, upload.y)) {
+			destroy_sampled(&image, &memory, &view);
+			return false;
+		}
+		first = false;
+	}
+
+	const VkComponentMapping bgra{VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_A};
+	bind_sampled(image, &view, this->descriptor_sets_[kOverlayTexThumbs], bgra);
+	vkDeviceWaitIdle(this->device_);
+	destroy_thumbs();
+	this->thumb_image_ = image;
+	this->thumb_memory_ = memory;
+	this->thumb_view_ = view;
+	this->thumb_side_ = atlas_side;
 	return true;
 }
 
@@ -985,7 +1065,6 @@ OverlayVulkan::record(
 		.maxDepth = 1.f,
 	};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->pipeline_);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &this->vertex_buffer_, &offset);
 	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);
@@ -999,6 +1078,7 @@ OverlayVulkan::record(
 		0, sizeof(push), &push);
 
 	uint32_t bound_tex = ~0u;
+	VkPipeline bound_pipeline = VK_NULL_HANDLE;
 	for (const OverlayCmd &draw_cmd : mesh.cmds) {
 		if (draw_cmd.idx_count == 0)
 			continue;
@@ -1007,6 +1087,14 @@ OverlayVulkan::record(
 		if (draw_cmd.tex > kOverlayTexThumbs ||
 			(draw_cmd.tex == kOverlayTexFont && !this->font_view_))
 			continue;
+		const VkPipeline pipeline = draw_cmd.tex == kOverlayTexThumbs
+			? this->thumb_pipeline_ : this->pipeline_;
+		if (!pipeline)
+			continue;
+		if (pipeline != bound_pipeline) {
+			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+			bound_pipeline = pipeline;
+		}
 		if (draw_cmd.tex != bound_tex) {
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 				this->pipeline_layout_, 0, 1,
@@ -1098,16 +1186,22 @@ OverlayVulkan::destroy_pipeline()
 		return;
 	if (this->pipeline_)
 		vkDestroyPipeline(this->device_, this->pipeline_, nullptr);
+	if (this->thumb_pipeline_)
+		vkDestroyPipeline(this->device_, this->thumb_pipeline_, nullptr);
 	if (this->pipeline_layout_)
 		vkDestroyPipelineLayout(this->device_, this->pipeline_layout_, nullptr);
 	if (this->vert_)
 		vkDestroyShaderModule(this->device_, this->vert_, nullptr);
 	if (this->frag_)
 		vkDestroyShaderModule(this->device_, this->frag_, nullptr);
+	if (this->thumb_frag_)
+		vkDestroyShaderModule(this->device_, this->thumb_frag_, nullptr);
 	this->pipeline_ = VK_NULL_HANDLE;
+	this->thumb_pipeline_ = VK_NULL_HANDLE;
 	this->pipeline_layout_ = VK_NULL_HANDLE;
 	this->vert_ = VK_NULL_HANDLE;
 	this->frag_ = VK_NULL_HANDLE;
+	this->thumb_frag_ = VK_NULL_HANDLE;
 }
 
 void

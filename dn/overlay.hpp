@@ -28,6 +28,13 @@ struct OverlayVertex {
 	float u = 0;
 	float v = 0;
 	Colour col{};
+	float atlas_x0 = 0;
+	float atlas_y0 = 0;
+	float atlas_x1 = 0;
+	float atlas_y1 = 0;
+	float dest_w = 0;
+	float dest_h = 0;
+	float transfer = 0;
 };
 
 constexpr uint32_t kOverlayTexFont = 0;
@@ -49,6 +56,14 @@ struct OverlayMesh {
 	std::vector<OverlayCmd> cmds;
 	float display_w = 0;
 	float display_h = 0;
+};
+
+struct ThumbUpload {
+	const uint16_t *pixels = nullptr;
+	int width = 0;
+	int height = 0;
+	int x = 0;
+	int y = 0;
 };
 
 class OverlayList
@@ -87,7 +102,7 @@ public:
 	void add_image(float x0, float y0, float x1, float y1, float u0, float v0,
 		float u1, float v1, Colour col);
 	void add_thumb(float x0, float y0, float x1, float y1, float u0, float v0,
-		float u1, float v1, Colour col = {1, 1, 1, 1});
+		float u1, float v1, int transfer, Colour col = {1, 1, 1, 1});
 
 	[[nodiscard]] const OverlayMesh &mesh() const { return this->mesh_; }
 };
@@ -125,11 +140,13 @@ class OverlayVulkan
 	VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
 	VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 	VkPipeline pipeline_ = VK_NULL_HANDLE;
+	VkPipeline thumb_pipeline_ = VK_NULL_HANDLE;
 	VkSampler sampler_ = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet descriptor_sets_[2]{};
 	VkShaderModule vert_ = VK_NULL_HANDLE;
 	VkShaderModule frag_ = VK_NULL_HANDLE;
+	VkShaderModule thumb_frag_ = VK_NULL_HANDLE;
 
 	VkImage font_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory font_memory_ = VK_NULL_HANDLE;
@@ -168,6 +185,7 @@ public:
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
 		int dst_y, int atlas_side, bool *recreated = nullptr);
+	bool rebuild_thumbs(const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();
 	void record(
 		VkCommandBuffer cmd, uint32_t image_index, const OverlayMesh &mesh);

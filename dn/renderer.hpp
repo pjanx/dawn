@@ -122,6 +122,7 @@ public:
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
 		int dst_y, int atlas_side, bool *recreated = nullptr);
+	bool rebuild_thumbs(const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.

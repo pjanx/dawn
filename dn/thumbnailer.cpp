@@ -6,6 +6,7 @@
 //
 
 #include "thumbnailer.hpp"
+#include "thumbnail-cache.hpp"
 
 #include <QMetaObject>
 #include <QThread>
@@ -32,6 +33,7 @@ namespace
 {
 
 constexpr uint64_t kThumbRingBytes = 256ull * 1024 * 1024;
+constexpr size_t kPendingBundleBytes = 1ull << 30;
 constexpr size_t kPriorityCount = 4;
 constexpr size_t kGuiBatch = 32;
 
@@ -39,6 +41,12 @@ constexpr size_t kGuiBatch = 32;
 // records that work in its client. Hold such GPU callbacks until the CPU
 // completion has at least been placed on the GUI queue.
 thread_local shared_ptr<atomic_bool> current_cpu_gate;
+
+bool
+same_source(const ThumbnailSource &a, const ThumbnailSource &b)
+{
+	return a.uri == b.uri && a.mtime == b.mtime && a.size == b.size;
+}
 
 size_t
 priority_index(Thumbnailer::Priority priority)
@@ -89,6 +97,7 @@ struct Thumbnailer::Impl {
 	struct GuiTask {
 		Client client = 0;
 		uint64_t epoch = 0;
+		Priority priority = Priority::Maintenance;
 		Completion completion;
 	};
 	struct GpuTask {
@@ -100,6 +109,20 @@ struct Thumbnailer::Impl {
 		shared_ptr<atomic_bool> gate;
 		optional<dawn::ThumbScaler::Result> result;
 	};
+	struct BundleSlot {
+		Reservation id = 0;
+		Client client = 0;
+		uint64_t epoch = 0;
+		ThumbnailSource source;
+		int top_tier = 0;
+		size_t reserved_bytes = 0;
+		Priority priority = Priority::Maintenance;
+		shared_ptr<const ThumbnailBundle> bundle;
+	};
+	struct EncodeJob {
+		Reservation reservation = 0;
+		shared_ptr<const ThumbnailBundle> bundle;
+	};
 
 	Thumbnailer *owner = nullptr;
 	mutable mutex mu;
@@ -110,12 +133,18 @@ struct Thumbnailer::Impl {
 	unordered_map<Client, ClientState> clients;
 	unordered_map<uint64_t, GpuTask> gpu_tasks;
 	vector<std::thread> workers;
+	vector<std::thread> encoders;
+	deque<EncodeJob> encode;
+	deque<Reservation> encoded;
+	unordered_map<Reservation, BundleSlot> bundles;
 	size_t worker_count = 1;
+	size_t bundle_bytes = 0;
 	unique_ptr<dawn::ThumbScaler> scaler;
 	QTimer timer;
 	atomic_bool pump_posted = false;
 	uint64_t next_client = 1;
 	uint64_t next_gpu = 1;
+	uint64_t next_reservation = 1;
 	size_t cpu_running = 0;
 	size_t background_running = 0;
 	size_t background_max = 1;
@@ -126,12 +155,14 @@ struct Thumbnailer::Impl {
 	bool have_cpu() const;
 	bool pop_cpu(shared_ptr<CpuTask> *task);
 	void worker_loop();
+	void encoder_loop();
 	void erase_queued(Client id, ClientState &state);
 	void erase_gui(Client id, ClientState &state);
 	void erase_gpu(Client id, ClientState &state);
 	void drop_gpu(uint64_t gpu_id);
 	void fail_gpu(uint64_t gpu_id, string path);
 	bool scaler_queue(const dawn::ThumbScaler::Job &job);
+	void erase_unpublished(Client id);
 };
 
 Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
@@ -140,6 +171,7 @@ Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
 	timer.setSingleShot(true);
 	QObject::connect(&timer, &QTimer::timeout, owner,
 		[thumbnailer] { thumbnailer->pump(); });
+
 	unsigned count =
 		worker_count ? worker_count : std::thread::hardware_concurrency();
 	if (!count)
@@ -149,6 +181,9 @@ Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
 	workers.reserve(count);
 	for (unsigned i = 0; i < count; ++i)
 		workers.emplace_back([this] { worker_loop(); });
+	encoders.reserve(count);
+	for (unsigned i = 0; i < count; ++i)
+		encoders.emplace_back([this] { encoder_loop(); });
 }
 
 Thumbnailer::Impl::~Impl()
@@ -164,6 +199,7 @@ Thumbnailer::Impl::shutdown()
 		stop = true;
 		for (auto &queue : cpu)
 			queue.clear();
+		encode.clear();
 		gui.clear();
 		gpu_tasks.clear();
 		clients.clear();
@@ -174,6 +210,15 @@ Thumbnailer::Impl::shutdown()
 	for (std::thread &worker : workers)
 		if (worker.joinable())
 			worker.join();
+	for (std::thread &encoder : encoders)
+		if (encoder.joinable())
+			encoder.join();
+	{
+		lock_guard lock(mu);
+		bundles.clear();
+		encoded.clear();
+		bundle_bytes = 0;
+	}
 	timer.stop();
 	scaler.reset();
 }
@@ -223,7 +268,7 @@ Thumbnailer::Impl::pop_cpu(shared_ptr<CpuTask> *task)
 void
 Thumbnailer::Impl::worker_loop()
 {
-	for (;;) {
+	while (true) {
 		shared_ptr<CpuTask> task;
 		{
 			unique_lock lock(mu);
@@ -268,13 +313,66 @@ Thumbnailer::Impl::worker_loop()
 			if (client != clients.end() && completion &&
 				client->second.epoch == task->epoch) {
 				client->second.gui++;
-				gui.push_back(
-					{task->client, task->epoch, std::move(completion)});
+				gui.push_back({task->client, task->epoch, task->running_priority,
+					std::move(completion)});
 			}
 		}
 		task->gate->store(true, memory_order_release);
 		cv.notify_all();
 		owner->schedule_pump();
+	}
+}
+
+void
+Thumbnailer::Impl::encoder_loop()
+{
+	while (true) {
+		EncodeJob job;
+		{
+			unique_lock lock(mu);
+			cv.wait(lock, [this] { return stop || !encode.empty(); });
+			if (stop && encode.empty())
+				return;
+			job = std::move(encode.front());
+			encode.pop_front();
+		}
+		if (job.bundle) {
+			for (const ThumbnailTierPixels &tier : job.bundle->tiers) {
+				if (!tier.pixels || tier.pixels->empty())
+					continue;
+				QString error;
+				if (!thumbnail_cache_write(job.bundle->source, tier.tier,
+						tier.pixels->data(), tier.width, tier.height,
+						job.bundle->image_width, job.bundle->image_height,
+						&error)) {
+					if (error.isEmpty())
+						error = QStringLiteral("thumbnail cache write failed");
+					qWarning("%s: tier %d: %s",
+						qUtf8Printable(job.bundle->source.path), tier.tier,
+						qUtf8Printable(error));
+				}
+			}
+		}
+		{
+			lock_guard lock(mu);
+			if (stop)
+				continue;
+			encoded.push_back(job.reservation);
+		}
+		owner->schedule_pump();
+	}
+}
+
+void
+Thumbnailer::Impl::erase_unpublished(Client id)
+{
+	for (auto it = bundles.begin(); it != bundles.end();) {
+		if (it->second.client != id || it->second.bundle) {
+			++it;
+			continue;
+		}
+		bundle_bytes -= it->second.reserved_bytes;
+		it = bundles.erase(it);
 	}
 }
 
@@ -305,6 +403,8 @@ Thumbnailer::Impl::erase_gpu(Client id, ClientState &state)
 {
 	for (auto it = gpu_tasks.begin(); it != gpu_tasks.end();) {
 		if (it->second.client == id) {
+			if (scaler)
+				scaler->cancel(it->first);
 			state.gpu--;
 			it = gpu_tasks.erase(it);
 		} else {
@@ -371,6 +471,7 @@ Thumbnailer::init(const GpuContext &gpu)
 		return true;
 	if (!gpu.phys() || !gpu.device() || !gpu.queue())
 		return false;
+
 	auto scaler = make_unique<dawn::ThumbScaler>();
 	string error;
 	if (!scaler->init(gpu.phys(), gpu.device(), gpu.queue(), gpu.queue_family(),
@@ -401,9 +502,11 @@ Thumbnailer::remove_client(Client id)
 	auto found = impl_->clients.find(id);
 	if (found == impl_->clients.end())
 		return;
+
 	impl_->erase_queued(id, found->second);
 	impl_->erase_gui(id, found->second);
 	impl_->erase_gpu(id, found->second);
+	impl_->erase_unpublished(id);
 	impl_->clients.erase(found);
 }
 
@@ -417,6 +520,7 @@ Thumbnailer::set_epoch(Client id, uint64_t epoch)
 	impl_->erase_queued(id, found->second);
 	impl_->erase_gui(id, found->second);
 	impl_->erase_gpu(id, found->second);
+	impl_->erase_unpublished(id);
 	found->second.epoch = epoch;
 	found->second.activity_pending = true;
 	schedule_pump();
@@ -452,7 +556,7 @@ Thumbnailer::submit(
 		client->second.queued++;
 		client->second.activity_pending = true;
 	}
-	impl_->cv.notify_one();
+	impl_->cv.notify_all();
 	schedule_pump();
 	return true;
 }
@@ -467,6 +571,7 @@ Thumbnailer::reprioritize(
 	if (impl_->stop || client == impl_->clients.end() ||
 		client->second.epoch != epoch)
 		return false;
+
 	bool found_any = false;
 	if (auto found = client->second.keyed.find(key);
 		found != client->second.keyed.end()) {
@@ -557,6 +662,103 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 	return true;
 }
 
+Thumbnailer::Reservation
+Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
+	const ThumbnailSource &source, int top_tier, size_t bytes, Priority priority)
+{
+	if (!bytes || bytes > kPendingBundleBytes)
+		return 0;
+
+	lock_guard lock(impl_->mu);
+	auto client = impl_->clients.find(id);
+	if (impl_->stop || client == impl_->clients.end() ||
+		client->second.epoch != epoch ||
+		impl_->bundles.size() >= impl_->encoders.size() ||
+		bytes > kPendingBundleBytes - impl_->bundle_bytes)
+		return 0;
+	for (auto &[reservation, slot] : impl_->bundles) {
+		if (same_source(slot.source, source) && slot.top_tier == top_tier) {
+			if (priority_index(priority) < priority_index(slot.priority))
+				slot.priority = priority;
+			return 0;
+		}
+	}
+	Reservation reservation = impl_->next_reservation++;
+	if (!reservation)
+		reservation = impl_->next_reservation++;
+	impl_->bundles.emplace(reservation,
+		Impl::BundleSlot{reservation, id, epoch, source, top_tier, bytes,
+			priority, {}});
+	impl_->bundle_bytes += bytes;
+	return reservation;
+}
+
+void
+Thumbnailer::cancel_bundle(Reservation reservation)
+{
+	if (!reservation)
+		return;
+
+	lock_guard lock(impl_->mu);
+	auto found = impl_->bundles.find(reservation);
+	if (found == impl_->bundles.end() || found->second.bundle)
+		return;
+
+	impl_->bundle_bytes -= found->second.reserved_bytes;
+	impl_->bundles.erase(found);
+}
+
+bool
+Thumbnailer::publish_bundle(
+	Reservation reservation, shared_ptr<const ThumbnailBundle> bundle)
+{
+	if (!reservation || !bundle || bundle->tiers.empty())
+		return false;
+	{
+		lock_guard lock(impl_->mu);
+		auto found = impl_->bundles.find(reservation);
+		if (impl_->stop || found == impl_->bundles.end() ||
+			found->second.bundle ||
+			!same_source(found->second.source, bundle->source) ||
+			found->second.top_tier != bundle->top_tier ||
+			bundle->bytes() > found->second.reserved_bytes)
+			return false;
+
+		found->second.client = 0;
+		found->second.epoch = 0;
+		found->second.bundle = bundle;
+		impl_->encode.push_back({reservation, std::move(bundle)});
+	}
+	impl_->cv.notify_all();
+	return true;
+}
+
+shared_ptr<const ThumbnailBundle>
+Thumbnailer::pending_bundle(const ThumbnailSource &source, int tier) const
+{
+	lock_guard lock(impl_->mu);
+	for (const auto &[reservation, slot] : impl_->bundles) {
+		(void) reservation;
+		if (slot.bundle && same_source(slot.source, source) &&
+			slot.bundle->find(tier))
+			return slot.bundle;
+	}
+	return {};
+}
+
+size_t
+Thumbnailer::pending_bundle_limit() const
+{
+	return impl_->encoders.size();
+}
+
+size_t
+Thumbnailer::pending_bundle_bytes() const
+{
+	lock_guard lock(impl_->mu);
+	return impl_->bundle_bytes;
+}
+
 size_t
 Thumbnailer::background_limit() const
 {
@@ -574,11 +776,37 @@ Thumbnailer::busy(Client id) const
 	return state.queued || state.running || state.gpu || state.gui;
 }
 
+bool
+Thumbnailer::foreground_busy(Client id) const
+{
+	lock_guard lock(impl_->mu);
+	auto client = impl_->clients.find(id);
+	if (client == impl_->clients.end())
+		return false;
+	for (const auto &[key, task] : client->second.keyed) {
+		(void) key;
+		if (priority_index(task->priority) < priority_index(Priority::Dimensions))
+			return true;
+	}
+	for (const auto &[gpu_id, task] : impl_->gpu_tasks) {
+		(void) gpu_id;
+		if (task.client == id && priority_index(task.priority) <
+			priority_index(Priority::Dimensions))
+			return true;
+	}
+	for (const Impl::GuiTask &task : impl_->gui)
+		if (task.client == id && priority_index(task.priority) <
+			priority_index(Priority::Dimensions))
+			return true;
+	return false;
+}
+
 void
 Thumbnailer::schedule_pump()
 {
 	if (impl_->pump_posted.exchange(true))
 		return;
+
 	QMetaObject::invokeMethod(this, [this] { pump(); }, Qt::QueuedConnection);
 }
 
@@ -586,6 +814,28 @@ void
 Thumbnailer::pump()
 {
 	impl_->pump_posted = false;
+	vector<Completion> encoder_activity;
+	{
+		lock_guard lock(impl_->mu);
+		bool released = false;
+		while (!impl_->encoded.empty()) {
+			const Reservation reservation = impl_->encoded.front();
+			impl_->encoded.pop_front();
+			auto found = impl_->bundles.find(reservation);
+			if (found == impl_->bundles.end())
+				continue;
+			impl_->bundle_bytes -= found->second.reserved_bytes;
+			impl_->bundles.erase(found);
+			released = true;
+		}
+		if (released)
+			for (auto &entry : impl_->clients)
+				if (entry.second.activity)
+					encoder_activity.push_back(entry.second.activity);
+	}
+	for (Completion &notify : encoder_activity)
+		notify();
+
 	// CPU completions establish browser state needed by any GPU job they
 	// queued. Always apply them before polling those jobs.
 	size_t gui_count = 0;
@@ -652,6 +902,7 @@ Thumbnailer::pump()
 		lock_guard lock(impl_->mu);
 		if (!impl_->gui.empty())
 			schedule_pump();
+
 		// A registered GPU task can be between copying a tile and publishing it
 		// to the scaler, in which case scaler->busy() is momentarily false.
 		// Keep polling until queue() has returned and the task has been

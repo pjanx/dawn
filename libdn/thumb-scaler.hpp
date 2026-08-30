@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -36,10 +37,17 @@ public:
 	};
 
 	struct Job {
-		const uint16_t *pixels = nullptr;  // BGRA16, premultiplied
+		struct Output {
+			uint32_t width = 0;
+			uint32_t height = 0;
+			int tag = 0;
+		};
+
+		std::shared_ptr<const std::vector<uint16_t>> pixels;
+		// BGRA16, premultiplied. Ownership lasts through staging.
 		size_t stride = 0;
 		uint32_t src_w = 0, src_h = 0;
-		uint32_t out_w = 0, out_h = 0;
+		std::vector<Output> outputs;
 		Orientation orientation = Orientation::Rotate0;
 		Transfer transfer = Transfer::Srgb;
 		Priority priority = Priority::Maintenance;
@@ -47,11 +55,17 @@ public:
 		std::string path;
 	};
 	struct Result {
+		struct Output {
+			uint32_t width = 0;
+			uint32_t height = 0;
+			int tag = 0;
+			std::vector<uint16_t> data;
+		};
+
 		uint64_t user = 0;
 		std::string path;
-		uint32_t out_w = 0, out_h = 0;
 		bool failed = false;
-		std::vector<uint16_t> data;  // destination-sized BGRA16
+		std::vector<Output> outputs;
 	};
 
 	ThumbScaler();
@@ -63,8 +77,12 @@ public:
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, uint64_t ring_bytes, std::string *error);
 	/// Worker. Copies and queues one image, blocking only for staging space.
+	/// Every output is independently filtered from that common input.
 	/// True guarantees one eventual success or failure Result.
 	bool queue(const Job &job);
+	/// Cancel work that has not been submitted to Vulkan. Submitted work may
+	/// finish, but its result is discarded by the caller's generation gate.
+	bool cancel(uint64_t user);
 	/// Change the priority of a job waiting for staging or submission.
 	bool reprioritize(uint64_t user, Priority priority);
 	void flush();                          // GUI: submit one bounded batch

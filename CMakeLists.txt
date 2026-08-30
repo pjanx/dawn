@@ -191,9 +191,15 @@ configure_file(
 	"${PROJECT_BINARY_DIR}/dawn-config.h")
 
 include_directories("${PROJECT_SOURCE_DIR}")
+include(CTest)
+
 add_subdirectory(libdn)
 add_subdirectory(dnthumbd)
 add_subdirectory(dn)
+
+if (BUILD_TESTING)
+	add_subdirectory(tests)
+endif()
 
 if (WIN32)
 	install(TARGETS dn libdn
@@ -256,11 +262,6 @@ else()
 	if (DN_DESKTOP_UPDATER AND NOT CMAKE_CROSSCOMPILING)
 		install(CODE "${dn_desktop_hook}")
 	endif()
-endif()
-
-include(CTest)
-if (BUILD_TESTING)
-	add_subdirectory(tests)
 endif()
 
 set(CPACK_PACKAGE_VENDOR "The Dawn Authors")

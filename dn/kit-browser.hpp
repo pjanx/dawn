@@ -48,10 +48,13 @@ struct Browser : Widget {
 		uint32_t image_h = 0;
 		int ram_w = 0;
 		int ram_h = 0;
+		int ram_tier = -1;
 		std::vector<uint16_t> ram;
 		bool ram_interim = false;
 		bool ram_pending = false;
-		bool cache_bypass = false;
+		bool persistent_checked = false;
+		bool generation_needed = false;
+		Thumbnailer::Reservation reservation = 0;
 		bool regen_failed = false;
 		dawn::Transfer transfer = dawn::Transfer::Srgb;
 		Sheet::Packed gpu;
@@ -78,6 +81,14 @@ struct Browser : Widget {
 		uint32_t w = 0;
 		uint32_t h = 0;
 	};
+	struct ThumbInflight {
+		uint64_t generation = 0;
+		int64_t mtime = 0;
+		uint64_t size = 0;
+		int tier = 0;
+		Thumbnailer::Priority priority = Thumbnailer::Priority::Dimensions;
+		bool regeneration = false;
+	};
 
 	Kit &kit_;
 	Thumbnailer &thumbnailer_;
@@ -90,6 +101,7 @@ struct Browser : Widget {
 	QUrl dir_url_;
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
+	std::shared_ptr<const std::vector<uint8_t>> screen_icc_;
 
 	bool show_names_ = false;
 	// The toolbar search field, whose text narrows the listing; it is
@@ -123,7 +135,7 @@ struct Browser : Widget {
 	std::vector<File> files_;
 	std::vector<DirRow> side_dirs_;
 	std::unordered_map<std::string, CachedSize> size_cache_;
-	std::unordered_map<std::string, Thumbnailer::Priority> thumb_inflight_;
+	std::unordered_map<std::string, ThumbInflight> thumb_inflight_;
 
 	struct HistEntry {
 		QUrl url;

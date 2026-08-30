@@ -27,6 +27,8 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
 
  * Never use `static_cast<T>(x)`.  Prefer `T(x)`, or `(T)(x)`.
 
+ * Unless meaning differs, it is `i++` and not `++i`.
+
  * The preprocessor's `defined` is an operator, not a function.  No parentheses.
 
  * `sizeof` on objects is an operator, not a function.  No parentheses.

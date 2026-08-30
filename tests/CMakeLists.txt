@@ -98,14 +98,18 @@ add_test(NAME thumbnail_cache COMMAND test-thumbnail-cache)
 
 add_executable(test-thumbnailer
 	test-thumbnailer.cpp
-	"${PROJECT_SOURCE_DIR}/dn/thumbnailer.cpp")
+	"${PROJECT_SOURCE_DIR}/dn/thumbnailer.cpp"
+	"${PROJECT_SOURCE_DIR}/dn/thumbnail-cache.cpp")
 target_include_directories(test-thumbnailer PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn"
 	"${PROJECT_SOURCE_DIR}/libdn")
 target_link_libraries(test-thumbnailer PRIVATE
 	dawn::libdn
 	Qt6::Gui
-	Threads::Threads)
+	Threads::Threads
+	PkgConfig::WEBP
+	PkgConfig::WEBPDEMUX
+	PkgConfig::WEBPMUX)
 add_test(NAME thumbnailer COMMAND test-thumbnailer)
 
 add_executable(test-lxdr test-lxdr.cpp)
