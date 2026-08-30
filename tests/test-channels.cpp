@@ -9,6 +9,7 @@
 
 #include "libdn/libdn-loaders.h"
 #include "libdn/libdn.h"
+#include "test.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -29,17 +30,6 @@ namespace fs = filesystem;
 
 namespace
 {
-
-int g_failures = 0;
-
-#define CHECK(cond)                                                            \
-	do {                                                                       \
-		if (!(cond)) {                                                         \
-			fprintf(stderr, "CHECK failed: %s (%s:%d)\n", #cond, __FILE__,     \
-				__LINE__);                                                     \
-			++g_failures;                                                      \
-		}                                                                      \
-	} while (0)
 
 bool
 near_u16(uint16_t a, uint16_t b, uint16_t tol)
@@ -71,10 +61,9 @@ expect_bgra(const char *label, Pixel p, uint16_t b, uint16_t g, uint16_t r,
 {
 	if (!near_u16(p.b, b, tol) || !near_u16(p.g, g, tol) ||
 		!near_u16(p.r, r, tol) || !near_u16(p.a, a, tol)) {
-		fprintf(stderr,
-			"%s: got BGRA (%u,%u,%u,%u) expected (~%u,~%u,~%u,~%u) tol=%u\n",
+		test::fail(
+			"%s: got BGRA (%u,%u,%u,%u) expected (~%u,~%u,~%u,~%u) tol=%u",
 			label, p.b, p.g, p.r, p.a, b, g, r, a, tol);
-		++g_failures;
 	}
 }
 
@@ -88,9 +77,8 @@ load_fixture(const string &name)
 	dawn::Error error;
 	dawn::ImagePtr img = dawn::open(ctx, &error);
 	if (!img) {
-		fprintf(stderr, "open(%s): %s\n", path.string().c_str(),
-			error.message.c_str());
-		++g_failures;
+		test::fail(
+			"open(%s): %s", path.string().c_str(), error.message.c_str());
 	}
 	return img;
 }
@@ -164,41 +152,40 @@ test_solid(const char *path, uint16_t b, uint16_t g, uint16_t r, uint16_t tol)
 void
 test_loaders_solid()
 {
-	// Lossless / exact formats
-	constexpr uint16_t exact = 0;
-	test_solid("red.png", 0, 0, 65535, exact);
-	test_solid("green.png", 0, 65535, 0, exact);
-	test_solid("blue.png", 65535, 0, 0, exact);
-	test_solid("white.png", 65535, 65535, 65535, exact);
-	test_solid("black.png", 0, 0, 0, exact);
-
-	test_solid("red16.png", 0, 0, 65535, exact);
-	test_solid("green16.png", 0, 65535, 0, exact);
-	test_solid("blue16.png", 65535, 0, 0, exact);
-
-	test_solid("red.bmp", 0, 0, 65535, exact);
-	test_solid("green.bmp", 0, 65535, 0, exact);
-	test_solid("blue.bmp", 65535, 0, 0, exact);
-
-	test_solid("red.tga", 0, 0, 65535, exact);
-	test_solid("green.tga", 0, 65535, 0, exact);
-	test_solid("blue.tga", 65535, 0, 0, exact);
-
-	test_solid("red.webp", 0, 0, 65535, exact);
-	test_solid("green.webp", 0, 65535, 0, exact);
-	test_solid("blue.webp", 65535, 0, 0, exact);
+	struct Solid {
+		const char *path;
+		uint16_t b, g, r, tolerance = 0;
+	};
+	const Solid solids[] = {
+		{"red.png", 0, 0, 65535},
+		{"green.png", 0, 65535, 0},
+		{"blue.png", 65535, 0, 0},
+		{"white.png", 65535, 65535, 65535},
+		{"black.png", 0, 0, 0},
+		{"red16.png", 0, 0, 65535},
+		{"green16.png", 0, 65535, 0},
+		{"blue16.png", 65535, 0, 0},
+		{"red.bmp", 0, 0, 65535},
+		{"green.bmp", 0, 65535, 0},
+		{"blue.bmp", 65535, 0, 0},
+		{"red.tga", 0, 0, 65535},
+		{"green.tga", 0, 65535, 0},
+		{"blue.tga", 65535, 0, 0},
+		{"red.webp", 0, 0, 65535},
+		{"green.webp", 0, 65535, 0},
+		{"blue.webp", 65535, 0, 0},
+		{"red.jpg", 0, 0, 65535, 514},
+		{"green.jpg", 0, 65535, 0, 514},
+		{"blue.jpg", 65535, 0, 0, 514},
+	};
+	for (const Solid &solid : solids)
+		test_solid(solid.path, solid.b, solid.g, solid.r, solid.tolerance);
 
 #if DAWN_WITH_LIBTIFF
-	test_solid("red.tif", 0, 0, 65535, exact);
-	test_solid("green.tif", 0, 65535, 0, exact);
-	test_solid("blue.tif", 65535, 0, 0, exact);
+	test_solid("red.tif", 0, 0, 65535, 0);
+	test_solid("green.tif", 0, 65535, 0, 0);
+	test_solid("blue.tif", 65535, 0, 0, 0);
 #endif
-
-	// JPEG may round-trip with tiny error even at q=100 / 4:4:4.
-	constexpr uint16_t jpeg_tol = 257 * 2;
-	test_solid("red.jpg", 0, 0, 65535, jpeg_tol);
-	test_solid("green.jpg", 0, 65535, 0, jpeg_tol);
-	test_solid("blue.jpg", 65535, 0, 0, jpeg_tol);
 }
 
 void
@@ -224,8 +211,7 @@ test_jpeg_cms_8_to_16()
 	dawn::Error error;
 	dawn::ImagePtr img = dawn::open(ctx, &error);
 	if (!img) {
-		fprintf(stderr, "jpeg cms blue.jpg: %s\n", error.message.c_str());
-		++g_failures;
+		test::fail("jpeg cms blue.jpg: %s", error.message.c_str());
 		return;
 	}
 	expect_bgra("jpeg cms blue.jpg", pixel0(*img), 65535, 0, 0, 65535, 257 * 2);
@@ -243,8 +229,7 @@ test_cmyk_cms_opaque()
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
 	if (bytes.empty()) {
-		fprintf(stderr, "cmyk-lab.icc missing\n");
-		++g_failures;
+		test::fail("cmyk-lab.icc missing");
 		return;
 	}
 	auto src = cmm->get_profile(bytes);
@@ -255,14 +240,8 @@ test_cmyk_cms_opaque()
 	const uint8_t cmyk[4] = {0, 255, 255, 0};
 	cmm->convert_cmyk8(*img, cmyk, src.get(), srgb.get());
 	Pixel p = pixel0(*img);
-	if (p.a != 65535) {
-		fprintf(stderr, "cmyk cms: alpha %u (premul-zero trap)\n", p.a);
-		++g_failures;
-	}
-	if (unsigned(p.b) + p.g + p.r == 0) {
-		fprintf(stderr, "cmyk cms: RGB all zero\n");
-		++g_failures;
-	}
+	CHECK(p.a == 65535);
+	CHECK(unsigned(p.b) + p.g + p.r != 0);
 }
 
 void
@@ -291,9 +270,8 @@ test_cms_tiled()
 			!near_u16(p[i * 4 + 1], 0, 257 * 2) ||
 			!near_u16(p[i * 4 + 2], 65535, 257 * 2) ||
 			!near_u16(p[i * 4 + 3], 65535, 0)) {
-			fprintf(stderr, "tiled cms: pixel %u BGRA (%u,%u,%u,%u)\n", i,
+			test::fail("tiled cms: pixel %u BGRA (%u,%u,%u,%u)", i,
 				p[i * 4 + 0], p[i * 4 + 1], p[i * 4 + 2], p[i * 4 + 3]);
-			++g_failures;
 			break;
 		}
 	}
@@ -349,8 +327,7 @@ test_large_icc_and_p3_red()
 	dawn::Error error;
 	dawn::ImagePtr image = dawn::detail::load_wuffs(bytes, context, &error);
 	if (!image) {
-		fprintf(stderr, "Wuffs P3 fixture: %s\n", error.message.c_str());
-		++g_failures;
+		test::fail("Wuffs P3 fixture: %s", error.message.c_str());
 		return;
 	}
 	CHECK(image->width == 200 && image->height == 100);
@@ -382,8 +359,7 @@ test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 
 	dawn::ImagePtr scaled = img->render->render(nullptr, nullptr, 2.0);
 	if (!scaled) {
-		fprintf(stderr, "%s: render(scale=2) failed\n", path);
-		++g_failures;
+		test::fail("%s: render(scale=2) failed", path);
 		return;
 	}
 	CHECK(scaled->width == img->width * 2);
@@ -430,16 +406,16 @@ void
 near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 {
 	if (fabs(x - xe) > tol || fabs(y - ye) > tol) {
-		fprintf(stderr, "%s: xy=(%.5f, %.5f) expected (~%.5f, ~%.5f)\n", label,
-			x, y, xe, ye);
-		++g_failures;
+		test::fail(
+			"%s: xy=(%.5f, %.5f) expected (~%.5f, ~%.5f)", label, x, y, xe, ye);
 	}
 }
 
 void
 test_chromaticities()
 {
-	CHECK(dawn::profile_chromaticities(nullptr).model == dawn::ColorModel::Unknown);
+	CHECK(dawn::profile_chromaticities(nullptr).model ==
+		dawn::ColorModel::Unknown);
 
 	auto cmm = dawn::Cmm::get_default();
 	auto srgb = cmm->get_profile_sRGB();
@@ -501,8 +477,7 @@ test_chromaticities()
 			near_xy("P3 R", p.x[0], p.y[0], 0.680, 0.320, 0.01);
 			near_xy("P3 G", p.x[1], p.y[1], 0.265, 0.690, 0.01);
 		} else {
-			fprintf(stderr, "P3 effective_profile missing\n");
-			++g_failures;
+			test::fail("P3 effective_profile missing");
 		}
 	}
 }
@@ -522,8 +497,7 @@ test_png_text_after_idat()
 	dawn::Error error;
 	dawn::ImagePtr image = dawn::open_from_data(bytes, ctx, &error);
 	if (!image) {
-		fprintf(stderr, "text-after-idat: %s\n", error.message.c_str());
-		++g_failures;
+		test::fail("text-after-idat: %s", error.message.c_str());
 		return;
 	}
 	CHECK(!error);
@@ -562,23 +536,18 @@ test_profile_transfer()
 int
 main()
 {
-	test_pack_helpers();
-	test_loaders_solid();
-	test_jpeg_cms_8_to_16();
-	test_cmyk_cms_opaque();
-	test_cms_tiled();
-	test_rgbw_2x2();
-	test_premul_alpha();
-	test_large_icc_and_p3_red();
-	test_svg();
-	test_chromaticities();
-	test_png_text_after_idat();
-	test_profile_transfer();
-
-	if (g_failures) {
-		fprintf(stderr, "%d check(s) failed\n", g_failures);
-		return 1;
-	}
-	puts("ok");
-	return 0;
+	return test::run({
+		{"packing", test_pack_helpers},
+		{"solid image loaders", test_loaders_solid},
+		{"JPEG CMS", test_jpeg_cms_8_to_16},
+		{"CMYK CMS", test_cmyk_cms_opaque},
+		{"tiled CMS", test_cms_tiled},
+		{"RGBW image", test_rgbw_2x2},
+		{"premultiplied alpha", test_premul_alpha},
+		{"large ICC profile", test_large_icc_and_p3_red},
+		{"SVG rendering", test_svg},
+		{"chromaticities", test_chromaticities},
+		{"PNG text", test_png_text_after_idat},
+		{"profile transfer", test_profile_transfer},
+	});
 }

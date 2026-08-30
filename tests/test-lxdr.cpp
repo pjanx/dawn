@@ -6,7 +6,9 @@
 //
 
 #include "libdn/ipc.hpp"
+
 #include "ipc/instance.lxdr.hpp"
+#include "test.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,17 +24,6 @@ namespace inst = dawn::ipc::instance;
 
 namespace
 {
-
-int g_failures = 0;
-
-#define CHECK(cond)                                                            \
-	do {                                                                       \
-		if (!(cond)) {                                                         \
-			fprintf(stderr, "CHECK failed: %s (%s:%d)\n", #cond, __FILE__,     \
-				__LINE__);                                                     \
-			++g_failures;                                                      \
-		}                                                                      \
-	} while (0)
 
 template <typename T>
 vector<byte>
@@ -63,12 +54,11 @@ check_golden(
 {
 	if (bytes_eq(got, want))
 		return;
-	fprintf(stderr, "golden %s: got %zu bytes, want %zu\n", label, got.size(),
-		want.size());
+	test::fail(
+		"golden %s: got %zu bytes, want %zu", label, got.size(), want.size());
 	for (size_t i = 0; i < got.size(); ++i)
 		fprintf(stderr, " %02x", uint8_t(got[i]));
 	fprintf(stderr, "\n");
-	++g_failures;
 }
 
 void
@@ -353,14 +343,8 @@ test_invalid_utf8()
 void
 test_zero_and_unknown_enum()
 {
-	{
-		const byte raw[] = {byte{0}};
-		dawn::ipc::Decoder dec(raw);
-		inst::HelloResult value{};
-		CHECK(!decode(dec, value));
-	}
-	{
-		const byte raw[] = {byte{99}};
+	for (byte tag : {byte{0}, byte{99}}) {
+		const byte raw[] = {tag};
 		dawn::ipc::Decoder dec(raw);
 		inst::HelloResult value{};
 		CHECK(!decode(dec, value));
@@ -411,21 +395,16 @@ test_huge_array_count()
 int
 main()
 {
-	test_round_trip_hello_reply();
-	test_round_trip_result();
-	test_round_trip_frames();
-	test_goldens();
-	test_truncation();
-	test_trailing_bytes();
-	test_invalid_utf8();
-	test_zero_and_unknown_enum();
-	test_unknown_union_tag();
-	test_huge_array_count();
-
-	if (g_failures) {
-		fprintf(stderr, "%d check(s) failed\n", g_failures);
-		return 1;
-	}
-	puts("ok");
-	return 0;
+	return test::run({
+		{"Hello reply round trips", test_round_trip_hello_reply},
+		{"result round trips", test_round_trip_result},
+		{"frame round trips", test_round_trip_frames},
+		{"golden encodings", test_goldens},
+		{"truncated input", test_truncation},
+		{"trailing input", test_trailing_bytes},
+		{"invalid UTF-8", test_invalid_utf8},
+		{"invalid enum", test_zero_and_unknown_enum},
+		{"unknown union tag", test_unknown_union_tag},
+		{"size limits", test_huge_array_count},
+	});
 }

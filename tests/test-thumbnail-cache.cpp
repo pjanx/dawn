@@ -5,14 +5,14 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "qt-test.hpp"
+#include "test.hpp"
 #include "thumbnail-cache.hpp"
 
-#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
-#include <QTemporaryDir>
 
 #include <webp/mux.h>
 
@@ -23,17 +23,6 @@ using namespace std;
 
 namespace
 {
-
-int failures = 0;
-
-#define CHECK(x)                                                               \
-	do {                                                                       \
-		if (!(x)) {                                                            \
-			fprintf(                                                           \
-				stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #x);  \
-			++failures;                                                        \
-		}                                                                      \
-	} while (0)
 
 void
 append_field(QByteArray &out, const char *key, const QByteArray &value)
@@ -83,25 +72,19 @@ retag(const QString &path, const dn::ThumbnailSource &source,
 	return written;
 }
 
-}  // namespace
-
-int
-main(int argc, char **argv)
+void
+test_cache_layout(const QTemporaryDir &cache)
 {
-	QTemporaryDir cache;
-	QTemporaryDir inputs;
-	CHECK(cache.isValid());
-	CHECK(inputs.isValid());
-	qputenv("XDG_CACHE_HOME", cache.path().toUtf8());
-	QCoreApplication app(argc, argv);
-	QCoreApplication::setApplicationName(QStringLiteral("dn-test"));
-
 	CHECK(dn::thumbnail_cache_root() ==
 		QDir(cache.path()).filePath(QStringLiteral("thumbnails")));
 	CHECK(dn::thumbnail_tier_for_height(128) == 0);
 	CHECK(dn::thumbnail_tier_for_height(129) == 1);
 	CHECK(dn::thumbnail_tier_for_height(2000) == 3);
+}
 
+void
+test_cache_entries(const QTemporaryDir &inputs)
+{
 	const QString input =
 		QDir(inputs.path()).filePath(QStringLiteral("red.png"));
 	QFile source_file(input);
@@ -189,6 +172,17 @@ main(int argc, char **argv)
 	dn::thumbnail_cache_invalidate();
 	CHECK(!QFileInfo::exists(cached));
 	CHECK(QFileInfo::exists(png_path));
+}
 
-	return failures ? 1 : 0;
+}  // namespace
+
+int
+main(int argc, char **argv)
+{
+	test::Application application(argc, argv, "dn-test");
+	return test::run({
+		{"cache layout", [&] { test_cache_layout(application.cache()); }},
+		{"cache formats and invalidation",
+			[&] { test_cache_entries(application.inputs()); }},
+	});
 }

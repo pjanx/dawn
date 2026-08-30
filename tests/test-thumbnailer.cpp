@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "qt-test.hpp"
+#include "test.hpp"
 #include "thumbnailer.hpp"
 
-#include <QCoreApplication>
-#include <QTemporaryDir>
 #include <QTimer>
 
 #include <chrono>
@@ -24,23 +24,26 @@ using namespace std::chrono_literals;
 namespace
 {
 
-int failures = 0;
+struct WorkGate {
+	mutex mu;
+	condition_variable changed;
+	bool released = false;
 
-#define CHECK(x)                                                               \
-	do {                                                                       \
-		if (!(x)) {                                                            \
-			fprintf(                                                           \
-				stderr, "%s:%d: CHECK(%s) failed\n", __FILE__, __LINE__, #x);  \
-			++failures;                                                        \
-		}                                                                      \
-	} while (0)
-
-bool
-wait_for(condition_variable &cv, unique_lock<mutex> &lock,
-	const function<bool()> &predicate)
-{
-	return cv.wait_for(lock, 2s, predicate);
-}
+	~WorkGate() { unblock(); }
+	void unblock()
+	{
+		{
+			lock_guard lock(mu);
+			released = true;
+		}
+		changed.notify_all();
+	}
+	template <typename Predicate>
+	bool wait(unique_lock<mutex> &lock, Predicate predicate)
+	{
+		return changed.wait_for(lock, 2s, predicate);
+	}
+};
 
 bool
 test_background_reserve()
@@ -52,60 +55,49 @@ test_background_reserve()
 		return false;
 	}
 	const auto client = thumbnailer.add_client();
-	mutex mu;
-	condition_variable cv;
-	bool release = false;
+	WorkGate gate;
 	int background_started = 0;
 	bool visible_started = false;
 	auto background = [&] {
-		unique_lock lock(mu);
+		unique_lock lock(gate.mu);
 		background_started++;
-		cv.notify_all();
-		cv.wait(lock, [&] { return release; });
+		gate.changed.notify_all();
+		gate.changed.wait(lock, [&] { return gate.released; });
 		return dn::Thumbnailer::Completion{};
 	};
 	for (int i = 0; i < 2; ++i) {
 		if (!thumbnailer.submit(
 				client, 0, dn::Thumbnailer::Priority::Dimensions, background)) {
-			lock_guard lock(mu);
-			release = true;
-			cv.notify_all();
+			gate.unblock();
 			return false;
 		}
 	}
 	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return background_started == 1; })) {
-			release = true;
-			cv.notify_all();
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return background_started == 1; })) {
 			fprintf(stderr, "background work did not start\n");
 			return false;
 		}
 	}
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			lock_guard lock(mu);
+			lock_guard lock(gate.mu);
 			visible_started = true;
-			cv.notify_all();
+			gate.changed.notify_all();
 			return dn::Thumbnailer::Completion{};
 		}))
 		return false;
 	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return visible_started; })) {
-			release = true;
-			cv.notify_all();
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return visible_started; })) {
 			fprintf(stderr, "visible work was starved by background work\n");
 			return false;
 		}
 		if (background_started != 1) {
-			release = true;
-			cv.notify_all();
 			fprintf(stderr, "background admission exceeded its limit\n");
 			return false;
 		}
-		release = true;
-		cv.notify_all();
 	}
+	gate.unblock();
 	thumbnailer.remove_client(client);
 	return true;
 }
@@ -115,59 +107,48 @@ test_visible_reserve()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 4);
 	const auto client = thumbnailer.add_client();
-	mutex mu;
-	condition_variable cv;
-	bool release = false;
+	WorkGate gate;
 	int prefetch_started = 0;
 	bool visible_started = false;
 	auto prefetch = [&] {
-		unique_lock lock(mu);
+		unique_lock lock(gate.mu);
 		prefetch_started++;
-		cv.notify_all();
-		cv.wait(lock, [&] { return release; });
+		gate.changed.notify_all();
+		gate.changed.wait(lock, [&] { return gate.released; });
 		return dn::Thumbnailer::Completion{};
 	};
 	for (int i = 0; i < 4; ++i) {
 		if (!thumbnailer.submit(
 				client, 0, dn::Thumbnailer::Priority::Prefetch, prefetch)) {
-			lock_guard lock(mu);
-			release = true;
-			cv.notify_all();
+			gate.unblock();
 			return false;
 		}
 	}
 	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return prefetch_started == 3; })) {
-			release = true;
-			cv.notify_all();
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return prefetch_started == 3; })) {
 			fprintf(stderr, "prefetch did not fill the non-visible workers\n");
 			return false;
 		}
 	}
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			lock_guard lock(mu);
+			lock_guard lock(gate.mu);
 			visible_started = true;
-			cv.notify_all();
+			gate.changed.notify_all();
 			return dn::Thumbnailer::Completion{};
 		})) {
-		lock_guard lock(mu);
-		release = true;
-		cv.notify_all();
+		gate.unblock();
 		return false;
 	}
 	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return visible_started; }) ||
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return visible_started; }) ||
 			prefetch_started != 3) {
-			release = true;
-			cv.notify_all();
 			fprintf(stderr, "prefetch consumed the visible worker reserve\n");
 			return false;
 		}
-		release = true;
-		cv.notify_all();
 	}
+	gate.unblock();
 	thumbnailer.remove_client(client);
 	return true;
 }
@@ -177,24 +158,20 @@ test_reprioritization_order()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 1);
 	const auto client = thumbnailer.add_client();
-	mutex mu;
-	condition_variable cv;
-	bool release = false;
+	WorkGate gate;
 	bool blocker_started = false;
 	vector<int> order;
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			unique_lock lock(mu);
+			unique_lock lock(gate.mu);
 			blocker_started = true;
-			cv.notify_all();
-			cv.wait(lock, [&] { return release; });
+			gate.changed.notify_all();
+			gate.changed.wait(lock, [&] { return gate.released; });
 			return dn::Thumbnailer::Completion{};
 		}))
 		return false;
 	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return blocker_started; })) {
-			release = true;
-			cv.notify_all();
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return blocker_started; })) {
 			return false;
 		}
 	}
@@ -204,15 +181,13 @@ test_reprioritization_order()
 				id == 1 ? dn::Thumbnailer::Priority::Visible
 						: dn::Thumbnailer::Priority::Dimensions,
 				[&, id] {
-					lock_guard lock(mu);
+					lock_guard lock(gate.mu);
 					order.push_back(id);
-					cv.notify_all();
+					gate.changed.notify_all();
 					return dn::Thumbnailer::Completion{};
 				},
 				to_string(id))) {
-			lock_guard lock(mu);
-			release = true;
-			cv.notify_all();
+			gate.unblock();
 			return false;
 		}
 	}
@@ -220,19 +195,13 @@ test_reprioritization_order()
 			client, 0, dn::Thumbnailer::Priority::Dimensions, "1") ||
 		!thumbnailer.reprioritize(
 			client, 0, dn::Thumbnailer::Priority::Visible, "2")) {
-		lock_guard lock(mu);
-		release = true;
-		cv.notify_all();
+		gate.unblock();
 		return false;
 	}
+	gate.unblock();
 	{
-		lock_guard lock(mu);
-		release = true;
-		cv.notify_all();
-	}
-	{
-		unique_lock lock(mu);
-		if (!wait_for(cv, lock, [&] { return order.size() == 2; }))
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return order.size() == 2; }))
 			return false;
 	}
 	thumbnailer.remove_client(client);
@@ -256,18 +225,18 @@ test_bundle_reservations()
 	b.uri = QByteArrayLiteral("file:///b");
 	dn::ThumbnailSource c = a;
 	c.uri = QByteArrayLiteral("file:///c");
-	const auto first = thumbnailer.reserve_bundle(client, 7, a, 2, 4096,
-		dn::Thumbnailer::Priority::Dimensions);
-	const auto second = thumbnailer.reserve_bundle(client, 7, b, 2, 8192,
-		dn::Thumbnailer::Priority::Visible);
+	const auto first = thumbnailer.reserve_bundle(
+		client, 7, a, 2, 4096, dn::Thumbnailer::Priority::Dimensions);
+	const auto second = thumbnailer.reserve_bundle(
+		client, 7, b, 2, 8192, dn::Thumbnailer::Priority::Visible);
 	if (!first || !second || thumbnailer.pending_bundle_limit() != 2 ||
 		thumbnailer.pending_bundle_bytes() != 12288 ||
-		thumbnailer.reserve_bundle(client, 7, c, 2, 4096,
-			dn::Thumbnailer::Priority::Prefetch))
+		thumbnailer.reserve_bundle(
+			client, 7, c, 2, 4096, dn::Thumbnailer::Priority::Prefetch))
 		return false;
 	thumbnailer.cancel_bundle(first);
-	const auto third = thumbnailer.reserve_bundle(client, 7, c, 2, 4096,
-		dn::Thumbnailer::Priority::Prefetch);
+	const auto third = thumbnailer.reserve_bundle(
+		client, 7, c, 2, 4096, dn::Thumbnailer::Priority::Prefetch);
 	if (!third || thumbnailer.pending_bundle_bytes() != 12288)
 		return false;
 	thumbnailer.set_epoch(client, 8);
@@ -277,65 +246,54 @@ test_bundle_reservations()
 	return true;
 }
 
-}  // namespace
-
-int
-main(int argc, char **argv)
+void
+test_activity_transitions(QCoreApplication &app)
 {
-	QTemporaryDir cache;
-	QTemporaryDir inputs;
-	CHECK(cache.isValid());
-	CHECK(inputs.isValid());
-	qputenv("XDG_CACHE_HOME", cache.path().toUtf8());
-	QCoreApplication app(argc, argv);
-	if (!test_background_reserve() || !test_visible_reserve() ||
-		!test_reprioritization_order() || !test_bundle_reservations())
-		return 1;
 	dn::Thumbnailer thumbnailer;
-
-	mutex mu;
-	condition_variable cv;
-	bool release = false;
+	WorkGate gate;
 	bool saw_busy = false;
 	bool saw_idle = false;
 	dn::Thumbnailer::Client client = 0;
 	client = thumbnailer.add_client(0, [&] {
 		if (thumbnailer.busy(client)) {
 			saw_busy = true;
-			{
-				lock_guard lock(mu);
-				release = true;
-			}
-			cv.notify_one();
+			gate.unblock();
 		} else if (saw_busy) {
 			saw_idle = true;
 			app.quit();
 		}
 	});
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			unique_lock lock(mu);
-			cv.wait(lock, [&] { return release; });
+			unique_lock lock(gate.mu);
+			gate.changed.wait(lock, [&] { return gate.released; });
 			return dn::Thumbnailer::Completion{};
 		})) {
-		fprintf(stderr, "could not submit thumbnail work\n");
-		return 1;
+		test::fail("could not submit thumbnail work");
+		return;
 	}
 
 	QTimer::singleShot(2000, &app, [&] {
-		{
-			lock_guard lock(mu);
-			release = true;
-		}
-		cv.notify_one();
+		gate.unblock();
 		app.quit();
 	});
 	app.exec();
 	thumbnailer.remove_client(client);
-	if (!saw_busy || !saw_idle) {
-		fprintf(stderr,
-			"missing thumbnail activity transition: busy=%d idle=%d\n",
-			int(saw_busy), int(saw_idle));
-		return 1;
-	}
-	return 0;
+	CHECK(saw_busy);
+	CHECK(saw_idle);
+}
+
+}  // namespace
+
+int
+main(int argc, char **argv)
+{
+	test::Application application(argc, argv);
+	return test::run({
+		{"background worker reserve", [] { CHECK(test_background_reserve()); }},
+		{"visible worker reserve", [] { CHECK(test_visible_reserve()); }},
+		{"reprioritization", [] { CHECK(test_reprioritization_order()); }},
+		{"bundle reservations", [] { CHECK(test_bundle_reservations()); }},
+		{"activity transitions",
+			[&] { test_activity_transitions(application.app()); }},
+	});
 }

@@ -5,46 +5,42 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "test.hpp"
 #include "xdg.hpp"
 
-#include <cstdio>
+#include <algorithm>
 
 using namespace std;
+
+namespace
+{
+
+void
+test_mime_globs()
+{
+	const vector<QString> globs = dn::extract_mime_globs({"image/jpeg"});
+	CHECK(find(globs.begin(), globs.end(), QLatin1String("*.jpg")) !=
+		globs.end());
+	CHECK(find(globs.begin(), globs.end(), QLatin1String("*.jpeg")) !=
+		globs.end());
+}
+
+void
+test_types_for_filename()
+{
+	const vector<QString> types =
+		dn::types_for_filename(QStringLiteral("photo.jpg"));
+	CHECK(find(types.begin(), types.end(), QLatin1String("image/jpeg")) !=
+		types.end());
+}
+
+}  // namespace
 
 int
 main()
 {
-	const vector<QString> globs = dn::extract_mime_globs({"image/jpeg"});
-	bool jpg = false;
-	bool jpeg = false;
-	for (const QString &g : globs) {
-		if (g == QLatin1String("*.jpg"))
-			jpg = true;
-		if (g == QLatin1String("*.jpeg"))
-			jpeg = true;
-	}
-	if (!jpg || !jpeg) {
-		fprintf(stderr,
-			"extract_mime_globs(image/jpeg) missing *.jpg / *.jpeg (%d "
-			"globs)\n",
-			int(globs.size()));
-		for (const QString &g : globs)
-			fprintf(stderr, "  %s\n", qUtf8Printable(g));
-		return 1;
-	}
-
-	const vector<QString> types =
-		dn::types_for_filename(QStringLiteral("photo.jpg"));
-	bool jpeg_type = false;
-	for (const QString &t : types) {
-		if (t == QLatin1String("image/jpeg"))
-			jpeg_type = true;
-	}
-	if (!jpeg_type) {
-		fprintf(stderr, "types_for_filename(photo.jpg) missing image/jpeg\n");
-		for (const QString &t : types)
-			fprintf(stderr, "  %s\n", qUtf8Printable(t));
-		return 1;
-	}
-	return 0;
+	return test::run({
+		{"MIME globs", test_mime_globs},
+		{"filename types", test_types_for_filename},
+	});
 }

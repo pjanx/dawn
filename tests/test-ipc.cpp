@@ -7,6 +7,7 @@
 
 #include "libdn/ipc-instance.hpp"
 #include "libdn/ipc.hpp"
+#include "test.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -33,18 +34,25 @@ namespace inst = dawn::ipc::instance;
 namespace
 {
 
-int g_failures = 0;
-
-#define CHECK(cond)                                                            \
-	do {                                                                       \
-		if (!(cond)) {                                                         \
-			fprintf(stderr, "CHECK failed: %s (%s:%d)\n", #cond, __FILE__,     \
-				__LINE__);                                                     \
-			++g_failures;                                                      \
-		}                                                                      \
-	} while (0)
-
 #ifndef _WIN32
+struct SocketPair {
+	int fds[2] = {-1, -1};
+
+	SocketPair()
+	{
+		if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0)
+			test::fail("socketpair: %s", strerror(errno));
+	}
+	~SocketPair()
+	{
+		for (int fd : fds)
+			if (fd >= 0)
+				::close(fd);
+	}
+	int take(int index) { return exchange(fds[index], -1); }
+	explicit operator bool() const { return fds[0] >= 0; }
+};
+
 bool
 write_all(int fd, const void *p, size_t n)
 {
@@ -91,14 +99,11 @@ payload_eq(const vector<byte> &got, span<const uint8_t> want)
 void
 test_fragmented()
 {
-	int fds[2] = {-1, -1};
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
-		fprintf(stderr, "socketpair: %s\n", strerror(errno));
-		++g_failures;
+	SocketPair pair;
+	if (!pair)
 		return;
-	}
-	dawn::ipc::Connection conn(fds[0]);
-	const int peer = fds[1];
+	dawn::ipc::Connection conn(pair.take(0));
+	const int peer = pair.fds[1];
 	CHECK(conn.ok());
 
 	static constexpr uint8_t kPayload[] = {1, 2, 3, 4, 5};
@@ -118,20 +123,16 @@ test_fragmented()
 	vector<byte> got;
 	CHECK(conn.take_payload(got));
 	CHECK(payload_eq(got, kPayload));
-	::close(peer);
 }
 
 void
 test_two_frames_one_write()
 {
-	int fds[2] = {-1, -1};
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
-		fprintf(stderr, "socketpair: %s\n", strerror(errno));
-		++g_failures;
+	SocketPair pair;
+	if (!pair)
 		return;
-	}
-	dawn::ipc::Connection conn(fds[0]);
-	const int peer = fds[1];
+	dawn::ipc::Connection conn(pair.take(0));
+	const int peer = pair.fds[1];
 	CHECK(conn.ok());
 
 	static constexpr uint8_t kA[] = {1, 2, 3, 4, 5};
@@ -152,60 +153,48 @@ test_two_frames_one_write()
 	vector<byte> second;
 	CHECK(conn.take_payload(second));
 	CHECK(payload_eq(second, kB));
-	::close(peer);
 }
 
 void
 test_empty_payload()
 {
-	int fds[2] = {-1, -1};
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
-		fprintf(stderr, "socketpair: %s\n", strerror(errno));
-		++g_failures;
+	SocketPair pair;
+	if (!pair)
 		return;
-	}
-	dawn::ipc::Connection conn(fds[0]);
-	const int peer = fds[1];
+	dawn::ipc::Connection conn(pair.take(0));
+	const int peer = pair.fds[1];
 	CHECK(conn.ok());
 
 	uint8_t len[4];
 	put_u32be(len, 0);
 	CHECK(write_all(peer, len, sizeof(len)));
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
-	::close(peer);
 }
 
 void
 test_oversize_length()
 {
-	int fds[2] = {-1, -1};
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
-		fprintf(stderr, "socketpair: %s\n", strerror(errno));
-		++g_failures;
+	SocketPair pair;
+	if (!pair)
 		return;
-	}
-	dawn::ipc::Connection conn(fds[0]);
-	const int peer = fds[1];
+	dawn::ipc::Connection conn(pair.take(0));
+	const int peer = pair.fds[1];
 	CHECK(conn.ok());
 
 	uint8_t len[4];
 	put_u32be(len, dawn::ipc::Connection::kMaxPayload + 1);
 	CHECK(write_all(peer, len, sizeof(len)));
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
-	::close(peer);
 }
 
 void
 test_write_read_pair()
 {
-	int fds[2] = {-1, -1};
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
-		fprintf(stderr, "socketpair: %s\n", strerror(errno));
-		++g_failures;
+	SocketPair pair;
+	if (!pair)
 		return;
-	}
-	dawn::ipc::Connection a(fds[0]);
-	dawn::ipc::Connection b(fds[1]);
+	dawn::ipc::Connection a(pair.take(0));
+	dawn::ipc::Connection b(pair.take(1));
 	CHECK(a.ok());
 	CHECK(b.ok());
 
@@ -452,7 +441,8 @@ Fixture::closed()
 bool
 handshake(Fixture &f, uint32_t &limit)
 {
-	if (!f.send(hello_frame(uint32_t(inst::kInstanceProtocolVersion), kSession)))
+	if (!f.send(
+			hello_frame(uint32_t(inst::kInstanceProtocolVersion), kSession)))
 		return false;
 
 	inst::FrameView view{};
@@ -463,8 +453,8 @@ handshake(Fixture &f, uint32_t &limit)
 		get_if<inst::PayloadHelloReplyView>(&view.payload.value);
 	if (!reply)
 		return false;
-	const auto *accepted = get_if<inst::HelloReplyAcceptedView>(
-		&reply->hello_reply.value);
+	const auto *accepted =
+		get_if<inst::HelloReplyAcceptedView>(&reply->hello_reply.value);
 	if (!accepted)
 		return false;
 	limit = accepted->limits.max_payload_size;
@@ -513,8 +503,8 @@ test_instance_version_mismatch()
 	CHECK(reply != nullptr);
 	if (!reply)
 		return;
-	const auto *mismatch = get_if<inst::HelloReplyVersionMismatchView>(
-		&reply->hello_reply.value);
+	const auto *mismatch =
+		get_if<inst::HelloReplyVersionMismatchView>(&reply->hello_reply.value);
 	CHECK(mismatch != nullptr);
 	if (mismatch) {
 		CHECK(mismatch->server_protocol_version ==
@@ -782,32 +772,26 @@ test_instance_oversize()
 int
 main()
 {
+	return test::run({
 #ifndef _WIN32
-	test_fragmented();
-	test_two_frames_one_write();
-	test_empty_payload();
-	test_oversize_length();
-	test_write_read_pair();
+		{"fragmented frame", test_fragmented},
+		{"coalesced frames", test_two_frames_one_write},
+		{"empty payload", test_empty_payload},
+		{"oversize payload", test_oversize_length},
+		{"connection pair", test_write_read_pair},
 #endif
-	test_listen_arbitrates();
-	test_endpoint_roundtrip();
-
-	test_instance_handshake();
-	test_instance_version_mismatch();
-	test_instance_session_mismatch();
-	test_instance_request_before_hello();
-	test_instance_zero_id();
-	test_instance_duplicate_id();
-	test_instance_out_of_order();
-	test_instance_cancel();
-	test_instance_cancel_unknown();
-	test_instance_dropped_call();
-	test_instance_oversize();
-
-	if (g_failures) {
-		fprintf(stderr, "%d check(s) failed\n", g_failures);
-		return 1;
-	}
-	puts("ok");
-	return 0;
+		{"listener arbitration", test_listen_arbitrates},
+		{"endpoint round trip", test_endpoint_roundtrip},
+		{"instance handshake", test_instance_handshake},
+		{"version mismatch", test_instance_version_mismatch},
+		{"session mismatch", test_instance_session_mismatch},
+		{"request before hello", test_instance_request_before_hello},
+		{"zero request ID", test_instance_zero_id},
+		{"duplicate request ID", test_instance_duplicate_id},
+		{"out-of-order responses", test_instance_out_of_order},
+		{"request cancellation", test_instance_cancel},
+		{"unknown cancellation", test_instance_cancel_unknown},
+		{"dropped call", test_instance_dropped_call},
+		{"instance payload limit", test_instance_oversize},
+	});
 }
