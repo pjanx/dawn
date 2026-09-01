@@ -225,6 +225,10 @@ Settings::notify() const
 bool
 App::event(QEvent *event)
 {
+	if (event->type() == QEvent::Quit) {
+		shutdown();
+		return true;
+	}
 	if (event->type() == QEvent::FileOpen) {
 		open(url_normalized(((QFileOpenEvent *) event)->url()));
 		return true;
@@ -391,7 +395,7 @@ App::shutdown()
 				w->hide();
 			QGuiApplication::sync();
 			this->windows_.clear();
-			QCoreApplication::quit();
+			QCoreApplication::exit(0);
 		},
 		Qt::QueuedConnection);
 }
