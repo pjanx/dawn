@@ -25,6 +25,7 @@
 #include <fstream>
 #include <mutex>
 #include <new>
+#include <numbers>
 #include <string_view>
 #include <thread>
 
@@ -1256,25 +1257,7 @@ Cmm::finish(ImagePtr image, Profile *target)
 	return image;
 }
 
-// --- Orientation -------------------------------------------------------------
-
-void
-orientation_dimensions(
-	const Image &image, Orientation orientation, double *w, double *h)
-{
-	switch (orientation) {
-	case Orientation::Rotate90:
-	case Orientation::Mirror90:
-	case Orientation::Rotate270:
-	case Orientation::Mirror270:
-		*w = image.height;
-		*h = image.width;
-		break;
-	default:
-		*w = image.width;
-		*h = image.height;
-	}
-}
+// --- Matrix ------------------------------------------------------------------
 
 static Matrix
 matrix_identity()
@@ -1324,11 +1307,31 @@ matrix_rotate(double radians)
 	return m;
 }
 
+// --- Orientation -------------------------------------------------------------
+
+void
+orientation_dimensions(
+	const Image &image, Orientation orientation, double *w, double *h)
+{
+	switch (orientation) {
+	case Orientation::Rotate90:
+	case Orientation::Mirror90:
+	case Orientation::Rotate270:
+	case Orientation::Mirror270:
+		*w = image.height;
+		*h = image.width;
+		break;
+	default:
+		*w = image.width;
+		*h = image.height;
+	}
+}
+
 Matrix
 orientation_matrix(Orientation orientation, double width, double height)
 {
 	Matrix matrix = matrix_identity();
-	constexpr double pi2 = 1.5707963267948966;
+	constexpr double pi2 = numbers::pi / 2;
 	switch (orientation) {
 	case Orientation::Rotate90:
 		matrix = matrix_multiply(matrix_rotate(-pi2), matrix);
@@ -1466,6 +1469,7 @@ orientation_map_display_to_source(Orientation orientation, uint32_t src_w,
 {
 	uint32_t dw = 0, dh = 0;
 	orientation_display_size(src_w, src_h, orientation, &dw, &dh);
+
 	const double w = double(dw);
 	const double h = double(dh);
 	switch (orientation_or_0(orientation)) {
@@ -1510,6 +1514,7 @@ orientation_map_source_to_display(Orientation orientation, uint32_t src_w,
 {
 	uint32_t dw = 0, dh = 0;
 	orientation_display_size(src_w, src_h, orientation, &dw, &dh);
+
 	const double w = double(dw);
 	const double h = double(dh);
 	switch (orientation_or_0(orientation)) {
