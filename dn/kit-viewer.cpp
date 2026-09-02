@@ -1177,7 +1177,7 @@ post_scale(Viewer &v)
 		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale = std::move(job);
 	}
-	v.worker_->cv.notify_one();
+	v.worker_->cv.notify_all();
 }
 
 static void
