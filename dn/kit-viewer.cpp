@@ -42,7 +42,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -315,18 +314,16 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 
 struct OpenJob {
 	uint64_t epoch = 0;
-	string path;
+	Viewer::OpenKey key;
 	string uri;
 	shared_ptr<const vector<uint8_t>> screen_icc;
 	int dpi = 96;
 	bool enable_cms = true;
-	bool enhance = false;
 };
 
 struct OpenLoad {
 	uint64_t epoch = 0;
-	string path;
-	bool enhance = false;
+	Viewer::OpenKey key;
 	dawn::ImagePtr image;
 	string message;
 };
@@ -379,7 +376,12 @@ profile_from_icc(
 static void reload_open(Viewer &v);
 
 struct Viewer::Worker {
-	using OpenKey = tuple<uint64_t, string, bool>;
+	struct ActiveOpen {
+		uint64_t epoch = 0;
+		Viewer::OpenKey key;
+
+		bool operator==(const ActiveOpen &) const = default;
+	};
 	mutex mu;
 	condition_variable cv;
 	bool stop = false;
@@ -390,8 +392,8 @@ struct Viewer::Worker {
 	optional<OpenJob> pending_open;
 	optional<ScaleJob> pending_scale;
 	vector<OpenJob> pending_preloads;
-	optional<OpenKey> active_open;
-	vector<OpenKey> active_preloads;
+	optional<ActiveOpen> active_open;
+	vector<ActiveOpen> active_preloads;
 	thread foreground;
 	array<thread, 2> preloads;
 };
@@ -897,17 +899,17 @@ apply_open_result(Viewer &v, OpenLoad result)
 	if (result.epoch != v.load_epoch_)
 		return;
 	const string current = viewer_local_path(v);
-	if (!v.detached_ && result.path != current &&
-		result.path != v.previous_path_ && result.path != v.next_path_)
+	if (!v.detached_ && result.key.path != current &&
+		result.key.path != v.previous_path_ &&
+		result.key.path != v.next_path_)
 		return;
 	auto found = find_if(v.open_cache_.begin(), v.open_cache_.end(),
 		[&](const Viewer::CachedOpen &entry) {
-			return entry.path == result.path &&
-				entry.enhance == result.enhance;
+			return entry.key == result.key;
 		});
 	if (found == v.open_cache_.end()) {
 		v.open_cache_.push_back(
-			{result.path, result.enhance, std::move(result.image),
+			{std::move(result.key), std::move(result.image),
 				std::move(result.message)});
 		found = prev(v.open_cache_.end());
 	} else {
@@ -915,8 +917,8 @@ apply_open_result(Viewer &v, OpenLoad result)
 		found->message = std::move(result.message);
 	}
 	Viewer::CachedOpen *cached = &*found;
-	if (!v.detached_ && cached->path == current &&
-		cached->enhance == v.enhance_jpeg_)
+	if (!v.detached_ && cached->key ==
+		Viewer::OpenKey{current, v.enhance_jpeg_})
 		apply_open(v, v.open_gen_, cached->image, cached->message);
 	if (v.open_cache_.size() > 3)
 		v.open_cache_.erase(v.open_cache_.begin());
@@ -927,26 +929,27 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 {
 	OpenLoad result;
 	result.epoch = open.epoch;
-	result.path = open.path;
-	result.enhance = open.enhance;
+	result.key = open.key;
 	dawn::OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
 	ctx.screen_profile =
 		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
 	ctx.screen_dpi = open.dpi;
-	ctx.enhance = open.enhance;
+	ctx.enhance = open.key.enhance;
 	vector<string> warnings;
 	ctx.warnings = &warnings;
 	dawn::Error error;
-	QFile file(QString::fromStdString(open.path));
+	QFile file(QString::fromStdString(open.key.path));
 	if (!file.open(QIODevice::ReadOnly)) {
-		result.message = open.path + ": " + file.errorString().toStdString();
+		result.message =
+			open.key.path + ": " + file.errorString().toStdString();
 		return result;
 	}
 	const QByteArray bytes = file.readAll();
 	if (file.error() != QFileDevice::NoError) {
-		result.message = open.path + ": " + file.errorString().toStdString();
+		result.message =
+			open.key.path + ": " + file.errorString().toStdString();
 		return result;
 	}
 	const auto *data = reinterpret_cast<const uint8_t *>(bytes.constData());
@@ -965,7 +968,7 @@ static bool
 desired(const Viewer::Worker &worker, const OpenJob &job)
 {
 	return job.epoch == worker.epoch &&
-		find(worker.desired.begin(), worker.desired.end(), job.path) !=
+		find(worker.desired.begin(), worker.desired.end(), job.key.path) !=
 		worker.desired.end();
 }
 
@@ -975,19 +978,18 @@ finish_decode(Viewer &v, const OpenJob &open, bool preload)
 	bool accept = false;
 	{
 		lock_guard lock(v.worker_->mu);
-		const Viewer::Worker::OpenKey key{
-			open.epoch, open.path, open.enhance};
+		const Viewer::Worker::ActiveOpen identity{open.epoch, open.key};
 		if (preload) {
 			auto &active = v.worker_->active_preloads;
-			if (auto found = find(active.begin(), active.end(), key);
+			if (auto found = find(active.begin(), active.end(), identity);
 				found != active.end())
 				active.erase(found);
-		} else if (v.worker_->active_open == key) {
+		} else if (v.worker_->active_open == identity) {
 			v.worker_->active_open.reset();
 		}
 		accept = open.epoch == v.worker_->epoch &&
 			(v.worker_->detached || desired(*v.worker_, open));
-		if (accept && open.path == v.worker_->desired[0])
+		if (accept && open.key.path == v.worker_->desired[0])
 			v.worker_->current_ready = true;
 	}
 	v.worker_->cv.notify_all();
@@ -1027,14 +1029,13 @@ worker_loop(Viewer &v, bool foreground)
 				open = std::move(v.worker_->pending_preloads.back());
 				v.worker_->pending_preloads.pop_back();
 				v.worker_->active_preloads.emplace_back(
-					open.epoch, open.path, open.enhance);
+					Viewer::Worker::ActiveOpen{open.epoch, open.key});
 				have_open = true;
 			} else if (v.worker_->pending_open) {
 				open = std::move(*v.worker_->pending_open);
 				v.worker_->pending_open.reset();
 				v.worker_->active_open =
-					Viewer::Worker::OpenKey{
-						open.epoch, open.path, open.enhance};
+					Viewer::Worker::ActiveOpen{open.epoch, open.key};
 				have_open = true;
 			} else {
 				scale = std::move(*v.worker_->pending_scale);
@@ -1077,39 +1078,39 @@ start_worker(Viewer &v)
 }
 
 static OpenJob
-make_open_job(const Viewer &v, const string &path, bool enhance)
+make_open_job(const Viewer &v, Viewer::OpenKey key)
 {
 	OpenJob job;
 	job.epoch = v.load_epoch_;
-	job.path = path;
-	job.uri =
-		path_to_url(QString::fromStdString(path)).toEncoded().toStdString();
+	job.key = std::move(key);
+	job.uri = path_to_url(QString::fromStdString(job.key.path))
+			  .toEncoded()
+			  .toStdString();
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
-	job.enhance = enhance;
 	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
 	return job;
 }
 
 static Viewer::CachedOpen *
-find_cached(Viewer &v, const string &path, bool enhance)
+find_cached(Viewer &v, const Viewer::OpenKey &key)
 {
 	for (auto &entry : v.open_cache_) {
-		if (entry.path == path && entry.enhance == enhance)
+		if (entry.key == key)
 			return &entry;
 	}
 	return nullptr;
 }
 
 static bool
-job_active(const Viewer::Worker &worker, uint64_t epoch, const string &path,
-	bool enhance)
+job_active(
+	const Viewer::Worker &worker, uint64_t epoch, const Viewer::OpenKey &key)
 {
-	const Viewer::Worker::OpenKey key{epoch, path, enhance};
-	if (worker.active_open == key)
+	const Viewer::Worker::ActiveOpen active{epoch, key};
+	if (worker.active_open == active)
 		return true;
 	return find(worker.active_preloads.begin(), worker.active_preloads.end(),
-			   key) != worker.active_preloads.end();
+			   active) != worker.active_preloads.end();
 }
 
 static void
@@ -1129,8 +1130,9 @@ start_open(Viewer &v, bool invalidate)
 	v.scale_job_pending_ = false;
 	v.scale_failed_ = false;
 	const string path = viewer_local_path(v);
+	const Viewer::OpenKey key{path, v.enhance_jpeg_};
 	Viewer::CachedOpen *cached =
-		invalidate ? nullptr : find_cached(v, path, v.enhance_jpeg_);
+		invalidate ? nullptr : find_cached(v, key);
 	{
 		lock_guard lock(v.worker_->mu);
 		v.worker_->epoch = v.load_epoch_;
@@ -1140,16 +1142,14 @@ start_open(Viewer &v, bool invalidate)
 		v.worker_->pending_preloads.erase(
 			remove_if(v.worker_->pending_preloads.begin(),
 				v.worker_->pending_preloads.end(),
-				[&](const OpenJob &job) { return job.path == path; }),
+				[&](const OpenJob &job) { return job.key.path == path; }),
 			v.worker_->pending_preloads.end());
 		if (invalidate)
 			v.worker_->pending_preloads.clear();
-		if (cached ||
-			job_active(*v.worker_, v.load_epoch_, path, v.enhance_jpeg_))
+		if (cached || job_active(*v.worker_, v.load_epoch_, key))
 			v.worker_->pending_open.reset();
 		else
-			v.worker_->pending_open =
-				make_open_job(v, path, v.enhance_jpeg_);
+			v.worker_->pending_open = make_open_job(v, key);
 		v.worker_->pending_scale.reset();
 	}
 	v.worker_->cv.notify_all();
@@ -1168,17 +1168,18 @@ schedule_preloads(Viewer &v)
 	};
 	v.open_cache_.erase(remove_if(v.open_cache_.begin(), v.open_cache_.end(),
 							[&](const Viewer::CachedOpen &entry) {
-								return entry.path != current &&
-									!wanted(entry.path);
+								return entry.key.path != current &&
+									!wanted(entry.key.path);
 							}),
 		v.open_cache_.end());
 	if (!v.worker_)
 		return;
 	vector<string> missing;
 	for (const string *path : {&v.previous_path_, &v.next_path_}) {
+		const Viewer::OpenKey key{*path, false};
 		if (!wanted(*path) ||
 			find(missing.begin(), missing.end(), *path) != missing.end() ||
-			find_cached(v, *path, false))
+			find_cached(v, key))
 			continue;
 		missing.push_back(*path);
 	}
@@ -1190,7 +1191,7 @@ schedule_preloads(Viewer &v)
 		if (!v.opening_ && !v.url_.isEmpty())
 			v.worker_->current_ready = true;
 		auto desired_job = [&](const OpenJob &job) {
-			return job.epoch == v.load_epoch_ && wanted(job.path);
+			return job.epoch == v.load_epoch_ && wanted(job.key.path);
 		};
 		v.worker_->pending_preloads.erase(
 			remove_if(v.worker_->pending_preloads.begin(),
@@ -1198,17 +1199,17 @@ schedule_preloads(Viewer &v)
 				[&](const OpenJob &job) { return !desired_job(job); }),
 			v.worker_->pending_preloads.end());
 		for (const string &path : missing) {
+			const Viewer::OpenKey key{path, false};
 			const bool pending = any_of(v.worker_->pending_preloads.begin(),
 				v.worker_->pending_preloads.end(), [&](const OpenJob &job) {
-					return job.epoch == v.load_epoch_ && job.path == path;
+					return job.epoch == v.load_epoch_ && job.key == key;
 				});
-			if (pending || job_active(*v.worker_, v.load_epoch_, path, false) ||
+			if (pending || job_active(*v.worker_, v.load_epoch_, key) ||
 				(v.worker_->pending_open &&
 					v.worker_->pending_open->epoch == v.load_epoch_ &&
-					v.worker_->pending_open->path == path))
+					v.worker_->pending_open->key == key))
 				continue;
-			v.worker_->pending_preloads.push_back(
-				make_open_job(v, path, false));
+			v.worker_->pending_preloads.push_back(make_open_job(v, key));
 		}
 	}
 	v.worker_->cv.notify_all();

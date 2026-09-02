@@ -32,9 +32,14 @@ struct Page;
 constexpr float kInfoSidebarPts = 240.f;
 
 struct Viewer : Widget {
-	struct CachedOpen {
+	struct OpenKey {
 		std::string path;
 		bool enhance = false;
+
+		bool operator==(const OpenKey &) const = default;
+	};
+	struct CachedOpen {
+		OpenKey key;
 		dawn::ImagePtr image;
 		std::string message;
 	};
