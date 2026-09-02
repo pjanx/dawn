@@ -56,8 +56,8 @@ func drawIcon(scale: CGFloat) -> CGImage? {
 	context.clip()
 	context.drawLinearGradient(
 		CGGradient(colorsSpace: colorspace, colors: [
-			CGColor(red: 1, green: 0x7ap-8, blue: 0, alpha: 1),
-			CGColor(red: 1, green: 0xeep-8, blue: 0, alpha: 1)
+			CGColor(red: 1, green: 0x00p-8, blue: 0, alpha: 1),
+			CGColor(red: 1, green: 0xffp-8, blue: 0, alpha: 1)
 		] as CFArray, locations: [0, 1])!,
 		start: CGPointMake(0, 100), end: CGPointMake(0, size.height - 100),
 		options: CGGradientDrawingOptions(rawValue: 0))

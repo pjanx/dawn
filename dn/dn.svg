@@ -3,8 +3,8 @@
    xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
-      <stop stop-color="#ffee00" offset="0" />
-      <stop stop-color="#ff7a00" offset="1" />
+      <stop stop-color="#ffff00" offset="0" />
+      <stop stop-color="#ff0000" offset="1" />
     </linearGradient>
     <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"
        color-interpolation-filters="sRGB">
