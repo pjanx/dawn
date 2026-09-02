@@ -30,12 +30,12 @@
 
 #define TIFF_TABLES_CONSTANTS_ONLY
 #include "tiff-tables.h"
-#if defined(__GNUC__)
+#if defined __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 #include "tiffer.h"
-#if defined(__GNUC__)
+#if defined __GNUC__
 #pragma GCC diagnostic pop
 #endif
 
@@ -229,6 +229,7 @@ image_new(uint32_t width, uint32_t height)
 		return nullptr;
 	if (width > UINT32_MAX / kBytesPerPixel)
 		return nullptr;
+
 	uint32_t stride = width * kBytesPerPixel;
 	if (height > UINT32_MAX / stride)
 		return nullptr;
@@ -251,6 +252,7 @@ append_page(ImagePtr &head, ImagePtr &tail, ImagePtr page)
 {
 	if (!page)
 		return;
+
 	if (head) {
 		tail->page_next = page;
 		page->page_previous = tail;
@@ -265,6 +267,7 @@ append_frame(ImagePtr &head, ImagePtr &tail, ImagePtr frame)
 {
 	if (!frame)
 		return;
+
 	if (head) {
 		tail->frame_next = frame;
 		frame->frame_previous = tail;
@@ -286,6 +289,7 @@ set_error(Error *error, string message)
 {
 	if (!error)
 		return;
+
 	error->code = Error::Code::Open;
 	error->message = std::move(message);
 }
@@ -594,10 +598,12 @@ blend_image(Image &dst, const Image &src, int dst_x, int dst_y, BlendOp op)
 		int dy = dst_y + int(sy);
 		if (dy < 0 || dy >= int(dst.height))
 			continue;
+
 		for (uint32_t sx = 0; sx < src.width; sx++) {
 			int dx = dst_x + int(sx);
 			if (dx < 0 || dx >= int(dst.width))
 				continue;
+
 			auto *d = pixel_at(dst, uint32_t(dx), uint32_t(dy));
 			auto *s = pixel_at(src, sx, sy);
 			if (op == BlendOp::Source) {
@@ -847,6 +853,7 @@ profile_transfer(const Profile *profile)
 {
 	if (!profile || !profile->profile_)
 		return Transfer::Srgb;
+
 	cmsHPROFILE h = cmsHPROFILE(profile->profile_);
 	auto *r = (cmsToneCurve *) cmsReadTag(h, cmsSigRedTRCTag);
 	auto *g = (cmsToneCurve *) cmsReadTag(h, cmsSigGreenTRCTag);
@@ -857,6 +864,7 @@ profile_transfer(const Profile *profile)
 			return tr;
 		return Transfer::Srgb;
 	}
+
 	auto *k = (cmsToneCurve *) cmsReadTag(h, cmsSigGrayTRCTag);
 	if (k)
 		return classify_curve(k);
@@ -1643,6 +1651,11 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	ImagePtr image;
+	auto try_next = [&](detail::LoadFn *fn, const char *name) {
+		if (!image && (image = try_loader(fn, data, ctx, error)))
+			image->loader = name;
+	};
+
 	uint32_t fourcc = detail::wuffs_guess_fourcc(data);
 	switch (fourcc) {
 	case 0x424D5020:  // BMP
@@ -1655,59 +1668,53 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	case 0x57424D50:  // WBMP
 		// Note that TGA/ICO/CUR/WBMP don't start with any real magic.
 		// We will fall through on failure.
-		image = detail::load_wuffs(data, ctx, error);
+		try_next(detail::load_wuffs, "Wuffs");
 		break;
 	case 0x4A504547:  // JPEG
-		image = detail::load_jpeg(data, ctx, error);
+		try_next(detail::load_jpeg, "libjpeg-turbo");
 		break;
 	case 0x57454250:  // WEBP
-		image = detail::load_webp(data, ctx, error);
+		try_next(detail::load_webp, "libwebp");
 		break;
 	default:
 		break;
 	}
-
-	auto try_next =
-		[&](ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *)) {
-			if (!image)
-				image = try_loader(fn, data, ctx, error);
-		};
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws,
 	// but allow for running the full render.
 #if DAWN_WITH_LIBRAW
 	if (!ctx.enhance)
 #endif
-		try_next(detail::load_tiff_ep);
+		try_next(detail::load_tiff_ep, "TIFF-EP previews");
 #if DAWN_WITH_LIBRAW
-	try_next(detail::load_libraw);
+	try_next(detail::load_libraw, "LibRaw");
 #endif
-	try_next(detail::load_resvg);
+	try_next(detail::load_resvg, "resvg");
 #if DAWN_WITH_LIBRSVG
-	try_next(detail::load_librsvg);
+	try_next(detail::load_librsvg, "librsvg");
 #endif
 #if DAWN_WITH_XCURSOR
-	try_next(detail::load_xcursor);
+	try_next(detail::load_xcursor, "libXcursor");
 #endif
 	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
 	// not rely on libheif rejecting an unknown ftyp brand.
 #if DAWN_WITH_LIBJXL
-	try_next(detail::load_jxl);
+	try_next(detail::load_jxl, "libjxl");
 #endif
 #if DAWN_WITH_LIBHEIF
-	try_next(detail::load_heif);
+	try_next(detail::load_heif, "libheif");
 #endif
 #if DAWN_WITH_OPENJPEG
-	try_next(detail::load_openjpeg);
+	try_next(detail::load_openjpeg, "OpenJPEG");
 #endif
 #if DAWN_WITH_LIBTIFF
-	try_next(detail::load_tiff);
+	try_next(detail::load_tiff, "LibTIFF");
 #endif
 #if DAWN_WITH_GLYCIN
-	try_next(detail::load_glycin);
+	try_next(detail::load_glycin, "Glycin");
 #endif
 #if DAWN_WITH_GDKPIXBUF
-	try_next(detail::load_gdkpixbuf);
+	try_next(detail::load_gdkpixbuf, "GdkPixbuf");
 #endif
 
 	if (!image) {

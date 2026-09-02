@@ -277,13 +277,15 @@ dim_text(uint32_t v)
 	return QString::fromUtf8(buf);
 }
 
-constexpr int kInfoFixedKids = 5;
+// FIXME: This is fucking stupid.
+constexpr int kInfoFixedKids = 6;
 
 void
 fill_info_texts(Viewer &v, const dawn::Image *im)
 {
 	if (!v.info_ || v.info_text_src_ == im)
 		return;
+
 	auto &list = *v.info_;
 	v.info_text_src_ = im;
 	list.scroll_.offset = 0;
@@ -291,6 +293,7 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 		list.erase_children(size_t(kInfoFixedKids));
 	if (!im || im->text.empty())
 		return;
+
 	vector<pair<string, string>> rows(im->text.begin(), im->text.end());
 	sort(rows.begin(), rows.end());
 	for (const auto &kv : rows) {
@@ -659,19 +662,25 @@ make_error(Viewer &v)
 static unique_ptr<Sidebar>
 make_sidebar(Viewer &v)
 {
+	// FIXME: This needs proper layouting.
 	const float label_w = v.kit_.text_width(QStringLiteral("Height:"), true);
+
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
 	col->gap = kItemGap;
 	col->pad_x = kWinPadX * 2.f;
 	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
-	col->add_child(meta_row(
-		QStringLiteral("Name:"), QStringLiteral("-"), label_w, v.name_label_));
+
+	col->add_child(meta_row(QStringLiteral("Name:"), QStringLiteral("-"),
+		label_w, v.name_label_));
+	col->add_child(meta_row(QStringLiteral("Loader:"), QStringLiteral("-"),
+		label_w, v.loader_label_));
 	col->add_child(meta_row(QStringLiteral("Width:"), QStringLiteral("-"),
 		label_w, v.width_label_));
 	col->add_child(meta_row(QStringLiteral("Height:"), QStringLiteral("-"),
 		label_w, v.height_label_));
+
 	auto exiftool = make_unique<Button>();
 	exiftool->text = QStringLiteral("Launch ExifTool");
 	exiftool->on_click = [&v](Kit &) {
@@ -680,9 +689,11 @@ make_sidebar(Viewer &v)
 	};
 	v.exiftool_button_ = exiftool.get();
 	col->add_child(std::move(exiftool));
+
 	auto cie = make_unique<CieDiagram>();
 	v.cie_ = cie.get();
 	col->add_child(std::move(cie));
+
 	auto side = make_unique<Sidebar>(std::move(col));
 	side->min_w = kInfoSidebarPts;
 	side->visible = false;
@@ -712,6 +723,9 @@ sync_ui(Viewer &v, Page &ui)
 			? QString::fromUtf8(basename)
 			: QStringLiteral("-");
 		v.name_label_->text = name;
+		v.loader_label_->text = v.image_->loader
+			? QString::fromUtf8(v.image_->loader)
+			: QStringLiteral("-");
 		v.width_label_->text = dim_text(v.image_width_);
 		v.height_label_->text = dim_text(v.image_height_);
 		if (v.cie_) {
@@ -1924,6 +1938,7 @@ Viewer::destroy()
 	this->error_label_ = nullptr;
 	this->info_ = nullptr;
 	this->name_label_ = nullptr;
+	this->loader_label_ = nullptr;
 	this->width_label_ = nullptr;
 	this->height_label_ = nullptr;
 	this->exiftool_button_ = nullptr;

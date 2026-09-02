@@ -54,6 +54,7 @@ struct Viewer : Widget {
 	Label *scale_label_ = nullptr;
 	ScrollColumn *info_ = nullptr;
 	Label *name_label_ = nullptr;
+	Label *loader_label_ = nullptr;
 	Label *width_label_ = nullptr;
 	Label *height_label_ = nullptr;
 	Button *exiftool_button_ = nullptr;

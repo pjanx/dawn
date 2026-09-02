@@ -11,6 +11,7 @@
 
 #include <chrono>
 
+// TODO(p): Why the fuck is this called detail, and what should it be called?
 namespace dawn::detail
 {
 
@@ -39,34 +40,23 @@ struct StageClock {
 
 uint32_t wuffs_guess_fourcc(std::span<const uint8_t> data);
 
-ImagePtr load_wuffs(
+using LoadFn = ImagePtr(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_jpeg(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_webp(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_tiff_ep(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_libraw(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_resvg(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_librsvg(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_xcursor(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_heif(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_jxl(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_openjpeg(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_tiff(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_glycin(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-ImagePtr load_gdkpixbuf(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
+
+LoadFn load_wuffs;
+LoadFn load_jpeg;
+LoadFn load_webp;
+LoadFn load_tiff_ep;
+LoadFn load_libraw;
+LoadFn load_resvg;
+LoadFn load_librsvg;
+LoadFn load_xcursor;
+LoadFn load_heif;
+LoadFn load_jxl;
+LoadFn load_openjpeg;
+LoadFn load_tiff;
+LoadFn load_glycin;
+LoadFn load_gdkpixbuf;
 
 /// MIME types provided by the installed gdk-pixbuf loaders (if built).
 std::vector<std::string> gdkpixbuf_media_types();
