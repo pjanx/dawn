@@ -2690,23 +2690,23 @@ Menu::Menu()
 	add_child(std::move(c));
 }
 
-MenuItem &
+MenuItem *
 Menu::add_item(const QString &text)
 {
 	auto item = make_unique<MenuItem>();
 	item->text = text;
-	MenuItem &ref = *item;
+	MenuItem *ref = item.get();
 	if (this->col)
 		this->col->add_child(std::move(item));
 	return ref;
 }
 
-MenuItem &
+MenuItem *
 Menu::add_item_with_mnemonic(const QString &text)
 {
 	auto item = make_unique<MenuItem>();
 	item->text = menu_label(text.toStdString().c_str(), &item->mnemonic);
-	MenuItem &ref = *item;
+	MenuItem *ref = item.get();
 	if (this->col)
 		this->col->add_child(std::move(item));
 	return ref;
@@ -2740,8 +2740,8 @@ Menu::build(span<const MenuNode> nodes, const Actor &a)
 		if (!node.items.empty()) {
 			auto child = make_unique<Menu>();
 			child->build(node.items, this->actor);
-			auto &item = add_item_with_mnemonic(node.title);
-			item.sub = child.get();
+			auto *item = add_item_with_mnemonic(node.title);
+			item->sub = child.get();
 			this->subs_.push_back(std::move(child));
 			continue;
 		}
@@ -2751,11 +2751,11 @@ Menu::build(span<const MenuNode> nodes, const Actor &a)
 		}
 		const Action action = node.action;
 		const ActionDef &def = action_def(action);
-		auto &item = add_item_with_mnemonic(action_label(def, false));
-		item.action = action;
-		item.accel = accel_label(def);
-		item.checkable = (def.flags & ActionToggle) && !def.label[1];
-		item.on_click = [this, action](Kit &) {
+		auto *item = add_item_with_mnemonic(action_label(def, false));
+		item->action = action;
+		item->accel = accel_label(def);
+		item->checkable = (def.flags & ActionToggle) && !def.label[1];
+		item->on_click = [this, action](Kit &) {
 			if (this->actor.apply)
 				this->actor.apply(action);
 		};

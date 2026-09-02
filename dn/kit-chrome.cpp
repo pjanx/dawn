@@ -76,8 +76,8 @@ ContextMenu::fill_items(const QUrl &url)
 			if (apps_sep && !added)
 				apps->add_sep();
 			added = true;
-			auto &item = apps->add_item(app.name.isEmpty() ? app.id : app.name);
-			item.on_click = [app, path](Kit &) {
+			auto *item = apps->add_item(app.name.isEmpty() ? app.id : app.name);
+			item->on_click = [app, path](Kit &) {
 				launch(app, path);
 				set_last_used(app, path);
 			};
@@ -90,31 +90,31 @@ ContextMenu::fill_items(const QUrl &url)
 	add_apps(rec);
 	add_apps(fall);
 
-	auto &new_win = add_item_with_mnemonic("Open in New _Window");
-	new_win.on_click = [this, url](Kit &) {
+	auto *new_win = add_item_with_mnemonic("Open in New _Window");
+	new_win->on_click = [this, url](Kit &) {
 		if (this->on_new_window)
 			this->on_new_window(url);
 	};
 	if (apps_sep) {
-		add_item_with_mnemonic("Open _With").sub = apps.get();
+		add_item_with_mnemonic("Open _With")->sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
 	if (QFileInfo(path).isDir() && this->on_bookmarked &&
 		this->on_toggle_bookmark) {
 		add_sep();
-		auto &bookmark = add_item_with_mnemonic(this->on_bookmarked(url)
+		auto *bookmark = add_item_with_mnemonic(this->on_bookmarked(url)
 				? "Remove from _Bookmarks"
 				: "Add to _Bookmarks");
-		bookmark.on_click = [this, url](Kit &) {
+		bookmark->on_click = [this, url](Kit &) {
 			if (this->on_toggle_bookmark)
 				this->on_toggle_bookmark(url);
 		};
 	}
 	if (QFileInfo(path).isFile() && this->on_trash) {
 		add_sep();
-		auto &trash = add_item_with_mnemonic("Move to _Trash");
-		trash.accel = action_accel(action_def(Action::Trash));
-		trash.on_click = [this, url](Kit &) {
+		auto *trash = add_item_with_mnemonic("Move to _Trash");
+		trash->accel = action_accel(action_def(Action::Trash));
+		trash->on_click = [this, url](Kit &) {
 			if (this->on_trash)
 				this->on_trash(url);
 		};
