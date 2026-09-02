@@ -89,6 +89,8 @@ enum : uint8_t {
 	ColourBusy,
 	ColourInk,
 	ColourFrame,
+	ColourEntryTop,
+	ColourEntryBottom,
 	ColourPanel,
 	ColourHint,
 	ColourCount,
@@ -256,6 +258,7 @@ struct Entry : Widget {
 	int preedit_caret = 0;
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
+	bool flat = false;
 	// A field takes what room it is given -- in the overflow popup it moved
 	// into as much as in the bar, where it fills out the rest of the line it
 	// wrapped onto.
@@ -820,11 +823,11 @@ struct Kit {
 	}
 
 	// An appropriately thick rule, border or caret, in device pixels.
-	[[nodiscard]] int hairline() const { return std::min(px(1.f), 1); }
+	[[nodiscard]] int hairline() const { return std::max(px(1.f), 1); }
 
 	// One icon square, in device pixels: the size pack_icon() rasterises at,
 	// and the size the quad that samples it is drawn at.
-	[[nodiscard]] int icon_px() const { return std::min(px(kIconPts), 16); }
+	[[nodiscard]] int icon_px() const { return std::max(px(kIconPts), 16); }
 
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
 	[[nodiscard]] bool font_pixels(

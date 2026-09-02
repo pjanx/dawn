@@ -1026,13 +1026,15 @@ Entry::paint(Kit &kit) const
 	if (!this->Widget::shown() || this->r.empty())
 		return;
 
-	// The border always says where the field is; only the fill is conditional.
-	// An idle, empty field lets the toolbar show through, and text in it is a
-	// filter the listing is already obeying, so that fills even unfocused, as
-	// the only thing on screen explaining why files are missing.
+	// A flat idle field lets the toolbar show through.  Text in it is a filter
+	// the listing is already obeying, so that restores the background even
+	// unfocused, as the only thing on screen explaining why files are missing.
 	const float hair = float(kit.hairline());
-	if (this->focused_ || !this->text.isEmpty())
-		kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
+	if (!this->flat || this->focused_ || !this->text.isEmpty())
+		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
+			this->r.x + this->r.w, this->r.y + this->r.h,
+			col(kit.colours_[ColourEntryTop]),
+			col(kit.colours_[ColourEntryBottom]));
 	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
@@ -4256,6 +4258,8 @@ Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 		this->colours_[ColourBusy] = bake_rgb(cmm, target, 0xc0, 0x00, 0x00);
 		this->colours_[ColourInk] = bake_grey(cmm, target, 0xff);
 		this->colours_[ColourFrame] = bake_grey(cmm, target, 0x00);
+		this->colours_[ColourEntryTop] = bake_grey(cmm, target, 0x10);
+		this->colours_[ColourEntryBottom] = this->colours_[ColourFrame];
 		this->colours_[ColourPanel] = bake_grey(cmm, target, 0x28);
 		this->colours_[ColourHint] = bake_rgb(cmm, target, 0x88, 0x77, 0x00);
 	} else {
@@ -4268,6 +4272,8 @@ Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 		this->colours_[ColourBusy] = bake_rgb(cmm, target, 0x8b, 0x00, 0x00);
 		this->colours_[ColourInk] = bake_grey(cmm, target, 0x00);
 		this->colours_[ColourFrame] = bake_grey(cmm, target, 0xff);
+		this->colours_[ColourEntryTop] = bake_grey(cmm, target, 0xf8);
+		this->colours_[ColourEntryBottom] = this->colours_[ColourFrame];
 		this->colours_[ColourPanel] = bake_grey(cmm, target, 0xf0);
 		this->colours_[ColourHint] = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 	}

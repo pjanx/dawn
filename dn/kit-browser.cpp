@@ -2249,6 +2249,7 @@ make_item(Browser &b, const Spec &spec)
 	if (spec.kind == Kind::Search) {
 		auto e = make_unique<Entry>();
 		b.search_ = e.get();
+		e->flat = true;
 		e->placeholder = QStringLiteral("Filter");
 		e->on_change = [&b](Kit &) {
 			scan_dir(b);
