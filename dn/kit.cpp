@@ -3357,6 +3357,7 @@ unique_ptr<Button>
 make_title_button(Titlebar *bar, Action action, const char *icon)
 {
 	auto btn = make_unique<Button>();
+	btn->flat = true;
 	btn->action = action;
 	btn->icon = icon;
 	const ActionDef &d = action_def(action);

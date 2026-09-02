@@ -664,7 +664,8 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 
 Thumbnailer::Reservation
 Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
-	const ThumbnailSource &source, int top_tier, size_t bytes, Priority priority)
+	const ThumbnailSource &source, int top_tier, size_t bytes,
+	Priority priority)
 {
 	if (!bytes || bytes > kPendingBundleBytes)
 		return 0;
@@ -785,7 +786,8 @@ Thumbnailer::foreground_busy(Client id) const
 		return false;
 	for (const auto &[key, task] : client->second.keyed) {
 		(void) key;
-		if (priority_index(task->priority) < priority_index(Priority::Dimensions))
+		if (priority_index(task->priority) <
+			priority_index(Priority::Dimensions))
 			return true;
 	}
 	for (const auto &[gpu_id, task] : impl_->gpu_tasks) {
