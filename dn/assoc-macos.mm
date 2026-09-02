@@ -14,6 +14,7 @@ using namespace std;
 
 #import <AppKit/AppKit.h>
 #import <CoreServices/CoreServices.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 namespace dn
 {
@@ -69,15 +70,8 @@ uti_from_file(NSURL *url)
 		return uti;
 
 	NSString *ext = url.pathExtension;
-	if (ext.length) {
-		CFStringRef tagged = UTTypeCreatePreferredIdentifierForTag(
-			kUTTagClassFilenameExtension, (__bridge CFStringRef) ext, nullptr);
-		if (tagged) {
-			NSString *copy = [(__bridge NSString *) tagged copy];
-			CFRelease(tagged);
-			return copy;
-		}
-	}
+	if (ext.length)
+		return [UTType typeWithFilenameExtension:ext].identifier;
 	return nil;
 }
 
@@ -180,14 +174,14 @@ launch(const Handler &app, const QString &path)
 	if (!app_url)
 		return false;
 
-	NSError *err = nil;
-	const BOOL ok =
-		[[NSWorkspace sharedWorkspace] openURLs:@[ file ]
-						   withApplicationAtURL:app_url
-										options:NSWorkspaceLaunchDefault
-								  configuration:@{}
-										  error:&err];
-	return ok == YES;
+	// The launch is asynchronous, so failures can only be reported later,
+	// and the caller has nothing to do with them anyway.
+	[[NSWorkspace sharedWorkspace] openURLs:@[ file ]
+					   withApplicationAtURL:app_url
+							  configuration:[NSWorkspaceOpenConfiguration
+												configuration]
+						  completionHandler:nil];
+	return true;
 }
 
 void

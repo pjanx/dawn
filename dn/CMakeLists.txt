@@ -79,6 +79,7 @@ elseif (APPLE)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
 	find_library(DN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
 	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
+	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
 	target_sources(dn PRIVATE
 		display-profile-macos.mm
 		assoc-macos.mm
@@ -88,7 +89,8 @@ elseif (APPLE)
 	target_link_libraries(dn PRIVATE
 		"${DN_APPKIT_FRAMEWORK}"
 		"${DN_COREGRAPHICS_FRAMEWORK}"
-		"${DN_CORESERVICES_FRAMEWORK}")
+		"${DN_CORESERVICES_FRAMEWORK}"
+		"${DN_UNIFORMTYPES_FRAMEWORK}")
 else()
 	pkg_check_modules(DN_COLORD REQUIRED IMPORTED_TARGET colord)
 	target_sources(dn PRIVATE
