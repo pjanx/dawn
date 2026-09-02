@@ -25,6 +25,7 @@ namespace dn
 {
 
 struct CieDiagram;
+struct Checkbox;
 struct Kit;
 struct Page;
 
@@ -33,6 +34,7 @@ constexpr float kInfoSidebarPts = 240.f;
 struct Viewer : Widget {
 	struct CachedOpen {
 		std::string path;
+		bool enhance = false;
 		dawn::ImagePtr image;
 		std::string message;
 	};
@@ -57,6 +59,7 @@ struct Viewer : Widget {
 	Label *loader_label_ = nullptr;
 	Label *width_label_ = nullptr;
 	Label *height_label_ = nullptr;
+	Checkbox *jpeg_quant_smooth_ = nullptr;
 	Button *exiftool_button_ = nullptr;
 	CieDiagram *cie_ = nullptr;
 	const dawn::Image *info_text_src_ = nullptr;
@@ -95,6 +98,7 @@ struct Viewer : Widget {
 	bool view_locked_ = true;
 	bool fixate_ = false;
 	bool enable_cms_ = true;
+	bool enhance_jpeg_ = false;
 	bool filter_ = true;
 	bool checkerboard_ = true;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;

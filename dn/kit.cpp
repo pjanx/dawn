@@ -526,9 +526,11 @@ emit_icon(
 {
 	if (!name)
 		return;
+
 	auto it = kit.icons_.find(name);
 	if (it == kit.icons_.end())
 		return;
+
 	float u0, v0, u1, v1;
 	kit.atlas_.uv(it->second, &u0, &v0, &u1, &v1);
 	kit.list_.add_image(x, y, x + size, y + size, u0, v0, u1, v1, colour);
@@ -691,6 +693,15 @@ button_shown(const Kit &kit, const Button &b)
 	return kit.elide_lines(b.text, button_text_avail(kit, b), 1, false);
 }
 
+QString
+checkbox_shown(const Kit &kit, const Checkbox &c)
+{
+	const int px = kit.px(kFramePadX + c.pad_x);
+	const int box = kit.icon_px() + kit.hairline() * 2;
+	const int used = px * 2 + box + kit.px(4.f);
+	return kit.elide_lines(c.text, max(1, c.r.w - used), 1, false);
+}
+
 }  // namespace
 
 void
@@ -816,6 +827,84 @@ Button::activate(Kit &kit)
 		}
 	}
 	return true;
+}
+
+// --- Checkbox ---------------------------------------------------------------
+
+void
+Checkbox::measure(Kit &kit, int, int)
+{
+	const int px = kit.px(kFramePadX + this->pad_x);
+	const int box = kit.icon_px() + kit.hairline() * 2;
+	int cw = box;
+	int ch = box;
+	if (!this->text.isEmpty()) {
+		cw += kit.px(4.f) + kit.text_width(this->text, false);
+		ch = max(ch, kit.text_height(this->text, 0, false));
+	}
+	this->r = {0, 0, px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
+}
+
+void
+Checkbox::paint(Kit &kit) const
+{
+	if (!shown())
+		return;
+
+	const bool hot = kit.hot_ == this;
+	const bool pressed = kit.left_down_ && kit.pressed_ == this;
+	if (this->enabled_ && pressed)
+		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+	else if (this->enabled_ && hot)
+		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
+
+	const int px = kit.px(kFramePadX + this->pad_x);
+	const int icon = kit.icon_px();
+	const int border = kit.hairline();
+	const int box = icon + border * 2;
+	const int bx = this->r.x + px;
+	const int by = this->r.y + (this->r.h - box) / 2;
+	kit.list_.add_rect_filled_vgradient(float(bx), float(by),
+		float(bx + box), float(by + box), col(kit.colours_[ColourEntryTop]),
+		col(kit.colours_[ColourEntryBottom]));
+	kit.draw_border({bx, by, box, box}, col(kit.colours_[ColourDivider]),
+		kit.hairline());
+
+	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
+		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
+	if (this->checked)
+		emit_icon(kit, float(bx + border), float(by + border), float(icon),
+			"object-select-symbolic", col(kit.colours_[ColourInk], ink_a));
+	if (!this->text.isEmpty()) {
+		const int tx = bx + box + kit.px(4.f);
+		const int th = kit.text_height(this->text, 0, false);
+		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
+			checkbox_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
+			false, -1);
+	}
+	if (kit.focus_ == this && kit.focus_visible_)
+		kit.focus_ring(this->r);
+}
+
+void
+Checkbox::prepare(Kit &kit)
+{
+	if (!shown())
+		return;
+
+	kit.pack_icon("object-select-symbolic", kit.icon_px());
+	if (!this->text.isEmpty())
+		cache_text(kit, checkbox_shown(kit, *this), false, 0);
+}
+
+bool
+Checkbox::activate(Kit &kit)
+{
+	if (!this->enabled_)
+		return false;
+
+	this->checked = !this->checked;
+	return Button::activate(kit);
 }
 
 // --- Label -------------------------------------------------------------------

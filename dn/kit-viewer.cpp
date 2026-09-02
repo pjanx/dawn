@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include "kit-viewer.hpp"
 
 #include "action.hpp"
@@ -38,7 +40,9 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -278,7 +282,7 @@ dim_text(uint32_t v)
 }
 
 // FIXME: This is fucking stupid.
-constexpr int kInfoFixedKids = 6;
+constexpr int kInfoFixedKids = 6 + DAWN_WITH_JPEG_QS;
 
 void
 fill_info_texts(Viewer &v, const dawn::Image *im)
@@ -316,11 +320,13 @@ struct OpenJob {
 	shared_ptr<const vector<uint8_t>> screen_icc;
 	int dpi = 96;
 	bool enable_cms = true;
+	bool enhance = false;
 };
 
 struct OpenLoad {
 	uint64_t epoch = 0;
 	string path;
+	bool enhance = false;
 	dawn::ImagePtr image;
 	string message;
 };
@@ -370,8 +376,10 @@ profile_from_icc(
 
 }  // namespace
 
+static void reload_open(Viewer &v);
+
 struct Viewer::Worker {
-	using OpenKey = pair<uint64_t, string>;
+	using OpenKey = tuple<uint64_t, string, bool>;
 	mutex mu;
 	condition_variable cv;
 	bool stop = false;
@@ -663,7 +671,8 @@ static unique_ptr<Sidebar>
 make_sidebar(Viewer &v)
 {
 	// FIXME: This needs proper layouting.
-	const float label_w = v.kit_.text_width(QStringLiteral("Height:"), true);
+	const float label_w = v.kit_.text_width(QStringLiteral("Height:"), true)
+		/ v.kit_.dpr_;
 
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
@@ -680,6 +689,27 @@ make_sidebar(Viewer &v)
 		label_w, v.width_label_));
 	col->add_child(meta_row(QStringLiteral("Height:"), QStringLiteral("-"),
 		label_w, v.height_label_));
+
+#if DAWN_WITH_JPEG_QS
+	// QuantSmooth processing can take extremely long,
+	// so it's not elligible as a regular loader.
+	auto jpegqs = make_unique<Checkbox>();
+	jpegqs->text = QStringLiteral("Enable JPEG Quant Smooth");
+	jpegqs->enabled_ = false;
+	jpegqs->on_click = [&v](Kit &) {
+		if (!v.jpeg_quant_smooth_)
+			return;
+
+		v.enhance_jpeg_ = v.jpeg_quant_smooth_->checked;
+		if (!v.url_.isEmpty()) {
+			v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_,
+				v.orientation_, v.angle_, v.view_locked_};
+			reload_open(v);
+		}
+	};
+	v.jpeg_quant_smooth_ = jpegqs.get();
+	col->add_child(std::move(jpegqs));
+#endif
 
 	auto exiftool = make_unique<Button>();
 	exiftool->text = QStringLiteral("Launch ExifTool");
@@ -717,6 +747,11 @@ sync_ui(Viewer &v, Page &ui)
 		fill_info_texts(v, v.current_ ? v.current_.get() : v.image_.get());
 	if (v.exiftool_button_)
 		v.exiftool_button_->enabled_ = !v.url_.isEmpty();
+	if (v.jpeg_quant_smooth_) {
+		v.jpeg_quant_smooth_->checked = v.enhance_jpeg_;
+		v.jpeg_quant_smooth_->enabled_ = v.image_ && v.image_->loader &&
+			string_view(v.image_->loader) == "libjpeg-turbo";
+	}
 	if (ui.sidebar_open && v.info_) {
 		const char *basename = v.basename_.c_str();
 		const QString name = (basename && basename[0])
@@ -867,18 +902,21 @@ apply_open_result(Viewer &v, OpenLoad result)
 		return;
 	auto found = find_if(v.open_cache_.begin(), v.open_cache_.end(),
 		[&](const Viewer::CachedOpen &entry) {
-			return entry.path == result.path;
+			return entry.path == result.path &&
+				entry.enhance == result.enhance;
 		});
 	if (found == v.open_cache_.end()) {
 		v.open_cache_.push_back(
-			{result.path, std::move(result.image), std::move(result.message)});
+			{result.path, result.enhance, std::move(result.image),
+				std::move(result.message)});
 		found = prev(v.open_cache_.end());
 	} else {
 		found->image = std::move(result.image);
 		found->message = std::move(result.message);
 	}
 	Viewer::CachedOpen *cached = &*found;
-	if (!v.detached_ && cached->path == current)
+	if (!v.detached_ && cached->path == current &&
+		cached->enhance == v.enhance_jpeg_)
 		apply_open(v, v.open_gen_, cached->image, cached->message);
 	if (v.open_cache_.size() > 3)
 		v.open_cache_.erase(v.open_cache_.begin());
@@ -890,12 +928,14 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	OpenLoad result;
 	result.epoch = open.epoch;
 	result.path = open.path;
+	result.enhance = open.enhance;
 	dawn::OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
 	ctx.screen_profile =
 		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
 	ctx.screen_dpi = open.dpi;
+	ctx.enhance = open.enhance;
 	vector<string> warnings;
 	ctx.warnings = &warnings;
 	dawn::Error error;
@@ -935,7 +975,8 @@ finish_decode(Viewer &v, const OpenJob &open, bool preload)
 	bool accept = false;
 	{
 		lock_guard lock(v.worker_->mu);
-		const Viewer::Worker::OpenKey key{open.epoch, open.path};
+		const Viewer::Worker::OpenKey key{
+			open.epoch, open.path, open.enhance};
 		if (preload) {
 			auto &active = v.worker_->active_preloads;
 			if (auto found = find(active.begin(), active.end(), key);
@@ -985,13 +1026,15 @@ worker_loop(Viewer &v, bool foreground)
 			if (!foreground) {
 				open = std::move(v.worker_->pending_preloads.back());
 				v.worker_->pending_preloads.pop_back();
-				v.worker_->active_preloads.emplace_back(open.epoch, open.path);
+				v.worker_->active_preloads.emplace_back(
+					open.epoch, open.path, open.enhance);
 				have_open = true;
 			} else if (v.worker_->pending_open) {
 				open = std::move(*v.worker_->pending_open);
 				v.worker_->pending_open.reset();
 				v.worker_->active_open =
-					Viewer::Worker::OpenKey{open.epoch, open.path};
+					Viewer::Worker::OpenKey{
+						open.epoch, open.path, open.enhance};
 				have_open = true;
 			} else {
 				scale = std::move(*v.worker_->pending_scale);
@@ -1034,7 +1077,7 @@ start_worker(Viewer &v)
 }
 
 static OpenJob
-make_open_job(const Viewer &v, const string &path)
+make_open_job(const Viewer &v, const string &path, bool enhance)
 {
 	OpenJob job;
 	job.epoch = v.load_epoch_;
@@ -1043,24 +1086,26 @@ make_open_job(const Viewer &v, const string &path)
 		path_to_url(QString::fromStdString(path)).toEncoded().toStdString();
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
+	job.enhance = enhance;
 	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
 	return job;
 }
 
 static Viewer::CachedOpen *
-find_cached(Viewer &v, const string &path)
+find_cached(Viewer &v, const string &path, bool enhance)
 {
 	for (auto &entry : v.open_cache_) {
-		if (entry.path == path)
+		if (entry.path == path && entry.enhance == enhance)
 			return &entry;
 	}
 	return nullptr;
 }
 
 static bool
-job_active(const Viewer::Worker &worker, uint64_t epoch, const string &path)
+job_active(const Viewer::Worker &worker, uint64_t epoch, const string &path,
+	bool enhance)
 {
-	const Viewer::Worker::OpenKey key{epoch, path};
+	const Viewer::Worker::OpenKey key{epoch, path, enhance};
 	if (worker.active_open == key)
 		return true;
 	return find(worker.active_preloads.begin(), worker.active_preloads.end(),
@@ -1084,7 +1129,8 @@ start_open(Viewer &v, bool invalidate)
 	v.scale_job_pending_ = false;
 	v.scale_failed_ = false;
 	const string path = viewer_local_path(v);
-	Viewer::CachedOpen *cached = invalidate ? nullptr : find_cached(v, path);
+	Viewer::CachedOpen *cached =
+		invalidate ? nullptr : find_cached(v, path, v.enhance_jpeg_);
 	{
 		lock_guard lock(v.worker_->mu);
 		v.worker_->epoch = v.load_epoch_;
@@ -1098,10 +1144,12 @@ start_open(Viewer &v, bool invalidate)
 			v.worker_->pending_preloads.end());
 		if (invalidate)
 			v.worker_->pending_preloads.clear();
-		if (cached || job_active(*v.worker_, v.load_epoch_, path))
+		if (cached ||
+			job_active(*v.worker_, v.load_epoch_, path, v.enhance_jpeg_))
 			v.worker_->pending_open.reset();
 		else
-			v.worker_->pending_open = make_open_job(v, path);
+			v.worker_->pending_open =
+				make_open_job(v, path, v.enhance_jpeg_);
 		v.worker_->pending_scale.reset();
 	}
 	v.worker_->cv.notify_all();
@@ -1130,7 +1178,7 @@ schedule_preloads(Viewer &v)
 	for (const string *path : {&v.previous_path_, &v.next_path_}) {
 		if (!wanted(*path) ||
 			find(missing.begin(), missing.end(), *path) != missing.end() ||
-			find_cached(v, *path))
+			find_cached(v, *path, false))
 			continue;
 		missing.push_back(*path);
 	}
@@ -1154,12 +1202,13 @@ schedule_preloads(Viewer &v)
 				v.worker_->pending_preloads.end(), [&](const OpenJob &job) {
 					return job.epoch == v.load_epoch_ && job.path == path;
 				});
-			if (pending || job_active(*v.worker_, v.load_epoch_, path) ||
+			if (pending || job_active(*v.worker_, v.load_epoch_, path, false) ||
 				(v.worker_->pending_open &&
 					v.worker_->pending_open->epoch == v.load_epoch_ &&
 					v.worker_->pending_open->path == path))
 				continue;
-			v.worker_->pending_preloads.push_back(make_open_job(v, path));
+			v.worker_->pending_preloads.push_back(
+				make_open_job(v, path, false));
 		}
 	}
 	v.worker_->cv.notify_all();
@@ -1941,6 +1990,7 @@ Viewer::destroy()
 	this->loader_label_ = nullptr;
 	this->width_label_ = nullptr;
 	this->height_label_ = nullptr;
+	this->jpeg_quant_smooth_ = nullptr;
 	this->exiftool_button_ = nullptr;
 	this->cie_ = nullptr;
 	this->info_text_src_ = nullptr;
@@ -1958,6 +2008,7 @@ Viewer::open(const QUrl &url)
 			this->kit_.request_render();
 		return;
 	}
+	this->enhance_jpeg_ = false;
 	this->url_ = url;
 	this->basename_ = url_basename(url).toStdString();
 	start_open(*this, false);

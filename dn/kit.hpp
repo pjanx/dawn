@@ -224,6 +224,15 @@ struct Button : Widget {
 	bool activate(Kit &kit) override;
 };
 
+struct Checkbox : Button {
+	bool checked = false;
+
+	void measure(Kit &kit, int max_w, int max_h) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool activate(Kit &kit) override;
+};
+
 struct Label : Widget {
 	QString text;
 	float min_w = 0;
