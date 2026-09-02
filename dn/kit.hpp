@@ -542,12 +542,12 @@ struct Menu : MenuPopup {
 	std::vector<std::unique_ptr<Menu>> subs_;
 
 	Menu();
-	void build(std::span<const MenuNode> nodes, const Actor &actor);
+	void build(Kit &kit, std::span<const MenuNode> nodes, const Actor &actor);
 	void sync();
 	MenuItem *add_item(const QString &text);
 	MenuItem *add_item_with_mnemonic(const QString &text);
 	void add_sep();
-	void clear();
+	void clear(Kit &kit);
 	void measure(Kit &kit, int max_w, int max_h) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
@@ -810,6 +810,7 @@ struct Kit {
 		const QString &text, int wrap_px, int max_lines, bool bold) const;
 	[[nodiscard]] int text_height(
 		const QString &text, int wrap_px, bool bold) const;
+
 	// Points to device pixels.  Converted on use rather than cached: a sum of
 	// point terms rounds once here, where baked-up constants would each round
 	// separately and accumulate the error.
@@ -817,14 +818,14 @@ struct Kit {
 	{
 		return int(lround(double(pts) * double(this->dpr_)));
 	}
-	// One hairline: a rule, border or caret, in device pixels.  These are
-	// meant to look equally thin at any scale, so they track the display
-	// rather than staying a single pixel.
-	[[nodiscard]] int hairline() const
-	{
-		const int n = px(1.f);
-		return n > 1 ? n : 1;
-	}
+
+	// An appropriately thick rule, border or caret, in device pixels.
+	[[nodiscard]] int hairline() const { return std::min(px(1.f), 1); }
+
+	// One icon square, in device pixels: the size pack_icon() rasterises at,
+	// and the size the quad that samples it is drawn at.
+	[[nodiscard]] int icon_px() const { return std::min(px(kIconPts), 16); }
+
 	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
 	[[nodiscard]] bool font_pixels(
 		unsigned char **out_pixels, int *width, int *height) const;

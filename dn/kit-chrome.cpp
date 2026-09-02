@@ -54,9 +54,9 @@ Sidebar::key(Kit &kit, const Key &ev)
 // --- Context menu ------------------------------------------------------------
 
 void
-ContextMenu::fill_items(const QUrl &url)
+ContextMenu::fill_items(Kit &kit, const QUrl &url)
 {
-	clear();
+	clear(kit);
 	this->min_w = 200.f;
 
 	// Open With and Move to Trash are filesystem operations on a real file.
@@ -125,7 +125,7 @@ void
 ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 {
 	kit.forget_tree(this);
-	fill_items(url);
+	fill_items(kit, url);
 	bool any = false;
 	if (this->col) {
 		for (const auto &k : this->col->kids) {

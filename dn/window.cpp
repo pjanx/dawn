@@ -732,12 +732,6 @@ Window::apply_dark(bool dark)
 {
 	this->kit_.dark_ = dark;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.colours_[ColourWell];
-		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
-		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
-		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
-	}
 #ifdef Q_OS_MACOS
 	sync_macos_window_appearance(this, dark);
 #endif
@@ -1570,24 +1564,21 @@ Window::handle_touch(QTouchEvent *event)
 	int n = 0;
 	int id0 = -1, id1 = -1;
 	float x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	// A lifted finger is no longer part of the gesture; every other state
+	// still is, whether it moved this event or not.
 	for (const QEventPoint &p : pts) {
-		if (p.state() == QEventPoint::Released ||
-			p.state() == QEventPoint::Stationary ||
-			p.state() == QEventPoint::Pressed ||
-			p.state() == QEventPoint::Updated) {
-			if (p.state() == QEventPoint::Released)
-				continue;
-			if (n == 0) {
-				id0 = int(p.id());
-				x0 = float(p.position().x());
-				y0 = float(p.position().y());
-			} else if (n == 1) {
-				id1 = int(p.id());
-				x1 = float(p.position().x());
-				y1 = float(p.position().y());
-			}
-			++n;
+		if (p.state() == QEventPoint::Released)
+			continue;
+		if (n == 0) {
+			id0 = int(p.id());
+			x0 = float(p.position().x());
+			y0 = float(p.position().y());
+		} else if (n == 1) {
+			id1 = int(p.id());
+			x1 = float(p.position().x());
+			y1 = float(p.position().y());
 		}
+		++n;
 	}
 	if (event->type() == QEvent::TouchCancel || n < 2) {
 		this->touch_pinch_ = false;

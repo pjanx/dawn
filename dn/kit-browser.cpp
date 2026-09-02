@@ -2143,7 +2143,7 @@ pack_standin_icons(Browser &b)
 void
 pack_toolbar_icons(Browser &b)
 {
-	const int px = max(16, int(lround(kIconPts * b.kit_.dpr_)));
+	const int px = b.kit_.icon_px();
 	for (const Spec &spec : kItems) {
 		const ActionDef &d = action_def(spec.action);
 		b.kit_.pack_icon(action_icon(d, false), px);
@@ -2646,9 +2646,13 @@ Browser::prepare(Kit &kit)
 	pack_standin_icons(*this);
 	if (!this->show_names_)
 		return;
+
 	for (const File &f : this->files_) {
-		if (f.cell.empty() || f.cap.h <= 0)
+		// Exactly the band paint() draws, asked the same way, so that the cache
+		// is warm for what is about to be drawn and for nothing else.
+		if (!thumb_in_band(*this, f, 0.f) || f.cap.h <= 0)
 			continue;
+
 		Label lab;
 		lab.text = f.cap_text;
 		lab.wrap = true;
@@ -2673,9 +2677,7 @@ Browser::paint(Kit &kit) const
 	const Colour frame = kit.colours_[ColourFrame];
 	for (int i = 0; i < int(this->files_.size()); ++i) {
 		const File &f = this->files_[size_t(i)];
-		if (f.cell.w <= 0)
-			continue;
-		if (f.cell.bottom() < this->r.y || f.cell.y > this->r.bottom())
+		if (!thumb_in_band(*this, f, 0.f))
 			continue;
 		const int tw = f.tile.w > 0 ? f.tile.w : th;
 		const int thp = f.tile.h > 0 ? f.tile.h : th;
@@ -2754,7 +2756,7 @@ make_browser_page(
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
 	if (page->app_menu)
-		page->app_menu->build(page->menu_tree, page->actor);
+		page->app_menu->build(kit, page->menu_tree, page->actor);
 	b->places_dirty_ = true;
 	b->page_ = page.get();
 	if (out)
@@ -2865,14 +2867,9 @@ Browser::set_screen_profile(
 	this->screen_icc_ = std::move(screen_icc);
 	this->screen_profile_ = std::move(profile);
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.colours_[ColourWell];
-		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
-		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
-		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
+	if (this->kit_.renderer_)
 		this->kit_.renderer_->set_transfer(
 			profile_transfer(this->screen_profile_.get()));
-	}
 	if (reload_thumbs) {
 		invalidate_thumbs(*this);
 		enqueue_thumbs(*this);

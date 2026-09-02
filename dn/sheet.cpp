@@ -167,6 +167,13 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 	this->dirty = true;
 }
 
+// TODO(p): These are normalised against the sheet as it is right now, and go
+// straight into the draw list -- but glyphs are packed lazily, so a grow()
+// during a paint leaves every quad emitted earlier in that frame sampling at
+// the old scale.  Emitting texels and dividing in the shader (or at
+// OverlayList::end()) would make the normalisation happen once, after the
+// sheet has settled.  Reachable today through paint_tooltip(), which is the
+// one emitter with no caching pass ahead of it.
 void
 Sheet::uv(const Packed &slot, float *u0, float *v0, float *u1, float *v1) const
 {

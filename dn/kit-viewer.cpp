@@ -388,7 +388,7 @@ struct Viewer::Worker {
 static void
 pack_toolbar_icons(Viewer &v)
 {
-	const int px = max(16, int(lround(kIconPts * v.kit_.dpr_)));
+	const int px = v.kit_.icon_px();
 	for (const Spec &spec : kItems) {
 		const ActionDef &d = action_def(spec.action);
 		v.kit_.pack_icon(action_icon(d, false), px);
@@ -1885,7 +1885,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	if (page->toolbar)
 		page->toolbar->actor = page->actor;
 	if (page->app_menu)
-		page->app_menu->build(page->menu_tree, page->actor);
+		page->app_menu->build(kit, page->menu_tree, page->actor);
 	v->page_ = page.get();
 	if (out)
 		*out = v;
@@ -2025,15 +2025,10 @@ Viewer::set_screen_profile(
 	this->screen_profile_ = std::move(profile);
 	this->screen_profile_fallback_ = fallback;
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	if (this->kit_.renderer_) {
-		const Colour well = this->kit_.colours_[ColourWell];
-		const Colour tile = this->kit_.colours_[ColourToolbarBottom];
-		this->kit_.renderer_->set_well_colour(well.r, well.g, well.b);
-		this->kit_.renderer_->set_checker_colour(tile.r, tile.g, tile.b);
+	if (this->kit_.renderer_)
 		this->kit_.renderer_->set_transfer(this->enable_cms_
 				? profile_transfer(this->screen_profile_.get())
 				: dawn::Transfer::Srgb);
-	}
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,
 			this->orientation_, this->angle_, this->view_locked_};

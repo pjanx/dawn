@@ -44,7 +44,7 @@ struct ContextMenu : Menu {
 	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 
 private:
-	void fill_items(const QUrl &url);
+	void fill_items(Kit &kit, const QUrl &url);
 };
 
 void dialog_about(Kit &kit, Dialog &dialog);

@@ -697,7 +697,7 @@ void
 Button::measure(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
-	const int icon = kit.px(kIconPts);
+	const int icon = kit.icon_px();
 	int cw = 0;
 	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
 	if (this->icon) {
@@ -734,7 +734,7 @@ Button::paint(Kit &kit) const
 		kit.draw_border(
 			this->r, col(kit.colours_[ColourDivider]), kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
-	const int icon = kit.px(kIconPts);
+	const int icon = kit.icon_px();
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->icon)
@@ -2372,7 +2372,7 @@ menu_cols(const Kit &kit, const MenuItem &m)
 {
 	MenuCols c;
 	c.accel_w = m.accel_col > 0 ? m.accel_col : m.accel_width(kit);
-	c.chevron = m.sub ? kit.px(kIconPts) : 0;
+	c.chevron = m.sub ? kit.icon_px() : 0;
 	c.label_x = kit.px(kFramePadX * 2.f + kIconPts);
 	c.accel_x = m.r.w - kit.px(kFramePadX) - c.chevron - c.accel_w;
 	c.avail = max(1, c.accel_x - kit.px(kFramePadX) - c.label_x);
@@ -2720,18 +2720,24 @@ Menu::add_sep()
 }
 
 void
-Menu::clear()
+Menu::clear(Kit &kit)
 {
+	// A sub is on the popup stack for as long as it is open, so dropping it
+	// here would leave kit.popups_ walking freed memory every frame.
+	for (auto &sub : this->subs_) {
+		if (sub)
+			sub->close(kit);
+	}
 	this->subs_.clear();
 	if (this->col)
 		this->col->erase_children();
 }
 
 void
-Menu::build(span<const MenuNode> nodes, const Actor &a)
+Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 {
 	this->actor = a;
-	clear();
+	clear(kit);
 	if (!this->col)
 		return;
 	this->col->grow = false;
@@ -2739,7 +2745,7 @@ Menu::build(span<const MenuNode> nodes, const Actor &a)
 	for (const MenuNode &node : nodes) {
 		if (!node.items.empty()) {
 			auto child = make_unique<Menu>();
-			child->build(node.items, this->actor);
+			child->build(kit, node.items, this->actor);
 			auto *item = add_item_with_mnemonic(node.title);
 			item->sub = child.get();
 			this->subs_.push_back(std::move(child));
@@ -2838,7 +2844,7 @@ MenuItem::measure(Kit &kit, int, int)
 {
 	const int lw = this->label_col > 0 ? this->label_col : label_width(kit);
 	const int aw = this->accel_col > 0 ? this->accel_col : accel_width(kit);
-	const int icon = kit.px(kIconPts);
+	const int icon = kit.icon_px();
 	// One conversion for the whole run of padding, rather than rounding
 	// each term and accumulating the error.
 	int width = kit.px(kIconPts + kFramePadX * 5.f) + lw + aw;
@@ -2865,7 +2871,7 @@ MenuItem::paint(Kit &kit) const
 		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
 
 	const MenuCols cols = menu_cols(kit, *this);
-	const int icon = kit.px(kIconPts), pad_x = kit.px(kFramePadX);
+	const int icon = kit.icon_px(), pad_x = kit.px(kFramePadX);
 	const int lead_x = this->r.x + pad_x;
 	const int label_x = this->r.x + cols.label_x;
 	const int accel_x = this->r.x + cols.accel_x;
@@ -2903,9 +2909,9 @@ void
 MenuItem::prepare(Kit &kit)
 {
 	if (this->sub)
-		kit.pack_icon("go-next-symbolic", int(kIconPts * kit.dpr_));
+		kit.pack_icon("go-next-symbolic", kit.icon_px());
 	if (this->checkable)
-		kit.pack_icon("object-select-symbolic", int(kIconPts * kit.dpr_));
+		kit.pack_icon("object-select-symbolic", kit.icon_px());
 	if (this->text.isEmpty())
 		return;
 	cache_text(kit, menu_shown(kit, *this), false, 0);
@@ -3484,7 +3490,7 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 void
 Titlebar::prepare(Kit &kit)
 {
-	const int px = max(16, kit.px(kIconPts));
+	const int px = kit.icon_px();
 	kit.pack_icon("window-minimize", px);
 	kit.pack_icon("window-maximize", px);
 	kit.pack_icon("window-restore", px);
@@ -4265,6 +4271,16 @@ Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 		this->colours_[ColourPanel] = bake_grey(cmm, target, 0xf0);
 		this->colours_[ColourHint] = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 	}
+
+	// The well and the checkerboard are drawn by the renderer's own passes
+	// rather than out of the draw list, so they have to be handed over
+	// whenever the palette is rebaked -- which is the only time they change.
+	if (this->renderer_) {
+		const Colour &well = this->colours_[ColourWell];
+		const Colour &tile = this->colours_[ColourToolbarBottom];
+		this->renderer_->set_well_colour(well.r, well.g, well.b);
+		this->renderer_->set_checker_colour(tile.r, tile.g, tile.b);
+	}
 }
 
 void
@@ -4306,6 +4322,10 @@ Kit::tooltip(const Widget *hot)
 	}
 }
 
+// TODO(p): The only text emitted without a caching pass ahead of it, so this
+// is where a novel glyph -- Browser::tip() hands us filenames -- can grow the
+// atlas mid-frame and invalidate the UVs already in the draw list.  See the
+// note on Sheet::uv().
 void
 paint_tooltip(Kit &kit)
 {
