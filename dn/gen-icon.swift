@@ -78,7 +78,11 @@ let icns = CGImageDestinationCreateWithURL(
 	URL(fileURLWithPath: filename) as CFURL,
 	UTType.icns.identifier as CFString, macOSSizes.count * 2, nil)!
 for size in macOSSizes {
-	CGImageDestinationAddImage(icns, drawIcon(scale: size / 1024.0)!, nil)
+	// nil properties seem to inherit the last used ones, so specifying both.
+	CGImageDestinationAddImage(icns, drawIcon(scale: size / 1024.0)!, [
+			kCGImagePropertyDPIWidth: 72,
+			kCGImagePropertyDPIHeight: 72,
+		] as CFDictionary)
 	CGImageDestinationAddImage(icns, drawIcon(scale: size / 1024.0 * 2)!, [
 			kCGImagePropertyDPIWidth: 144,
 			kCGImagePropertyDPIHeight: 144,
