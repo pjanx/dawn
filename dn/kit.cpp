@@ -791,6 +791,17 @@ Button::focusable() const
 	return this->enabled_ && shown() && this->hittable && this->r.w > 0;
 }
 
+// A disabled or unlaid-out button answers to nothing, the same way it takes
+// no focus: a mnemonic must not select what Tab would skip.
+QChar
+Button::mnemonic_key() const
+{
+	if (!focusable() || this->mnemonic < 0 ||
+		this->mnemonic >= this->text.size())
+		return {};
+	return this->text[this->mnemonic];
+}
+
 bool
 Button::press(Kit &kit, float, float, Qt::MouseButton button)
 {
@@ -1001,6 +1012,23 @@ Label::prepare(Kit &kit)
 	if (shown() && !this->text.isEmpty())
 		cache_text(kit, this->text, this->bold,
 			this->wrap ? max(1, this->r.w - kit.px(this->pad_x) * 2) : 0);
+}
+
+bool
+Label::activate(Kit &kit)
+{
+	return kit.activate(this->buddy);
+}
+
+// A heading with a stray underscore is not a mnemonic: without a buddy to
+// hand the letter to, there is nothing for it to select.
+QChar
+Label::mnemonic_key() const
+{
+	if (!this->buddy || !this->buddy->focusable() || this->mnemonic < 0 ||
+		this->mnemonic >= this->text.size())
+		return {};
+	return this->text[this->mnemonic];
 }
 
 // --- Entry -------------------------------------------------------------------
@@ -2318,8 +2346,9 @@ Popup::place_sub(Kit &kit)
 	arrange(kit, {x, y, this->r.w, this->r.h});
 }
 
-// Alt is left to the menu bar's mnemonics, and everything but Escape to
-// whatever the popup holds; MenuPopup adds navigation on top of this.
+// Alt has already been offered to the mnemonics by the time anything gets
+// here, and everything but Escape is left to whatever the popup holds;
+// MenuPopup adds navigation on top of this.
 bool
 Popup::key(Kit &kit, const Key &ev)
 {
@@ -2524,6 +2553,31 @@ collect_focusable(Widget *w, vector<Widget *> &out)
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; ++i)
 		collect_focusable(w->child(i), out);
+}
+
+// The same walk, in the same order, for what one letter selects.  Labels
+// take part here without being focusable: a buddy label is precisely a
+// mnemonic that belongs to somebody else.
+void
+collect_mnemonics(Widget *w, QChar letter, vector<Widget *> &out)
+{
+	if (!w || !w->shown())
+		return;
+	if (w->mnemonic_key().toLower() == letter)
+		out.push_back(w);
+	const size_t n = w->child_count();
+	for (size_t i = 0; i < n; ++i)
+		collect_mnemonics(w->child(i), letter, out);
+}
+
+// Where the keyboard lands once a candidate is picked.  A label sends it on
+// to its buddy; everything else stands for itself.
+Widget *
+mnemonic_target(Widget *w)
+{
+	if (auto *label = dynamic_cast<Label *>(w))
+		return label->buddy;
+	return w;
 }
 
 }  // namespace
@@ -2947,21 +3001,12 @@ Menu::key(Kit &kit, const Key &ev)
 {
 	if (MenuPopup::key(kit, ev))
 		return true;
+	// A menu takes the letter bare, as it always has.  This is reached only
+	// once the focused widget has turned it down, which is what keeps the
+	// text field in the toolbar's overflow typable.
 	if (ev.mods)
 		return false;
-	if (ev.key < Qt::Key_A || ev.key > Qt::Key_Z || !this->col)
-		return false;
-	const QChar letter = QChar(ev.key).toLower();
-	for (const auto &k : this->col->kids) {
-		auto *item = dynamic_cast<MenuItem *>(k.get());
-		if (!item || item->mnemonic < 0 || item->mnemonic >= item->text.size())
-			continue;
-		if (item->text[item->mnemonic].toLower() == letter) {
-			item->activate(kit);
-			return true;
-		}
-	}
-	return false;
+	return kit.activate_mnemonic(this, ev.key);
 }
 
 void
@@ -4306,6 +4351,52 @@ Kit::set_focus(Widget *w, bool ring)
 	this->focus_visible_ = ring;
 }
 
+bool
+Kit::activate(Widget *w)
+{
+	if (!w || !w->shown())
+		return false;
+	if (w->activate(*this))
+		return true;
+	if (!w->focusable())
+		return false;
+	set_focus(w, true);
+	return true;
+}
+
+// One candidate is used outright; several cycle the focus between them and
+// activate nothing, so that a letter two controls share still reaches both.
+// The user commits with Space or Return, as in a GTK or Win32 dialog.
+bool
+Kit::activate_mnemonic(Widget *scope, int key)
+{
+	if (key < Qt::Key_A || key > Qt::Key_Z)
+		return false;
+
+	vector<Widget *> hits;
+	collect_mnemonics(scope, QChar(key).toLower(), hits);
+	if (hits.empty())
+		return false;
+	if (hits.size() == 1)
+		return activate(hits.front());
+
+	// Which one is next is asked of the focus, and a label holds none of
+	// its own: it is its buddy that sits in the cycle.
+	size_t at = hits.size();
+	for (size_t i = 0; i < hits.size(); i++) {
+		if (mnemonic_target(hits[i]) == this->focus_) {
+			at = i;
+			break;
+		}
+	}
+	Widget *next =
+		mnemonic_target(hits[at < hits.size() ? (at + 1) % hits.size() : 0]);
+	if (!next || !next->focusable())
+		return false;
+	set_focus(next, true);
+	return true;
+}
+
 Widget *
 Kit::focus_scope() const
 {
@@ -4370,6 +4461,7 @@ Kit::key(const Key &ev)
 {
 	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
 		return p->key(*this, ev);
+
 	if (ev.key == Qt::Key_Tab || ev.key == Qt::Key_Backtab) {
 		const int dir = (ev.key == Qt::Key_Backtab ||
 							(ev.mods & unsigned(Qt::ShiftModifier)))
@@ -4378,12 +4470,22 @@ Kit::key(const Key &ev)
 		cycle_focus(dir);
 		return true;
 	}
+
 	for (Widget *w = this->focus_; w; w = w->parent_) {
 		if (w->key(*this, ev))
 			return true;
 	}
-	if (Popup *p = top_popup(); p && p->shown())
-		return p->key(*this, ev);
+	if (Popup *p = top_popup(); p && p->shown() && p->key(*this, ev))
+		return true;
+
+	// Only once everything above has turned the letter down: a widget that
+	// wants Alt with it--a field with word motions, say--keeps it by
+	// handling it, and needs no exemption here.  Exactly Alt, so that the
+	// accelerators carrying more than it still reach match_key().  Where
+	// there are no mnemonics at all, menu_label() has already seen to it
+	// that this finds nothing.
+	if (ev.mods == unsigned(Qt::AltModifier))
+		return activate_mnemonic(focus_scope(), ev.key);
 	return false;
 }
 

@@ -163,7 +163,7 @@ static unique_ptr<Button>
 dialog_action(const QString &text, function<void(Kit &)> on_click)
 {
 	auto button = make_unique<Button>();
-	button->text = text;
+	button->text = menu_label(text.toStdString().c_str(), &button->mnemonic);
 	button->pad_x = kDialogActionPad;
 	button->on_click = std::move(on_click);
 	return button;
@@ -172,7 +172,7 @@ dialog_action(const QString &text, function<void(Kit &)> on_click)
 static unique_ptr<Button>
 dialog_close_action(Dialog &dialog)
 {
-	return dialog_action(QStringLiteral("Close"),
+	return dialog_action(QStringLiteral("_Close"),
 		[&dialog](Kit &kit) { dialog.close(kit); });
 }
 
@@ -262,8 +262,8 @@ dialog_location(Kit &kit, Dialog &dialog,
 
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(dialog_action(QStringLiteral("Open"), submit));
-	actions->add_child(dialog_action(QStringLiteral("Cancel"),
+	actions->add_child(dialog_action(QStringLiteral("_Open"), submit));
+	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
 		[&dialog](Kit &inner) { dialog.close(inner); }));
 	dialog.show(kit, std::move(col), 420.f, std::move(actions));
 }
@@ -392,6 +392,7 @@ settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
 	auto text = dialog_label(label);
 	text->min_w = label_w;
 	text->align = Align::End;
+	text->buddy = control.get();
 
 	auto row = make_unique<Row>();
 	row->gap = 8.f;
@@ -578,13 +579,13 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(dialog_action(QStringLiteral("Save"),
+	actions->add_child(dialog_action(QStringLiteral("_Save"),
 		[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
 			dialog.close(inner);
 			if (on_save)
 				on_save(*state);
 		}));
-	actions->add_child(dialog_action(QStringLiteral("Cancel"),
+	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
 		[&dialog](Kit &inner) { dialog.close(inner); }));
 	dialog.show(kit, std::move(col), 520.f, std::move(actions));
 }
@@ -924,11 +925,9 @@ Hint::fire(Kit &kit, Target t)
 	if (widget) {
 		// Whatever this widget calls its default action; one that has none
 		// takes the keyboard instead, which is what hinting a field is for.
-		// Both are re-checked because a target collected when the overlay
+		// Re-checked inside, because a target collected when the overlay
 		// opened may have been disabled or hidden since.
-		if (!widget->activate(kit) && widget->focusable()) {
-			kit.set_focus(widget, true);
-		}
+		kit.activate(widget);
 		return;
 	}
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
@@ -986,7 +985,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	// at the far end of the toolbar.
 	this->app_menu_owned_ = make_unique<Menu>();
 	this->app_menu = this->app_menu_owned_.get();
-#if !defined(Q_OS_MACOS)
+#ifndef Q_OS_MACOS
 	if (this->toolbar && this->toolbar->left) {
 		auto app = make_unique<Button>();
 		app->flat = true;

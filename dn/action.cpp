@@ -450,6 +450,11 @@ menu_label(const char *label, int *mnemonic_index)
 		return {};
 
 	QString s = QString::fromUtf8(label);
+	// On macOS, the Alt/Option key modifies characters, so mnemonics are
+	// unusable for window navigation.  The remaining thing mnemonics could do
+	// is act as unmodified accelerators in menus, though AppKit menu navigation
+	// is instead done using type-ahead (which resets after about a second).
+#ifndef Q_OS_MACOS
 	for (int i = 0; i + 1 < s.size(); i++) {
 		if (s[i] == QLatin1Char('_')) {
 			if (mnemonic_index)
@@ -457,6 +462,7 @@ menu_label(const char *label, int *mnemonic_index)
 			break;
 		}
 	}
+#endif
 	s.remove(QLatin1Char('_'));
 	return s;
 }

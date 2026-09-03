@@ -152,6 +152,10 @@ struct Widget {
 	// caller's to decide, which is why this does not fall back to taking
 	// focus on its own.
 	virtual bool activate(Kit &kit) { return false; }
+	// The letter a mnemonic selects this widget by, or a null QChar for
+	// none.  An accessor rather than a field: the text it indexes into goes
+	// by a different name in every widget that draws one.
+	[[nodiscard]] virtual QChar mnemonic_key() const { return {}; }
 	virtual bool traps_focus() const { return false; }
 	// A scrollbar is a hover effect rather than an event, so it must not
 	// depend on who ends up consuming the motion.  Neither must the cursor.
@@ -202,8 +206,7 @@ struct Composite : Widget {
 struct Button : Widget {
 	Action action = Action::None;
 	const char *icon = nullptr;
-	// An index into text, underlined when drawn; -1 for none.  Nothing
-	// dispatches on it yet -- outside a menu it is a hint, not a key.
+	// An index into text, underlined when drawn; -1 for none.
 	int mnemonic = -1;
 	QString tip_text;
 	QString tip_accel;
@@ -224,6 +227,7 @@ struct Button : Widget {
 	QString tip() const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 	bool focusable() const override;
+	[[nodiscard]] QChar mnemonic_key() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -243,6 +247,8 @@ struct Checkbox : Button {
 struct Label : Widget {
 	QString text;
 	int mnemonic = -1;
+	// Mnemonic target. Should be a weak_ptr.
+	Widget *buddy = nullptr;
 	float min_w = 0;
 	float pad_x = 0;
 	float pad_y = 0;
@@ -260,6 +266,8 @@ struct Label : Widget {
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool grows() const override { return this->grow; }
+	bool activate(Kit &kit) override;
+	[[nodiscard]] QChar mnemonic_key() const override;
 	QString tip() const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 };
@@ -818,6 +826,13 @@ struct Kit {
 	// focus, or focus with no ring.  Re-seating the same focus across a tree
 	// rebuild is not a focus change, and leaves the ring as it found it.
 	void set_focus(Widget *w, bool ring);
+	// What a mnemonic, a hint chip and a buddy label all mean by "use this":
+	// the widget's default action if it has one, and the keyboard otherwise.
+	bool activate(Widget *w);
+	// The letter's candidates within one scope.  One is used outright;
+	// several only cycle the focus between them, so a letter two controls
+	// share can still reach both.
+	bool activate_mnemonic(Widget *scope, int key);
 	Widget *focus_scope() const;
 	void cycle_focus(int dir);
 	bool cycle_focus(Widget *scope, int dir, bool wrap = true);
