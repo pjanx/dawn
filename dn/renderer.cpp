@@ -32,15 +32,18 @@ static void
 check_vk(VkResult result, const char *what)
 {
 	if (result != VK_SUCCESS) {
-		qWarning("%s failed: VkResult %d", what, int(result));
+		qCritical("%s failed: VkResult %d", what, int(result));
 		exit(1);
 	}
 }
 
+#define CALL_VK(name, suffix, ...) \
+	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix)
+
 [[noreturn]] static void
 die(const char *message)
 {
-	qWarning("%s", message);
+	qCritical("%s", message);
 	exit(1);
 }
 
@@ -131,13 +134,11 @@ pick_present_mode(
 	VkPhysicalDevice phys, VkSurfaceKHR surface, VkPresentModeKHR preferred)
 {
 	uint32_t count = 0;
-	check_vk(vkGetPhysicalDeviceSurfacePresentModesKHR(
-				 phys, surface, &count, nullptr),
-		"vkGetPhysicalDeviceSurfacePresentModesKHR count");
+	CALL_VK(GetPhysicalDeviceSurfacePresentModesKHR, " count",
+		phys, surface, &count, nullptr);
 	vector<VkPresentModeKHR> modes(count);
-	check_vk(vkGetPhysicalDeviceSurfacePresentModesKHR(
-				 phys, surface, &count, modes.data()),
-		"vkGetPhysicalDeviceSurfacePresentModesKHR");
+	CALL_VK(GetPhysicalDeviceSurfacePresentModesKHR, "",
+		phys, surface, &count, modes.data());
 	if (find(modes.begin(), modes.end(), preferred) != modes.end())
 		return preferred;
 	// TODO: A silent MAILBOX-to-FIFO fallback restores Mesa's legacy Wayland
@@ -207,34 +208,30 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = this->queue_family_,
 	};
-	check_vk(vkCreateCommandPool(
-				 this->device_, &pool_info, nullptr, &this->cmd_pool_),
-		"vkCreateCommandPool");
+	CALL_VK(CreateCommandPool, "",
+		this->device_, &pool_info, nullptr, &this->cmd_pool_);
 	VkCommandBufferAllocateInfo command_info{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
 		.commandPool = this->cmd_pool_,
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = 1,
 	};
-	check_vk(
-		vkAllocateCommandBuffers(this->device_, &command_info, &this->cmd_),
-		"vkAllocateCommandBuffers");
+	CALL_VK(AllocateCommandBuffers, "",
+		this->device_, &command_info, &this->cmd_);
 
 	VkFenceCreateInfo fence_info{
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
 	};
-	check_vk(vkCreateFence(this->device_, &fence_info, nullptr, &this->fence_),
-		"vkCreateFence");
+	CALL_VK(CreateFence, "",
+		this->device_, &fence_info, nullptr, &this->fence_);
 	VkSemaphoreCreateInfo semaphore_info{
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 	};
-	check_vk(vkCreateSemaphore(this->device_, &semaphore_info, nullptr,
-				 &this->image_available_),
-		"vkCreateSemaphore image_available");
-	check_vk(vkCreateSemaphore(this->device_, &semaphore_info, nullptr,
-				 &this->render_finished_),
-		"vkCreateSemaphore render_finished");
+	CALL_VK(CreateSemaphore, " image_available",
+		this->device_, &semaphore_info, nullptr, &this->image_available_);
+	CALL_VK(CreateSemaphore, " render_finished",
+		this->device_, &semaphore_info, nullptr, &this->render_finished_);
 
 	this->want_extent_ = {pixel.width, pixel.height};
 	create_swapchain();
@@ -320,9 +317,8 @@ Renderer::create_swapchain()
 {
 	destroy_swapchain();
 	VkSurfaceCapabilitiesKHR capabilities{};
-	check_vk(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-				 this->phys_, this->surface_, &capabilities),
-		"vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+	CALL_VK(GetPhysicalDeviceSurfaceCapabilitiesKHR, "",
+		this->phys_, this->surface_, &capabilities);
 
 	this->extent_.width = clamp(this->want_extent_.width,
 		capabilities.minImageExtent.width,
@@ -408,18 +404,15 @@ Renderer::create_swapchain()
 		.presentMode = this->present_mode_,
 		.clipped = VK_TRUE,
 	};
-	check_vk(vkCreateSwapchainKHR(
-				 this->device_, &swapchain_info, nullptr, &this->swapchain_),
-		"vkCreateSwapchainKHR");
+	CALL_VK(CreateSwapchainKHR, "",
+		this->device_, &swapchain_info, nullptr, &this->swapchain_);
 
 	uint32_t count = 0;
-	check_vk(vkGetSwapchainImagesKHR(
-				 this->device_, this->swapchain_, &count, nullptr),
-		"vkGetSwapchainImagesKHR count");
+	CALL_VK(GetSwapchainImagesKHR, " count",
+		this->device_, this->swapchain_, &count, nullptr);
 	this->images_.resize(count);
-	check_vk(vkGetSwapchainImagesKHR(
-				 this->device_, this->swapchain_, &count, this->images_.data()),
-		"vkGetSwapchainImagesKHR");
+	CALL_VK(GetSwapchainImagesKHR, "",
+		this->device_, this->swapchain_, &count, this->images_.data());
 	this->views_.resize(count);
 	this->framebuffers_.resize(count);
 	for (uint32_t i = 0; i < count; ++i) {
@@ -432,9 +425,8 @@ Renderer::create_swapchain()
 				.levelCount = 1,
 				.layerCount = 1},
 		};
-		check_vk(vkCreateImageView(
-					 this->device_, &view_info, nullptr, &this->views_[i]),
-			"vkCreateImageView swap");
+		CALL_VK(CreateImageView, " swap",
+			this->device_, &view_info, nullptr, &this->views_[i]);
 	}
 	if (dither)
 		create_dither();
@@ -450,9 +442,9 @@ Renderer::create_swapchain()
 			.height = this->extent_.height,
 			.layers = 1,
 		};
-		check_vk(vkCreateFramebuffer(this->device_, &framebuffer_info, nullptr,
-					 &this->framebuffers_[i]),
-			"vkCreateFramebuffer");
+		CALL_VK(CreateFramebuffer, "",
+			this->device_, &framebuffer_info, nullptr,
+				&this->framebuffers_[i]);
 	}
 	if (this->overlay_format_ != dest_format ||
 		this->overlay_layout_ != dest_layout) {
@@ -479,9 +471,8 @@ Renderer::wait_idle() const
 {
 	if (!this->device_ || !this->fence_)
 		return;
-	check_vk(
-		vkWaitForFences(this->device_, 1, &this->fence_, VK_TRUE, UINT64_MAX),
-		"vkWaitForFences");
+	CALL_VK(WaitForFences, "",
+		this->device_, 1, &this->fence_, VK_TRUE, UINT64_MAX);
 }
 
 void
@@ -584,9 +575,8 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	if (!this->device_ || !this->swapchain_ || !this->extent_.width ||
 		!this->extent_.height)
 		return true;
-	check_vk(
-		vkWaitForFences(this->device_, 1, &this->fence_, VK_TRUE, UINT64_MAX),
-		"vkWaitForFences");
+	CALL_VK(WaitForFences, "",
+		this->device_, 1, &this->fence_, VK_TRUE, UINT64_MAX);
 	uint32_t index = 0;
 	// A hidden Wayland surface has no guaranteed presentation progress, so an
 	// infinite acquire timeout is invalid. Keep the latest frame dirty and let
@@ -602,13 +592,12 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR)
 		check_vk(acquire, "vkAcquireNextImageKHR");
 
-	check_vk(vkResetFences(this->device_, 1, &this->fence_), "vkResetFences");
-	check_vk(vkResetCommandBuffer(this->cmd_, 0), "vkResetCommandBuffer");
+	CALL_VK(ResetFences, "", this->device_, 1, &this->fence_);
+	CALL_VK(ResetCommandBuffer, "", this->cmd_, 0);
 	VkCommandBufferBeginInfo begin_info{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 	};
-	check_vk(
-		vkBeginCommandBuffer(this->cmd_, &begin_info), "vkBeginCommandBuffer");
+	CALL_VK(BeginCommandBuffer, "", this->cmd_, &begin_info);
 	dawn::ScaleView view{
 		.scale = this->scale_,
 		.pan_x = this->pan_x_,
@@ -656,7 +645,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 	this->overlay_.record(this->cmd_, dither ? 0 : index, mesh);
 	if (dither)
 		record_dither(this->cmd_, this->framebuffers_[index]);
-	check_vk(vkEndCommandBuffer(this->cmd_), "vkEndCommandBuffer");
+	CALL_VK(EndCommandBuffer, "", this->cmd_);
 
 	VkPipelineStageFlags wait_stage =
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -670,8 +659,8 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.signalSemaphoreCount = 1,
 		.pSignalSemaphores = &this->render_finished_,
 	};
-	check_vk(vkQueueSubmit(this->queue_, 1, &submit_info, this->fence_),
-		"vkQueueSubmit");
+	CALL_VK(QueueSubmit, "",
+		this->queue_, 1, &submit_info, this->fence_);
 	VkPresentInfoKHR present_info{
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount = 1,
@@ -759,9 +748,8 @@ Renderer::create_dither()
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	check_vk(vkCreateImage(
-				 this->device_, &image_info, nullptr, &this->compose_image_),
-		"vkCreateImage compose");
+	CALL_VK(CreateImage, " compose",
+		this->device_, &image_info, nullptr, &this->compose_image_);
 	VkMemoryRequirements requirements{};
 	vkGetImageMemoryRequirements(
 		this->device_, this->compose_image_, &requirements);
@@ -774,12 +762,10 @@ Renderer::create_dither()
 		.allocationSize = requirements.size,
 		.memoryTypeIndex = type,
 	};
-	check_vk(vkAllocateMemory(
-				 this->device_, &allocate, nullptr, &this->compose_memory_),
-		"vkAllocateMemory compose");
-	check_vk(vkBindImageMemory(
-				 this->device_, this->compose_image_, this->compose_memory_, 0),
-		"vkBindImageMemory compose");
+	CALL_VK(AllocateMemory, " compose",
+		this->device_, &allocate, nullptr, &this->compose_memory_);
+	CALL_VK(BindImageMemory, " compose",
+		this->device_, this->compose_image_, this->compose_memory_, 0);
 	VkImageViewCreateInfo view_info{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.image = this->compose_image_,
@@ -789,9 +775,8 @@ Renderer::create_dither()
 			.levelCount = 1,
 			.layerCount = 1},
 	};
-	check_vk(vkCreateImageView(
-				 this->device_, &view_info, nullptr, &this->compose_view_),
-		"vkCreateImageView compose");
+	CALL_VK(CreateImageView, " compose",
+		this->device_, &view_info, nullptr, &this->compose_view_);
 	VkFramebufferCreateInfo fb_info{
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 		.renderPass = this->engine_.dest_render_pass(),
@@ -801,9 +786,8 @@ Renderer::create_dither()
 		.height = this->extent_.height,
 		.layers = 1,
 	};
-	check_vk(vkCreateFramebuffer(
-				 this->device_, &fb_info, nullptr, &this->compose_fb_),
-		"vkCreateFramebuffer compose");
+	CALL_VK(CreateFramebuffer, " compose",
+		this->device_, &fb_info, nullptr, &this->compose_fb_);
 
 	VkAttachmentDescription color{
 		.format = this->format_,
@@ -841,9 +825,8 @@ Renderer::create_dither()
 		.dependencyCount = 1,
 		.pDependencies = &dependency,
 	};
-	check_vk(
-		vkCreateRenderPass(this->device_, &rp_info, nullptr, &this->dither_rp_),
-		"vkCreateRenderPass dither");
+	CALL_VK(CreateRenderPass, " dither",
+		this->device_, &rp_info, nullptr, &this->dither_rp_);
 
 	VkSamplerCreateInfo sampler_info{
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -854,9 +837,8 @@ Renderer::create_dither()
 		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 	};
-	check_vk(vkCreateSampler(
-				 this->device_, &sampler_info, nullptr, &this->dither_sampler_),
-		"vkCreateSampler dither");
+	CALL_VK(CreateSampler, " dither",
+		this->device_, &sampler_info, nullptr, &this->dither_sampler_);
 
 	VkDescriptorSetLayoutBinding binding{
 		.binding = 0,
@@ -869,9 +851,8 @@ Renderer::create_dither()
 		.bindingCount = 1,
 		.pBindings = &binding,
 	};
-	check_vk(vkCreateDescriptorSetLayout(
-				 this->device_, &set_info, nullptr, &this->dither_set_layout_),
-		"vkCreateDescriptorSetLayout dither");
+	CALL_VK(CreateDescriptorSetLayout, " dither",
+		this->device_, &set_info, nullptr, &this->dither_set_layout_);
 	VkDescriptorPoolSize pool_size{
 		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		.descriptorCount = 1,
@@ -882,18 +863,16 @@ Renderer::create_dither()
 		.poolSizeCount = 1,
 		.pPoolSizes = &pool_size,
 	};
-	check_vk(vkCreateDescriptorPool(
-				 this->device_, &pool_info, nullptr, &this->dither_pool_),
-		"vkCreateDescriptorPool dither");
+	CALL_VK(CreateDescriptorPool, " dither",
+		this->device_, &pool_info, nullptr, &this->dither_pool_);
 	VkDescriptorSetAllocateInfo set_alloc{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = this->dither_pool_,
 		.descriptorSetCount = 1,
 		.pSetLayouts = &this->dither_set_layout_,
 	};
-	check_vk(
-		vkAllocateDescriptorSets(this->device_, &set_alloc, &this->dither_set_),
-		"vkAllocateDescriptorSets dither");
+	CALL_VK(AllocateDescriptorSets, " dither",
+		this->device_, &set_alloc, &this->dither_set_);
 	VkDescriptorImageInfo image_descriptor{
 		.sampler = this->dither_sampler_,
 		.imageView = this->compose_view_,
@@ -914,26 +893,23 @@ Renderer::create_dither()
 		.codeSize = fullscreen_vert_words * sizeof(uint32_t),
 		.pCode = fullscreen_vert,
 	};
-	check_vk(vkCreateShaderModule(
-				 this->device_, &vert_info, nullptr, &this->dither_vert_),
-		"vkCreateShaderModule dither vert");
+	CALL_VK(CreateShaderModule, " dither vert",
+		this->device_, &vert_info, nullptr, &this->dither_vert_);
 	VkShaderModuleCreateInfo frag_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = dn_dither_frag_words * sizeof(uint32_t),
 		.pCode = dn_dither_frag,
 	};
-	check_vk(vkCreateShaderModule(
-				 this->device_, &frag_info, nullptr, &this->dither_frag_),
-		"vkCreateShaderModule dither frag");
+	CALL_VK(CreateShaderModule, " dither frag",
+		this->device_, &frag_info, nullptr, &this->dither_frag_);
 
 	VkPipelineLayoutCreateInfo layout_info{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
 		.pSetLayouts = &this->dither_set_layout_,
 	};
-	check_vk(vkCreatePipelineLayout(
-				 this->device_, &layout_info, nullptr, &this->dither_layout_),
-		"vkCreatePipelineLayout dither");
+	CALL_VK(CreatePipelineLayout, " dither",
+		this->device_, &layout_info, nullptr, &this->dither_layout_);
 
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -997,9 +973,9 @@ Renderer::create_dither()
 		.layout = this->dither_layout_,
 		.renderPass = this->dither_rp_,
 	};
-	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
-				 &pipeline_info, nullptr, &this->dither_pipe_),
-		"vkCreateGraphicsPipelines dither");
+	CALL_VK(CreateGraphicsPipelines, " dither",
+		this->device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr,
+			&this->dither_pipe_);
 }
 
 void
@@ -1069,9 +1045,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
 		.queueFamilyIndex = this->queue_family_,
 	};
-	check_vk(vkCreateCommandPool(
-				 this->device_, &pool_info, nullptr, &this->upload_pool_),
-		"vkCreateCommandPool overlay upload");
+	CALL_VK(CreateCommandPool, " overlay upload",
+		this->device_, &pool_info, nullptr, &this->upload_pool_);
 	compute_thumb_atlas_max();
 
 	VkAttachmentDescription color{
@@ -1111,9 +1086,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.dependencyCount = 1,
 		.pDependencies = &dependency,
 	};
-	check_vk(vkCreateRenderPass(this->device_, &render_pass_info, nullptr,
-				 &this->render_pass_),
-		"vkCreateRenderPass overlay");
+	CALL_VK(CreateRenderPass, " overlay",
+		this->device_, &render_pass_info, nullptr, &this->render_pass_);
 
 	VkSamplerCreateInfo sampler_info{
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1125,9 +1099,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.maxLod = 1.f,
 	};
-	check_vk(
-		vkCreateSampler(this->device_, &sampler_info, nullptr, &this->sampler_),
-		"vkCreateSampler overlay");
+	CALL_VK(CreateSampler, " overlay",
+		this->device_, &sampler_info, nullptr, &this->sampler_);
 
 	VkDescriptorSetLayoutBinding binding{
 		.binding = 0,
@@ -1140,9 +1113,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.bindingCount = 1,
 		.pBindings = &binding,
 	};
-	check_vk(vkCreateDescriptorSetLayout(
-				 this->device_, &layout_info, nullptr, &this->set_layout_),
-		"vkCreateDescriptorSetLayout overlay");
+	CALL_VK(CreateDescriptorSetLayout, " overlay",
+		this->device_, &layout_info, nullptr, &this->set_layout_);
 
 	VkDescriptorPoolSize pool_size{
 		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1154,9 +1126,9 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.poolSizeCount = 1,
 		.pPoolSizes = &pool_size,
 	};
-	check_vk(vkCreateDescriptorPool(this->device_, &descriptor_pool_info,
-				 nullptr, &this->descriptor_pool_),
-		"vkCreateDescriptorPool overlay");
+	CALL_VK(CreateDescriptorPool, " overlay",
+		this->device_, &descriptor_pool_info, nullptr,
+			&this->descriptor_pool_);
 	VkDescriptorSetLayout layouts[2] = {this->set_layout_, this->set_layout_};
 	VkDescriptorSetAllocateInfo allocate_info{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -1164,9 +1136,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.descriptorSetCount = 2,
 		.pSetLayouts = layouts,
 	};
-	check_vk(vkAllocateDescriptorSets(
-				 this->device_, &allocate_info, this->descriptor_sets_),
-		"vkAllocateDescriptorSets overlay");
+	CALL_VK(AllocateDescriptorSets, " overlay",
+		this->device_, &allocate_info, this->descriptor_sets_);
 
 	return create_pipeline();
 }
@@ -1189,15 +1160,12 @@ OverlayVulkan::create_pipeline()
 		.codeSize = dn_thumb_frag_words * sizeof(uint32_t),
 		.pCode = dn_thumb_frag,
 	};
-	check_vk(
-		vkCreateShaderModule(this->device_, &vert_info, nullptr, &this->vert_),
-		"vkCreateShaderModule overlay vert");
-	check_vk(
-		vkCreateShaderModule(this->device_, &frag_info, nullptr, &this->frag_),
-		"vkCreateShaderModule overlay frag");
-	check_vk(vkCreateShaderModule(
-				 this->device_, &thumb_frag_info, nullptr, &this->thumb_frag_),
-		"vkCreateShaderModule thumb frag");
+	CALL_VK(CreateShaderModule, " overlay vert",
+		this->device_, &vert_info, nullptr, &this->vert_);
+	CALL_VK(CreateShaderModule, " overlay frag",
+		this->device_, &frag_info, nullptr, &this->frag_);
+	CALL_VK(CreateShaderModule, " thumb frag",
+		this->device_, &thumb_frag_info, nullptr, &this->thumb_frag_);
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -1211,9 +1179,9 @@ OverlayVulkan::create_pipeline()
 		.pushConstantRangeCount = 1,
 		.pPushConstantRanges = &push,
 	};
-	check_vk(vkCreatePipelineLayout(this->device_, &pipeline_layout_info,
-				 nullptr, &this->pipeline_layout_),
-		"vkCreatePipelineLayout overlay");
+	CALL_VK(CreatePipelineLayout, " overlay",
+		this->device_, &pipeline_layout_info, nullptr,
+			&this->pipeline_layout_);
 
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1320,13 +1288,13 @@ OverlayVulkan::create_pipeline()
 		.layout = this->pipeline_layout_,
 		.renderPass = this->render_pass_,
 	};
-	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
-				 &pipeline_info, nullptr, &this->pipeline_),
-		"vkCreateGraphicsPipelines overlay");
+	CALL_VK(CreateGraphicsPipelines, " overlay",
+		this->device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr,
+			&this->pipeline_);
 	stages[1].module = this->thumb_frag_;
-	check_vk(vkCreateGraphicsPipelines(this->device_, VK_NULL_HANDLE, 1,
-				 &pipeline_info, nullptr, &this->thumb_pipeline_),
-		"vkCreateGraphicsPipelines thumbnails");
+	CALL_VK(CreateGraphicsPipelines, " thumbnails",
+		this->device_, VK_NULL_HANDLE, 1, &pipeline_info, nullptr,
+			&this->thumb_pipeline_);
 	return true;
 }
 
@@ -1350,9 +1318,8 @@ OverlayVulkan::set_swapchain(
 			.height = extent.height,
 			.layers = 1,
 		};
-		check_vk(vkCreateFramebuffer(
-					 this->device_, &info, nullptr, &this->framebuffers_[i]),
-			"vkCreateFramebuffer overlay");
+		CALL_VK(CreateFramebuffer, " overlay",
+			this->device_, &info, nullptr, &this->framebuffers_[i]);
 	}
 }
 
@@ -1410,8 +1377,8 @@ OverlayVulkan::create_sampled(
 	if (!this->device_ || width <= 0 || height <= 0 || !image || !memory)
 		return false;
 	const VkImageCreateInfo image_info = sampled_info(width, height);
-	check_vk(vkCreateImage(this->device_, &image_info, nullptr, image),
-		"vkCreateImage overlay tex");
+	CALL_VK(CreateImage, " overlay tex",
+		this->device_, &image_info, nullptr, image);
 	VkMemoryRequirements requirements{};
 	vkGetImageMemoryRequirements(this->device_, *image, &requirements);
 	const uint32_t image_type = dawn::vk_memory_type(this->phys_,
@@ -1426,10 +1393,10 @@ OverlayVulkan::create_sampled(
 		.allocationSize = requirements.size,
 		.memoryTypeIndex = image_type,
 	};
-	check_vk(vkAllocateMemory(this->device_, &allocate, nullptr, memory),
-		"vkAllocateMemory overlay tex");
-	check_vk(vkBindImageMemory(this->device_, *image, *memory, 0),
-		"vkBindImageMemory overlay tex");
+	CALL_VK(AllocateMemory, " overlay tex",
+		this->device_, &allocate, nullptr, memory);
+	CALL_VK(BindImageMemory, " overlay tex",
+		this->device_, *image, *memory, 0);
 	return true;
 }
 
@@ -1447,8 +1414,8 @@ OverlayVulkan::bind_sampled(VkImage image, VkImageView *view,
 			.levelCount = 1,
 			.layerCount = 1},
 	};
-	check_vk(vkCreateImageView(this->device_, &view_info, nullptr, view),
-		"vkCreateImageView overlay tex");
+	CALL_VK(CreateImageView, " overlay tex",
+		this->device_, &view_info, nullptr, view);
 	if (!set)
 		return;
 	VkDescriptorImageInfo image_descriptor{
@@ -1483,8 +1450,8 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 		.size = size,
 		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 	};
-	check_vk(vkCreateBuffer(this->device_, &buffer_info, nullptr, &staging),
-		"vkCreateBuffer overlay tex staging");
+	CALL_VK(CreateBuffer, " overlay tex staging",
+		this->device_, &buffer_info, nullptr, &staging);
 
 	VkMemoryRequirements requirements{};
 	vkGetBufferMemoryRequirements(this->device_, staging, &requirements);
@@ -1502,14 +1469,13 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 		.allocationSize = requirements.size,
 		.memoryTypeIndex = host_type,
 	};
-	check_vk(
-		vkAllocateMemory(this->device_, &allocate, nullptr, &staging_memory),
-		"vkAllocateMemory overlay tex staging");
-	check_vk(vkBindBufferMemory(this->device_, staging, staging_memory, 0),
-		"vkBindBufferMemory overlay tex staging");
+	CALL_VK(AllocateMemory, " overlay tex staging",
+		this->device_, &allocate, nullptr, &staging_memory);
+	CALL_VK(BindBufferMemory, " overlay tex staging",
+		this->device_, staging, staging_memory, 0);
 	void *mapped = nullptr;
-	check_vk(vkMapMemory(this->device_, staging_memory, 0, size, 0, &mapped),
-		"vkMapMemory overlay tex staging");
+	CALL_VK(MapMemory, " overlay tex staging",
+		this->device_, staging_memory, 0, size, 0, &mapped);
 	memcpy(mapped, pixels, size_t(size));
 	vkUnmapMemory(this->device_, staging_memory);
 
@@ -1520,14 +1486,13 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = 1,
 	};
-	check_vk(vkAllocateCommandBuffers(this->device_, &cmd_info, &cmd),
-		"vkAllocateCommandBuffers overlay tex");
+	CALL_VK(AllocateCommandBuffers, " overlay tex",
+		this->device_, &cmd_info, &cmd);
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 	};
-	check_vk(
-		vkBeginCommandBuffer(cmd, &begin), "vkBeginCommandBuffer overlay tex");
+	CALL_VK(BeginCommandBuffer, " overlay tex", cmd, &begin);
 	VkImageMemoryBarrier to_dst{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = layout == VK_IMAGE_LAYOUT_UNDEFINED
@@ -1564,15 +1529,15 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&to_shader);
-	check_vk(vkEndCommandBuffer(cmd), "vkEndCommandBuffer overlay tex");
+	CALL_VK(EndCommandBuffer, " overlay tex", cmd);
 	VkSubmitInfo submit{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &cmd,
 	};
-	check_vk(vkQueueSubmit(this->queue_, 1, &submit, VK_NULL_HANDLE),
-		"vkQueueSubmit overlay tex");
-	check_vk(vkQueueWaitIdle(this->queue_), "vkQueueWaitIdle overlay tex");
+	CALL_VK(QueueSubmit, " overlay tex",
+		this->queue_, 1, &submit, VK_NULL_HANDLE);
+	CALL_VK(QueueWaitIdle, " overlay tex", this->queue_);
 	vkFreeCommandBuffers(this->device_, this->upload_pool_, 1, &cmd);
 	vkDestroyBuffer(this->device_, staging, nullptr);
 	vkFreeMemory(this->device_, staging_memory, nullptr);
@@ -1737,8 +1702,8 @@ OverlayVulkan::ensure_buffers(
 			.size = *current,
 			.usage = usage,
 		};
-		check_vk(vkCreateBuffer(this->device_, &info, nullptr, buffer),
-			"vkCreateBuffer overlay");
+		CALL_VK(CreateBuffer, " overlay",
+			this->device_, &info, nullptr, buffer);
 		VkMemoryRequirements requirements{};
 		vkGetBufferMemoryRequirements(this->device_, *buffer, &requirements);
 		const uint32_t type =
@@ -1752,10 +1717,10 @@ OverlayVulkan::ensure_buffers(
 			.allocationSize = requirements.size,
 			.memoryTypeIndex = type,
 		};
-		check_vk(vkAllocateMemory(this->device_, &allocate, nullptr, memory),
-			"vkAllocateMemory overlay");
-		check_vk(vkBindBufferMemory(this->device_, *buffer, *memory, 0),
-			"vkBindBufferMemory overlay");
+		CALL_VK(AllocateMemory, " overlay",
+			this->device_, &allocate, nullptr, memory);
+		CALL_VK(BindBufferMemory, " overlay",
+			this->device_, *buffer, *memory, 0);
 		return true;
 	};
 	return recreate(&this->vertex_buffer_, &this->vertex_memory_,
@@ -1787,12 +1752,10 @@ OverlayVulkan::record(
 
 	void *vertices = nullptr;
 	void *indices = nullptr;
-	check_vk(vkMapMemory(this->device_, this->vertex_memory_, 0, vertex_bytes,
-				 0, &vertices),
-		"vkMapMemory overlay vtx");
-	check_vk(vkMapMemory(this->device_, this->index_memory_, 0, index_bytes, 0,
-				 &indices),
-		"vkMapMemory overlay idx");
+	CALL_VK(MapMemory, " overlay vtx",
+		this->device_, this->vertex_memory_, 0, vertex_bytes, 0, &vertices);
+	CALL_VK(MapMemory, " overlay idx",
+		this->device_, this->index_memory_, 0, index_bytes, 0, &indices);
 	memcpy(vertices, mesh.vertices.data(), size_t(vertex_bytes));
 	memcpy(indices, mesh.indices.data(), size_t(index_bytes));
 	vkUnmapMemory(this->device_, this->vertex_memory_);
