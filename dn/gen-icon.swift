@@ -44,7 +44,7 @@ func drawIcon(scale: CGFloat) -> CGImage? {
 	// Gradients don't draw shadows, so draw it separately.
 	context.saveGState()
 	context.setShadow(offset: CGSizeMake(0, -12).applying(context.ctm),
-		blur: 28 * scale, color: CGColor(gray: 0, alpha: 0.5))
+		blur: 28 * scale, color: CGColor(gray: 0, alpha: 0.375))
 	context.setFillColor(CGColor(red: 1, green: 0x7ap-8, blue: 0, alpha: 1))
 	context.fillPath()
 	context.restoreGState()
