@@ -4050,10 +4050,8 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	const int hair = hairline();
-	const Rect g = w.inset(hair, hair);
-	this->list_.add_rect_stroke(float(g.x), float(g.y), float(g.x + g.w),
-		float(g.y + g.h), col(this->colours_[ColourInk]), float(hair));
+	this->list_.add_rect_stroke(float(w.x), float(w.y), float(w.right()),
+		float(w.bottom()), col(this->colours_[ColourInk]), float(hairline()));
 }
 
 void

@@ -846,7 +846,7 @@ struct Kit {
 	{
 		return this->active_ ? 1.f : 0.5f;
 	}
-	void focus_ring(Rect w);   // 1px inset ring
+	void focus_ring(Rect w);   // 1pt inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
 	// Rect-shaped wrappers over the draw list, which speaks floats: layout
 	// is integral, so these save every caller the same four conversions.
