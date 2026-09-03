@@ -18,10 +18,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-NSURL *
+static NSURL *
 file_url(const QString &path)
 {
 	if (path.isEmpty())
@@ -29,13 +27,13 @@ file_url(const QString &path)
 	return [NSURL fileURLWithPath:path.toNSString()];
 }
 
-QString
+static QString
 from_ns(NSString *s)
 {
 	return s ? QString::fromNSString(s) : QString();
 }
 
-Handler
+static Handler
 app_from_url(NSURL *url)
 {
 	Handler a;
@@ -59,7 +57,7 @@ app_from_url(NSURL *url)
 	return a;
 }
 
-NSString *
+static NSString *
 uti_from_file(NSURL *url)
 {
 	if (!url)
@@ -75,7 +73,7 @@ uti_from_file(NSURL *url)
 	return nil;
 }
 
-NSURL *
+static NSURL *
 app_url_for_bundle_id(NSString *bid)
 {
 	if (!bid.length)
@@ -94,8 +92,6 @@ app_url_for_bundle_id(NSString *bid)
 	CFRelease(urls);
 	return copy;
 }
-
-}  // namespace
 
 Handler
 default_for(const QString &path)

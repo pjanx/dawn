@@ -12,10 +12,7 @@
 
 using namespace std;
 
-namespace
-{
-
-void
+static void
 test_mime_globs()
 {
 	const vector<QString> globs = dn::extract_mime_globs({"image/jpeg"});
@@ -24,8 +21,6 @@ test_mime_globs()
 	CHECK(find(globs.begin(), globs.end(), QLatin1String("*.jpeg")) !=
 		globs.end());
 }
-
-}  // namespace
 
 int
 main()

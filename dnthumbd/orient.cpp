@@ -14,9 +14,8 @@
 using namespace std;
 
 namespace dnthumbd {
-namespace {
 
-bool
+static bool
 invert_matrix(const dawn::Matrix &m, dawn::Matrix *out)
 {
 	const double det = m.xx * m.yy - m.xy * m.yx;
@@ -31,14 +30,14 @@ invert_matrix(const dawn::Matrix &m, dawn::Matrix *out)
 	return true;
 }
 
-void
+static void
 map_point(const dawn::Matrix &m, double x, double y, double *ox, double *oy)
 {
 	*ox = m.xx * x + m.xy * y + m.x0;
 	*oy = m.yx * x + m.yy * y + m.y0;
 }
 
-void
+static void
 copy_pixel_bgra16(uint16_t *dst, const uint16_t *src)
 {
 	dst[0] = src[0];
@@ -46,8 +45,6 @@ copy_pixel_bgra16(uint16_t *dst, const uint16_t *src)
 	dst[2] = src[2];
 	dst[3] = src[3];
 }
-
-}  // namespace
 
 bool
 bake_orientation(dawn::Image &image)

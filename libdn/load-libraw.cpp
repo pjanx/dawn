@@ -19,13 +19,11 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // Unpacks, demosaics and colour-converts (to sRGB) a single shot already
 // opened into `iprc`, producing one working-format page. LibRaw hands back
 // tightly packed, interleaved 16-bit RGB rows, which carry no alpha.
-ImagePtr
+static ImagePtr
 load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 {
 	int err = 0;
@@ -69,8 +67,6 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 	ensure_working_premul(*result, ctx, nullptr, /*input_premul=*/false);
 	return result;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_libraw(

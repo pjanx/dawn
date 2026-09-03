@@ -125,8 +125,6 @@ constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Right, Action::Fullscreen},
 };
 
-bool apply_action(Viewer &v, Action action);
-
 bool
 spec_enabled(const Viewer &v, Action action)
 {
@@ -373,6 +371,7 @@ profile_from_icc(
 
 }  // namespace
 
+static bool apply_action(Viewer &v, Action action);
 static void reload_open(Viewer &v);
 
 struct Viewer::Worker {
@@ -1566,10 +1565,7 @@ snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 	*pan += (origin - round(origin)) / scale;
 }
 
-namespace
-{
-
-void
+static void
 cancel_scale(Viewer &v)
 {
 	++v.scale_gen_;
@@ -1582,7 +1578,7 @@ cancel_scale(Viewer &v)
 	}
 }
 
-void
+static void
 frame_step(Viewer &v, int step)
 {
 	if (!v.frame_)
@@ -1614,7 +1610,7 @@ frame_step(Viewer &v, int step)
 	request_render(v);
 }
 
-void
+static void
 switch_page(Viewer &v, dawn::ImagePtr page)
 {
 	if (!page || page.get() == v.current_.get())
@@ -1634,7 +1630,7 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 	request_render(v);
 }
 
-void
+static void
 page_step(Viewer &v, int step)
 {
 	if (!v.current_)
@@ -1648,7 +1644,7 @@ page_step(Viewer &v, int step)
 		switch_page(v, v.current_->page_next);
 }
 
-void
+static void
 page_last(Viewer &v)
 {
 	dawn::ImagePtr p = v.current_ ? v.current_ : v.image_;
@@ -1659,7 +1655,7 @@ page_last(Viewer &v)
 	switch_page(v, std::move(p));
 }
 
-void
+static void
 copy_image(QMimeData *mime, const dawn::Image &im)
 {
 	if (!mime || im.data.empty() || !im.width || !im.height)
@@ -1692,7 +1688,7 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 	mime->setImageData(image);
 }
 
-void
+static void
 copy_frame(const Viewer &v)
 {
 	auto *mime = new QMimeData;
@@ -1705,7 +1701,7 @@ copy_frame(const Viewer &v)
 	QGuiApplication::clipboard()->setMimeData(mime);
 }
 
-bool
+static bool
 apply_action(Viewer &v, Action action)
 {
 	switch (action) {
@@ -1862,7 +1858,7 @@ apply_view(const Viewer &v)
 	renderer.set_view(gpu_scale, pan_x, pan_y, v.orientation_, v.angle_);
 }
 
-Actor
+static Actor
 make_actor(Viewer &v, const HostActions &host)
 {
 	return chain_actor(
@@ -1870,8 +1866,6 @@ make_actor(Viewer &v, const HostActions &host)
 		[&v](Action a) { return spec_enabled(v, a); },
 		[&v](Action a) { return spec_active(v, a); });
 }
-
-}  // namespace
 
 Viewer::Viewer(Kit &kit) : kit_(kit)
 {

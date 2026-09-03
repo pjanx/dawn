@@ -20,17 +20,14 @@
 using namespace std;
 namespace fs = filesystem;
 
-namespace
-{
-
-void
+static void
 die(const char *msg)
 {
 	fprintf(stderr, "gen_fixtures: %s\n", msg);
 	exit(1);
 }
 
-void
+static void
 write_all(const fs::path &path, const void *data, size_t len)
 {
 	FILE *f = fopen(path.string().c_str(), "wb");
@@ -43,13 +40,13 @@ write_all(const fs::path &path, const void *data, size_t len)
 	fclose(f);
 }
 
-void
+static void
 write_all(const fs::path &path, const string &s)
 {
 	write_all(path, s.data(), s.size());
 }
 
-void
+static void
 append_be32(vector<uint8_t> &o, uint32_t v)
 {
 	o.push_back(uint8_t(v >> 24));
@@ -58,14 +55,14 @@ append_be32(vector<uint8_t> &o, uint32_t v)
 	o.push_back(uint8_t(v));
 }
 
-void
+static void
 append_le16(vector<uint8_t> &o, uint16_t v)
 {
 	o.push_back(uint8_t(v));
 	o.push_back(uint8_t(v >> 8));
 }
 
-void
+static void
 append_le32(vector<uint8_t> &o, uint32_t v)
 {
 	o.push_back(uint8_t(v));
@@ -74,7 +71,7 @@ append_le32(vector<uint8_t> &o, uint32_t v)
 	o.push_back(uint8_t(v >> 24));
 }
 
-void
+static void
 png_chunk(vector<uint8_t> &o, const char tag[4], const uint8_t *data, size_t n)
 {
 	append_be32(o, uint32_t(n));
@@ -87,7 +84,7 @@ png_chunk(vector<uint8_t> &o, const char tag[4], const uint8_t *data, size_t n)
 	append_be32(o, crc);
 }
 
-vector<uint8_t>
+static vector<uint8_t>
 zlib_compress(const uint8_t *data, size_t n)
 {
 	uLong bound = compressBound(uLong(n));
@@ -99,7 +96,7 @@ zlib_compress(const uint8_t *data, size_t n)
 	return out;
 }
 
-vector<uint8_t>
+static vector<uint8_t>
 profile_bytes(cmsHPROFILE profile)
 {
 	cmsUInt32Number size = 0;
@@ -112,7 +109,7 @@ profile_bytes(cmsHPROFILE profile)
 	return bytes;
 }
 
-cmsHPROFILE
+static cmsHPROFILE
 create_display_p3_profile()
 {
 	constexpr size_t samples = 4096;
@@ -153,7 +150,7 @@ create_display_p3_profile()
 	return profile;
 }
 
-void
+static void
 write_display_p3_vs_srgb_red(const fs::path &path)
 {
 	cmsHPROFILE display_p3 = create_display_p3_profile();
@@ -208,7 +205,7 @@ write_display_p3_vs_srgb_red(const fs::path &path)
 		srgb_red_in_p3[0], srgb_red_in_p3[1], srgb_red_in_p3[2]);
 }
 
-void
+static void
 write_png8_rgb(const fs::path &path, uint8_t r, uint8_t g, uint8_t b,
 	const uint8_t *a = nullptr)
 {
@@ -237,7 +234,7 @@ write_png8_rgb(const fs::path &path, uint8_t r, uint8_t g, uint8_t b,
 	write_all(path, out.data(), out.size());
 }
 
-void
+static void
 write_png8_rgb_text_after_idat(const fs::path &path, uint8_t r, uint8_t g,
 	uint8_t b, const char *key, const char *val)
 {
@@ -266,7 +263,7 @@ write_png8_rgb_text_after_idat(const fs::path &path, uint8_t r, uint8_t g,
 	write_all(path, out.data(), out.size());
 }
 
-void
+static void
 write_png8_rgb_2x2(const fs::path &path, const uint8_t px[4][3])
 {
 	vector<uint8_t> ihdr;
@@ -297,7 +294,7 @@ write_png8_rgb_2x2(const fs::path &path, const uint8_t px[4][3])
 	write_all(path, out.data(), out.size());
 }
 
-void
+static void
 write_png16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 {
 	vector<uint8_t> ihdr;
@@ -326,7 +323,7 @@ write_png16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 	write_all(path, out.data(), out.size());
 }
 
-void
+static void
 write_tiff16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 {
 	vector<uint8_t> out;
@@ -375,7 +372,7 @@ write_tiff16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 	write_all(path, out.data(), out.size());
 }
 
-void
+static void
 write_cmyk_lab_icc(const fs::path &path)
 {
 	cmsHPROFILE h = cmsCreateProfilePlaceholder(nullptr);
@@ -412,7 +409,7 @@ write_cmyk_lab_icc(const fs::path &path)
 	write_all(path, buf.data(), n);
 }
 
-void
+static void
 write_svgs(const fs::path &dir)
 {
 	write_all(dir / "red.svg",
@@ -445,7 +442,7 @@ write_svgs(const fs::path &dir)
 )");
 }
 
-int
+static int
 run_magick(initializer_list<const char *> args)
 {
 	string cmd = "magick";
@@ -460,8 +457,6 @@ run_magick(initializer_list<const char *> args)
 			cmd.c_str());
 	return rc;
 }
-
-}  // namespace
 
 int
 main(int argc, char **argv)

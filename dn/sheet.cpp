@@ -14,10 +14,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-void
+static void
 merge_free(vector<Sheet::Packed> &free)
 {
 	if (free.size() < 2)
@@ -37,8 +35,6 @@ merge_free(vector<Sheet::Packed> &free)
 	}
 	free.swap(out);
 }
-
-}  // namespace
 
 // --- Sheet -------------------------------------------------------------------
 

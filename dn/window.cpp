@@ -65,13 +65,11 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 800;
 
-int
+static int
 sooner(int a, int b)
 {
 	if (a < 0)
@@ -79,14 +77,14 @@ sooner(int a, int b)
 	return b < 0 ? a : min(a, b);
 }
 
-float
+static float
 host_dpr(const QWindow &w)
 {
 	const qreal r = w.devicePixelRatio();
 	return float(r > 0 ? r : 1.0);
 }
 
-int
+static int
 wheel_axis(const QPoint &ang, const QPoint &pix, bool horizontal)
 {
 	const int a = horizontal ? ang.x() : ang.y();
@@ -95,7 +93,7 @@ wheel_axis(const QPoint &ang, const QPoint &pix, bool horizontal)
 	return horizontal ? pix.x() : pix.y();
 }
 
-QUrl
+static QUrl
 first_dropped_file(const QMimeData *mime)
 {
 	if (!mime)
@@ -108,7 +106,7 @@ first_dropped_file(const QMimeData *mime)
 	return {};
 }
 
-QString
+static QString
 help_document_path()
 {
 	const QString app_dir = QCoreApplication::applicationDirPath();
@@ -123,8 +121,6 @@ help_document_path()
 		QStringLiteral("../share/doc/dawn/dn.html")));
 #endif
 }
-
-}  // namespace
 
 Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 {

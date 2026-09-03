@@ -22,10 +22,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-void
+static void
 check_vk(VkResult result, const char *what)
 {
 	if (result != VK_SUCCESS) {
@@ -34,14 +32,14 @@ check_vk(VkResult result, const char *what)
 	}
 }
 
-[[noreturn]] void
+[[noreturn]] static void
 die(const char *message)
 {
 	qWarning("%s", message);
 	exit(1);
 }
 
-const char *
+static const char *
 vk_format_name(VkFormat f)
 {
 	switch (f) {
@@ -60,7 +58,7 @@ vk_format_name(VkFormat f)
 	}
 }
 
-const char *
+static const char *
 vk_colorspace_name(VkColorSpaceKHR cs)
 {
 	switch (cs) {
@@ -73,7 +71,7 @@ vk_colorspace_name(VkColorSpaceKHR cs)
 	}
 }
 
-int
+static int
 format_depth_score(VkFormat f)
 {
 	if (f == VK_FORMAT_R16G16B16A16_UNORM)
@@ -86,7 +84,7 @@ format_depth_score(VkFormat f)
 	return 0;
 }
 
-int
+static int
 colorspace_score(VkColorSpaceKHR cs)
 {
 	if (cs == VK_COLOR_SPACE_PASS_THROUGH_EXT)
@@ -96,19 +94,19 @@ colorspace_score(VkColorSpaceKHR cs)
 	return 0;
 }
 
-int
+static int
 surface_format_score(const VkSurfaceFormatKHR &sf)
 {
 	return colorspace_score(sf.colorSpace) * 10 + format_depth_score(sf.format);
 }
 
-bool
+static bool
 is_unorm8(VkFormat f)
 {
 	return f == VK_FORMAT_B8G8R8A8_UNORM || f == VK_FORMAT_R8G8B8A8_UNORM;
 }
 
-VkSurfaceFormatKHR
+static VkSurfaceFormatKHR
 pick_surface_format(const vector<VkSurfaceFormatKHR> &formats)
 {
 	VkSurfaceFormatKHR best = formats.front();
@@ -123,7 +121,7 @@ pick_surface_format(const vector<VkSurfaceFormatKHR> &formats)
 	return best;
 }
 
-VkPresentModeKHR
+static VkPresentModeKHR
 pick_present_mode(
 	VkPhysicalDevice phys, VkSurfaceKHR surface, VkPresentModeKHR preferred)
 {
@@ -143,8 +141,6 @@ pick_present_mode(
 	// explicitly. Also report the selected mode once for diagnostics.
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
-
-}  // namespace
 
 bool
 Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,

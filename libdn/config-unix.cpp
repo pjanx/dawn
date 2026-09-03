@@ -145,20 +145,17 @@ ini_set(IniGroup &group, string_view key, string_view value)
 
 }  // namespace detail
 
-namespace
-{
-
 using detail::IniFile;
 using detail::IniGroup;
 
-void
+static void
 fail(Error *error, string message)
 {
 	if (error)
 		*error = {Error::Code::Io, std::move(message)};
 }
 
-optional<pair<string, string>>
+static optional<pair<string, string>>
 split_key(string_view key)
 {
 	const size_t slash = key.rfind('/');
@@ -168,7 +165,7 @@ split_key(string_view key)
 		string(key.substr(slash + 1))};
 }
 
-fs::path
+static fs::path
 config_path(Error *error)
 {
 	if (const char *xdg = getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
@@ -182,7 +179,7 @@ config_path(Error *error)
 	return {};
 }
 
-optional<IniFile>
+static optional<IniFile>
 load_ini(const fs::path &path, Error *error)
 {
 	error_code ec;
@@ -205,8 +202,6 @@ load_ini(const fs::path &path, Error *error)
 	}
 	return detail::ini_parse(text);
 }
-
-}  // namespace
 
 optional<string>
 config_get(string_view key, Error *error)

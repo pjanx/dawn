@@ -147,12 +147,9 @@ ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 
 // --- Dialogs -----------------------------------------------------------------
 
-namespace
-{
-
 constexpr float kDialogActionPad = 16.f;
 
-unique_ptr<Label>
+static unique_ptr<Label>
 dialog_label(const QString &text, bool bold = false, bool wrap = false)
 {
 	auto label = make_unique<Label>();
@@ -162,7 +159,7 @@ dialog_label(const QString &text, bool bold = false, bool wrap = false)
 	return label;
 }
 
-unique_ptr<Button>
+static unique_ptr<Button>
 dialog_action(const QString &text, function<void(Kit &)> on_click)
 {
 	auto button = make_unique<Button>();
@@ -172,14 +169,14 @@ dialog_action(const QString &text, function<void(Kit &)> on_click)
 	return button;
 }
 
-unique_ptr<Button>
+static unique_ptr<Button>
 dialog_close_action(Dialog &dialog)
 {
 	return dialog_action(QStringLiteral("Close"),
 		[&dialog](Kit &kit) { dialog.close(kit); });
 }
 
-QString
+static QString
 shortcut_accel(const ActionDef &def)
 {
 	if (def.accel)
@@ -196,13 +193,13 @@ shortcut_accel(const ActionDef &def)
 	return s;
 }
 
-bool
+static bool
 has_shortcut(const ActionDef &def)
 {
 	return !shortcut_accel(def).isEmpty();
 }
 
-void
+static void
 for_leaves(span<const MenuNode> nodes, auto &&fn)
 {
 	for (const MenuNode &n : nodes) {
@@ -213,7 +210,7 @@ for_leaves(span<const MenuNode> nodes, auto &&fn)
 	}
 }
 
-unique_ptr<Row>
+static unique_ptr<Row>
 shortcut_row(const ActionDef &def, float accel_w)
 {
 	auto row = make_unique<Row>();
@@ -226,8 +223,6 @@ shortcut_row(const ActionDef &def, float accel_w)
 	row->add_child(std::move(name));
 	return row;
 }
-
-}  // namespace
 
 // The body takes its natural height, never stretched: it only knows to
 // scroll when what it holds is taller than it is.
@@ -596,21 +591,18 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 
 // --- Hint -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr char kChars[] = "SADFJKLEWCMPGH";
 constexpr int kNChars = size(kChars) - 1;
 constexpr float kChipPadX = 4.f;
 constexpr float kChipPadY = 2.f;
 
-Colour
+static Colour
 col(const Colour &c, float alpha = 1.f)
 {
 	return {c.r, c.g, c.b, c.a * alpha};
 }
 
-Rect
+static Rect
 intersection(Rect a, Rect b)
 {
 	const int x = max(a.x, b.x);
@@ -619,7 +611,7 @@ intersection(Rect a, Rect b)
 		max(0, min(a.bottom(), b.bottom()) - y)};
 }
 
-Rect
+static Rect
 visible_rect(const Widget *w, Rect host)
 {
 	if (!w || !w->shown() || w->r.empty())
@@ -639,7 +631,7 @@ visible_rect(const Widget *w, Rect host)
 // The three exceptions are containers that are focusable as a whole -- one
 // chip over the entire browser well would say nothing useful, and its files
 // get their own targets below.
-void
+static void
 collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
@@ -653,7 +645,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 		collect_targets(w->child(i), host, out);
 }
 
-QString
+static QString
 label_at(int i, int len)
 {
 	QString s(len, QLatin1Char('A'));
@@ -665,7 +657,7 @@ label_at(int i, int len)
 	return s;
 }
 
-int
+static int
 label_len(int n)
 {
 	if (n <= 0)
@@ -679,14 +671,12 @@ label_len(int n)
 	return len;
 }
 
-bool
+static bool
 modifier_only(int key)
 {
 	return key == Qt::Key_Shift || key == Qt::Key_Control ||
 		key == Qt::Key_Alt || key == Qt::Key_Meta || key == Qt::Key_AltGr;
 }
-
-}  // namespace
 
 Hint::Hint()
 {
@@ -953,14 +943,9 @@ Hint::fire(Kit &kit, Target t)
 
 // --- Page -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr float kMinWell = 80.f;
 constexpr float kMinSide = 120.f;
 constexpr float kSplitW = 8.f;
-
-}  // namespace
 
 Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	unique_ptr<Widget> body)

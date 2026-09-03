@@ -22,12 +22,10 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // GdkPixbuf currently only ever produces 8-bit-per-sample RGB(A) buffers,
 // with 3 or 4 channels--this isn't expected to ever legitimately fail.
-ImagePtr
+static ImagePtr
 load_gdkpixbuf_pixels(GdkPixbuf *pixbuf, Error *error)
 {
 	if (gdk_pixbuf_get_colorspace(pixbuf) != GDK_COLORSPACE_RGB ||
@@ -59,7 +57,7 @@ load_gdkpixbuf_pixels(GdkPixbuf *pixbuf, Error *error)
 	return image;
 }
 
-void
+static void
 load_gdkpixbuf_metadata(Image &image, GdkPixbuf *pixbuf)
 {
 	const char *orientation = gdk_pixbuf_get_option(pixbuf, "orientation");
@@ -79,8 +77,6 @@ load_gdkpixbuf_metadata(Image &image, GdkPixbuf *pixbuf)
 		}
 	}
 }
-
-}  // namespace
 
 vector<string>
 detail::gdkpixbuf_media_types()

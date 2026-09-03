@@ -17,10 +17,8 @@ namespace dawn
 {
 namespace ipc
 {
-namespace
-{
 
-void
+static void
 consume_elapsed(chrono::milliseconds &left, chrono::milliseconds dt)
 {
 	if (dt >= left)
@@ -28,8 +26,6 @@ consume_elapsed(chrono::milliseconds &left, chrono::milliseconds dt)
 	else
 		left -= dt;
 }
-
-}  // namespace
 
 // --- Channel -----------------------------------------------------------------
 

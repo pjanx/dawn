@@ -27,17 +27,15 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-void
+static void
 ensure_com()
 {
 	static const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 	(void) hr;
 }
 
-QString
+static QString
 extension_of(const QString &path)
 {
 	// Windows doesn't really work this way.  We could use command-subkey verbs,
@@ -52,13 +50,13 @@ extension_of(const QString &path)
 	return QStringLiteral(".") + suffix.toLower();
 }
 
-QString
+static QString
 from_wide(const wchar_t *s)
 {
 	return s ? QString::fromWCharArray(s) : QString();
 }
 
-Handler
+static Handler
 app_from_handler(IAssocHandler *handler)
 {
 	Handler a;
@@ -86,7 +84,7 @@ app_from_handler(IAssocHandler *handler)
 		a.name = a.id;
 	return a;
 }
-vector<Handler>
+static vector<Handler>
 enum_handlers(const QString &ext, ASSOC_FILTER filter)
 {
 	vector<Handler> out;
@@ -109,7 +107,7 @@ enum_handlers(const QString &ext, ASSOC_FILTER filter)
 	return out;
 }
 
-IAssocHandler *
+static IAssocHandler *
 find_handler(const QString &ext, const QString &id)
 {
 	if (ext.isEmpty() || id.isEmpty())
@@ -138,8 +136,6 @@ find_handler(const QString &ext, const QString &id)
 	en->Release();
 	return found;
 }
-
-}  // namespace
 
 Handler
 default_for(const QString &path)

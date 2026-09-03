@@ -20,10 +20,8 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
-bool
+static bool
 check_vk(VkResult r, const char *what, string *error)
 {
 	if (r != VK_SUCCESS) {
@@ -45,7 +43,7 @@ unpremul_channel8(uint8_t a, uint8_t x)
 	return uint8_t(min(255, (int(x) * 255 + a / 2) / a));
 }
 
-void
+static void
 unpremul_rgba8(uint8_t *data, uint32_t width, uint32_t height)
 {
 	for (uint32_t y = 0; y < height; y++) {
@@ -61,7 +59,7 @@ unpremul_rgba8(uint8_t *data, uint32_t width, uint32_t height)
 	}
 }
 
-bool
+static bool
 instance_has_extension(const char *name)
 {
 	uint32_t count = 0;
@@ -79,13 +77,11 @@ instance_has_extension(const char *name)
 	return false;
 }
 
-uint32_t
+static uint32_t
 ceil_div(uint32_t a, uint32_t b)
 {
 	return b == 0 ? 0 : (a + b - 1) / b;
 }
-
-}  // namespace
 
 struct ScaleScaler::Impl {
 	mutex mu;

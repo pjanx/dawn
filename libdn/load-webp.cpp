@@ -18,10 +18,7 @@ using namespace std;
 namespace dawn
 {
 
-namespace
-{
-
-const char *
+static const char *
 webp_status_string(VP8StatusCode err)
 {
 	switch (err) {
@@ -53,7 +50,7 @@ webp_status_string(VP8StatusCode err)
 // ensure_working_premul() to colour-manage and premultiply in one go.
 // In either case, widen_bgra8_to_bgra16() merely widens the bytes libwebp
 // produced, without touching alpha association.
-ImagePtr
+static ImagePtr
 load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 	const OpenContext &ctx, Error *error)
 {
@@ -102,7 +99,7 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 }
 
 // Fetches one already-composited frame of an animation onto its own canvas.
-ImagePtr
+static ImagePtr
 load_webp_frame(WebPAnimDecoder *dec, const WebPAnimInfo &info,
 	int *last_timestamp, Error *error)
 {
@@ -129,7 +126,7 @@ load_webp_frame(WebPAnimDecoder *dec, const WebPAnimInfo &info,
 	return image;
 }
 
-ImagePtr
+static ImagePtr
 load_webp_animated(
 	const WebPData &wd, bool premultiply, const OpenContext &ctx, Error *error)
 {
@@ -175,7 +172,7 @@ load_webp_animated(
 
 // Attaches EXIF/ICCP/XMP/THUM metadata, as well as the loop count,
 // from the container onto the head of the resulting image chain.
-void
+static void
 load_webp_metadata(Image &image, const WebPData &wd, const OpenContext &ctx)
 {
 	WebPDemuxState state = WEBP_DEMUX_PARSE_ERROR;
@@ -215,8 +212,6 @@ load_webp_metadata(Image &image, const WebPData &wd, const OpenContext &ctx)
 
 	WebPDemuxDelete(demux);
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_webp(

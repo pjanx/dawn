@@ -48,22 +48,19 @@ using namespace std;
 namespace dn
 {
 
-namespace
-{
-
 constexpr string_view kBookmarksKey = "dn/Bookmarks";
 constexpr string_view kDitheringKey = "dn/DisableDithering";
 constexpr string_view kFilenamesKey = "dn/BrowserShowFilenames";
 constexpr string_view kThumbnailKey = "dn/BrowserThumbnailSize";
 constexpr string_view kProfileKey = "dn/ICCProfileOverride";
 
-void
+static void
 config_warn(string_view key, const char *message)
 {
 	qWarning("configuration %.*s: %s", int(key.size()), key.data(), message);
 }
 
-optional<string>
+static optional<string>
 setting(string_view key)
 {
 	dawn::Error error;
@@ -73,7 +70,7 @@ setting(string_view key)
 	return value;
 }
 
-void
+static void
 set_setting(string_view key, string_view value)
 {
 	dawn::Error error;
@@ -81,7 +78,7 @@ set_setting(string_view key, string_view value)
 		config_warn(key, error.message.c_str());
 }
 
-bool
+static bool
 boolean_setting(string_view key, bool fallback)
 {
 	const optional<string> value = setting(key);
@@ -95,14 +92,14 @@ boolean_setting(string_view key, bool fallback)
 	return fallback;
 }
 
-void
+static void
 set_boolean_setting(string_view key, bool value)
 {
 	set_setting(key, value ? "true" : "false");
 }
 
 // Answers 0 for anything the browser has no thumbnails for.
-int
+static int
 parse_thumbnail_size(const string &value)
 {
 	int size = 0;
@@ -117,7 +114,7 @@ parse_thumbnail_size(const string &value)
 	return 0;
 }
 
-char
+static char
 bookmark_separator()
 {
 #ifdef Q_OS_WIN
@@ -127,7 +124,7 @@ bookmark_separator()
 #endif
 }
 
-vector<string>
+static vector<string>
 split_bookmarks(const string &value)
 {
 	vector<string> out;
@@ -145,7 +142,7 @@ split_bookmarks(const string &value)
 	return out;
 }
 
-string
+static string
 join_bookmarks(const vector<string> &bookmarks)
 {
 	string value;
@@ -156,8 +153,6 @@ join_bookmarks(const vector<string> &bookmarks)
 	}
 	return value;
 }
-
-}  // namespace
 
 // Bookmarks are compared by path, so they are stored canonicalised: the
 // sidebar highlights the open directory by std::filesystem::equivalent,

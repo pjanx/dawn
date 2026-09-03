@@ -21,14 +21,12 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // Decodes a single image handle (either a top-level image, or an auxiliary
 // image such as a depth map) into one working-format page, extracting Exif
 // and an embedded ICC profile, if present, and bringing it to final working
 // premul before returning.
-ImagePtr
+static ImagePtr
 load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 {
 	int has_alpha = heif_image_handle_has_alpha_channel(handle);
@@ -168,7 +166,7 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 // Appends any auxiliary images (e.g. depth maps) hanging off `top`
 // as further pages. We have no special processing for them yet,
 // so they are included mainly to not lose them silently.
-void
+static void
 load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 	ImagePtr &head, ImagePtr &tail)
 {
@@ -201,8 +199,6 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 		heif_image_handle_release(handle);
 	}
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_heif(

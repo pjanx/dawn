@@ -27,8 +27,6 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // The formats we ask glycin for.  This is a whitelist, not a filter: glycin
 // converts anything else into the nearest listed format, so a short list
@@ -54,7 +52,7 @@ constexpr GlyMemoryFormatSelection kAcceptedFormats = GlyMemoryFormatSelection(
 	GLY_MEMORY_SELECTION_R8G8B8 | GLY_MEMORY_SELECTION_R8G8B8A8 |
 	GLY_MEMORY_SELECTION_R16G16B16 | GLY_MEMORY_SELECTION_R16G16B16A16);
 
-ImagePtr
+static ImagePtr
 load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
 {
 	uint32_t width = gly_frame_get_width(frame);
@@ -152,7 +150,7 @@ load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
 // Copies glycin's key-value metadata (PNG tEXt/zTXt/iTXt and friends) onto
 // the image. glycin already strips the chunk-type prefixes gdk-pixbuf keeps,
 // which matches what load-wuffs.cpp puts in Image::text.
-void
+static void
 load_glycin_metadata(Image &image, GlyImage *img)
 {
 	GStrv keys = gly_image_get_metadata_keys(img);
@@ -165,8 +163,6 @@ load_glycin_metadata(Image &image, GlyImage *img)
 	}
 	g_strfreev(keys);
 }
-
-}  // namespace
 
 vector<string>
 detail::glycin_media_types()

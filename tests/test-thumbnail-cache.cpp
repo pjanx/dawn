@@ -21,10 +21,7 @@
 
 using namespace std;
 
-namespace
-{
-
-void
+static void
 append_field(QByteArray &out, const char *key, const QByteArray &value)
 {
 	out.append(key);
@@ -33,7 +30,7 @@ append_field(QByteArray &out, const char *key, const QByteArray &value)
 	out.append('\0');
 }
 
-bool
+static bool
 retag(const QString &path, const dn::ThumbnailSource &source,
 	const QByteArray &color_space)
 {
@@ -72,7 +69,7 @@ retag(const QString &path, const dn::ThumbnailSource &source,
 	return written;
 }
 
-void
+static void
 test_cache_layout(const QTemporaryDir &cache)
 {
 	CHECK(dn::thumbnail_cache_root() ==
@@ -82,7 +79,7 @@ test_cache_layout(const QTemporaryDir &cache)
 	CHECK(dn::thumbnail_tier_for_height(2000) == 3);
 }
 
-void
+static void
 test_cache_entries(const QTemporaryDir &inputs)
 {
 	const QString input =
@@ -173,8 +170,6 @@ test_cache_entries(const QTemporaryDir &inputs)
 	CHECK(!QFileInfo::exists(cached));
 	CHECK(QFileInfo::exists(png_path));
 }
-
-}  // namespace
 
 int
 main(int argc, char **argv)

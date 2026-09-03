@@ -20,10 +20,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-void
+static void
 registry_note(
 	void *data, wl_registry *, uint32_t, const char *interface, uint32_t)
 {
@@ -31,12 +29,10 @@ registry_note(
 		*static_cast<bool *>(data) = true;
 }
 
-void
+static void
 registry_drop(void *, wl_registry *, uint32_t)
 {
 }
-
-}  // namespace
 
 bool
 wayland_needs_csd()

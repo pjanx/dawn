@@ -29,9 +29,6 @@ using namespace std;
 namespace dn
 {
 
-namespace
-{
-
 constexpr uint64_t kThumbRingBytes = 256ull * 1024 * 1024;
 constexpr size_t kPendingBundleBytes = 1ull << 30;
 constexpr size_t kPriorityCount = 4;
@@ -40,21 +37,21 @@ constexpr size_t kGuiBatch = 32;
 // A worker may queue GPU work before returning the GUI completion which
 // records that work in its client. Hold such GPU callbacks until the CPU
 // completion has at least been placed on the GUI queue.
-thread_local shared_ptr<atomic_bool> current_cpu_gate;
+static thread_local shared_ptr<atomic_bool> current_cpu_gate;
 
-bool
+static bool
 same_source(const ThumbnailSource &a, const ThumbnailSource &b)
 {
 	return a.uri == b.uri && a.mtime == b.mtime && a.size == b.size;
 }
 
-size_t
+static size_t
 priority_index(Thumbnailer::Priority priority)
 {
 	return size_t(priority);
 }
 
-dawn::ThumbScaler::Priority
+static dawn::ThumbScaler::Priority
 scaler_priority(Thumbnailer::Priority priority)
 {
 	switch (priority) {
@@ -69,8 +66,6 @@ scaler_priority(Thumbnailer::Priority priority)
 	}
 	return dawn::ThumbScaler::Priority::Maintenance;
 }
-
-}  // namespace
 
 struct Thumbnailer::Impl {
 	struct CpuTask;

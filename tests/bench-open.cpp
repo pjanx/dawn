@@ -18,10 +18,7 @@
 
 using namespace std;
 
-namespace
-{
-
-void
+static void
 usage(const char *argv0)
 {
 	fprintf(stderr,
@@ -33,7 +30,7 @@ usage(const char *argv0)
 		argv0);
 }
 
-void
+static void
 fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 {
 	const float scale =
@@ -42,7 +39,7 @@ fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 	*out_h = max(1u, uint32_t(float(h) * scale + 0.5f));
 }
 
-int
+static int
 bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -108,8 +105,6 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 	}
 	return rc;
 }
-
-}  // namespace
 
 int
 main(int argc, char **argv)

@@ -25,10 +25,8 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
-int
+static int
 type_rank(VkPhysicalDeviceType type)
 {
 	switch (type) {
@@ -45,7 +43,7 @@ type_rank(VkPhysicalDeviceType type)
 	}
 }
 
-bool
+static bool
 check_vk(VkResult r, const char *what, string *error)
 {
 	if (r == VK_SUCCESS)
@@ -56,7 +54,7 @@ check_vk(VkResult r, const char *what, string *error)
 	return false;
 }
 
-bool
+static bool
 can_present(VkPhysicalDevice phys, uint32_t family, VkSurfaceKHR surface,
 	const function<bool(VkPhysicalDevice, uint32_t)> &present)
 {
@@ -68,8 +66,6 @@ can_present(VkPhysicalDevice phys, uint32_t family, VkSurfaceKHR surface,
 	vkGetPhysicalDeviceSurfaceSupportKHR(phys, family, surface, &ok);
 	return ok == VK_TRUE;
 }
-
-}  // namespace
 
 uint32_t
 vk_memory_type(VkPhysicalDevice phys, uint32_t bits,

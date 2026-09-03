@@ -23,10 +23,7 @@
 
 using namespace std;
 
-namespace
-{
-
-NSEventModifierFlags
+static NSEventModifierFlags
 ns_mods(dn::Accel a)
 {
 	NSEventModifierFlags f = 0;
@@ -41,7 +38,7 @@ ns_mods(dn::Accel a)
 	return f;
 }
 
-NSString *
+static NSString *
 ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 {
 	*mods = ns_mods(a);
@@ -120,7 +117,7 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 	return [NSString stringWithCharacters:&c length:1];
 }
 
-const dn::MenuNode *
+static const dn::MenuNode *
 find_section(span<const dn::MenuNode> tree, NSString *title)
 {
 	const QString want = QString::fromNSString(title);
@@ -131,14 +128,14 @@ find_section(span<const dn::MenuNode> tree, NSString *title)
 	return nullptr;
 }
 
-bool
+static bool
 skip_action(dn::Action a)
 {
 	return a == dn::Action::Quit || a == dn::Action::About ||
 		a == dn::Action::Settings || a == dn::Action::Fullscreen;
 }
 
-void
+static void
 sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 {
 	for (NSMenuItem *top in main.itemArray) {
@@ -147,8 +144,6 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 		top.hidden = find_section(tree, top.title) ? NO : YES;
 	}
 }
-
-}  // namespace
 
 // Qt's Cocoa plugin builds the application menu, and owns the About and
 // Settings items that we want pointed at ourselves.  It installs no public
@@ -269,12 +264,10 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 
 namespace dn
 {
-namespace
-{
 
-DnMenuDelegate *g_menu_delegate;
+static DnMenuDelegate *g_menu_delegate;
 
-bool
+static bool
 has_menu(NSMenu *main, NSString *title)
 {
 	for (NSMenuItem *it in main.itemArray) {
@@ -284,7 +277,7 @@ has_menu(NSMenu *main, NSString *title)
 	return false;
 }
 
-void
+static void
 add_menu(NSMenu *main, NSString *title, id delegate)
 {
 	if (has_menu(main, title))
@@ -299,7 +292,7 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 }
 
 // Qt hides and disables the items it has found nothing to merge into.
-void
+static void
 claim_item(NSMenuItem *item, Action action, id target, NSString *key,
 	NSEventModifierFlags mods)
 {
@@ -316,7 +309,7 @@ claim_item(NSMenuItem *item, Action action, id target, NSString *key,
 }
 
 // macOS usually keeps About and Settings in the application menu.
-void
+static void
 adopt_app_menu(id target)
 {
 	id cls = NSClassFromString(@"QCocoaMenuLoader");
@@ -331,8 +324,6 @@ adopt_app_menu(id target)
 		claim_item([loader preferencesMenuItem], Action::Settings, target,
 			@",", NSEventModifierFlagCommand);
 }
-
-}  // namespace
 
 void
 sync_macos_app_menu(App *app)

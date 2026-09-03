@@ -18,10 +18,8 @@ namespace ipc
 {
 namespace instance
 {
-namespace
-{
 
-bool
+static bool
 encode_frame(const Frame &frame, vector<byte> &buf)
 {
 	buf.clear();
@@ -30,7 +28,7 @@ encode_frame(const Frame &frame, vector<byte> &buf)
 	return enc.ok() && !buf.empty();
 }
 
-void
+static void
 set_internal(Error *error)
 {
 	if (!error)
@@ -38,8 +36,6 @@ set_internal(Error *error)
 	error->code = ErrorCode::Internal;
 	error->message.clear();
 }
-
-}  // namespace
 
 // --- Call --------------------------------------------------------------------
 

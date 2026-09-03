@@ -23,8 +23,6 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 constexpr uint8_t kMenu = ActionInMenu;
 constexpr uint8_t kToggle = ActionInMenu | ActionToggle;
@@ -184,7 +182,7 @@ static_assert(size(kDefs) == size_t(Action::Count));
 // Shift is frequently just the means of typing a punctuation character:
 // Ctrl+? arrives as Ctrl+Shift+? where the question mark sits above the
 // slash.  Letters, digits and named keys stay strict.
-constexpr bool
+static constexpr bool
 shift_is_incidental(uint32_t key)
 {
 	if (key <= uint32_t(Qt::Key_Space) || key >= 0x7f)
@@ -197,7 +195,7 @@ static_assert(shift_is_incidental(uint32_t(Qt::Key_Question)));
 static_assert(!shift_is_incidental(uint32_t(Qt::Key_A)));
 static_assert(!shift_is_incidental(uint32_t(Qt::Key_Return)));
 
-constexpr Action
+static constexpr Action
 match_exact(span<const Action> scope, uint32_t key, uint32_t mods)
 {
 	for (Action action : scope) {
@@ -392,8 +390,6 @@ const MenuNode kViewerMenu[] = {
 	kHelpMenu,
 };
 // clang-format on
-
-}  // namespace
 
 const ActionDef &
 action_def(Action action)

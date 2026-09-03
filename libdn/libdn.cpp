@@ -96,9 +96,6 @@ unpremultiply8(uint8_t a, uint8_t x)
 	return uint8_t(min(255u, (uint32_t(x) * 255u + a / 2) / a));
 }
 
-namespace
-{
-
 constexpr cmsUInt32Number kTypeBgra8 = TYPE_BGRA_8;
 constexpr cmsUInt32Number kTypeBgra16 = TYPE_BGRA_16;
 constexpr cmsUInt32Number kTypeBgra16Premul = TYPE_BGRA_16_PREMUL;
@@ -113,7 +110,7 @@ constexpr cmsUInt32Number kTransformFlags = cmsFLAGS_COPY_ALPHA;
 #if !DAWN_WITH_LCMS2_THREADED
 constexpr uint64_t kCmsMinPixels = 256ull * 256ull;
 
-unsigned
+static unsigned
 cms_workers(uint32_t height)
 {
 	unsigned n = thread::hardware_concurrency();
@@ -123,7 +120,7 @@ cms_workers(uint32_t height)
 }
 #endif
 
-bool
+static bool
 transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 	cmsHPROFILE dst_h, cmsUInt32Number dst_fmt, const uint8_t *src,
 	uint8_t *dst, uint32_t width, uint32_t height, size_t src_bpp,
@@ -195,7 +192,7 @@ transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 #endif
 }
 
-inline uint16_t
+static inline uint16_t
 clamp_u16(int v)
 {
 	if (v < 0)
@@ -205,19 +202,17 @@ clamp_u16(int v)
 	return uint16_t(v);
 }
 
-inline uint16_t *
+static inline uint16_t *
 pixel_at(Image &img, uint32_t x, uint32_t y)
 {
 	return row_u16(img, y) + x * 4;
 }
 
-inline const uint16_t *
+static inline const uint16_t *
 pixel_at(const Image &img, uint32_t x, uint32_t y)
 {
 	return row_u16(img, y) + x * 4;
 }
-
-}  // namespace
 
 // --- Image -------------------------------------------------------------------
 
@@ -687,13 +682,10 @@ transfer_encode(float linear, Transfer transfer)
 	return linear;
 }
 
-namespace
-{
-
 constexpr int kTransferSamples = 1024;
 constexpr float kTransferMaxErr = 1.5f / 65535.f;
 
-bool
+static bool
 curve_matches(const cmsToneCurve *curve, Transfer transfer)
 {
 	for (int i = 0; i < kTransferSamples; ++i) {
@@ -705,7 +697,7 @@ curve_matches(const cmsToneCurve *curve, Transfer transfer)
 	return true;
 }
 
-Transfer
+static Transfer
 classify_curve(const cmsToneCurve *curve)
 {
 	if (curve_matches(curve, Transfer::Linear))
@@ -717,12 +709,7 @@ classify_curve(const cmsToneCurve *curve)
 	return Transfer::Srgb;
 }
 
-}  // namespace
-
-namespace
-{
-
-void
+static void
 xyz_to_xy(const cmsCIEXYZ &xyz, double *x, double *y)
 {
 	const double s = xyz.X + xyz.Y + xyz.Z;
@@ -738,7 +725,7 @@ xyz_to_xy(const cmsCIEXYZ &xyz, double *x, double *y)
 // CIE 1931 D65, Y=1. PCS is D50; plot on a D65 xy diagram.
 const cmsCIEXYZ kD65Xyz = {0.95047, 1.0, 1.08883};
 
-cmsHTRANSFORM
+static cmsHTRANSFORM
 xyz_xf(cmsContext ctx, cmsHPROFILE h, cmsUInt32Number fmt)
 {
 	cmsHPROFILE xyz = cmsCreateXYZProfileTHR(ctx);
@@ -750,7 +737,7 @@ xyz_xf(cmsContext ctx, cmsHPROFILE h, cmsUInt32Number fmt)
 	return xf;
 }
 
-bool
+static bool
 xf_xy(cmsHTRANSFORM xf, const void *pix, double *x, double *y)
 {
 	cmsCIEXYZ pcs{};
@@ -765,8 +752,6 @@ xf_xy(cmsHTRANSFORM xf, const void *pix, double *x, double *y)
 	xyz_to_xy(illum, x, y);
 	return true;
 }
-
-}  // namespace
 
 Chromaticities
 profile_chromaticities(const Profile *profile)
@@ -1005,12 +990,9 @@ Cmm::get_profile_sRGB_gamma(double gamma)
 	return get_profile_parametric(gamma, wp, prim);
 }
 
-namespace
-{
-
 /// H.273 Table 2 primaries as CIE 1931 xy, in R,G,B order, plus the
 /// illuminant. False for reserved, unspecified, or non-RGB code points.
-bool
+static bool
 cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 {
 	static const double kD65[2] = {0.3127, 0.3290};
@@ -1067,7 +1049,7 @@ cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 }
 
 /// Tone curve for an H.273 transfer characteristic; null when unrepresentable.
-cmsToneCurve *
+static cmsToneCurve *
 cicp_tone_curve(cmsContext context, uint8_t code)
 {
 	// lcms2 type 4 is "y = (aX+b)^g for X >= d, else cX", the shape shared
@@ -1100,8 +1082,6 @@ cicp_tone_curve(cmsContext context, uint8_t code)
 		return nullptr;
 	}
 }
-
-}  // namespace
 
 shared_ptr<Profile>
 Cmm::get_profile_cicp(uint8_t color_primaries, uint8_t transfer_characteristics)

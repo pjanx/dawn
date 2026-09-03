@@ -26,11 +26,9 @@ namespace dawn
 {
 namespace ipc
 {
-namespace
-{
 
 // Abstract name: "\0dawn-<uid>-<service>".
-string
+static string
 endpoint_name(string_view service)
 {
 	string n;
@@ -42,7 +40,7 @@ endpoint_name(string_view service)
 	return n;
 }
 
-bool
+static bool
 fill_addr(string_view service, sockaddr_un &addr, socklen_t &len)
 {
 	const string n = endpoint_name(service);
@@ -55,7 +53,7 @@ fill_addr(string_view service, sockaddr_un &addr, socklen_t &len)
 	return true;
 }
 
-bool
+static bool
 set_flags(int fd, int extra_fl)
 {
 	const int fdfl = ::fcntl(fd, F_GETFD, 0);
@@ -67,7 +65,7 @@ set_flags(int fd, int extra_fl)
 	return fl >= 0 && ::fcntl(fd, F_SETFL, fl | extra_fl) == 0;
 }
 
-int
+static int
 unix_socket(int extra_fl)
 {
 	const int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -81,7 +79,7 @@ unix_socket(int extra_fl)
 }
 
 // Rejects peers running as another user, and reports the peer's PID.
-bool
+static bool
 peer_ok(int fd, uint32_t &pid)
 {
 	struct {
@@ -96,8 +94,6 @@ peer_ok(int fd, uint32_t &pid)
 	pid = uint32_t(cred.pid);
 	return true;
 }
-
-}  // namespace
 
 // --- Connection --------------------------------------------------------------
 

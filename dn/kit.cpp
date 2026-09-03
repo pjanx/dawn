@@ -42,25 +42,22 @@ namespace dn
 
 // --- Atlas -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr int kAtlasStart = 512;
 constexpr int kAtlasMax = 4096;
 
-uint16_t
+static uint16_t
 widen8(uint8_t v)
 {
 	return uint16_t((uint16_t(v) << 8) | v);
 }
 
-Colour
+static Colour
 u8_colour(uint8_t r, uint8_t g, uint8_t b)
 {
 	return {r / 255.f, g / 255.f, b / 255.f, 1.f};
 }
 
-Colour
+static Colour
 bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 {
 	Colour colour = u8_colour(r, g, b);
@@ -78,13 +75,13 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 		pixel[2] / 65535.f, pixel[1] / 65535.f, pixel[0] / 65535.f, 1.f};
 }
 
-Colour
+static Colour
 bake_grey(dawn::Cmm *cmm, dawn::Profile *target, uint8_t v)
 {
 	return bake_rgb(cmm, target, v, v, v);
 }
 
-QImage
+static QImage
 raster_symbolic(const char *name, int px)
 {
 	if (px < 1)
@@ -131,7 +128,7 @@ raster_symbolic(const char *name, int px)
 	return image;
 }
 
-QImage
+static QImage
 raster_window_button(const char *name, int px)
 {
 	enum class Kind : uint8_t { None, Min, Max, Rest, Close };
@@ -187,7 +184,7 @@ raster_window_button(const char *name, int px)
 }
 
 // boundingRect is the outline box, not the bitmap origin (Core Text pads).
-QImage
+static QImage
 raster_glyph(const QRawFont &raw, quint32 gid, QPoint *origin)
 {
 	constexpr int kPad = 4;
@@ -220,7 +217,7 @@ raster_glyph(const QRawFont &raw, quint32 gid, QPoint *origin)
 	return img.copy(ink);
 }
 
-void
+static void
 layout_text(QTextLayout *layout, int wrap, bool center = false)
 {
 	if (wrap > 0) {
@@ -246,7 +243,7 @@ layout_text(QTextLayout *layout, int wrap, bool center = false)
 	layout->endLayout();
 }
 
-Qt::CursorShape
+static Qt::CursorShape
 resize_cursor(Qt::Edges edges)
 {
 	const bool l = edges & Qt::LeftEdge;
@@ -263,8 +260,6 @@ resize_cursor(Qt::Edges edges)
 		return Qt::SizeVerCursor;
 	return Qt::ArrowCursor;
 }
-
-}  // namespace
 
 constexpr float kDialogPad = 16.f;
 
@@ -538,23 +533,18 @@ emit_icon(
 
 // --- Layout kit --------------------------------------------------------------
 
-namespace
-{
-
 constexpr float kSepW = 8.f;
 constexpr float kSepH = 7.f;
 constexpr float kTooltipDelayMs = 500.f;
 constexpr float kTooltipMovePts = 6.f;
 
-int
+static int
 sooner(int a, int b)
 {
 	if (a < 0)
 		return b;
 	return b < 0 ? a : min(a, b);
 }
-
-}  // namespace
 
 // --- Rect --------------------------------------------------------------------
 
@@ -674,10 +664,7 @@ Widget::double_click(Kit &, float, float, Qt::MouseButton, unsigned)
 
 // --- Button ------------------------------------------------------------------
 
-namespace
-{
-
-int
+static int
 button_text_avail(const Kit &kit, const Button &b)
 {
 	const int px = kit.px(kFramePadX + b.pad_x);
@@ -685,7 +672,7 @@ button_text_avail(const Kit &kit, const Button &b)
 	return max(1, b.r.w - left - px);
 }
 
-QString
+static QString
 button_shown(const Kit &kit, const Button &b)
 {
 	if (b.text.isEmpty())
@@ -694,7 +681,7 @@ button_shown(const Kit &kit, const Button &b)
 }
 
 // Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
-int
+static int
 shown_mnemonic(const QString &full, int mnemonic, const QString &shown)
 {
 	if (mnemonic < 0 || mnemonic >= full.size() || mnemonic >= shown.size() ||
@@ -703,7 +690,7 @@ shown_mnemonic(const QString &full, int mnemonic, const QString &shown)
 	return mnemonic;
 }
 
-QString
+static QString
 checkbox_shown(const Kit &kit, const Checkbox &c)
 {
 	const int px = kit.px(kFramePadX + c.pad_x);
@@ -711,8 +698,6 @@ checkbox_shown(const Kit &kit, const Checkbox &c)
 	const int used = px * 2 + box + kit.px(4.f);
 	return kit.elide_lines(c.text, max(1, c.r.w - used), 1, false);
 }
-
-}  // namespace
 
 void
 Button::measure(Kit &kit, int, int)
@@ -1002,15 +987,12 @@ Label::prepare(Kit &kit)
 
 // --- Entry -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr float kCaretBlinkMs = 530.f;
 constexpr float kEntryPadY = 3.f;
 
 // Both walk whole grapheme clusters, so that combining marks and surrogate
 // pairs never get split down the middle.
-int
+static int
 grapheme_before(const QString &text, int at)
 {
 	if (at <= 0)
@@ -1021,7 +1003,7 @@ grapheme_before(const QString &text, int at)
 	return prev < 0 ? 0 : prev;
 }
 
-int
+static int
 grapheme_after(const QString &text, int at)
 {
 	const int end = int(text.size());
@@ -1034,7 +1016,7 @@ grapheme_after(const QString &text, int at)
 }
 
 // Qt hands us the control codes as text too; none of them are insertable.
-QString
+static QString
 printable_only(const QString &text)
 {
 	QString out;
@@ -1049,7 +1031,7 @@ printable_only(const QString &text)
 
 // How far through the on-off cycle a caret last touched then is: [0, 1),
 // with the first half lit.
-double
+static double
 blink_phase(chrono::steady_clock::time_point since)
 {
 	const double elapsed =
@@ -1057,8 +1039,6 @@ blink_phase(chrono::steady_clock::time_point since)
 			.count();
 	return fmod(elapsed, kCaretBlinkMs * 2.0) / (kCaretBlinkMs * 2.0);
 }
-
-}  // namespace
 
 int
 Entry::inner_w(const Kit &kit) const
@@ -1511,22 +1491,17 @@ Composite::erase_children(size_t from)
 
 // --- Container ---------------------------------------------------------------
 
-namespace
-{
-
 // What the i-th grower takes of the slack.  Integer division leaves a
 // remainder of at most growers-1 pixels; hand one to each of the first few,
 // so that the children together cover the space exactly rather than falling
 // short of it.
-int
+static int
 share_slack(int slack, int growers, int i)
 {
 	if (growers <= 0)
 		return 0;
 	return slack / growers + (i < slack % growers ? 1 : 0);
 }
-
-}  // namespace
 
 void
 Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
@@ -3084,19 +3059,16 @@ MenuItem::accel_width(const Kit &kit) const
 
 // --- Combo -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr const char *kComboIcon = "disclose-arrow-down-symbolic";
 
-QString
+static QString
 combo_item_shown(const Kit &kit, const ComboItem &c)
 {
 	const int pad_x = kit.px(kFramePadX);
 	return kit.elide_lines(c.text, max(1, c.r.w - pad_x * 2), 1, false);
 }
 
-QString
+static QString
 combo_shown(const Kit &kit, const Combo &c)
 {
 	const int pad_x = kit.px(kFramePadX + c.pad_x);
@@ -3106,7 +3078,7 @@ combo_shown(const Kit &kit, const Combo &c)
 
 // Rebuilt on every open: the item list is the caller's to change, and it
 // costs nothing to stop caring when it does.
-void
+static void
 fill_combo_popup(Kit &kit, Combo &combo)
 {
 	ComboPopup &popup = *combo.popup_;
@@ -3122,8 +3094,6 @@ fill_combo_popup(Kit &kit, Combo &combo)
 	// button opening up rather than as a menu that happens to be near it.
 	popup.min_w = kit.pts(combo.r.w);
 }
-
-}  // namespace
 
 void
 ComboItem::measure(Kit &kit, int, int)
@@ -3388,11 +3358,8 @@ Combo::key(Kit &kit, const Key &ev)
 
 // --- ToolbarSlot ------------------------------------------------------------
 
-namespace
-{
 constexpr float kWinPadX = 4.f;
 constexpr float kWinPadY = 4.f;
-}  // namespace
 
 ToolbarSlot::ToolbarSlot()
 {
@@ -3789,13 +3756,10 @@ Toolbar::slot_for_more(const Button *more) const
 
 // --- Titlebar --------------------------------------------------------------
 
-namespace
-{
-
 // How far the pointer must travel before a titlebar press becomes a move.
 constexpr float kDragPts = 4.f;
 
-unique_ptr<Button>
+static unique_ptr<Button>
 make_title_button(Titlebar *bar, Action action, const char *icon)
 {
 	auto btn = make_unique<Button>();
@@ -3811,8 +3775,6 @@ make_title_button(Titlebar *bar, Action action, const char *icon)
 	};
 	return btn;
 }
-
-}  // namespace
 
 Titlebar::Titlebar()
 {
@@ -4236,10 +4198,7 @@ Kit::text_height(const QString &text, int wrap_px, bool bold) const
 	return int(ceil(h));
 }
 
-namespace
-{
-
-bool
+static bool
 focus_in_visible_tree(Widget *w, const Widget *root)
 {
 	if (!w || !root)
@@ -4255,7 +4214,7 @@ focus_in_visible_tree(Widget *w, const Widget *root)
 	return false;
 }
 
-Popup *
+static Popup *
 owning_popup(Widget *w)
 {
 	for (Widget *p = w; p; p = p->parent_) {
@@ -4265,7 +4224,7 @@ owning_popup(Widget *w)
 	return nullptr;
 }
 
-bool
+static bool
 is_popup_opener(const Kit &kit, const Widget *w)
 {
 	if (!w)
@@ -4277,13 +4236,13 @@ is_popup_opener(const Kit &kit, const Widget *w)
 	return false;
 }
 
-bool
+static bool
 press_targets_popup(const Kit &kit, Widget *w)
 {
 	return owning_popup(w) || is_popup_opener(kit, w);
 }
 
-Popup *
+static Popup *
 popup_for_hit(const Kit &kit, Widget *h)
 {
 	if (Popup *p = owning_popup(h))
@@ -4296,8 +4255,6 @@ popup_for_hit(const Kit &kit, Widget *h)
 	}
 	return kit.top_popup();
 }
-
-}  // namespace
 
 void
 Kit::sync_focus()

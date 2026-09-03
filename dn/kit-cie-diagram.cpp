@@ -22,8 +22,6 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 constexpr float kXMax = 0.8f;
 constexpr float kYMax = 0.9f;
@@ -40,7 +38,7 @@ constexpr Colour kWhiteCol{1.f, 1.f, 1.f, 1.f};
 const QString kSourceLab = QStringLiteral("Source");
 const QString kTargetLab = QStringLiteral("Target");
 
-int
+static int
 caption_h(const Kit &kit)
 {
 	return kit.px(kCapGap) + kit.text_height(kSourceLab, 0, false) +
@@ -48,7 +46,7 @@ caption_h(const Kit &kit)
 }
 
 // The raster is a fixed pixel size, and so is the rect: no scale involved.
-Rect
+static Rect
 plot_rect(Rect r)
 {
 	if (r.w <= 0 || r.h <= 0)
@@ -64,13 +62,13 @@ plot_rect(Rect r)
 	return {r.x + (r.w - iw) / 2, r.y, iw, ih};
 }
 
-QPointF
+static QPointF
 xy_to_px(double x, double y, int w, int h)
 {
 	return {x / double(kXMax) * w, (1.0 - y / double(kYMax)) * h};
 }
 
-QPainterPath
+static QPainterPath
 locus_path(int w, int h)
 {
 	QPainterPath path;
@@ -92,7 +90,7 @@ locus_path(int w, int h)
 	return path;
 }
 
-int
+static int
 srgb_encode8(double u)
 {
 	if (u <= 0.0)
@@ -104,7 +102,7 @@ srgb_encode8(double u)
 	return int((1.055 * pow(u, 1.0 / 2.4) - 0.055) * 255.0 + 0.5);
 }
 
-QRgb
+static QRgb
 xy_srgb(double x, double y)
 {
 	if (y < 1e-8)
@@ -134,7 +132,7 @@ xy_srgb(double x, double y)
 	return qRgba(srgb_encode8(rl), srgb_encode8(gl), srgb_encode8(bl), 255);
 }
 
-void
+static void
 stroke_poly(
 	QPainter &p, const QPen &pen, const dawn::Chromaticities &c, int w, int h)
 {
@@ -148,7 +146,7 @@ stroke_poly(
 	p.strokePath(path, pen);
 }
 
-QImage
+static QImage
 raster_diagram(int w, int h, const dawn::Chromaticities &image,
 	const dawn::Chromaticities &screen, bool show_screen, bool screen_dashed,
 	bool image_dashed)
@@ -213,7 +211,7 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 	return img;
 }
 
-bool
+static bool
 same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 {
 	if (a.model != b.model || a.have_white != b.have_white ||
@@ -227,8 +225,6 @@ same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 	}
 	return true;
 }
-
-}  // namespace
 
 void
 CieDiagram::measure(Kit &kit, int max_w, int max_h)

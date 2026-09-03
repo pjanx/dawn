@@ -16,6 +16,8 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
  * Source files (.cpp) state `using namespace std`.
    This namespace is used unqualified, except for `std::move`.
 
+ * Avoid anonymous namespaces, except for classes, where they make sense.
+
  * Within methods, distinguish class fields either by naming them with
    an appended underscore, or by using `this`.  Do not use `m_`.
 

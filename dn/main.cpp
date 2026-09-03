@@ -43,10 +43,7 @@ using namespace std;
 #include <windows.h>
 #endif
 
-namespace
-{
-
-QString
+static QString
 instance_session()
 {
 #ifdef Q_OS_WIN
@@ -65,7 +62,7 @@ instance_session()
 #endif
 }
 
-const char *
+static const char *
 error_fallback(dawn::ipc::instance::ErrorCode code)
 {
 	using dawn::ipc::instance::ErrorCode;
@@ -83,7 +80,7 @@ error_fallback(dawn::ipc::instance::ErrorCode code)
 	}
 }
 
-bool
+static bool
 handoff_open(
 	dawn::ipc::instance::Client &client, const vector<QUrl> &urls, bool browse)
 {
@@ -110,7 +107,7 @@ handoff_open(
 }
 
 // Returns an exit code once a running instance has taken the URLs over.
-optional<int>
+static optional<int>
 try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	bool &reported_mismatch)
 {
@@ -135,7 +132,6 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	return {};
 }
 
-}  // namespace
 #endif
 
 int
