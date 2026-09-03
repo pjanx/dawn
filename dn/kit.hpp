@@ -749,6 +749,8 @@ struct Kit {
 	QFont font_bold_px_;
 	QRawFont raw_;
 	QRawFont raw_bold_;
+	// kGlyphPhases where the engine honours fractional pens, else 1.
+	int glyph_phases_ = 1;
 	std::unordered_map<std::string, Packed> icons_;
 	std::unordered_map<uint64_t, Glyph> glyphs_;
 	std::vector<QRawFont> fonts_;

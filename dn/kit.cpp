@@ -46,7 +46,9 @@ constexpr int kAtlasStart = 512;
 // Horizontal subpixel positions each glyph is rasterised at.  Text quads have
 // to land on whole pixels to blit 1:1, so this is where the fraction of a
 // shaped pen position goes -- without it, rounding every glyph on its own
-// quantises the advances, and kerning with them.
+// quantises the advances, and kerning with them.  Qt floors the fraction onto
+// a per-engine grid -- FreeType's 4, or one measured at 12 positions -- and 4
+// divides both, where 3 or 5 would alias.
 constexpr int kGlyphPhases = 4;
 constexpr int kAtlasMax = 4096;
 
@@ -220,8 +222,34 @@ raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
 	}
 	if (ink.isEmpty())
 		return {};
+	// Ink on the border: kPad did not cover the rasteriser's spread.
+	if (ink.left() == 0 || ink.top() == 0 ||
+		ink.right() == img.width() - 1 || ink.bottom() == img.height() - 1)
+		qWarning("glyph %u overflows its %d-pixel pad", gid, kPad);
 	*origin = box.topLeft() + ink.topLeft();
 	return img.copy(ink);
+}
+
+// Not every engine honours a fractional pen: FreeType needs light or no
+// hinting, DirectWrite antialiasing and less than full, GDI never had it.
+// Qt measures the same thing in QTextureGlyphCache, and so do we.
+static int
+probe_phases(const QRawFont &raw)
+{
+	if (!raw.isValid())
+		return 1;
+	for (char16_t probe : {u'n', u'o', u'H'}) {
+		const QList<quint32> gids =
+			raw.glyphIndexesForString(QString(QChar(probe)));
+		if (gids.isEmpty())
+			continue;
+		QPoint origin_a, origin_b;
+		const QImage a = raster_glyph(raw, gids.front(), 0.f, &origin_a);
+		const QImage b = raster_glyph(raw, gids.front(), .5f, &origin_b);
+		if (origin_a != origin_b || a != b)
+			return kGlyphPhases;
+	}
+	return 1;
 }
 
 static void
@@ -379,7 +407,7 @@ cache_ascii(Kit &kit, bool bold)
 			raw.glyphIndexesForString(QString(QChar(cp)));
 		if (indexes.isEmpty())
 			continue;
-		for (int phase = 0; phase < kGlyphPhases; phase++)
+		for (int phase = 0; phase < kit.glyph_phases_; phase++)
 			cache_glyph(kit, raw, indexes.front(), phase);
 	}
 }
@@ -396,7 +424,7 @@ cache_text(Kit &kit, const QString &text, bool bold, int wrap)
 	layout_text(&layout, wrap);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		for (quint32 gid : run.glyphIndexes()) {
-			for (int phase = 0; phase < kGlyphPhases; phase++)
+			for (int phase = 0; phase < kit.glyph_phases_; phase++)
 				cache_glyph(kit, run.rawFont(), gid, phase);
 		}
 	}
@@ -471,6 +499,7 @@ rebuild_atlas(Kit &kit)
 	kit.font_bold_px_.setBold(true);
 	kit.raw_ = QRawFont::fromFont(kit.font_px_);
 	kit.raw_bold_ = QRawFont::fromFont(kit.font_bold_px_);
+	kit.glyph_phases_ = probe_phases(kit.raw_);
 	cache_ascii(kit, false);
 	cache_ascii(kit, true);
 }
@@ -487,6 +516,7 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 
 	QTextLayout layout(text, font);
 	layout_text(&layout, wrap, center);
+	const int phases = kit.glyph_phases_;
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		const QList<quint32> gids = run.glyphIndexes();
 		const QList<QPointF> pos = run.positions();
@@ -495,14 +525,14 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 			// The shaper positions the pen in fractions of a pixel, and
 			// kerning lives in those fractions.  Split one off into the
 			// phase the glyph was rasterised at, so that the quad can stay
-			// on the pixel grid and still blit 1:1.
+			// on the pixel grid and still blit 1:1.  Subtracting it back
+			// out rounds the quad onto the right pixel, and rounds the
+			// bare pen where there are no phases.
 			const double pen = double(x) + pos[i].x();
-			int gx = int(floor(pen));
-			int phase = int(lround((pen - gx) * kGlyphPhases));
-			if (phase == kGlyphPhases) {
+			int phase = int(lround((pen - floor(pen)) * phases));
+			if (phase == phases)
 				phase = 0;
-				gx++;
-			}
+			int gx = int(lround(pen - double(phase) / double(phases)));
 			const Kit::Glyph *glyph =
 				cache_glyph(kit, run.rawFont(), gids[i], phase);
 			if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
