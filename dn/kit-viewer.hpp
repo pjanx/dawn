@@ -106,6 +106,7 @@ struct Viewer : Widget {
 	bool enhance_jpeg_ = false;
 	bool filter_ = true;
 	bool checkerboard_ = true;
+	bool blend_linear_light_ = false;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
 	Drag drag_ = Drag::None;

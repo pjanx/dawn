@@ -45,14 +45,14 @@ vec4 fetch_image(ivec2 p)
 			  0);
 }
 
-#if DN_FILTER == DN_FILTER_NOHALO
-vec4 fetch_linear(ivec2 p, int orient, int transfer, bool opaque)
+vec4 fetch_working(ivec2 p, int orient, bool opaque)
 {
-	return associated_to_linear(
+	return associated_to_working(
 		fetch_image(oriented_to_source(p, orient, pc.image_size)),
-		transfer, opaque);
+		pc.transfer, opaque);
 }
 
+#if DN_FILTER == DN_FILTER_NOHALO
 // Nohalo level 1 (Robidoux et al., C3S2E 2009): minmod slopes,
 // double-density planes, bilinear. Used for zoom; minify is bilinear.
 vec4 nohalo_minmod(vec4 a, vec4 b)
@@ -61,7 +61,7 @@ vec4 nohalo_minmod(vec4 a, vec4 b)
 		   greaterThanEqual(a * b, vec4(0.0)));
 }
 
-vec4 nohalo_sample(vec2 img, int orient, int transfer, bool opaque)
+vec4 nohalo_sample(vec2 img, int orient, bool opaque)
 {
 	vec2 pos = img - 0.5;
 	ivec2 i0 = ivec2(floor(pos));
@@ -69,18 +69,18 @@ vec4 nohalo_sample(vec2 img, int orient, int transfer, bool opaque)
 
 	// The 4x4 stencil less its corners, which no minmod reaches: the
 	// 2x2 cell, then one neighbour beyond each of its four sides.
-	vec4 v00 = fetch_linear(i0, orient, transfer, opaque);
-	vec4 v10 = fetch_linear(i0 + ivec2(1, 0), orient, transfer, opaque);
-	vec4 v01 = fetch_linear(i0 + ivec2(0, 1), orient, transfer, opaque);
-	vec4 v11 = fetch_linear(i0 + ivec2(1, 1), orient, transfer, opaque);
-	vec4 n0 = fetch_linear(i0 + ivec2(0, -1), orient, transfer, opaque);
-	vec4 n1 = fetch_linear(i0 + ivec2(1, -1), orient, transfer, opaque);
-	vec4 s0 = fetch_linear(i0 + ivec2(0, 2), orient, transfer, opaque);
-	vec4 s1 = fetch_linear(i0 + ivec2(1, 2), orient, transfer, opaque);
-	vec4 w0 = fetch_linear(i0 + ivec2(-1, 0), orient, transfer, opaque);
-	vec4 w1 = fetch_linear(i0 + ivec2(-1, 1), orient, transfer, opaque);
-	vec4 e0 = fetch_linear(i0 + ivec2(2, 0), orient, transfer, opaque);
-	vec4 e1 = fetch_linear(i0 + ivec2(2, 1), orient, transfer, opaque);
+	vec4 v00 = fetch_working(i0, orient, opaque);
+	vec4 v10 = fetch_working(i0 + ivec2(1, 0), orient, opaque);
+	vec4 v01 = fetch_working(i0 + ivec2(0, 1), orient, opaque);
+	vec4 v11 = fetch_working(i0 + ivec2(1, 1), orient, opaque);
+	vec4 n0 = fetch_working(i0 + ivec2(0, -1), orient, opaque);
+	vec4 n1 = fetch_working(i0 + ivec2(1, -1), orient, opaque);
+	vec4 s0 = fetch_working(i0 + ivec2(0, 2), orient, opaque);
+	vec4 s1 = fetch_working(i0 + ivec2(1, 2), orient, opaque);
+	vec4 w0 = fetch_working(i0 + ivec2(-1, 0), orient, opaque);
+	vec4 w1 = fetch_working(i0 + ivec2(-1, 1), orient, opaque);
+	vec4 e0 = fetch_working(i0 + ivec2(2, 0), orient, opaque);
+	vec4 e1 = fetch_working(i0 + ivec2(2, 1), orient, opaque);
 
 	vec4 sx00 = nohalo_minmod(v10 - v00, v00 - w0);
 	vec4 sy00 = nohalo_minmod(v01 - v00, v00 - n0);
@@ -151,12 +151,9 @@ void main()
 
 	vec4 color;
 #if DN_FILTER == DN_FILTER_NEAREST
-	color = associated_to_linear(
-		fetch_image(oriented_to_source(ivec2(floor(img)), orient,
-					      pc.image_size)),
-		transfer, opaque);
+	color = fetch_working(ivec2(floor(img)), orient, opaque);
 #elif DN_FILTER == DN_FILTER_NOHALO
-	color = nohalo_sample(img, orient, transfer, opaque);
+	color = nohalo_sample(img, orient, opaque);
 #else
 	vec2 pos = img - 0.5;
 	float kernel_scale = min(pc.scale, 1.0);
@@ -178,10 +175,7 @@ void main()
 		for (int x = x0; x <= x1; ++x) {
 			float w = wy *
 				  filter_weight((pos.x - float(x)) * kernel_scale);
-			vec4 t = associated_to_linear(
-				fetch_image(oriented_to_source(
-					ivec2(x, y), orient, pc.image_size)),
-				transfer, opaque);
+			vec4 t = fetch_working(ivec2(x, y), orient, opaque);
 			sum += t * w;
 			weight_sum += w;
 		}
@@ -191,6 +185,7 @@ void main()
 	out_color = finish_scale(color, transfer,
 				 unpack_checker(pc.transfer) != 0,
 				 unpack_composite(pc.transfer) != 0,
+				 unpack_linear_blend(pc.transfer) != 0,
 				 vec3(pc.bg_r, pc.bg_g, pc.bg_b),
 				 vec3(pc.checker_r, pc.checker_g, pc.checker_b));
 }

@@ -1087,14 +1087,19 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 	pc.transfer = int32_t(view.transfer) |
 		(int32_t(orientation_or_0(view.orientation)) << 8) |
 		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
-		(image_opaque ? (1 << 18) : 0);
-	// Decoded here, not per fragment: the shader composites in linear.
-	pc.bg_r = transfer_decode(clear_rgba[0], view.transfer);
-	pc.bg_g = transfer_decode(clear_rgba[1], view.transfer);
-	pc.bg_b = transfer_decode(clear_rgba[2], view.transfer);
-	pc.checker_r = transfer_decode(view.checker_r, view.transfer);
-	pc.checker_g = transfer_decode(view.checker_g, view.transfer);
-	pc.checker_b = transfer_decode(view.checker_b, view.transfer);
+		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0);
+	// Supply backgrounds in the selected compositing space.
+	auto background = [&](float encoded) {
+		return view.linear_blend
+			? transfer_decode(encoded, view.transfer)
+			: encoded;
+	};
+	pc.bg_r = background(clear_rgba[0]);
+	pc.bg_g = background(clear_rgba[1]);
+	pc.bg_b = background(clear_rgba[2]);
+	pc.checker_r = background(view.checker_r);
+	pc.checker_g = background(view.checker_g);
+	pc.checker_b = background(view.checker_b);
 	pc.image_w = int32_t(image_w);
 	pc.image_h = int32_t(image_h);
 	pc.grid_cols = int32_t(grid_cols);

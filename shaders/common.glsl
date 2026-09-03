@@ -39,9 +39,14 @@ int unpack_opaque(int packed)
 	return (packed >> 18) & 1;
 }
 
+int unpack_linear_blend(int packed)
+{
+	return (packed >> 19) & 1;
+}
+
 #ifndef DN_COMPUTE
 // 20px squares. even = toolbar_bottom, odd = well (same pairing as
-// browser draw_checker). Colours are already linear.
+// browser draw_checker). Colours are already in the compositing space.
 vec3 checker(vec3 odd, vec3 even)
 {
 	vec2 xy = gl_FragCoord.xy / 20.0;
@@ -168,23 +173,33 @@ vec4 associated_to_linear(vec4 t, int transfer, bool opaque)
 	return vec4(decode_rgb(clamp(t.rgb / t.a, 0.0, 1.0), transfer) * t.a, t.a);
 }
 
-#ifndef DN_COMPUTE
-// Alpha is resolved here, not by the fixed-function blend: that blend runs
-// on encoded values, which reads a soft edge as a halo (premultiplied RGB
-// encoded without dividing out alpha) and a shadow as mud (background
-// mixed in the wrong space). Compositing needs no reciprocal, so knowing
-// what is behind the image is also the cheaper path.
-vec4 finish_scale(vec4 lin_premul, int transfer, bool checkerboard,
-		  bool composite, vec3 bg_linear, vec3 checker_linear)
+vec4 associated_to_working(vec4 t, int packed, bool opaque)
 {
-	float a = clamp(lin_premul.a, 0.0, 1.0);
+	if (unpack_linear_blend(packed) == 0)
+		return t;
+	return associated_to_linear(t, unpack_transfer(packed), opaque);
+}
+
+#ifndef DN_COMPUTE
+// Alpha is resolved here because the image sits on a known background.
+// Filtering and composition use the same selected working space.
+vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
+		  bool composite, bool linear_blend, vec3 background,
+		  vec3 checker_background)
+{
+	float a = clamp(premul.a, 0.0, 1.0);
 	// Nohalo takes minmod slopes per channel, so RGB can outrun alpha.
-	vec3 rgb = clamp(lin_premul.rgb, vec3(0.0), vec3(a));
+	vec3 rgb = clamp(premul.rgb, vec3(0.0), vec3(a));
 	if (checkerboard)
-		bg_linear = checker(bg_linear, checker_linear);
-	else if (!composite)
-		return vec4(
-			a > 0.0 ? encode_rgb(rgb / a, transfer) * a : vec3(0.0), a);
-	return vec4(encode_rgb(bg_linear * (1.0 - a) + rgb, transfer), 1.0);
+		background = checker(background, checker_background);
+	else if (!composite) {
+		if (!linear_blend)
+			return vec4(rgb, a);
+		return vec4(a > 0.0
+			? encode_rgb(rgb / a, transfer) * a : vec3(0.0), a);
+	}
+	if (!linear_blend)
+		return vec4(background * (1.0 - a) + rgb, 1.0);
+	return vec4(encode_rgb(background * (1.0 - a) + rgb, transfer), 1.0);
 }
 #endif

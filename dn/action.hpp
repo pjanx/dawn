@@ -81,6 +81,7 @@ enum class Action : uint8_t {
 	ColorManagement,
 	Smooth,
 	Checkerboard,
+	BlendLinearLight,
 	RotateLeft,
 	Mirror,
 	RotateRight,

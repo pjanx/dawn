@@ -163,6 +163,7 @@ class Renderer
 	float angle_ = 0.f;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	bool checkerboard_ = false;
+	bool linear_blend_ = false;
 	bool filter_ = true;
 	dawn::Filter preferred_ = dawn::Filter::Expensive;
 	dawn::Transfer transfer_ = dawn::Transfer::Srgb;
@@ -215,6 +216,7 @@ public:
 	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
 	void set_checkerboard(bool enabled) { this->checkerboard_ = enabled; }
+	void set_blend_linear_light(bool enabled) { this->linear_blend_ = enabled; }
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
 	/// Nearest.
 	void set_filter(bool enabled) { this->filter_ = enabled; }

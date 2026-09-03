@@ -70,10 +70,10 @@ void main()
 	float weight_sum = 0.0;
 	for (int x = first; x <= last; ++x) {
 		float w = filter_weight((pos_x - float(x)) * kernel_scale);
-		vec4 t = associated_to_linear(
+		vec4 t = associated_to_working(
 			fetch_image(oriented_to_source(ivec2(x, row), orient,
 						       pc.image_size)),
-			transfer, opaque);
+			pc.transfer, opaque);
 		sum += t * w;
 		weight_sum += w;
 	}

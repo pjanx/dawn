@@ -33,14 +33,15 @@ struct ScaleView {
 	Transfer transfer = Transfer::Srgb;
 	Orientation orientation = Orientation::Rotate0;
 	bool checkerboard = false;
+	/// Resolve alpha in linear light. The default composites encoded values,
+	/// matching conventional application and platform image rendering.
+	bool linear_blend = false;
 	/// Encoded even-tile grey (toolbar_bottom). Odd tiles use `record`'s
-	/// clear colour (well). Decoded on the CPU like `bg_*`.
+	/// clear colour (well). Converted to the selected compositing space there.
 	float checker_r = 0xF0 / 255.f;
 	float checker_g = 0xF0 / 255.f;
 	float checker_b = 0xF0 / 255.f;
-	/// Resolve alpha against `record`'s clear colour in linear light and
-	/// write opaque pixels. Correct (the fixed-function blend would
-	/// composite in the dest encoding) and cheaper than re-associating.
+	/// Resolve alpha against `record`'s clear colour and write opaque pixels.
 	/// Clear it to keep premultiplied alpha, as offscreen readback needs.
 	bool composite = false;
 	Filter filter = Filter::Bilinear;

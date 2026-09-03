@@ -165,6 +165,8 @@ spec_active(const Viewer &v, Action action)
 		return v.scale_to_fit_;
 	case Action::Checkerboard:
 		return v.checkerboard_;
+	case Action::BlendLinearLight:
+		return v.blend_linear_light_;
 	case Action::ColorManagement:
 		return v.enable_cms_;
 	case Action::Smooth:
@@ -1749,6 +1751,12 @@ apply_action(Viewer &v, Action action)
 			v.kit_.renderer_->set_checkerboard(v.checkerboard_);
 		request_render(v);
 		return true;
+	case Action::BlendLinearLight:
+		v.blend_linear_light_ = !v.blend_linear_light_;
+		if (v.kit_.renderer_)
+			v.kit_.renderer_->set_blend_linear_light(v.blend_linear_light_);
+		request_render(v);
+		return true;
 	case Action::RotateLeft:
 		snap_view(v, SnapDir::Left);
 		return true;
@@ -1852,6 +1860,7 @@ apply_view(const Viewer &v)
 	}
 	renderer.set_filter(v.filter_);
 	renderer.set_checkerboard(v.checkerboard_);
+	renderer.set_blend_linear_light(v.blend_linear_light_);
 	renderer.set_transfer(v.enable_cms_
 			? profile_transfer(v.screen_profile_.get())
 			: dawn::Transfer::Srgb);

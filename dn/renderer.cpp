@@ -606,6 +606,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.transfer = this->transfer_,
 		.orientation = this->orientation_,
 		.checkerboard = this->checkerboard_,
+		.linear_blend = this->linear_blend_,
 		.checker_r = this->checker_[0],
 		.checker_g = this->checker_[1],
 		.checker_b = this->checker_[2],
