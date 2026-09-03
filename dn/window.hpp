@@ -23,6 +23,7 @@
 
 #include <memory>
 #include <string>
+#include <span>
 
 class QCloseEvent;
 class QExposeEvent;

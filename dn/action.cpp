@@ -70,6 +70,7 @@ constexpr ActionDef kDefs[] = {
 	{kMenu, {"_Contents"}, {}, {{Qt::Key_F1}}, {}},
 	{kMenu, {"_About"}, {}, {}, {}},
 	{kMenu, {"_Keyboard Shortcuts"}, {}, {{Qt::Key_Question, kCtrl}}, {}},
+	{kMenu, {"_Settings..."}, {}, {{Qt::Key_Comma, kCtrl}}, {}},
 	// TODO(p): Skip on macOS entirely, as it uses the global menu.
 	{0, {"_Menu"}, {}, {{Qt::Key_F10}}, {}},
 	// The context menu action is mostly for documentation only.
@@ -224,6 +225,7 @@ constexpr Action kWindowKeys[] = {
 	Action::Help,
 	Action::About,
 	Action::Shortcuts,
+	Action::Settings,
 	Action::Menu,
 	Action::NextPane,
 	Action::PrevPane,
@@ -291,6 +293,8 @@ const MenuNode kFileMenu{"_File", {
 	Action::CloseWindow,
 	{},
 	Action::Reload,
+	{},
+	Action::Settings,
 	{},
 	Action::Quit,
 }};

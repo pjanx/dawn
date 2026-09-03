@@ -693,6 +693,16 @@ button_shown(const Kit &kit, const Button &b)
 	return kit.elide_lines(b.text, button_text_avail(kit, b), 1, false);
 }
 
+// Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
+int
+shown_mnemonic(const QString &full, int mnemonic, const QString &shown)
+{
+	if (mnemonic < 0 || mnemonic >= full.size() || mnemonic >= shown.size() ||
+		shown[mnemonic] != full[mnemonic])
+		return -1;
+	return mnemonic;
+}
+
 QString
 checkbox_shown(const Kit &kit, const Checkbox &c)
 {
@@ -756,9 +766,10 @@ Button::paint(Kit &kit) const
 		const int tx =
 			this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
 		const int th = kit.text_height(this->text, 0, false);
+		const QString shown = button_shown(kit, *this);
 		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
-			button_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
-			false, -1);
+			shown, col(kit.colours_[ColourInk], ink_a), false,
+			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -820,9 +831,12 @@ Button::activate(Kit &kit)
 	if (!this->enabled_ || !this->on_click)
 		return false;
 	this->on_click(kit);
+	// Only as far as the nearest popup that stays put: a menu is done once
+	// it has been picked from, but a checkbox in a dialog is not a reason
+	// to dismiss the dialog under it.
 	for (Widget *w = this->parent_; w; w = w->parent_) {
 		if (w->traps_focus() && w->shown()) {
-			kit.close_popups();
+			kit.close_transient_popups();
 			break;
 		}
 	}
@@ -878,9 +892,10 @@ Checkbox::paint(Kit &kit) const
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
 		const int th = kit.text_height(this->text, 0, false);
+		const QString shown = checkbox_shown(kit, *this);
 		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
-			checkbox_shown(kit, *this), col(kit.colours_[ColourInk], ink_a),
-			false, -1);
+			shown, col(kit.colours_[ColourInk], ink_a), false,
+			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -895,6 +910,20 @@ Checkbox::prepare(Kit &kit)
 	kit.pack_icon("object-select-symbolic", kit.icon_px());
 	if (!this->text.isEmpty())
 		cache_text(kit, checkbox_shown(kit, *this), false, 0);
+}
+
+// Like a text field, and unlike a plain button: a click leaves the keyboard
+// here, where Space will toggle it again, so the ring has to say so.  A
+// disabled one is still hit, and must not be left holding a focus that
+// nothing can move off it.
+bool
+Checkbox::press(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button != Qt::LeftButton)
+		return false;
+	if (focusable())
+		kit.set_focus(this, true);
+	return Button::press(kit, x, y, button);
 }
 
 bool
@@ -942,9 +971,14 @@ Label::paint(Kit &kit) const
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	int tx = this->r.x + pad_x;
 	const bool wrap_center = this->wrap && this->align == Align::Center;
-	if (this->align == Align::Center && !this->wrap)
-		tx = this->r.x +
-			max(0, (this->r.w - kit.text_width(this->text, this->bold)) / 2);
+	if (!this->wrap && this->align != Align::Start) {
+		const int tw = kit.text_width(this->text, this->bold);
+		// Centring ignores the padding, as it always has; ending against
+		// the far edge cannot, or the text would sit outside it.
+		tx = this->align == Align::Center
+			? this->r.x + max(0, (this->r.w - tw) / 2)
+			: this->r.x + max(pad_x, this->r.w - pad_x - tw);
+	}
 	const int wrap_w = this->wrap ? max(1, this->r.w - pad_x * 2) : 0;
 	const int th = kit.text_height(this->text, wrap_w, this->bold);
 	int ty = this->r.y + pad_y;
@@ -955,7 +989,7 @@ Label::paint(Kit &kit) const
 	emit_text(kit, float(tx), float(ty), this->text,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
-		this->bold, -1, wrap_w, wrap_center);
+		this->bold, this->mnemonic, wrap_w, wrap_center);
 }
 
 void
@@ -2394,6 +2428,15 @@ Dialog::place(Kit &kit)
 
 	// Button::focusable() wants a laid-out rect, so this cannot happen any
 	// earlier; without it Return and Space reach nothing and are eaten.
+	//
+	// Only while nothing is open over the dialog, though: a popup dropped
+	// from within it owns the focus for as long as it is up, and its items
+	// are no children of ours.  Re-seating here would take the focus back
+	// out from under it on the very next frame -- leaving its hover dead,
+	// and its arrow keys landing on whatever opened it.
+	if (kit.top_popup() != this)
+		return;
+
 	bool focused = false;
 	for (Widget *w = kit.focus_; w; w = w->parent_) {
 		if (w == this) {
@@ -2476,16 +2519,6 @@ menu_shown(const Kit &kit, const MenuItem &m)
 	if (m.text.isEmpty())
 		return m.text;
 	return kit.elide_lines(m.text, menu_cols(kit, m).avail, 1, false);
-}
-
-// Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
-int
-menu_mnemonic(const MenuItem &m, const QString &shown)
-{
-	if (m.mnemonic < 0 || m.mnemonic >= m.text.size() ||
-		m.mnemonic >= shown.size() || shown[m.mnemonic] != m.text[m.mnemonic])
-		return -1;
-	return m.mnemonic;
 }
 
 void
@@ -2591,12 +2624,23 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton && button != Qt::RightButton)
 		return false;
+
 	Widget *hit = hit_at(x, y);
 	// A field inside the menu keeps it open: the press already gave it the
 	// focus, and dismissing here would take the caret away again.
 	if (dynamic_cast<Entry *>(hit))
 		return true;
+
+	const float elapsed = chrono::duration<float, milli>(
+		chrono::steady_clock::now() - kit.popup_at_)
+							  .count();
+	const bool gesture = elapsed >= kMenuHoldMs;
+
 	if (auto *b = dynamic_cast<Button *>(hit); b && hit != this) {
+		// Pressed and released on the same item is a click on that item,
+		// however briefly, and picks whether anything moved or not.
+		if (!gesture && kit.pressed_ != b)
+			return true;
 		b->activate(kit);
 		if (auto *item = dynamic_cast<MenuItem *>(b);
 			item && item->sub && item->sub->visible)
@@ -2605,11 +2649,8 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 			close(kit);
 		return true;
 	}
-	const float elapsed = chrono::duration<float, milli>(
-		chrono::steady_clock::now() - kit.popup_at_)
-							  .count();
-	if (elapsed >= kMenuHoldMs)
-		kit.close_popups();
+	if (gesture)
+		kit.close_transient_popups();
 	return true;
 }
 
@@ -2979,7 +3020,7 @@ MenuItem::paint(Kit &kit) const
 	if (!this->text.isEmpty()) {
 		const QString shown = menu_shown(kit, *this);
 		emit_text(kit, float(label_x), float(ty), shown, label_c, false,
-			menu_mnemonic(*this, shown));
+			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (!this->accel.isEmpty()) {
 		const int tw = kit.text_width(this->accel, false);
@@ -3039,6 +3080,310 @@ int
 MenuItem::accel_width(const Kit &kit) const
 {
 	return kit.text_width(this->accel, false);
+}
+
+// --- Combo -------------------------------------------------------------------
+
+namespace
+{
+
+constexpr const char *kComboIcon = "disclose-arrow-down-symbolic";
+
+QString
+combo_item_shown(const Kit &kit, const ComboItem &c)
+{
+	const int pad_x = kit.px(kFramePadX);
+	return kit.elide_lines(c.text, max(1, c.r.w - pad_x * 2), 1, false);
+}
+
+QString
+combo_shown(const Kit &kit, const Combo &c)
+{
+	const int pad_x = kit.px(kFramePadX + c.pad_x);
+	const int used = pad_x * 2 + kit.px(4.f) + kit.icon_px();
+	return kit.elide_lines(c.current_text(), max(1, c.r.w - used), 1, false);
+}
+
+// Rebuilt on every open: the item list is the caller's to change, and it
+// costs nothing to stop caring when it does.
+void
+fill_combo_popup(Kit &kit, Combo &combo)
+{
+	ComboPopup &popup = *combo.popup_;
+	kit.forget_tree(popup.col);
+	popup.col->erase_children();
+	for (int i = 0; i < int(combo.items.size()); i++) {
+		auto item = make_unique<ComboItem>();
+		item->text = combo.items[size_t(i)];
+		item->on_click = [&combo, i](Kit &k) { combo.select(k, i); };
+		popup.col->add_child(std::move(item));
+	}
+	// At least as wide as what it drops from, so the list reads as the
+	// button opening up rather than as a menu that happens to be near it.
+	popup.min_w = kit.pts(combo.r.w);
+}
+
+}  // namespace
+
+void
+ComboItem::measure(Kit &kit, int, int)
+{
+	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
+	if (!this->text.isEmpty())
+		ch = max(ch, kit.text_height(this->text, 0, false));
+	this->r = {0, 0, kit.px(kFramePadX) * 2 + kit.text_width(this->text, false),
+		kit.px(kFramePadY) * 2 + ch};
+}
+
+void
+ComboItem::paint(Kit &kit) const
+{
+	if (!this->visible)
+		return;
+
+	// The same rule as MenuItem: the selection is kit.focus_ alone, never
+	// kit.pressed_, which would stay lit behind a press-drag through the list.
+	if (this->enabled_ && (this->active || kit.focus_ == this))
+		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+	if (this->text.isEmpty())
+		return;
+
+	const QString shown = combo_item_shown(kit, *this);
+	const int th = kit.text_height(shown, 0, false);
+	emit_text(kit, float(this->r.x + kit.px(kFramePadX)),
+		float(this->r.y + (this->r.h - th) / 2), shown,
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), false, -1);
+}
+
+void
+ComboItem::prepare(Kit &kit)
+{
+	if (shown() && !this->text.isEmpty())
+		cache_text(kit, combo_item_shown(kit, *this), false, 0);
+}
+
+ComboPopup::ComboPopup()
+{
+	auto c = make_unique<Column>();
+	this->col = c.get();
+	this->pad_x = kMenuPad;
+	this->pad_y = kMenuPad;
+	this->fill = Fill::Panel;
+	this->stroke = Stroke::All;
+	this->hittable = true;
+	this->visible = false;
+	add_child(std::move(c));
+}
+
+// Picking is no reason to lose your place: the list hands focus back to the
+// button, the way Escape does.  Without this it is dropped, and a dialog
+// re-seats it on whatever happens to come first.
+void
+ComboPopup::close(Kit &kit)
+{
+	Button *op = this->opener;
+	const bool ring = kit.focus_visible_;
+	Popup::close(kit);
+	if (op && op->focusable())
+		kit.set_focus(op, ring);
+}
+
+// Drops so that the current item lands on the button it came out of, which
+// is how GTK 3 does it, and how the choice shows without a check column.
+// (GTK 4 always drops downwards and highlights the first item instead.)
+void
+ComboPopup::place(Kit &kit)
+{
+	if (this->opener)
+		this->at = this->opener->r;
+
+	const int glow = kit.px(kGlowPts);
+	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
+	measure(kit, cap, kUnlim);
+
+	// Backed off by the list's own padding, so that the current item's text
+	// lands on the button's text rather than beside it: the list has to read
+	// as the button opening up.
+	int x = this->at.x - kit.px(kMenuPad);
+	if (x + this->r.w + glow > kit.host_w_)
+		x = max(0, kit.host_w_ - this->r.w - glow);
+	x = max(0, x);
+
+	// Where the current row sits within the list is only knowable once the
+	// column has been laid out, so this arranges twice: once to read the
+	// offset off it, once to land on it.
+	arrange(kit, {x, this->at.y, this->r.w, this->r.h});
+	int y = this->at.y;
+	const Widget *item = this->combo && this->col
+		? this->col->child(size_t(max(0, this->combo->current)))
+		: nullptr;
+	if (item)
+		y += (this->at.h - item->r.h) / 2 - (item->r.y - this->r.y);
+	y = min(y, kit.host_h_ - this->r.h);
+	y = max(0, y);
+	arrange(kit, {x, y, this->r.w, this->r.h});
+}
+
+// A list dropped over a dialog is a sub-popup, but it is not a submenu, and
+// must not be placed off to the side like one.
+void
+ComboPopup::place_sub(Kit &kit)
+{
+	place(kit);
+}
+
+Combo::Combo()
+{
+	this->hittable = true;
+	// As the toolbar's overflow and app-menu buttons do: the list unrolls
+	// under the pointer, so that one press-drag-release picks from it.  A
+	// plain click still leaves it up to be picked from afterwards, which is
+	// what MenuPopup::release's hold timeout decides between.
+	this->activate_on_press = true;
+	this->popup_ = make_unique<ComboPopup>();
+	this->popup_->combo = this;
+}
+
+// To the widest item rather than the current one: picking must not resize
+// the row it sits in.
+void
+Combo::measure(Kit &kit, int, int)
+{
+	const int pad_x = kit.px(kFramePadX + this->pad_x);
+	const int icon = kit.icon_px();
+	int cw = 0;
+	for (const QString &item : this->items)
+		cw = max(cw, kit.text_width(item, false));
+	int ch = max(kit.text_height(QStringLiteral("Ag"), 0, false), icon);
+	this->r = {
+		0, 0, pad_x * 2 + cw + kit.px(4.f) + icon, kit.px(kFramePadY) * 2 + ch};
+}
+
+void
+Combo::paint(Kit &kit) const
+{
+	if (!shown())
+		return;
+
+	// Unlike Win32 comboboxes, we don't want this to look editable.
+	// TODO(p): Combos and non-flat Buttons shouldn't be transparent...
+
+	const bool hot = kit.hot_ == this;
+	const bool pressed = kit.left_down_ && kit.pressed_ == this;
+	if ((this->enabled_ && pressed) || this->active)
+		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+	else if (this->enabled_ && hot)
+		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
+	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), kit.hairline());
+
+	const int pad_x = kit.px(kFramePadX + this->pad_x);
+	const int icon = kit.icon_px();
+	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
+		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
+	emit_icon(kit, float(this->r.right() - pad_x - icon),
+		float(this->r.y + (this->r.h - icon) / 2), float(icon), kComboIcon,
+		col(kit.colours_[ColourInk], ink_a));
+
+	const QString shown_text = combo_shown(kit, *this);
+	if (!shown_text.isEmpty()) {
+		const int th = kit.text_height(shown_text, 0, false);
+		emit_text(kit, float(this->r.x + pad_x),
+			float(this->r.y + (this->r.h - th) / 2), shown_text,
+			col(kit.colours_[ColourInk], ink_a), false, -1);
+	}
+	if (kit.focus_ == this && kit.focus_visible_)
+		kit.focus_ring(this->r);
+}
+
+void
+Combo::prepare(Kit &kit)
+{
+	if (!shown())
+		return;
+
+	kit.pack_icon(kComboIcon, kit.icon_px());
+	cache_text(kit, combo_shown(kit, *this), false, 0);
+}
+
+QString
+Combo::current_text() const
+{
+	if (this->current < 0 || this->current >= int(this->items.size()))
+		return {};
+	return this->items[size_t(this->current)];
+}
+
+void
+Combo::select(Kit &kit, int index)
+{
+	const int n = int(this->items.size());
+	if (n <= 0)
+		return;
+
+	index = max(0, min(index, n - 1));
+	if (index == this->current)
+		return;
+
+	this->current = index;
+	if (this->on_select)
+		this->on_select(kit, index);
+}
+
+bool
+Combo::activate(Kit &kit)
+{
+	if (!this->enabled_ || this->items.empty())
+		return false;
+	if (this->popup_->visible) {
+		this->popup_->close(kit);
+		return true;
+	}
+
+	fill_combo_popup(kit, *this);
+	// Popup::open() would take the whole stack down with it, dialog and
+	// all; a list dropped from within one is that popup's child.
+	Popup *owner = nullptr;
+	for (Widget *w = this->parent_; w; w = w->parent_) {
+		if (auto *p = dynamic_cast<Popup *>(w)) {
+			owner = p;
+			break;
+		}
+	}
+	if (owner)
+		this->popup_->open_sub(kit, *owner, *this);
+	else
+		this->popup_->open(kit, this);
+
+	// The current item is what the list was centred on, so it is also what
+	// the pointer is over and what the arrows step from.
+	if (Widget *item = this->popup_->col->child(size_t(max(0, this->current))))
+		this->popup_->focus_item(kit, item, kit.focus_visible_);
+	return true;
+}
+
+// Stepping without opening, as both toolkits do.
+bool
+Combo::key(Kit &kit, const Key &ev)
+{
+	if (ev.mods)
+		return false;
+
+	switch (ev.key) {
+	case Qt::Key_Up:
+		select(kit, this->current - 1);
+		return true;
+	case Qt::Key_Down:
+		select(kit, this->current + 1);
+		return true;
+	case Qt::Key_Home:
+		select(kit, 0);
+		return true;
+	case Qt::Key_End:
+		select(kit, int(this->items.size()) - 1);
+		return true;
+	default:
+		return Button::key(kit, ev);
+	}
 }
 
 // --- ToolbarSlot ------------------------------------------------------------
@@ -4321,6 +4666,22 @@ Kit::forget_tree(Widget *tree)
 		}
 		return false;
 	};
+	// A popup outlives the frame it was opened from, but not the widget it
+	// hangs off: left on the stack, it would be placed and painted through
+	// freed memory every frame.  Closing is safe here, as callers forget a
+	// subtree before dropping it, not after.
+	vector<Popup *> doomed;
+	for (Popup *p : this->popups_) {
+		for (const Widget *w = p ? p->opener : nullptr; w; w = w->parent_) {
+			if (w == tree) {
+				doomed.push_back(p);
+				break;
+			}
+		}
+	}
+	for (Popup *p : doomed)
+		p->close(*this);
+
 	forget(this->focus_);
 	forget(this->default_focus_);
 	forget(this->pressed_);
@@ -4478,10 +4839,13 @@ struct Scrim : Panel {
 	bool press(Kit &kit, float, float, Qt::MouseButton) override;
 };
 
+// Down to the first popup that stays put, not all the way: a list dropped
+// from within a dialog is dismissed by a press beside it, the dialog holding
+// it is not.
 bool
 Scrim::press(Kit &kit, float, float, Qt::MouseButton)
 {
-	kit.close_popups();
+	kit.close_transient_popups();
 	kit.pressed_ = nullptr;
 	return true;
 }
@@ -4541,7 +4905,17 @@ Kit::open_popup(Popup *p)
 		if (q == p)
 			return;
 	}
-	if (this->popups_.empty())
+	// When the gesture began: a run of menus opened from one another is a
+	// single one, so only the first of them starts the clock.  A dialog is
+	// not part of any gesture -- it is what the gesture happens inside --
+	// so a list dropped over one starts its own, or every press within it
+	// would already read as a hold.
+	bool gesture_open = false;
+	for (const Popup *q : this->popups_) {
+		if (q && q->transient())
+			gesture_open = true;
+	}
+	if (!gesture_open)
 		this->popup_at_ = chrono::steady_clock::now();
 	this->popups_.push_back(p);
 	this->scrim_->visible = true;
@@ -4615,13 +4989,25 @@ Kit::top_popup() const
 Widget *
 Kit::hit(float x, float y)
 {
+	// A transient popup owns the pointer for as long as it is up, standing
+	// in for the grab we cannot take.  What lies under it is therefore not
+	// hit at all -- a dialog included, which would otherwise claim the whole
+	// window and swallow the press -- so that anything missing the popup
+	// falls through to the scrim, and merely dismisses it.
+	bool transient_open = false;
+	for (const Popup *p : this->popups_) {
+		if (p && p->shown() && p->transient())
+			transient_open = true;
+	}
 	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
 		Popup *p = *it;
-		if (!p || !p->shown())
+		if (!p || !p->shown() || (transient_open && !p->transient()))
 			continue;
 		if (Widget *h = p->hit_at(x, y))
 			return h;
 	}
+	// Before the scrim: pressing the button a list came out of has to reach
+	// the button, which is what closes it again.
 	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
 		Popup *p = *it;
 		if (!p || !p->shown())

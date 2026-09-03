@@ -10,6 +10,7 @@
 #include "display-profile.hpp"
 #include "gpu.hpp"
 #include "kit-browser.hpp"
+#include "kit-chrome.hpp"
 #include "thumbnailer.hpp"
 
 #include <QEvent>
@@ -47,6 +48,9 @@ class Settings
 	std::vector<std::pair<void *, std::function<void()>>> listeners_;
 
 	void notify() const;
+	// Reads the profile in, so that a path that cannot be used says so when
+	// it is chosen rather than at the next repaint.
+	void load_icc_override(const std::string &path);
 
 public:
 	std::vector<std::string> bookmarks;
@@ -57,6 +61,7 @@ public:
 	int browser_thumbnail_size = 256;
 
 	void load();
+	void save(const SettingsDraft &draft);
 	[[nodiscard]] bool bookmarked(const std::string &path) const;
 	void toggle_bookmark(const std::string &path);
 	void listen(void *key, std::function<void()> fn);

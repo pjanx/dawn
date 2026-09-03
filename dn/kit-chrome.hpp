@@ -47,11 +47,40 @@ private:
 	void fill_items(Kit &kit, const QUrl &url);
 };
 
+// The thumbnail sizes the browser has, smallest first.  One table: what the
+// settings dialog offers must not drift from what the browser can show, nor
+// from what Settings::load() will accept back off disk.
+constexpr int kThumbSizes[] = {128, 256, 512, 1024};
+
+// What the settings dialog edits: a copy it owns, handed back whole on Save.
+// Deliberately not Settings itself -- the dialog has no business knowing
+// where any of this is kept, or what listens for it to change.
+struct SettingsDraft {
+	int thumbnail_size = 256;
+	bool show_filenames = true;
+	QString icc_profile_path;
+	bool disable_dithering = false;
+
+	struct Loader {
+		QString name;
+		QString formats;
+		bool enabled = true;
+	};
+
+	std::vector<Loader> loaders;
+};
+
 void dialog_about(Kit &kit, Dialog &dialog);
 void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
 	std::span<const Action> keys);
 void dialog_location(Kit &kit, Dialog &dialog,
 	std::function<void(const QString &)> on_open);
+
+// Takes the draft by value: the dialog edits its own copy, and Save is the
+// only way anything gets back out.  An empty loader list is filled in with
+// the placeholder one.
+void dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
+	std::function<void(const SettingsDraft &)> on_save);
 
 struct Sidebar : Panel {
 	Widget *content = nullptr;

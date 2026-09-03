@@ -131,7 +131,6 @@ constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
 constexpr const char *kMissingIcon = "image-missing-symbolic";
 
-constexpr int kThumbSizes[] = {128, 256, 512, 1024};
 constexpr int kThumbSizeN = size(kThumbSizes);
 // Wide thumbnail box is 2× row height (512×256 at the default size).
 constexpr int kThumbWide = 2;

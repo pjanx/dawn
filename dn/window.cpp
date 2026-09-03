@@ -326,6 +326,7 @@ Window::bind_host()
 			Page *ui = active_ui();
 			if (!ui || !ui->dialog)
 				break;
+
 			dialog_location(this->kit_, *ui->dialog,
 				[this](const QString &location) {
 					open_any(url_from_user_input(
@@ -352,11 +353,31 @@ Window::bind_host()
 			Page *ui = active_ui();
 			if (!ui || !ui->dialog)
 				break;
+
 			if (a == Action::About)
 				dialog_about(this->kit_, *ui->dialog);
 			else
 				dialog_shortcuts(
 					this->kit_, *ui->dialog, ui->menu_tree, ui->keys);
+			request_render();
+			break;
+		}
+		case Action::Settings: {
+			Page *ui = active_ui();
+			if (!ui || !ui->dialog || !this->app_)
+				break;
+
+			const Settings &settings = this->app_->settings;
+			SettingsDraft draft;
+			draft.thumbnail_size = settings.browser_thumbnail_size;
+			draft.show_filenames = settings.browser_show_filenames;
+			draft.icc_profile_path = QString::fromStdString(
+				settings.icc_profile_override_path);
+			draft.disable_dithering = settings.disable_dithering;
+			dialog_settings(this->kit_, *ui->dialog, std::move(draft),
+				[this](const SettingsDraft &saved) {
+					this->app_->settings.save(saved);
+				});
 			request_render();
 			break;
 		}

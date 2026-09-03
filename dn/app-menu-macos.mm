@@ -135,17 +135,7 @@ bool
 skip_action(dn::Action a)
 {
 	return a == dn::Action::Quit || a == dn::Action::About ||
-		a == dn::Action::Fullscreen;
-}
-
-NSMenuItem *
-top_item(NSMenu *menu)
-{
-	NSMenu *parent = menu.supermenu;
-	if (!parent)
-		return nil;
-	const NSInteger i = [parent indexOfItemWithSubmenu:menu];
-	return i >= 0 ? [parent itemAtIndex:i] : nil;
+		a == dn::Action::Settings || a == dn::Action::Fullscreen;
 }
 
 void
@@ -159,6 +149,15 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 }
 
 }  // namespace
+
+// Qt's Cocoa plugin builds the application menu, and owns the About and
+// Settings items that we want pointed at ourselves.  It installs no public
+// header for its menu loader, so redeclare just what we ask of it: the class
+// name outlives item titles, which Qt both translates and has renamed.
+@protocol DnCocoaMenuLoader <NSObject>
+- (NSMenuItem *)aboutMenuItem;
+- (NSMenuItem *)preferencesMenuItem;
+@end
 
 @interface DnMenuDelegate : NSObject <NSMenuDelegate>
 @property(nonatomic, assign) dn::App *app;
@@ -208,7 +207,8 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item
 {
-	if (dn::Action(item.tag) == dn::Action::About)
+	const dn::Action tag = dn::Action(item.tag);
+	if (tag == dn::Action::About || tag == dn::Action::Settings)
 		return [self window] != nullptr;
 	const dn::Actor *actor = [self actor];
 	if (!actor || !actor->enabled)
@@ -226,13 +226,8 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 
 	const dn::MenuNode *node = find_section(tree, menu.title);
 	[menu removeAllItems];
-	if (!node) {
-		if (NSMenuItem *top = top_item(menu))
-			top.hidden = YES;
+	if (!node)
 		return;
-	}
-	if (NSMenuItem *top = top_item(menu))
-		top.hidden = NO;
 
 	bool pending_sep = false;
 	bool any = false;
@@ -303,21 +298,38 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 	[main addItem:top];
 }
 
+// Qt hides and disables the items it has found nothing to merge into.
 void
-retarget_about(NSMenu *app_menu, id target)
+claim_item(NSMenuItem *item, Action action, id target, NSString *key,
+	NSEventModifierFlags mods)
 {
-	for (NSMenuItem *it in app_menu.itemArray) {
-		if (![it.title hasPrefix:@"About "])
-			continue;
-		if ([it.title isEqualToString:@"About Qt"])
-			continue;
-		it.hidden = NO;
-		it.enabled = YES;
-		it.tag = NSInteger(Action::About);
-		it.target = target;
-		it.action = @selector(invoke:);
+	if (!item)
 		return;
-	}
+
+	item.hidden = NO;
+	item.enabled = YES;
+	item.tag = NSInteger(action);
+	item.target = target;
+	item.action = @selector(invoke:);
+	item.keyEquivalent = key;
+	item.keyEquivalentModifierMask = mods;
+}
+
+// macOS usually keeps About and Settings in the application menu.
+void
+adopt_app_menu(id target)
+{
+	id cls = NSClassFromString(@"QCocoaMenuLoader");
+	if (![cls respondsToSelector:@selector(sharedMenuLoader)])
+		return;
+
+	id<DnCocoaMenuLoader> loader =
+		[cls performSelector:@selector(sharedMenuLoader)];
+	if ([loader respondsToSelector:@selector(aboutMenuItem)])
+		claim_item([loader aboutMenuItem], Action::About, target, @"", 0);
+	if ([loader respondsToSelector:@selector(preferencesMenuItem)])
+		claim_item([loader preferencesMenuItem], Action::Settings, target,
+			@",", NSEventModifierFlagCommand);
 }
 
 }  // namespace
@@ -329,10 +341,9 @@ sync_macos_app_menu(App *app)
 	if (!main || !app || !g_menu_delegate)
 		return;
 	g_menu_delegate.app = app;
-	Window *w = app->key_window();
-	if (!w)
-		return;
-	sync_hidden(main, g_menu_delegate, w->active_menu());
+
+	if (Window *w = app->key_window())
+		sync_hidden(main, g_menu_delegate, w->active_menu());
 }
 
 void
@@ -347,16 +358,14 @@ install_macos_app_menu(App *app)
 	DnMenuDelegate *delegate = g_menu_delegate;
 	delegate.app = app;
 
-	if (NSMenuItem *first = [main itemAtIndex:0]) {
-		if (NSMenu *app_menu = first.submenu)
-			retarget_about(app_menu, delegate);
-	}
+	adopt_app_menu(delegate);
 	vector<QString> titles;
 	auto consider = [&](span<const MenuNode> tree) {
 		for (const MenuNode &n : tree) {
 			const QString t = menu_label(n.title, nullptr);
 			if (t.isEmpty())
 				continue;
+
 			bool seen = false;
 			for (const QString &e : titles) {
 				if (e == t) {

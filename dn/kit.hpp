@@ -199,6 +199,9 @@ struct Composite : Widget {
 struct Button : Widget {
 	Action action = Action::None;
 	const char *icon = nullptr;
+	// An index into text, underlined when drawn; -1 for none.  Nothing
+	// dispatches on it yet -- outside a menu it is a hint, not a key.
+	int mnemonic = -1;
 	QString tip_text;
 	QString tip_accel;
 	QString text;
@@ -230,11 +233,13 @@ struct Checkbox : Button {
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool activate(Kit &kit) override;
 };
 
 struct Label : Widget {
 	QString text;
+	int mnemonic = -1;
 	float min_w = 0;
 	float pad_x = 0;
 	float pad_y = 0;
@@ -480,7 +485,7 @@ struct Popup : Panel {
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
 	void place_below(Kit &kit, int x);
-	void place_sub(Kit &kit);
+	virtual void place_sub(Kit &kit);
 	bool traps_focus() const override { return true; }
 	virtual bool captures_keys() const { return false; }
 	// Focus loss dismisses transient popups; a dialog waits for Escape
@@ -566,7 +571,6 @@ struct Menu : MenuPopup {
 
 struct MenuItem : Button {
 	QString accel;
-	int mnemonic = -1;
 	Menu *sub = nullptr;
 	bool checked = false;
 	bool checkable = false;
@@ -579,6 +583,53 @@ struct MenuItem : Button {
 	bool activate(Kit &kit) override;
 	int label_width(const Kit &kit) const;
 	int accel_width(const Kit &kit) const;
+};
+
+struct Combo;
+
+// One row of a Combo's list: a menu item without the menu's furniture.
+// There is no lead column, because there is nothing to check off there --
+// which item is current is said by where the list was placed, and by the
+// focus, exactly as the item under the pointer is said in a menu.
+struct ComboItem : Button {
+	void measure(Kit &kit, int max_w, int max_h) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+};
+
+// The list a Combo drops.  Menu navigation applies to it unchanged; all
+// that differs is where it lands, and that is the whole point of it.
+struct ComboPopup : MenuPopup {
+	Column *col = nullptr;
+	Combo *combo = nullptr;
+
+	ComboPopup();
+	void close(Kit &kit) override;
+	void place(Kit &kit) override;
+	void place_sub(Kit &kit) override;
+};
+
+// A closed choice: a bordered label with a chevron.  Nothing here is
+// editable, nor looks it, which is the one thing every Win32 combo box
+// gets wrong for this purpose.
+struct Combo : Button {
+	std::vector<QString> items;
+	int current = 0;
+	// The index is what changed; the caller usually wants it rather than
+	// having to read it back off the widget.
+	std::function<void(Kit &, int)> on_select;
+
+	std::unique_ptr<ComboPopup> popup_;
+
+	Combo();
+	void measure(Kit &kit, int max_w, int max_h) override;
+	void paint(Kit &kit) const override;
+	void prepare(Kit &kit) override;
+	bool activate(Kit &kit) override;
+	bool key(Kit &kit, const Key &ev) override;
+	// Clamps, and notifies only on an actual change.
+	void select(Kit &kit, int index);
+	[[nodiscard]] QString current_text() const;
 };
 
 // One end of a toolbar. What does not fit goes behind the "more" button.
@@ -829,6 +880,14 @@ struct Kit {
 	[[nodiscard]] int px(float pts) const
 	{
 		return int(lround(double(pts) * double(this->dpr_)));
+	}
+
+	// The inverse, for the widget fields that are declared in points: a
+	// width measured off the text has to go back through this before it
+	// can be handed to one, or it gets scaled a second time.
+	[[nodiscard]] float pts(int px) const
+	{
+		return float(double(px) / double(this->dpr_));
 	}
 
 	// An appropriately thick rule, border or caret, in device pixels.

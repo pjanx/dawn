@@ -52,6 +52,16 @@ namespace
 {
 
 constexpr string_view kBookmarksKey = "dn/Bookmarks";
+constexpr string_view kDitheringKey = "dn/DisableDithering";
+constexpr string_view kFilenamesKey = "dn/BrowserShowFilenames";
+constexpr string_view kThumbnailKey = "dn/BrowserThumbnailSize";
+constexpr string_view kProfileKey = "dn/ICCProfileOverride";
+
+void
+config_warn(string_view key, const char *message)
+{
+	qWarning("configuration %.*s: %s", int(key.size()), key.data(), message);
+}
 
 optional<string>
 setting(string_view key)
@@ -59,9 +69,16 @@ setting(string_view key)
 	dawn::Error error;
 	optional<string> value = dawn::config_get(key, &error);
 	if (error)
-		qWarning("configuration %.*s: %s", int(key.size()), key.data(),
-			error.message.c_str());
+		config_warn(key, error.message.c_str());
 	return value;
+}
+
+void
+set_setting(string_view key, string_view value)
+{
+	dawn::Error error;
+	if (!dawn::config_set(key, value, &error))
+		config_warn(key, error.message.c_str());
 }
 
 bool
@@ -74,9 +91,30 @@ boolean_setting(string_view key, bool fallback)
 		return true;
 	if (*value == "false" || *value == "0")
 		return false;
-	qWarning("configuration %.*s: expected true, false, 1, or 0",
-		int(key.size()), key.data());
+	config_warn(key, "expected true, false, 1, or 0");
 	return fallback;
+}
+
+void
+set_boolean_setting(string_view key, bool value)
+{
+	set_setting(key, value ? "true" : "false");
+}
+
+// Answers 0 for anything the browser has no thumbnails for.
+int
+parse_thumbnail_size(const string &value)
+{
+	int size = 0;
+	const auto parsed =
+		from_chars(value.data(), value.data() + value.size(), size);
+	if (parsed.ec != errc{} || parsed.ptr != value.data() + value.size())
+		return 0;
+	for (const int candidate : kThumbSizes) {
+		if (candidate == size)
+			return size;
+	}
+	return 0;
 }
 
 char
@@ -87,6 +125,36 @@ bookmark_separator()
 #else
 	return ':';
 #endif
+}
+
+vector<string>
+split_bookmarks(const string &value)
+{
+	vector<string> out;
+	const char separator = bookmark_separator();
+	for (size_t offset = 0; offset <= value.size();) {
+		const size_t end = value.find(separator, offset);
+		const string item = value.substr(
+			offset, end == string::npos ? string::npos : end - offset);
+		if (!item.empty())
+			out.push_back(item);
+		if (end == string::npos)
+			break;
+		offset = end + 1;
+	}
+	return out;
+}
+
+string
+join_bookmarks(const vector<string> &bookmarks)
+{
+	string value;
+	for (const string &bookmark : bookmarks) {
+		if (!value.empty())
+			value += bookmark_separator();
+		value += bookmark;
+	}
+	return value;
 }
 
 }  // namespace
@@ -111,57 +179,60 @@ canonical_dir(const string &path)
 }
 
 void
+Settings::load_icc_override(const string &path)
+{
+	this->icc_profile_override.clear();
+	this->icc_profile_override_path.clear();
+	if (path.empty())
+		return;
+
+	QFile file(QString::fromUtf8(path.data(), qsizetype(path.size())));
+	if (!file.open(QIODevice::ReadOnly)) {
+		config_warn(kProfileKey, ("cannot open " + path).c_str());
+		return;
+	}
+	const QByteArray bytes = file.readAll();
+	if (bytes.isEmpty()) {
+		config_warn(kProfileKey, "empty ICC profile");
+		return;
+	}
+	this->icc_profile_override.assign(bytes.begin(), bytes.end());
+	this->icc_profile_override_path = path;
+}
+
+void
 Settings::load()
 {
-	this->disable_dithering =
-		boolean_setting("dn/DisableDithering", false);
-	this->browser_show_filenames =
-		boolean_setting("dn/BrowserShowFilenames", true);
-	if (const optional<string> value = setting("dn/BrowserThumbnailSize")) {
-		int size = 0;
-		const auto parsed = from_chars(
-			value->data(), value->data() + value->size(), size);
-		if (parsed.ec == errc{} && parsed.ptr == value->data() + value->size() &&
-			(size == 128 || size == 256 || size == 512 || size == 1024)) {
+	this->disable_dithering = boolean_setting(kDitheringKey, false);
+	this->browser_show_filenames = boolean_setting(kFilenamesKey, true);
+	if (const optional<string> value = setting(kThumbnailKey)) {
+		if (const int size = parse_thumbnail_size(*value))
 			this->browser_thumbnail_size = size;
-		} else {
-			qWarning("configuration dn/BrowserThumbnailSize: unsupported size");
-		}
+		else
+			config_warn(kThumbnailKey, "unsupported size");
 	}
 
 	this->bookmarks.clear();
-	if (const optional<string> value = setting(kBookmarksKey)) {
-		const char separator = bookmark_separator();
-		for (size_t offset = 0; offset <= value->size();) {
-			const size_t end = value->find(separator, offset);
-			const string item = value->substr(offset,
-				end == string::npos ? string::npos : end - offset);
-			if (!item.empty())
-				this->bookmarks.push_back(item);
-			if (end == string::npos)
-				break;
-			offset = end + 1;
-		}
-	}
+	if (const optional<string> value = setting(kBookmarksKey))
+		this->bookmarks = split_bookmarks(*value);
 
-	this->icc_profile_override.clear();
-	this->icc_profile_override_path.clear();
-	if (const optional<string> value = setting("dn/ICCProfileOverride");
-		value && !value->empty()) {
-		QFile file(QString::fromUtf8(value->data(), qsizetype(value->size())));
-		if (!file.open(QIODevice::ReadOnly)) {
-			qWarning("configuration dn/ICCProfileOverride: cannot open %s",
-				value->c_str());
-		} else {
-			const QByteArray bytes = file.readAll();
-			if (bytes.isEmpty()) {
-				qWarning("configuration dn/ICCProfileOverride: empty ICC profile");
-			} else {
-				this->icc_profile_override.assign(bytes.begin(), bytes.end());
-				this->icc_profile_override_path = *value;
-			}
-		}
-	}
+	load_icc_override(setting(kProfileKey).value_or(string()));
+}
+
+void
+Settings::save(const SettingsDraft &draft)
+{
+	this->browser_thumbnail_size = draft.thumbnail_size;
+	this->browser_show_filenames = draft.show_filenames;
+	this->disable_dithering = draft.disable_dithering;
+	set_setting(kThumbnailKey, to_string(draft.thumbnail_size));
+	set_boolean_setting(kFilenamesKey, draft.show_filenames);
+	set_boolean_setting(kDitheringKey, draft.disable_dithering);
+
+	const string path = draft.icc_profile_path.toStdString();
+	set_setting(kProfileKey, path);
+	load_icc_override(path);
+	notify();
 }
 
 bool
@@ -183,17 +254,7 @@ Settings::toggle_bookmark(const string &path)
 	else
 		this->bookmarks.push_back(want);
 	notify();
-
-	string value;
-	for (const string &bookmark : this->bookmarks) {
-		if (!value.empty())
-			value += bookmark_separator();
-		value += bookmark;
-	}
-	dawn::Error error;
-	if (!dawn::config_set(kBookmarksKey, value, &error))
-		qWarning("configuration %.*s: %s", int(kBookmarksKey.size()),
-			kBookmarksKey.data(), error.message.c_str());
+	set_setting(kBookmarksKey, join_bookmarks(this->bookmarks));
 }
 
 void

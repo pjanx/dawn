@@ -39,6 +39,7 @@ enum class Action : uint8_t {
 	Help,
 	About,
 	Shortcuts,
+	Settings,
 	Menu,
 	Context,
 	Cancel,

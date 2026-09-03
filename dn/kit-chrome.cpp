@@ -156,20 +156,27 @@ unique_ptr<Label>
 dialog_label(const QString &text, bool bold = false, bool wrap = false)
 {
 	auto label = make_unique<Label>();
-	label->text = text;
+	label->text = menu_label(text.toStdString().c_str(), &label->mnemonic);
 	label->bold = bold;
 	label->wrap = wrap;
 	return label;
 }
 
 unique_ptr<Button>
+dialog_action(const QString &text, function<void(Kit &)> on_click)
+{
+	auto button = make_unique<Button>();
+	button->text = text;
+	button->pad_x = kDialogActionPad;
+	button->on_click = std::move(on_click);
+	return button;
+}
+
+unique_ptr<Button>
 dialog_close_action(Dialog &dialog)
 {
-	auto close = make_unique<Button>();
-	close->text = QStringLiteral("Close");
-	close->pad_x = kDialogActionPad;
-	close->on_click = [&dialog](Kit &kit) { dialog.close(kit); };
-	return close;
+	return dialog_action(QStringLiteral("Close"),
+		[&dialog](Kit &kit) { dialog.close(kit); });
 }
 
 QString
@@ -258,20 +265,11 @@ dialog_location(Kit &kit, Dialog &dialog,
 	field->on_submit = submit;
 	field->on_cancel = [&dialog](Kit &inner) { dialog.close(inner); };
 
-	auto open = make_unique<Button>();
-	open->text = QStringLiteral("Open");
-	open->pad_x = kDialogActionPad;
-	open->on_click = submit;
-
-	auto cancel = make_unique<Button>();
-	cancel->text = QStringLiteral("Cancel");
-	cancel->pad_x = kDialogActionPad;
-	cancel->on_click = [&dialog](Kit &inner) { dialog.close(inner); };
-
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(std::move(open));
-	actions->add_child(std::move(cancel));
+	actions->add_child(dialog_action(QStringLiteral("Open"), submit));
+	actions->add_child(dialog_action(QStringLiteral("Cancel"),
+		[&dialog](Kit &inner) { dialog.close(inner); }));
 	dialog.show(kit, std::move(col), 420.f, std::move(actions));
 }
 
@@ -328,7 +326,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 			if (!has_shortcut(def))
 				return;
 			seen[size_t(action)] = true;
-			col->add_child(shortcut_row(def, accel_w));
+			col->add_child(shortcut_row(def, kit.pts(accel_w)));
 		});
 	}
 	bool other = false;
@@ -344,7 +342,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 			other = true;
 		}
 		seen[i] = true;
-		col->add_child(shortcut_row(def, accel_w));
+		col->add_child(shortcut_row(def, kit.pts(accel_w)));
 	};
 	for (Action action : window_keys())
 		emit_other(action);
@@ -355,6 +353,245 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		emit_other(Action::ZoomLevel);
 	dialog.show(
 		kit, std::move(col), 520.f, dialog_close_action(dialog));
+}
+
+// --- Settings dialog ---------------------------------------------------------
+
+namespace
+{
+
+// TODO(p): This needs to be in one place with sizes.
+const QString kThumbSizeNames[] = {QStringLiteral("Small"),
+	QStringLiteral("Normal"), QStringLiteral("Large"), QStringLiteral("Huge")};
+
+// TODO(p): This must come from libdn.  Also add de/serialisation.
+vector<SettingsDraft::Loader>
+placeholder_loaders()
+{
+	return {
+		{QStringLiteral("libwebp"), QStringLiteral("WebP"), true},
+		{QStringLiteral("libjpeg-turbo"), QStringLiteral("JPEG"), true},
+		{QStringLiteral("Wuffs"),
+			QStringLiteral("BMP, GIF, NIE, PNG, PNM, QOI, TGA, WBMP"), true},
+		{QStringLiteral("Embedded TIFF EP previews"),
+			QStringLiteral("raw photos"), true},
+		{QStringLiteral("LibRaw"), QStringLiteral("raw photos"), true},
+		{QStringLiteral("resvg"), QStringLiteral("SVG"), true},
+		{QStringLiteral("Glycin"), {}, true},
+	};
+}
+
+QString
+loader_text(const SettingsDraft::Loader &loader)
+{
+	if (loader.formats.isEmpty())
+		return loader.name;
+	return loader.name + QStringLiteral(" (") + loader.formats +
+		QStringLiteral(")");
+}
+
+// TODO(p): This sizing model is bad.
+unique_ptr<Row>
+settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
+{
+	auto text = dialog_label(label);
+	text->min_w = label_w;
+	text->align = Align::End;
+
+	auto row = make_unique<Row>();
+	row->gap = 8.f;
+	row->add_child(std::move(text));
+	row->add_child(std::move(control));
+	return row;
+}
+
+unique_ptr<Checkbox>
+settings_check(const char *label, bool checked)
+{
+	auto check = make_unique<Checkbox>();
+	check->text = menu_label(label, &check->mnemonic);
+	check->checked = checked;
+	return check;
+}
+
+// The rows are built once and then only ever re-read from the draft:
+// Button::activate will not return into a button that its own click had freed.
+struct LoaderRows {
+	Column *col = nullptr;
+	vector<Button *> ups;
+	vector<Button *> downs;
+	vector<Checkbox *> checks;
+	shared_ptr<SettingsDraft> draft;
+
+	void sync() const;
+	void move(Kit &kit, int from, int dir);
+};
+
+void
+LoaderRows::sync() const
+{
+	size_t n = int(this->draft->loaders.size());
+	for (size_t i = 0; i < n; i++) {
+		const SettingsDraft::Loader &loader = this->draft->loaders[i];
+		this->checks[i]->text = loader_text(loader);
+		this->checks[i]->checked = loader.enabled;
+		this->ups[i]->enabled_ = i > 0;
+		this->downs[i]->enabled_ = i + 1 < n;
+	}
+}
+
+// Focus follows the item, not the button: pressing the same arrow again has
+// to keep moving the same loader, which means moving on to the next row.
+void
+LoaderRows::move(Kit &kit, int from, int dir)
+{
+	const int to = from + dir;
+	if (to < 0 || to >= int(this->draft->loaders.size()))
+		return;
+
+	swap(this->draft->loaders[size_t(from)], this->draft->loaders[size_t(to)]);
+	sync();
+
+	Button *want = dir < 0 ? this->ups[size_t(to)] : this->downs[size_t(to)];
+	Button *other = dir < 0 ? this->downs[size_t(to)] : this->ups[size_t(to)];
+	kit.set_focus(want->enabled_ ? want : other, kit.focus_visible_);
+}
+
+unique_ptr<Button>
+loader_arrow(const char *icon, const QString &tip)
+{
+	auto button = make_unique<Button>();
+	button->icon = icon;
+	button->tip_text = tip;
+	return button;
+}
+
+}  // namespace
+
+void
+dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
+	function<void(const SettingsDraft &)> on_save)
+{
+	if (draft.loaders.empty())
+		draft.loaders = placeholder_loaders();
+
+	// The callbacks outlive this function and share one copy between them;
+	// Save hands that copy back, and Cancel simply drops it.
+	auto state = make_shared<SettingsDraft>(std::move(draft));
+
+	float label_w = 0;
+	const QString thumb_label = QStringLiteral("Default _thumbnail size");
+	const QString icc_label = QStringLiteral("ICC _profile override");
+	for (const QString &label : {thumb_label, icc_label})
+		label_w = max(label_w, kit.pts(kit.text_width(label, false)));
+
+	auto col = make_unique<Column>();
+	col->gap = 4.f;
+	col->add_child(dialog_label(QStringLiteral("Settings"), true));
+
+	auto combo = make_unique<Combo>();
+	for (const QString &name : kThumbSizeNames)
+		combo->items.push_back(name);
+	for (int i = 0; i < int(std::size(kThumbSizes)); i++) {
+		if (kThumbSizes[i] == state->thumbnail_size)
+			combo->current = i;
+	}
+	combo->on_select = [state](Kit &, int index) {
+		state->thumbnail_size = kThumbSizes[index];
+	};
+	col->add_child(settings_row(thumb_label, label_w, std::move(combo)));
+
+	auto names = settings_check("Show _filenames by default",
+		state->show_filenames);
+	Checkbox *names_ref = names.get();
+	names->on_click = [state, names_ref](Kit &) {
+		state->show_filenames = names_ref->checked;
+	};
+	col->add_child(settings_row({}, label_w, std::move(names)));
+
+	auto entry = make_unique<Entry>();
+	entry->text = state->icc_profile_path;
+	entry->placeholder = QStringLiteral("Path to an ICC profile");
+	Entry *entry_ref = entry.get();
+	entry->on_change = [state, entry_ref](Kit &) {
+		state->icc_profile_path = entry_ref->text;
+	};
+	col->add_child(settings_row(icc_label, label_w, std::move(entry)));
+
+	auto dither = settings_check("Disable _dithering on 8-bit swapchains",
+		state->disable_dithering);
+	Checkbox *dither_ref = dither.get();
+	dither->on_click = [state, dither_ref](Kit &) {
+		state->disable_dithering = dither_ref->checked;
+	};
+	col->add_child(settings_row({}, label_w, std::move(dither)));
+
+	col->add_child(make_unique<Sep>());
+
+	auto note = dialog_label(
+		QStringLiteral("Image loaders may be able to handle multiple "
+					   "formats. Failures pass through."),
+		false, true);
+	note->dim = true;
+	col->add_child(std::move(note));
+
+	auto todo = dialog_label(
+		QStringLiteral("This section is a placeholder."),
+		true, true);
+	col->add_child(std::move(todo));
+
+	auto rows = make_shared<LoaderRows>();
+	rows->draft = state;
+	auto loaders = make_unique<Column>();
+	loaders->gap = 2.f;
+	rows->col = loaders.get();
+	for (int i = 0; i < int(state->loaders.size()); i++) {
+		auto up = loader_arrow("go-up-symbolic", QStringLiteral("Move up"));
+		auto down =
+			loader_arrow("go-down-symbolic", QStringLiteral("Move down"));
+		auto check = make_unique<Checkbox>();
+
+		up->on_click = [rows, i](Kit &k) { rows->move(k, i, -1); };
+		down->on_click = [rows, i](Kit &k) { rows->move(k, i, 1); };
+		Checkbox *check_ref = check.get();
+		check->on_click = [rows, check_ref, i](Kit &) {
+			rows->draft->loaders[size_t(i)].enabled = check_ref->checked;
+		};
+
+		rows->ups.push_back(up.get());
+		rows->downs.push_back(down.get());
+		rows->checks.push_back(check_ref);
+
+		auto arrows = make_unique<Row>();
+		arrows->gap = 4.f;
+		arrows->align = Align::End;
+		arrows->add_child(std::move(up));
+		arrows->add_child(std::move(down));
+
+		auto gutter = make_unique<Panel>();
+		gutter->min_w = label_w;
+		gutter->add_child(std::move(arrows));
+
+		auto row = make_unique<Row>();
+		row->gap = 8.f;
+		row->add_child(std::move(gutter));
+		row->add_child(std::move(check));
+		loaders->add_child(std::move(row));
+	}
+	rows->sync();
+	col->add_child(std::move(loaders));
+
+	auto actions = make_unique<Row>();
+	actions->gap = 8.f;
+	actions->add_child(dialog_action(QStringLiteral("Save"),
+		[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
+			dialog.close(inner);
+			if (on_save)
+				on_save(*state);
+		}));
+	actions->add_child(dialog_action(QStringLiteral("Cancel"),
+		[&dialog](Kit &inner) { dialog.close(inner); }));
+	dialog.show(kit, std::move(col), 520.f, std::move(actions));
 }
 
 // --- Hint -------------------------------------------------------------------
