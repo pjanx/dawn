@@ -136,6 +136,9 @@ struct Widget {
 	Widget *parent_ = nullptr;
 
 	virtual ~Widget() = default;
+	// At least as of now, we don't seem to need baseline measurements.
+	// TODO(p): This should not override the internal rectangle.
+	// This is wired pretty deeply.
 	virtual void measure(Kit &kit, int max_w, int max_h) = 0;
 	virtual void arrange(Kit &kit, Rect alloc) = 0;
 	virtual void paint(Kit &kit) const;

@@ -652,6 +652,7 @@ make_error(Viewer &v)
 	lab->wrap = true;
 	lab->valign = Align::Center;
 	auto dismiss = make_unique<Button>();
+	dismiss->flat = true;
 	dismiss->tip_text = "Dismiss";
 	dismiss->icon = "x-symbolic";
 	dismiss->on_click = [&v](Kit &) { v.message_dismissed_ = true; };
