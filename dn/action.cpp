@@ -70,10 +70,19 @@ constexpr ActionDef kDefs[] = {
 		{Qt::Key_L, kCtrl},
 #endif
 		}, {}},
-	// Perhaps this should be on Command-? and keyboard shortcuts need none.
-	{kMenu, {"_Contents"}, {}, {{Qt::Key_F1}}, {}},
+	{kMenu, {"_Contents"}, {}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_Question, kCtrl},
+#else
+		{Qt::Key_F1},
+#endif
+		}, {}},
 	{kMenu, {"_About"}, {}, {}, {}},
-	{kMenu, {"_Keyboard Shortcuts"}, {}, {{Qt::Key_Question, kCtrl}}, {}},
+	{kMenu, {"_Keyboard Shortcuts"}, {}, {
+#ifndef Q_OS_MACOS
+		{Qt::Key_Question, kCtrl},
+#endif
+		}, {}},
 	{kMenu, {"_Settings..."}, {}, {{Qt::Key_Comma, kCtrl}}, {}},
 	// TODO(p): Skip on macOS entirely, as it uses the global menu.
 	{0, {"_Menu"}, {}, {{Qt::Key_F10}}, {}},
