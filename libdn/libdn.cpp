@@ -1562,15 +1562,16 @@ supported_media_types()
 	vector<string> types = {
 		"image/bmp",
 		"image/gif",
+		"image/jpeg",
 		"image/png",
 		"image/qoi",
+		"image/svg+xml",  // resvg is a hard dependency
+		"image/vnd.wap.wbmp",
+		"image/webp",
+		"image/x-icns",
 		// Only binary P5/P6 in practice, which Wuffs is limited to.
 		"image/x-portable-anymap",
 		"image/x-tga",
-		"image/vnd.wap.wbmp",
-		"image/jpeg",
-		"image/webp",
-		"image/svg+xml",  // resvg is a hard dependency
 	};
 #if DAWN_WITH_LIBRAW
 	types.push_back("image/x-dcraw");
@@ -1640,6 +1641,8 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		if (!image && (image = try_loader(fn, data, ctx, error)))
 			image->loader = name;
 	};
+	if (data.size() >= 4 && !memcmp(data.data(), "icns", 4))
+		try_next(detail::load_icns, "ICNS");
 
 	uint32_t fourcc = detail::wuffs_guess_fourcc(data);
 	switch (fourcc) {

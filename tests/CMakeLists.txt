@@ -72,6 +72,10 @@ set_tests_properties(channels PROPERTIES
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+add_executable(test-icns test-icns.cpp)
+target_link_libraries(test-icns PRIVATE dawn::libdn)
+add_test(NAME icns COMMAND test-icns)
+
 add_executable(bench-open bench-open.cpp)
 target_link_libraries(bench-open PRIVATE dawn::libdn)
 

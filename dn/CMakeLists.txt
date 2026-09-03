@@ -121,6 +121,7 @@ if (APPLE)
 	# Mirrors supported_media_types(), restricted to macOS types.
 	# See /System/Library/CoreServices/CoreTypes.bundle/Contents/Info.plist
 	set(utis
+		com.apple.icns
 		com.compuserve.gif
 		com.microsoft.bmp
 		com.truevision.tga-image
@@ -147,7 +148,6 @@ if (APPLE)
 	endif()
 	if (DAWN_WITH_GDKPIXBUF)
 		list(APPEND utis
-			com.apple.icns
 			com.apple.quicktime-image
 			com.microsoft.ico
 			public.xbitmap-image

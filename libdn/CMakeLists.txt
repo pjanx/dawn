@@ -11,6 +11,7 @@ add_custom_command(
 add_library(libdn SHARED
 	ipc.cpp
 	libdn.cpp
+	load-icns.cpp
 	load-jpeg.cpp
 	load-tiff-ep.cpp
 	load-webp.cpp
