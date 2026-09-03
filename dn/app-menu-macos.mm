@@ -13,11 +13,11 @@
 #include "window.hpp"
 
 #include <QDir>
-#include <QKeySequence>
 #include <QString>
 
 #import <AppKit/AppKit.h>
 
+#include <algorithm>
 #include <span>
 #include <vector>
 
@@ -52,10 +52,6 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 			c = unichar('A' + (k - Qt::Key_A));
 			*mods &= ~NSEventModifierFlagShift;
 		}
-		return [NSString stringWithCharacters:&c length:1];
-	}
-	if (k >= Qt::Key_0 && k <= Qt::Key_9) {
-		unichar c = unichar('0' + (k - Qt::Key_0));
 		return [NSString stringWithCharacters:&c length:1];
 	}
 	if (k >= Qt::Key_F1 && k <= Qt::Key_F12) {
@@ -208,7 +204,7 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 	const dn::Actor *actor = [self actor];
 	if (!actor || !actor->enabled)
 		return YES;
-	return actor->enabled(dn::Action(item.tag));
+	return actor->enabled(tag);
 }
 
 - (void)menuNeedsUpdate:(NSMenu *)menu
@@ -242,10 +238,8 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 			actor && actor->checked && actor->checked(n.action);
 		const QString title =
 			dn::menu_label(dn::action_label(def, checked), nullptr);
-		NSString *key = @"";
 		NSEventModifierFlags mods = 0;
-		if (!(def.accel && def.keys[0].key == 0))
-			key = ns_equiv(def.keys[0], &mods);
+		NSString *key = ns_equiv(def.keys[0], &mods);
 		NSMenuItem *it = [[[NSMenuItem alloc] initWithTitle:title.toNSString()
 													 action:@selector(invoke:)
 											  keyEquivalent:key] autorelease];
@@ -278,27 +272,9 @@ has_menu(NSMenu *main, NSString *title)
 }
 
 static void
-add_menu(NSMenu *main, NSString *title, id delegate)
+add_top_menu(NSMenu *main, NSString *title, NSMenu *sub)
 {
-	if (has_menu(main, title))
-		return;
-
-	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:title
-												  action:nil
-										   keyEquivalent:@""] autorelease];
-	NSMenu *sub = [[[DnMenu alloc] initWithTitle:title] autorelease];
-	sub.delegate = delegate;
-	top.submenu = sub;
-	[main addItem:top];
-}
-
-// Standard items, left to the responder chain, i.e. to AppKit.
-static void
-add_window_item(NSMenu *menu, NSString *title, SEL action, NSString *key)
-{
-	[menu addItem:[[[NSMenuItem alloc] initWithTitle:title
-											  action:action
-									   keyEquivalent:key] autorelease]];
+	[main addItemWithTitle:title action:nil keyEquivalent:@""].submenu = sub;
 }
 
 // Qt's application delegate installs a hidden Window menu of its own, but only
@@ -308,21 +284,24 @@ add_window_item(NSMenu *menu, NSString *title, SEL action, NSString *key)
 static void
 add_window_menu(NSMenu *main)
 {
-	if (has_menu(main, @"Window"))
+	NSString *title = @"Window";
+	if (has_menu(main, title))
 		return;
 
-	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:@"Window"
-												  action:nil
-										   keyEquivalent:@""] autorelease];
-	NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Window"] autorelease];
-	add_window_item(menu, @"Minimize", @selector(performMiniaturize:), @"m");
-	add_window_item(menu, @"Zoom", @selector(performZoom:), @"");
-	[menu addItem:[NSMenuItem separatorItem]];
-	add_window_item(
-		menu, @"Bring All to Front", @selector(arrangeInFront:), @"");
-	top.submenu = menu;
-	[main addItem:top];
-	NSApp.windowsMenu = menu;
+	NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
+	// With no target, AppKit handles these through the responder chain.
+	[sub addItemWithTitle:@"Minimize"
+				   action:@selector(performMiniaturize:)
+			keyEquivalent:@"m"];
+	[sub addItemWithTitle:@"Zoom"
+				   action:@selector(performZoom:)
+			keyEquivalent:@""];
+	[sub addItem:[NSMenuItem separatorItem]];
+	[sub addItemWithTitle:@"Bring All to Front"
+				   action:@selector(arrangeInFront:)
+			keyEquivalent:@""];
+	add_top_menu(main, title, sub);
+	NSApp.windowsMenu = sub;
 }
 
 // Qt hides and disables the items it has found nothing to merge into.
@@ -391,14 +370,7 @@ install_macos_app_menu(App *app)
 			if (t.isEmpty())
 				continue;
 
-			bool seen = false;
-			for (const QString &e : titles) {
-				if (e == t) {
-					seen = true;
-					break;
-				}
-			}
-			if (!seen)
+			if (find(titles.begin(), titles.end(), t) == titles.end())
 				titles.push_back(t);
 		}
 	};
@@ -408,7 +380,13 @@ install_macos_app_menu(App *app)
 		// Both trees end with Help, and macOS wants Window just before it.
 		if (t == QStringLiteral("Help"))
 			add_window_menu(main);
-		add_menu(main, t.toNSString(), delegate);
+
+		NSString *title = t.toNSString();
+		if (!has_menu(main, title)) {
+			NSMenu *sub = [[[DnMenu alloc] initWithTitle:title] autorelease];
+			sub.delegate = delegate;
+			add_top_menu(main, title, sub);
+		}
 	}
 }
 
