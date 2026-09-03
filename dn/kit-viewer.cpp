@@ -2104,6 +2104,9 @@ Viewer::present(Page &ui)
 	if (!this->kit_.inited_)
 		return;
 	sync_ui(*this, ui);
+	// The label reserves its width when measured, so settle it beforehand;
+	// only fit-to-well, which needs the well, still has to follow layout.
+	sync_scale_label(*this);
 	this->kit_.frame_ui(ui, [this] { sync_scale_label(*this); });
 }
 
