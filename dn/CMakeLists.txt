@@ -11,7 +11,6 @@ qt_add_executable(dn
 	main.cpp
 	overlay.cpp
 	renderer.cpp
-	sheet.cpp
 	thumbnail-cache.cpp
 	thumbnailer.cpp
 	url.cpp

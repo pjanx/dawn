@@ -25,6 +25,103 @@
 namespace dn
 {
 
+struct ThumbUpload {
+	const uint16_t *pixels = nullptr;
+	int width = 0;
+	int height = 0;
+	int x = 0;
+	int y = 0;
+};
+
+// The overlay half of the renderer: it owns the font and thumbnail atlases,
+// and turns an OverlayMesh into draw calls on the swapchain (or, when the
+// renderer dithers, on its compose image).
+class OverlayVulkan
+{
+	void destroy_swapchain();
+	void destroy_font();
+	void destroy_thumbs();
+	void destroy_sampled(
+		VkImage *image, VkDeviceMemory *memory, VkImageView *view) const;
+	void destroy_buffers();
+	void destroy_pipeline();
+	bool create_pipeline();
+	bool ensure_buffers(VkDeviceSize vertex_bytes, VkDeviceSize index_bytes);
+	bool upload_rgba16(const void *pixels, int width, int height,
+		VkImage *image, VkDeviceMemory *memory, VkImageView *view,
+		VkDescriptorSet set, VkComponentMapping swizzle) const;
+	bool copy_rgba16(const void *pixels, int width, int height, VkImage image,
+		VkImageLayout layout, int dst_x = 0, int dst_y = 0) const;
+	bool create_sampled(
+		int width, int height, VkImage *image, VkDeviceMemory *memory) const;
+	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
+		VkComponentMapping swizzle) const;
+	void compute_thumb_atlas_max();
+
+	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
+	VkDevice device_ = VK_NULL_HANDLE;
+	VkQueue queue_ = VK_NULL_HANDLE;
+	uint32_t queue_family_ = 0;
+	VkFormat format_ = VK_FORMAT_UNDEFINED;
+	VkExtent2D extent_{};
+
+	VkRenderPass render_pass_ = VK_NULL_HANDLE;
+	VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
+	VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
+	VkPipeline pipeline_ = VK_NULL_HANDLE;
+	VkPipeline thumb_pipeline_ = VK_NULL_HANDLE;
+	VkSampler sampler_ = VK_NULL_HANDLE;
+	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
+	VkDescriptorSet descriptor_sets_[2]{};
+	VkShaderModule vert_ = VK_NULL_HANDLE;
+	VkShaderModule frag_ = VK_NULL_HANDLE;
+	VkShaderModule thumb_frag_ = VK_NULL_HANDLE;
+
+	VkImage font_image_ = VK_NULL_HANDLE;
+	VkDeviceMemory font_memory_ = VK_NULL_HANDLE;
+	VkImageView font_view_ = VK_NULL_HANDLE;
+
+	VkImage thumb_image_ = VK_NULL_HANDLE;
+	VkDeviceMemory thumb_memory_ = VK_NULL_HANDLE;
+	VkImageView thumb_view_ = VK_NULL_HANDLE;
+	int thumb_side_ = 0;
+	int thumb_atlas_max_ = 2048;
+
+	VkBuffer vertex_buffer_ = VK_NULL_HANDLE;
+	VkDeviceMemory vertex_memory_ = VK_NULL_HANDLE;
+	VkDeviceSize vertex_size_ = 0;
+	VkBuffer index_buffer_ = VK_NULL_HANDLE;
+	VkDeviceMemory index_memory_ = VK_NULL_HANDLE;
+	VkDeviceSize index_size_ = 0;
+
+	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
+
+	std::vector<VkFramebuffer> framebuffers_;
+
+public:
+	OverlayVulkan() = default;
+	~OverlayVulkan() { destroy(); }
+
+	OverlayVulkan(const OverlayVulkan &) = delete;
+	OverlayVulkan &operator=(const OverlayVulkan &) = delete;
+
+	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
+		uint32_t queue_family, VkFormat format, VkImageLayout initial_layout,
+		VkImageLayout final_layout);
+	void set_swapchain(
+		const std::vector<VkImageView> &views, VkExtent2D extent);
+	bool upload_font(const unsigned char *pixels, int width, int height);
+	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
+	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
+		int dst_y, int atlas_side, bool *recreated = nullptr);
+	bool rebuild_thumbs(
+		const std::vector<ThumbUpload> &uploads, int atlas_side);
+	void reset_thumbs();
+	void record(
+		VkCommandBuffer cmd, uint32_t image_index, const OverlayMesh &mesh);
+	void destroy();
+};
+
 class Renderer
 {
 	void destroy_swapchain();
@@ -124,7 +221,8 @@ public:
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
 		int dst_y, int atlas_side, bool *recreated = nullptr);
-	bool rebuild_thumbs(const std::vector<ThumbUpload> &uploads, int atlas_side);
+	bool rebuild_thumbs(
+		const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.

@@ -9,7 +9,6 @@
 
 #include "action.hpp"
 #include "overlay.hpp"
-#include "sheet.hpp"
 
 #include "libdn/libdn.h"
 

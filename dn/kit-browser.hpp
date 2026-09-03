@@ -9,7 +9,7 @@
 
 #include "kit-chrome.hpp"
 #include "kit.hpp"
-#include "sheet.hpp"
+#include "overlay.hpp"
 #include "thumbnailer.hpp"
 #include "types.hpp"
 
