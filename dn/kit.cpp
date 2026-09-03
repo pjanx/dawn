@@ -4718,10 +4718,7 @@ Kit::destroy()
 	this->default_focus_ = nullptr;
 	this->hot_ = nullptr;
 	this->pressed_ = nullptr;
-	this->tooltip_text_.clear();
-	this->tooltip_accel_.clear();
-	this->tooltip_visible_ = false;
-	this->tooltip_anchor_ = nullptr;
+	hide_tooltip();
 }
 
 void
@@ -4757,7 +4754,7 @@ Kit::forget_tree(Widget *tree)
 	forget(this->pressed_);
 	const bool forgot_hot = forget(this->hot_);
 	if (forget(this->tooltip_anchor_) || forgot_hot)
-		this->tooltip_visible_ = false;
+		hide_tooltip();
 }
 
 void
@@ -4807,6 +4804,22 @@ Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 		this->renderer_->set_well_colour(well.r, well.g, well.b);
 		this->renderer_->set_checker_colour(tile.r, tile.g, tile.b);
 	}
+}
+
+// Take the tooltip down and restart its delay from wherever the pointer
+// stands: whatever ends up under it has to earn the tooltip afresh.  Leaving
+// the clock be would have wake_ms() find an already overdue tip, and tooltip()
+// show it on the very next frame, without any hover at all.
+void
+Kit::hide_tooltip()
+{
+	this->tooltip_text_.clear();
+	this->tooltip_accel_.clear();
+	this->tooltip_visible_ = false;
+	this->tooltip_anchor_ = nullptr;
+	this->hover_at_ = chrono::steady_clock::now();
+	this->hover_x_ = this->mouse_x_;
+	this->hover_y_ = this->mouse_y_;
 }
 
 void
@@ -4942,8 +4955,7 @@ Kit::wake_ms() const
 		const float elapsed = chrono::duration<float, milli>(
 			chrono::steady_clock::now() - this->hover_at_)
 								  .count();
-		if (elapsed < kTooltipDelayMs)
-			ms = int(ceil(double(kTooltipDelayMs - elapsed)));
+		ms = max(0, int(ceil(double(kTooltipDelayMs - elapsed))));
 	}
 	ms = sooner(ms, wake_tree(this->root_));
 	// Popups are not in the root tree, and a scrollbar inside one still
@@ -4990,7 +5002,7 @@ Kit::open_popup(Popup *p)
 	this->popups_.push_back(p);
 	this->scrim_->visible = true;
 	this->scrim_->r = {0, 0, this->host_w_, this->host_h_};
-	this->tooltip_visible_ = false;
+	hide_tooltip();
 }
 
 void

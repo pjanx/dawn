@@ -871,6 +871,7 @@ struct Kit {
 	void clip_to(Rect w);
 	void clip_pop();
 	void tooltip(const Widget *hot);
+	void hide_tooltip();
 	[[nodiscard]] int wake_ms() const;
 	// One frame of the widget tree: lay it out, settle what the layout may
 	// have moved -- popups, focus, the hover under the pointer -- and paint.
