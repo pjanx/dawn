@@ -2523,7 +2523,9 @@ struct MenuCols {
 	int avail = 0;  // what the label gets before the accelerator
 };
 
-MenuCols
+}  // namespace
+
+static MenuCols
 menu_cols(const Kit &kit, const MenuItem &m)
 {
 	MenuCols c;
@@ -2535,7 +2537,7 @@ menu_cols(const Kit &kit, const MenuItem &m)
 	return c;
 }
 
-QString
+static QString
 menu_shown(const Kit &kit, const MenuItem &m)
 {
 	if (m.text.isEmpty())
@@ -2543,7 +2545,7 @@ menu_shown(const Kit &kit, const MenuItem &m)
 	return kit.elide_lines(m.text, menu_cols(kit, m).avail, 1, false);
 }
 
-void
+static void
 collect_focusable(Widget *w, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
@@ -2558,7 +2560,7 @@ collect_focusable(Widget *w, vector<Widget *> &out)
 // The same walk, in the same order, for what one letter selects.  Labels
 // take part here without being focusable: a buddy label is precisely a
 // mnemonic that belongs to somebody else.
-void
+static void
 collect_mnemonics(Widget *w, QChar letter, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
@@ -2572,15 +2574,13 @@ collect_mnemonics(Widget *w, QChar letter, vector<Widget *> &out)
 
 // Where the keyboard lands once a candidate is picked.  A label sends it on
 // to its buddy; everything else stands for itself.
-Widget *
+static Widget *
 mnemonic_target(Widget *w)
 {
 	if (auto *label = dynamic_cast<Label *>(w))
 		return label->buddy;
 	return w;
 }
-
-}  // namespace
 
 void
 MenuPopup::focus_item(Kit &kit, Widget *w, bool kbd) const
@@ -4865,7 +4865,7 @@ Kit::tooltip(const Widget *hot)
 // is where a novel glyph -- Browser::tip() hands us filenames -- can grow the
 // atlas mid-frame and invalidate the UVs already in the draw list.  See the
 // note on Sheet::uv().
-void
+static void
 paint_tooltip(Kit &kit)
 {
 	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty())
@@ -4933,7 +4933,9 @@ Scrim::press(Kit &kit, float, float, Qt::MouseButton)
 	return true;
 }
 
-int
+}  // namespace
+
+static int
 wake_tree(const Widget *w)
 {
 	if (!w || !w->shown())
@@ -4944,8 +4946,6 @@ wake_tree(const Widget *w)
 		ms = sooner(ms, wake_tree(w->child(i)));
 	return ms;
 }
-
-}  // namespace
 
 int
 Kit::wake_ms() const
@@ -4965,7 +4965,7 @@ Kit::wake_ms() const
 	return sooner(ms, wake_tree(this->scrim_.get()));
 }
 
-void
+static void
 ensure_scrim(Kit &kit)
 {
 	if (kit.scrim_)
