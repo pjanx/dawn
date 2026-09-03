@@ -29,6 +29,7 @@ constexpr uint8_t kToggle = ActionInMenu | ActionToggle;
 constexpr unsigned kCtrl = unsigned(Qt::ControlModifier);
 constexpr unsigned kAlt = unsigned(Qt::AltModifier);
 constexpr unsigned kShift = unsigned(Qt::ShiftModifier);
+constexpr unsigned kMeta = unsigned(Qt::MetaModifier);
 
 // clang-format off
 constexpr ActionDef kDefs[] = {
@@ -38,9 +39,14 @@ constexpr ActionDef kDefs[] = {
 	{0, {"_Minimise"}, {}, {}, {}},
 	{kToggle, {"_Maximise", "Res_tore"}, {}, {}, {}},
 	{kMenu, {"_Quit"}, {}, {{Qt::Key_Q, kCtrl}}, {}},
-	{kToggle, {"_Fullscreen", "E_xit Fullscreen"},
-		{"view-fullscreen-symbolic", "view-restore-symbolic"},
-		{{Qt::Key_F11}}, {}},
+	{kToggle, {"Enter _Full Screen", "Exit _Full Screen"},
+		{"view-fullscreen-symbolic", "view-restore-symbolic"}, {
+#ifdef Q_OS_MACOS
+		{Qt::Key_F, kCtrl | kMeta},
+#else
+		{Qt::Key_F11},
+#endif
+		}, {}},
 	{kToggle, {"_Dark Mode"}, {"dark-mode-symbolic"}, {{Qt::Key_D}}, {}},
 	{kMenu, {"_Hint"}, {}, {{Qt::Key_F}}, {}},
 	{kMenu, {"_Back in History"}, {"curved-arrow-left-symbolic"}, {

@@ -132,7 +132,7 @@ static bool
 skip_action(dn::Action a)
 {
 	return a == dn::Action::Quit || a == dn::Action::About ||
-		a == dn::Action::Settings || a == dn::Action::Fullscreen;
+		a == dn::Action::Settings;
 }
 
 static void
@@ -282,6 +282,7 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 {
 	if (has_menu(main, title))
 		return;
+
 	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:title
 												  action:nil
 										   keyEquivalent:@""] autorelease];
@@ -289,6 +290,39 @@ add_menu(NSMenu *main, NSString *title, id delegate)
 	sub.delegate = delegate;
 	top.submenu = sub;
 	[main addItem:top];
+}
+
+// Standard items, left to the responder chain, i.e. to AppKit.
+static void
+add_window_item(NSMenu *menu, NSString *title, SEL action, NSString *key)
+{
+	[menu addItem:[[[NSMenuItem alloc] initWithTitle:title
+											  action:action
+									   keyEquivalent:key] autorelease]];
+}
+
+// Qt's application delegate installs a hidden Window menu of its own, but only
+// if nothing has claimed NSApp.windowsMenu by the time the run loop starts;
+// claiming it here, from App::init(), is what keeps that from happening.
+// AppKit owns the rest: it appends window titles, and runs the items.
+static void
+add_window_menu(NSMenu *main)
+{
+	if (has_menu(main, @"Window"))
+		return;
+
+	NSMenuItem *top = [[[NSMenuItem alloc] initWithTitle:@"Window"
+												  action:nil
+										   keyEquivalent:@""] autorelease];
+	NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Window"] autorelease];
+	add_window_item(menu, @"Minimize", @selector(performMiniaturize:), @"m");
+	add_window_item(menu, @"Zoom", @selector(performZoom:), @"");
+	[menu addItem:[NSMenuItem separatorItem]];
+	add_window_item(
+		menu, @"Bring All to Front", @selector(arrangeInFront:), @"");
+	top.submenu = menu;
+	[main addItem:top];
+	NSApp.windowsMenu = menu;
 }
 
 // Qt hides and disables the items it has found nothing to merge into.
@@ -370,8 +404,12 @@ install_macos_app_menu(App *app)
 	};
 	consider(viewer_menu());
 	consider(browser_menu());
-	for (const QString &t : titles)
+	for (const QString &t : titles) {
+		// Both trees end with Help, and macOS wants Window just before it.
+		if (t == QStringLiteral("Help"))
+			add_window_menu(main);
 		add_menu(main, t.toNSString(), delegate);
+	}
 }
 
 }  // namespace dn
