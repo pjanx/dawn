@@ -53,6 +53,10 @@ struct Rect {
 	}
 	[[nodiscard]] int right() const { return this->x + this->w; }
 	[[nodiscard]] int bottom() const { return this->y + this->h; }
+	[[nodiscard]] Box box() const
+	{
+		return {this->x, this->y, this->right(), this->bottom()};
+	}
 	[[nodiscard]] bool empty() const { return this->w <= 0 || this->h <= 0; }
 	[[nodiscard]] Rect inset(int px, int py) const;
 };
@@ -719,8 +723,8 @@ struct Kit {
 	using Packed = Sheet::Packed;
 	struct Glyph {
 		Packed rect;
-		float bearing_x = 0;
-		float bearing_y = 0;
+		int bearing_x = 0;
+		int bearing_y = 0;
 	};
 
 	float dpr_ = 1.f;
@@ -834,13 +838,12 @@ struct Kit {
 	bool set_dpr(float dpr);
 	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
 	void pack_icon(const char *name, int px);
-	void draw_icon(
-		float x, float y, float size, const char *name, Colour colour);
+	void draw_icon(int x, int y, int size, const char *name, Colour colour);
 	Packed pack_bitmap(const QImage &image);
 	void cache_text(const QString &text, bool bold);
 	void emit_text(
 		float x, float y, const QString &text, Colour colour, bool bold);
-	void draw_glow(float ix, float iy, float iw, float ih, Colour col);
+	void draw_glow(Rect w, Colour col);
 	// An inactive window halves whatever alpha its ink already had.
 	[[nodiscard]] float ink_alpha() const
 	{
@@ -848,10 +851,9 @@ struct Kit {
 	}
 	void focus_ring(Rect w);   // 1pt inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
-	// Rect-shaped wrappers over the draw list, which speaks floats: layout
-	// is integral, so these save every caller the same four conversions.
+	// Rect-shaped wrappers over the corner-based draw list.
 	void draw_fill(Rect w, Colour col);
-	void draw_border(Rect w, Colour col, float thickness);
+	void draw_border(Rect w, Colour col, int thickness);
 	void clip_to(Rect w);
 	void clip_pop();
 	void tooltip(const Widget *hot);

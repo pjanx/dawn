@@ -292,13 +292,10 @@ CieDiagram::paint(Kit &kit) const
 	const int y = cap_y0 + kit.px(kCapGap);
 	const int th = kit.text_height(kSourceLab, 0, true);
 	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
-	kit.list_.add_rect_filled(x0, y, x0 + cap_w, y + th, kMidGreyCol);
-	if (plot.w >= 8.f && plot.h >= 8.f && !this->slot_.empty()) {
-		float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
-		kit.atlas_.uv(this->slot_, &u0, &v0, &u1, &v1);
-		kit.list_.add_image(plot.x, plot.y, plot.x + plot.w, plot.y + plot.h,
-			u0, v0, u1, v1, {1, 1, 1, 1});
-	}
+	kit.list_.add_rect_filled({x0, y, x0 + cap_w, y + th}, kMidGreyCol);
+	if (plot.w >= 8 && plot.h >= 8 && !this->slot_.empty())
+		kit.list_.add_image(
+			plot.box(), kit.atlas_.uv(this->slot_), {1, 1, 1, 1});
 
 	const int cx = x0 + cap_w / 2;
 	const int gap = kit.px(4.f);

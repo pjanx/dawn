@@ -43,6 +43,11 @@ namespace dn
 // --- Atlas -------------------------------------------------------------------
 
 constexpr int kAtlasStart = 512;
+// Horizontal subpixel positions each glyph is rasterised at.  Text quads have
+// to land on whole pixels to blit 1:1, so this is where the fraction of a
+// shaped pen position goes -- without it, rounding every glyph on its own
+// quantises the advances, and kerning with them.
+constexpr int kGlyphPhases = 4;
 constexpr int kAtlasMax = 4096;
 
 static uint16_t
@@ -184,8 +189,10 @@ raster_window_button(const char *name, int px)
 }
 
 // boundingRect is the outline box, not the bitmap origin (Core Text pads).
+// The pen sits at a whole pixel plus phase; the returned origin is measured
+// from the whole pixel, so the phase survives only as coverage.
 static QImage
-raster_glyph(const QRawFont &raw, quint32 gid, QPoint *origin)
+raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
 {
 	constexpr int kPad = 4;
 	const QRect box = raw.boundingRect(gid).toAlignedRect().adjusted(
@@ -199,7 +206,7 @@ raster_glyph(const QRawFont &raw, quint32 gid, QPoint *origin)
 	QGlyphRun run;
 	run.setRawFont(raw);
 	run.setGlyphIndexes({gid});
-	run.setPositions({-box.topLeft()});
+	run.setPositions({QPointF(-box.topLeft()) + QPointF(phase, 0)});
 	painter.drawGlyphRun({}, run);
 	painter.end();
 
@@ -333,15 +340,17 @@ font_id(Kit &kit, const QRawFont &raw)
 }
 
 static const Kit::Glyph *
-cache_glyph(Kit &kit, const QRawFont &raw, quint32 gid)
+cache_glyph(Kit &kit, const QRawFont &raw, quint32 gid, int phase)
 {
 	if (!raw.isValid())
 		return nullptr;
-	const uint64_t key = (uint64_t(font_id(kit, raw)) << 32) | gid;
+	// gid is 32 bits and the phase multiplies it, hence the two spare ones.
+	const uint64_t key = (uint64_t(font_id(kit, raw)) << 34) |
+		(uint64_t(gid) * kGlyphPhases + uint64_t(phase));
 	if (auto it = kit.glyphs_.find(key); it != kit.glyphs_.end())
 		return &it->second;
 	QPoint origin;
-	QImage map = raster_glyph(raw, gid, &origin);
+	QImage map = raster_glyph(raw, gid, float(phase) / kGlyphPhases, &origin);
 	if (map.isNull() || map.width() <= 0 || map.height() <= 0) {
 		Kit::Glyph glyph;
 		auto [it, _] = kit.glyphs_.emplace(key, glyph);
@@ -353,8 +362,8 @@ cache_glyph(Kit &kit, const QRawFont &raw, quint32 gid)
 	blit(kit, packed, map, true);
 	Kit::Glyph glyph;
 	glyph.rect = packed;
-	glyph.bearing_x = float(origin.x());
-	glyph.bearing_y = float(origin.y());
+	glyph.bearing_x = origin.x();
+	glyph.bearing_y = origin.y();
 	auto [it, _] = kit.glyphs_.emplace(key, glyph);
 	return &it->second;
 }
@@ -370,7 +379,8 @@ cache_ascii(Kit &kit, bool bold)
 			raw.glyphIndexesForString(QString(QChar(cp)));
 		if (indexes.isEmpty())
 			continue;
-		cache_glyph(kit, raw, indexes.front());
+		for (int phase = 0; phase < kGlyphPhases; phase++)
+			cache_glyph(kit, raw, indexes.front(), phase);
 	}
 }
 
@@ -385,8 +395,10 @@ cache_text(Kit &kit, const QString &text, bool bold, int wrap)
 	QTextLayout layout(text, font);
 	layout_text(&layout, wrap);
 	for (const QGlyphRun &run : layout.glyphRuns()) {
-		for (quint32 gid : run.glyphIndexes())
-			cache_glyph(kit, run.rawFont(), gid);
+		for (quint32 gid : run.glyphIndexes()) {
+			for (int phase = 0; phase < kGlyphPhases; phase++)
+				cache_glyph(kit, run.rawFont(), gid, phase);
+		}
 	}
 }
 
@@ -480,21 +492,28 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 		const QList<QPointF> pos = run.positions();
 		const int n = int(min(gids.size(), pos.size()));
 		for (int i = 0; i < n; ++i) {
-			const Kit::Glyph *glyph = cache_glyph(kit, run.rawFont(), gids[i]);
+			// The shaper positions the pen in fractions of a pixel, and
+			// kerning lives in those fractions.  Split one off into the
+			// phase the glyph was rasterised at, so that the quad can stay
+			// on the pixel grid and still blit 1:1.
+			const double pen = double(x) + pos[i].x();
+			int gx = int(floor(pen));
+			int phase = int(lround((pen - gx) * kGlyphPhases));
+			if (phase == kGlyphPhases) {
+				phase = 0;
+				gx++;
+			}
+			const Kit::Glyph *glyph =
+				cache_glyph(kit, run.rawFont(), gids[i], phase);
 			if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
 				continue;
-			// Glyph atlas rects are whole pixels, so a rounded origin
-			// keeps the quad on the grid without snapping its size.
-			const float gx =
-				round(x + float(pos[i].x() + double(glyph->bearing_x)));
-			const float gy =
-				round(y + float(pos[i].y() + double(glyph->bearing_y)));
-			const float gw = float(glyph->rect.w);
-			const float gh = float(glyph->rect.h);
-			float u0, v0, u1, v1;
-			kit.atlas_.uv(glyph->rect, &u0, &v0, &u1, &v1);
+			// Baselines, unlike pens, belong on whole pixel rows.
+			gx += glyph->bearing_x;
+			const int gy =
+				int(lround(double(y) + pos[i].y())) + glyph->bearing_y;
 			kit.list_.add_image(
-				gx, gy, gx + gw, gy + gh, u0, v0, u1, v1, colour);
+				{gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
+				kit.atlas_.uv(glyph->rect), colour);
 		}
 	}
 	if (mnemonic < 0 || mnemonic >= text.size())
@@ -509,15 +528,16 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 	const float cx1 = float(line.cursorToX(mnemonic + 1));
 	// Both font metrics grow downwards from the baseline, which is where
 	// the glyphs of this line sit as well.
-	const float uy =
-		y + float(line.y() + line.ascent() + raw.underlinePosition());
-	kit.list_.add_line(x + min(cx0, cx1), uy, x + max(cx0, cx1), uy, colour,
-		float(raw.lineThickness()));
+	const int uy = int(lround(
+		double(y) + line.y() + line.ascent() + raw.underlinePosition()));
+	const int th = max(1, int(lround(raw.lineThickness())));
+	const int ux0 = int(lround(x + min(cx0, cx1)));
+	const int ux1 = int(lround(x + max(cx0, cx1)));
+	kit.list_.add_rect_filled({ux0, uy, ux1, uy + th}, colour);
 }
 
 static void
-emit_icon(
-	Kit &kit, float x, float y, float size, const char *name, Colour colour)
+emit_icon(Kit &kit, int x, int y, int size, const char *name, Colour colour)
 {
 	if (!name)
 		return;
@@ -526,9 +546,8 @@ emit_icon(
 	if (it == kit.icons_.end())
 		return;
 
-	float u0, v0, u1, v1;
-	kit.atlas_.uv(it->second, &u0, &v0, &u1, &v1);
-	kit.list_.add_image(x, y, x + size, y + size, u0, v0, u1, v1, colour);
+	kit.list_.add_image(
+		{x, y, x + size, y + size}, kit.atlas_.uv(it->second), colour);
 }
 
 // --- Layout kit --------------------------------------------------------------
@@ -744,9 +763,8 @@ Button::paint(Kit &kit) const
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->icon)
-		emit_icon(kit, float(this->r.x + px),
-			float(this->r.y + (this->r.h - icon) / 2), float(icon),
-			this->icon, col(kit.colours_[ColourInk], ink_a));
+		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - icon) / 2,
+			icon, this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx =
 			this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
@@ -863,8 +881,8 @@ Checkbox::paint(Kit &kit) const
 	const int box = icon + border * 2;
 	const int bx = this->r.x + px;
 	const int by = this->r.y + (this->r.h - box) / 2;
-	kit.list_.add_rect_filled_vgradient(float(bx), float(by),
-		float(bx + box), float(by + box), col(kit.colours_[ColourEntryTop]),
+	kit.list_.add_rect_filled_vgradient({bx, by, bx + box, by + box},
+		col(kit.colours_[ColourEntryTop]),
 		col(kit.colours_[ColourEntryBottom]));
 	kit.draw_border({bx, by, box, box}, col(kit.colours_[ColourDivider]),
 		kit.hairline());
@@ -872,7 +890,7 @@ Checkbox::paint(Kit &kit) const
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->checked)
-		emit_icon(kit, float(bx + border), float(by + border), float(icon),
+		emit_icon(kit, bx + border, by + border, icon,
 			"object-select-symbolic", col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
@@ -1132,10 +1150,9 @@ Entry::paint(Kit &kit) const
 	// A flat idle field lets the toolbar show through.  Text in it is a filter
 	// the listing is already obeying, so that restores the background even
 	// unfocused, as the only thing on screen explaining why files are missing.
-	const float hair = float(kit.hairline());
+	const int hair = kit.hairline();
 	if (!this->flat || this->focused_ || !this->text.isEmpty())
-		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
-			this->r.x + this->r.w, this->r.y + this->r.h,
+		kit.list_.add_rect_filled_vgradient(this->r.box(),
 			col(kit.colours_[ColourEntryTop]),
 			col(kit.colours_[ColourEntryBottom]));
 	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
@@ -1164,16 +1181,17 @@ Entry::paint(Kit &kit) const
 		const float x1 = tx +
 			float(kit.caret_x(
 				full, this->caret + int(this->preedit.size()), false));
-		const float uy = float(ty + th) - hair;
-		kit.list_.add_line(min(x0, x1), uy, max(x0, x1), uy,
-			col(kit.colours_[ColourInk], kit.ink_alpha()), hair);
+		const int uy = ty + th - hair;
+		kit.list_.add_rect_filled(
+			{int(lround(min(x0, x1))), uy, int(lround(max(x0, x1))), uy + hair},
+			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-		const float cx = round(tx + float(kit.caret_x(full, at, false)));
-		kit.list_.add_rect_filled(cx, float(ty), cx + hair, float(ty + th),
+		const int cx = int(lround(tx + float(kit.caret_x(full, at, false))));
+		kit.list_.add_rect_filled({cx, ty, cx + hair, ty + th},
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
@@ -1387,17 +1405,19 @@ Sep::paint(Kit &kit) const
 	if (!shown() || this->r.w <= 0 || this->r.h <= 0)
 		return;
 	const Colour c = col(kit.colours_[ColourDivider]);
-	// Half-pixel centres: these are drawing positions, not geometry.
-	const float cx = float(this->r.x) + float(this->r.w) * 0.5f;
-	const float cy = float(this->r.y) + float(this->r.h) * 0.5f;
-	const float inset = float(kit.px(2.f)), gap = float(kit.px(4.f));
-	const float hair = kit.hairline();
-	if (this->r.h > this->r.w)
-		kit.list_.add_line(cx, float(this->r.y) + inset, cx,
-			float(this->r.y + this->r.h) - inset, c, hair);
-	else
-		kit.list_.add_line(float(this->r.x) + gap, cy,
-			float(this->r.x + this->r.w) - gap, cy, c, hair);
+	const int inset = kit.px(2.f), gap = kit.px(4.f);
+	const int hair = kit.hairline();
+	// The rule is a band centred in the cell, which for an even hairline in
+	// an odd cell rounds towards the top left.
+	if (this->r.h > this->r.w) {
+		const int x = this->r.x + (this->r.w - hair) / 2;
+		kit.list_.add_rect_filled(
+			{x, this->r.y + inset, x + hair, this->r.bottom() - inset}, c);
+	} else {
+		const int y = this->r.y + (this->r.h - hair) / 2;
+		kit.list_.add_rect_filled(
+			{this->r.x + gap, y, this->r.right() - gap, y + hair}, c);
+	}
 }
 
 // --- Splitter ----------------------------------------------------------------
@@ -1419,12 +1439,13 @@ Splitter::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	const float x = float(this->r.x) + float(this->r.w) * 0.5f;
+	const int hair = kit.hairline();
+	const int x = this->r.x + (this->r.w - hair) / 2;
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
-	kit.list_.add_line(x, float(this->r.y), x, float(this->r.y + this->r.h),
-		col(c), kit.hairline());
+	kit.list_.add_rect_filled(
+		{x, this->r.y, x + hair, this->r.bottom()}, col(c));
 }
 
 bool
@@ -2139,8 +2160,7 @@ Panel::paint(Kit &kit) const
 		kit.clip_to(this->r);
 	switch (this->fill) {
 	case Fill::Toolbar:
-		kit.list_.add_rect_filled_vgradient(this->r.x, this->r.y,
-			this->r.x + this->r.w, this->r.y + this->r.h,
+		kit.list_.add_rect_filled_vgradient(this->r.box(),
 			col(kit.colours_[ColourToolbarTop]),
 			col(kit.colours_[ColourToolbarBottom]));
 		break;
@@ -2154,19 +2174,17 @@ Panel::paint(Kit &kit) const
 		break;
 	}
 	paint_children(kit);
-	const float hair = float(kit.hairline());
-	// add_line() centres an axis-aligned band on a pixel centre, so the
-	// bottom rule is pulled half its own width inside the panel's edge.
-	const float edge = float(this->r.y + this->r.h) - hair * 0.5f;
+	const int hair = kit.hairline();
 	switch (this->stroke) {
 	case Stroke::All:
 		kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 		break;
 	case Stroke::Bottom:
-		kit.list_.add_line(this->r.x, edge, this->r.x + this->r.w, edge,
+		kit.list_.add_rect_filled(
+			{this->r.x, this->r.bottom() - hair, this->r.right(),
+				this->r.bottom()},
 			col(this->busy ? kit.colours_[ColourBusy]
-						   : kit.colours_[ColourDivider]),
-			hair);
+						   : kit.colours_[ColourDivider]));
 		break;
 	case Stroke::None:
 		break;
@@ -2990,8 +3008,7 @@ MenuItem::paint(Kit &kit) const
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f);
 
 	if (this->checkable && this->checked)
-		emit_icon(kit, float(lead_x), float(iy), float(icon),
-			"object-select-symbolic", label_c);
+		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
 		const QString shown = menu_shown(kit, *this);
 		emit_text(kit, float(label_x), float(ty), shown, label_c, false,
@@ -3005,9 +3022,8 @@ MenuItem::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], 0.5f), false, -1);
 	}
 	if (this->sub) {
-		emit_icon(kit,
-			float(this->r.x + this->r.w - pad_x - cols.chevron), float(iy),
-			float(icon), "go-next-symbolic",
+		emit_icon(kit, this->r.right() - pad_x - cols.chevron, iy, icon,
+			"go-next-symbolic",
 			col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.375f));
 	}
 }
@@ -3250,8 +3266,8 @@ Combo::paint(Kit &kit) const
 	const int icon = kit.icon_px();
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
-	emit_icon(kit, float(this->r.right() - pad_x - icon),
-		float(this->r.y + (this->r.h - icon) / 2), float(icon), kComboIcon,
+	emit_icon(kit, this->r.right() - pad_x - icon,
+		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
 		col(kit.colours_[ColourInk], ink_a));
 
 	const QString shown_text = combo_shown(kit, *this);
@@ -4010,18 +4026,17 @@ Kit::pack_icon(const char *name, int px)
 }
 
 void
-Kit::draw_icon(float x, float y, float size, const char *name, Colour colour)
+Kit::draw_icon(int x, int y, int size, const char *name, Colour colour)
 {
 	emit_icon(*this, x, y, size, name, colour);
 }
 
 void
-Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
+Kit::draw_glow(Rect w, Colour col)
 {
-	if (this->glow_.empty() || iw <= 0.f || ih <= 0.f)
+	if (this->glow_.empty() || w.empty())
 		return;
-	float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
-	this->atlas_.uv(this->glow_, &u0, &v0, &u1, &v1);
+	const Uv uv = this->atlas_.uv(this->glow_);
 	const float aw = float(max(this->atlas_.w, 1));
 	const float ah = float(max(this->atlas_.h, 1));
 	const float u_in =
@@ -4030,55 +4045,53 @@ Kit::draw_glow(float ix, float iy, float iw, float ih, Colour col)
 		(float(this->glow_.y) + float(this->glow_.h) - 0.5f) / ah;
 	// The glow is rasterised at kGlowPts * dpr, so its quad has to reach
 	// exactly that far in pixels, or the ramp is squashed or stretched.
-	const float glow = float(px(kGlowPts));
-	const float ox = ix - glow;
-	const float oy = iy - glow;
-	const float ox1 = ix + iw + glow;
-	const float oy1 = iy + ih + glow;
-	const float ix1 = ix + iw;
-	const float iy1 = iy + ih;
-	this->list_.add_image(ox, oy, ix, iy, u0, v0, u1, v1, col);
-	this->list_.add_image(ix1, oy, ox1, iy, u1, v0, u0, v1, col);
-	this->list_.add_image(ox, iy1, ix, oy1, u0, v1, u1, v0, col);
-	this->list_.add_image(ix1, iy1, ox1, oy1, u1, v1, u0, v0, col);
-	this->list_.add_image(ix, oy, ix1, iy, u_in, v0, u_in, v1, col);
-	this->list_.add_image(ix, iy1, ix1, oy1, u_in, v1, u_in, v0, col);
-	this->list_.add_image(ox, iy, ix, iy1, u0, v_in, u1, v_in, col);
-	this->list_.add_image(ix1, iy, ox1, iy1, u1, v_in, u0, v_in, col);
+	const int glow = px(kGlowPts);
+	const int ox = w.x - glow, oy = w.y - glow;
+	const int ox1 = w.right() + glow, oy1 = w.bottom() + glow;
+	const int ix = w.x, iy = w.y, ix1 = w.right(), iy1 = w.bottom();
+	// Corners mirror the ramp into place; the sides stretch its inner edge.
+	this->list_.add_image({ox, oy, ix, iy}, uv, col);
+	this->list_.add_image(
+		{ix1, oy, ox1, iy}, {uv.u1, uv.v0, uv.u0, uv.v1}, col);
+	this->list_.add_image(
+		{ox, iy1, ix, oy1}, {uv.u0, uv.v1, uv.u1, uv.v0}, col);
+	this->list_.add_image(
+		{ix1, iy1, ox1, oy1}, {uv.u1, uv.v1, uv.u0, uv.v0}, col);
+	this->list_.add_image({ix, oy, ix1, iy}, {u_in, uv.v0, u_in, uv.v1}, col);
+	this->list_.add_image({ix, iy1, ix1, oy1}, {u_in, uv.v1, u_in, uv.v0}, col);
+	this->list_.add_image({ox, iy, ix, iy1}, {uv.u0, v_in, uv.u1, v_in}, col);
+	this->list_.add_image({ix1, iy, ox1, iy1}, {uv.u1, v_in, uv.u0, v_in}, col);
 }
 
 void
 Kit::focus_ring(Rect w)
 {
-	this->list_.add_rect_stroke(float(w.x), float(w.y), float(w.right()),
-		float(w.bottom()), col(this->colours_[ColourInk]), float(hairline()));
+	this->list_.add_rect_stroke(
+		w.box(), col(this->colours_[ColourInk]), hairline());
 }
 
 void
 Kit::draw_shadow(Rect w)
 {
-	draw_glow(w.x, w.y, w.w, w.h, {0, 0, 0, 0.25f});
+	draw_glow(w, {0, 0, 0, 0.25f});
 }
 
 void
 Kit::draw_fill(Rect w, Colour col)
 {
-	this->list_.add_rect_filled(
-		float(w.x), float(w.y), float(w.right()), float(w.bottom()), col);
+	this->list_.add_rect_filled(w.box(), col);
 }
 
 void
-Kit::draw_border(Rect w, Colour col, float thickness)
+Kit::draw_border(Rect w, Colour col, int thickness)
 {
-	this->list_.add_rect_stroke(float(w.x), float(w.y), float(w.right()),
-		float(w.bottom()), col, thickness);
+	this->list_.add_rect_stroke(w.box(), col, thickness);
 }
 
 void
 Kit::clip_to(Rect w)
 {
-	this->list_.push_clip(
-		float(w.x), float(w.y), float(w.right()), float(w.bottom()));
+	this->list_.push_clip(w.box());
 }
 
 void
@@ -5119,16 +5132,13 @@ Kit::paint()
 		(float(this->white_.x) + 0.5f) / float(max(this->atlas_.w, 1));
 	const float white_v =
 		(float(this->white_.y) + 0.5f) / float(max(this->atlas_.h, 1));
-	// The draw list is fed device pixels now, so its own grid is 1:1 and its
-	// snapping only rounds off what drawing adds on top of layout.
 	this->list_.begin(
-		float(this->host_w_), float(this->host_h_), white_u, white_v);
+		this->host_w_, this->host_h_, {white_u, white_v, white_u, white_v});
 	if (this->csd_shadow_) {
 		// TODO(p): Consider if we don't want to add another 1px border.
 		const Rect f = frame();
 		if (!f.empty())
-			draw_glow(
-				f.x, f.y, f.w, f.h, {0, 0, 0, this->active_ ? 0.25f : 0.125f});
+			draw_glow(f, {0, 0, 0, this->active_ ? 0.25f : 0.125f});
 	}
 	if (this->root_)
 		this->root_->paint(*this);

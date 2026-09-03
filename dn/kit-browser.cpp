@@ -125,7 +125,7 @@ constexpr float kBorder = 2.f;
 constexpr float kThumbGap = 1.f;
 constexpr int kCapLines = 2;
 constexpr float kCapPad = 4.f;
-constexpr float kCheck = 40.f;
+constexpr int kCheck = 40;
 constexpr float kPrefetchRows = 2.f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
@@ -1608,15 +1608,15 @@ draw_checkers(Kit &kit, const Rect &tile)
 	const Colour bg = kit.colours_[ColourToolbarBottom];
 	const Colour fg = kit.colours_[ColourWell];
 	kit.draw_fill(tile, bg);
-	const int nx = max(1, int(ceil(double(tile.w / kCheck))));
-	const int ny = max(1, int(ceil(double(tile.h / kCheck))));
+	const int nx = max(1, (tile.w + kCheck - 1) / kCheck);
+	const int ny = max(1, (tile.h + kCheck - 1) / kCheck);
 	for (int j = 0; j < ny; ++j) {
 		for (int i = 0; i < nx; ++i) {
 			if (((i + j) & 1) == 0)
 				continue;
-			const float x0 = tile.x + float(i) * kCheck;
-			const float y0 = tile.y + float(j) * kCheck;
-			kit.list_.add_rect_filled(x0, y0, x0 + kCheck, y0 + kCheck, fg);
+			const int x0 = tile.x + i * kCheck;
+			const int y0 = tile.y + j * kCheck;
+			kit.list_.add_rect_filled({x0, y0, x0 + kCheck, y0 + kCheck}, fg);
 		}
 	}
 	kit.clip_pop();
@@ -2686,26 +2686,22 @@ Browser::paint(Kit &kit) const
 		const bool focused =
 			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
 		if (!f.gpu.empty()) {
-			const float border = float(kit.px(kBorder));
-			kit.draw_glow(float(tx) - border, float(ty) - border,
-				float(tw) + 2.f * border, float(thp) + 2.f * border,
-				focused ? glow_hot : glow_idle);
+			const int border = kit.px(kBorder);
+			// The frame fills the band the glow starts outside of, so it
+			// sits against the thumbnail without eating into the image.
+			const Rect outer = {
+				tx - border, ty - border, tw + 2 * border, thp + 2 * border};
+			kit.draw_glow(outer, focused ? glow_hot : glow_idle);
 			draw_checkers(kit, {tx, ty, tw, thp});
-			// The frame sits just outside the thumbnail, by half its own
-			// width on each side, so it does not eat into the image.
-			const float half = border * 0.5f;
-			kit.list_.add_rect_stroke(float(tx) - half, float(ty) - half,
-				float(tx + tw) + half, float(ty + thp) + half, frame, border);
-			float u0 = 0, v0 = 0, u1 = 0, v1 = 0;
-			this->sheet_.uv(f.gpu, &u0, &v0, &u1, &v1);
-			kit.list_.add_thumb(tx, ty, tx + tw, ty + thp, u0, v0, u1, v1,
-				int(f.transfer));
+			kit.list_.add_rect_stroke(outer.box(), frame, border);
+			kit.list_.add_thumb({tx, ty, tx + tw, ty + thp},
+				this->sheet_.uv(f.gpu), int(f.transfer), {1, 1, 1, 1});
 		} else {
-			kit.list_.add_rect_filled(tx, ty, tx + tw, ty + thp,
+			kit.list_.add_rect_filled({tx, ty, tx + tw, ty + thp},
 				focused ? kit.colours_[ColourPress]
 						: kit.colours_[ColourHover]);
-			const float sz = min(tw, thp) * 0.5f;
-			kit.draw_icon(tx + (tw - sz) * 0.5f, ty + (thp - sz) * 0.5f, sz,
+			const int sz = min(tw, thp) / 2;
+			kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
 				f.failed ? kMissingIcon : kPendingIcon, ink);
 		}
 		if (this->show_names_ && f.cap.h > 0) {

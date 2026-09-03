@@ -733,8 +733,7 @@ Hint::paint(Kit &kit) const
 			continue;
 		const Rect c = t.chip;
 		kit.draw_fill(c, kit.colours_[ColourHint]);
-		kit.draw_border(
-			c, kit.colours_[ColourInk], float(kit.hairline()));
+		kit.draw_border(c, kit.colours_[ColourInk], kit.hairline());
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = float(c.x + kit.px(kChipPadX));
 		const float ty = float(c.y) + max(0.f, float(c.h - th) * 0.5f);

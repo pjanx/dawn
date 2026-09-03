@@ -65,12 +65,6 @@ struct PushConstant {
 	float translate[2];
 };
 
-float
-snap_fb(float v)
-{
-	return round(v);
-}
-
 Colour
 premul(Colour c)
 {
@@ -82,37 +76,30 @@ premul(Colour c)
 void
 OverlayList::sync_clip()
 {
-	const Clip &clip = this->clip_stack_.back();
+	const Box &clip = this->clip_stack_.back();
 	if (this->cmd_.idx_count > 0 &&
-		(this->cmd_.clip_x0 != clip.x0 || this->cmd_.clip_y0 != clip.y0 ||
-			this->cmd_.clip_x1 != clip.x1 || this->cmd_.clip_y1 != clip.y1 ||
-			this->cmd_.tex != this->tex_)) {
+		(!(this->cmd_.clip == clip) || this->cmd_.tex != this->tex_)) {
 		this->mesh_.cmds.push_back(this->cmd_);
 		this->cmd_.idx_count = 0;
 	}
 	if (this->cmd_.idx_count == 0)
 		this->cmd_.idx_offset = uint32_t(this->mesh_.indices.size());
-	this->cmd_.clip_x0 = clip.x0;
-	this->cmd_.clip_y0 = clip.y0;
-	this->cmd_.clip_x1 = clip.x1;
-	this->cmd_.clip_y1 = clip.y1;
+	this->cmd_.clip = clip;
 	this->cmd_.tex = this->tex_;
 }
 
 void
-OverlayList::begin(
-	float width_px, float height_px, float white_u, float white_v)
+OverlayList::begin(int width_px, int height_px, Uv white)
 {
 	this->mesh_.vertices.clear();
 	this->mesh_.indices.clear();
 	this->mesh_.cmds.clear();
-	this->mesh_.display_w = width_px;
-	this->mesh_.display_h = height_px;
-	this->white_u_ = white_u;
-	this->white_v_ = white_v;
+	this->mesh_.display_w = float(width_px);
+	this->mesh_.display_h = float(height_px);
+	this->white_ = white;
 	this->tex_ = kOverlayTexFont;
 	this->clip_stack_.clear();
-	this->clip_stack_.push_back({0.f, 0.f, width_px, height_px});
+	this->clip_stack_.push_back({0, 0, width_px, height_px});
 	this->cmd_ = {};
 	sync_clip();
 }
@@ -126,23 +113,14 @@ OverlayList::end()
 }
 
 void
-OverlayList::push_clip(float x0, float y0, float x1, float y1)
+OverlayList::push_clip(Box b)
 {
-	const Clip &prev = this->clip_stack_.back();
-	Clip next{
-		max(prev.x0, x0),
-		max(prev.y0, y0),
-		min(prev.x1, x1),
-		min(prev.y1, y1),
-	};
-	next.x0 = snap_fb(next.x0);
-	next.y0 = snap_fb(next.y0);
-	next.x1 = snap_fb(next.x1);
-	next.y1 = snap_fb(next.y1);
-	if (next.x1 < next.x0)
-		next.x1 = next.x0;
-	if (next.y1 < next.y0)
-		next.y1 = next.y0;
+	const Box &prev = this->clip_stack_.back();
+	Box next{max(prev.x0, b.x0), max(prev.y0, b.y0), min(prev.x1, b.x1),
+		min(prev.y1, b.y1)};
+	// An intersection that came out inverted is empty, not mirrored.
+	next.x1 = max(next.x0, next.x1);
+	next.y1 = max(next.y0, next.y1);
 	this->clip_stack_.push_back(next);
 	sync_clip();
 }
@@ -156,25 +134,19 @@ OverlayList::pop_clip()
 	sync_clip();
 }
 
+// The one funnel for geometry: everything else here ends up in this quad.
 void
-OverlayList::add_quad(float x0, float y0, float x1, float y1, float u0,
-	float v0, float u1, float v1, Colour c00, Colour c10, Colour c11,
-	Colour c01)
+OverlayList::add_quad(
+	Box b, Uv uv, Colour c00, Colour c10, Colour c11, Colour c01)
 {
-	x0 = snap_fb(x0);
-	y0 = snap_fb(y0);
-	x1 = snap_fb(x1);
-	y1 = snap_fb(y1);
 	sync_clip();
-	c00 = premul(c00);
-	c10 = premul(c10);
-	c11 = premul(c11);
-	c01 = premul(c01);
+	const float x0 = float(b.x0), y0 = float(b.y0);
+	const float x1 = float(b.x1), y1 = float(b.y1);
 	const uint32_t i = uint32_t(this->mesh_.vertices.size());
-	this->mesh_.vertices.push_back({x0, y0, u0, v0, c00});
-	this->mesh_.vertices.push_back({x1, y0, u1, v0, c10});
-	this->mesh_.vertices.push_back({x1, y1, u1, v1, c11});
-	this->mesh_.vertices.push_back({x0, y1, u0, v1, c01});
+	this->mesh_.vertices.push_back({x0, y0, uv.u0, uv.v0, premul(c00)});
+	this->mesh_.vertices.push_back({x1, y0, uv.u1, uv.v0, premul(c10)});
+	this->mesh_.vertices.push_back({x1, y1, uv.u1, uv.v1, premul(c11)});
+	this->mesh_.vertices.push_back({x0, y1, uv.u0, uv.v1, premul(c01)});
 	this->mesh_.indices.push_back(i);
 	this->mesh_.indices.push_back(i + 1);
 	this->mesh_.indices.push_back(i + 2);
@@ -185,117 +157,64 @@ OverlayList::add_quad(float x0, float y0, float x1, float y1, float u0,
 }
 
 void
-OverlayList::add_rect_filled(float x0, float y0, float x1, float y1, Colour col)
+OverlayList::add_rect_filled(Box b, Colour col)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(x0, y0, x1, y1, this->white_u_, this->white_v_, this->white_u_,
-		this->white_v_, col, col, col, col);
+	add_quad(b, this->white_, col, col, col, col);
 }
 
 void
-OverlayList::add_rect_filled_vgradient(
-	float x0, float y0, float x1, float y1, Colour top, Colour bottom)
+OverlayList::add_rect_filled_vgradient(Box b, Colour top, Colour bottom)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(x0, y0, x1, y1, this->white_u_, this->white_v_, this->white_u_,
-		this->white_v_, top, top, bottom, bottom);
+	add_quad(b, this->white_, top, top, bottom, bottom);
 }
 
 void
-OverlayList::add_line(
-	float x0, float y0, float x1, float y1, Colour col, float thickness)
+OverlayList::add_rect_stroke(Box b, Colour col, int thickness)
 {
-	this->tex_ = kOverlayTexFont;
-	const float dx = x1 - x0;
-	const float dy = y1 - y0;
-	const float len = sqrt(dx * dx + dy * dy);
-	if (len <= 0.f || thickness <= 0.f)
-		return;
-	const float th = max(1.f, round(thickness));
-	if (abs(dy) < 0.5f) {
-		x0 = snap_fb(x0);
-		x1 = snap_fb(x1);
-		y0 = y1 = floor(y0) + 0.5f;
-	} else if (abs(dx) < 0.5f) {
-		y0 = snap_fb(y0);
-		y1 = snap_fb(y1);
-		x0 = x1 = floor(x0) + 0.5f;
-	}
-	const float hx = (-dy / len) * (th * 0.5f);
-	const float hy = (dx / len) * (th * 0.5f);
-	col = premul(col);
-	sync_clip();
-	const uint32_t i = uint32_t(this->mesh_.vertices.size());
-	this->mesh_.vertices.push_back(
-		{x0 + hx, y0 + hy, this->white_u_, this->white_v_, col});
-	this->mesh_.vertices.push_back(
-		{x1 + hx, y1 + hy, this->white_u_, this->white_v_, col});
-	this->mesh_.vertices.push_back(
-		{x1 - hx, y1 - hy, this->white_u_, this->white_v_, col});
-	this->mesh_.vertices.push_back(
-		{x0 - hx, y0 - hy, this->white_u_, this->white_v_, col});
-	this->mesh_.indices.push_back(i);
-	this->mesh_.indices.push_back(i + 1);
-	this->mesh_.indices.push_back(i + 2);
-	this->mesh_.indices.push_back(i);
-	this->mesh_.indices.push_back(i + 2);
-	this->mesh_.indices.push_back(i + 3);
-	this->cmd_.idx_count += 6;
-}
-
-void
-OverlayList::add_rect_stroke(
-	float x0, float y0, float x1, float y1, Colour col, float thickness)
-{
-	if (thickness <= 0.f)
+	if (thickness <= 0)
 		return;
 
-	// Snap the outline to the framebuffer grid first, so that the four bands
-	// agree on where the corners are: drawing them as lines would leave the
-	// butt caps short of each other, and notch the bottom right corner.
-	x0 = snap_fb(x0);
-	y0 = snap_fb(y0);
-	x1 = snap_fb(x1);
-	y1 = snap_fb(y1);
-	if (x1 < x0)
-		swap(x0, x1);
-	if (y1 < y0)
-		swap(y0, y1);
+	if (b.x1 < b.x0)
+		swap(b.x0, b.x1);
+	if (b.y1 < b.y0)
+		swap(b.y0, b.y1);
 
-	const float th = max(1.f, round(thickness));
-	if (x1 - x0 <= 2.f * th || y1 - y0 <= 2.f * th) {
-		add_rect_filled(x0, y0, x1, y1, col);
+	// The four bands share the corners, rather than meeting at butt caps
+	// that would leave the bottom right notched.
+	const int th = thickness;
+	if (b.x1 - b.x0 <= 2 * th || b.y1 - b.y0 <= 2 * th) {
+		add_rect_filled(b, col);
 		return;
 	}
-	add_rect_filled(x0, y0, x1, y0 + th, col);
-	add_rect_filled(x0, y1 - th, x1, y1, col);
-	add_rect_filled(x0, y0 + th, x0 + th, y1 - th, col);
-	add_rect_filled(x1 - th, y0 + th, x1, y1 - th, col);
+	add_rect_filled({b.x0, b.y0, b.x1, b.y0 + th}, col);
+	add_rect_filled({b.x0, b.y1 - th, b.x1, b.y1}, col);
+	add_rect_filled({b.x0, b.y0 + th, b.x0 + th, b.y1 - th}, col);
+	add_rect_filled({b.x1 - th, b.y0 + th, b.x1, b.y1 - th}, col);
 }
 
 void
-OverlayList::add_image(float x0, float y0, float x1, float y1, float u0,
-	float v0, float u1, float v1, Colour col)
+OverlayList::add_image(Box b, Uv uv, Colour col)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(x0, y0, x1, y1, u0, v0, u1, v1, col, col, col, col);
+	add_quad(b, uv, col, col, col, col);
 }
 
 void
-OverlayList::add_thumb(float x0, float y0, float x1, float y1, float u0,
-	float v0, float u1, float v1, int transfer, Colour col)
+OverlayList::add_thumb(Box b, Uv uv, int transfer, Colour col)
 {
 	this->tex_ = kOverlayTexThumbs;
-	add_quad(x0, y0, x1, y1, u0, v0, u1, v1, col, col, col, col);
+	add_quad(b, uv, col, col, col, col);
 	const size_t first = this->mesh_.vertices.size() - 4;
 	for (size_t i = first; i < this->mesh_.vertices.size(); ++i) {
 		OverlayVertex &vertex = this->mesh_.vertices[i];
-		vertex.atlas_x0 = u0;
-		vertex.atlas_y0 = v0;
-		vertex.atlas_x1 = u1;
-		vertex.atlas_y1 = v1;
-		vertex.dest_w = abs(x1 - x0);
-		vertex.dest_h = abs(y1 - y0);
+		vertex.atlas_x0 = uv.u0;
+		vertex.atlas_y0 = uv.v0;
+		vertex.atlas_x1 = uv.u1;
+		vertex.atlas_y1 = uv.v1;
+		vertex.dest_w = float(abs(b.x1 - b.x0));
+		vertex.dest_h = float(abs(b.y1 - b.y0));
 		vertex.transfer = float(transfer);
 	}
 }
@@ -1101,24 +1020,15 @@ OverlayVulkan::record(
 				&this->descriptor_sets_[draw_cmd.tex], 0, nullptr);
 			bound_tex = draw_cmd.tex;
 		}
-		float clip_min_x = draw_cmd.clip_x0;
-		float clip_min_y = draw_cmd.clip_y0;
-		float clip_max_x = draw_cmd.clip_x1;
-		float clip_max_y = draw_cmd.clip_y1;
-		if (clip_min_x < 0.f)
-			clip_min_x = 0.f;
-		if (clip_min_y < 0.f)
-			clip_min_y = 0.f;
-		if (clip_max_x > float(this->extent_.width))
-			clip_max_x = float(this->extent_.width);
-		if (clip_max_y > float(this->extent_.height))
-			clip_max_y = float(this->extent_.height);
-		if (clip_max_x <= clip_min_x || clip_max_y <= clip_min_y)
+		const Box &clip = draw_cmd.clip;
+		const int x0 = max(0, clip.x0), y0 = max(0, clip.y0);
+		const int x1 = min(int(this->extent_.width), clip.x1);
+		const int y1 = min(int(this->extent_.height), clip.y1);
+		if (x1 <= x0 || y1 <= y0)
 			continue;
 		VkRect2D scissor{
-			.offset = {int32_t(clip_min_x), int32_t(clip_min_y)},
-			.extent = {uint32_t(clip_max_x - clip_min_x),
-				uint32_t(clip_max_y - clip_min_y)},
+			.offset = {x0, y0},
+			.extent = {uint32_t(x1 - x0), uint32_t(y1 - y0)},
 		};
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
 		vkCmdDrawIndexed(cmd, draw_cmd.idx_count, 1, draw_cmd.idx_offset, 0, 0);

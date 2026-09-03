@@ -170,17 +170,13 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 // OverlayList::end()) would make the normalisation happen once, after the
 // sheet has settled.  Reachable today through paint_tooltip(), which is the
 // one emitter with no caching pass ahead of it.
-void
-Sheet::uv(const Packed &slot, float *u0, float *v0, float *u1, float *v1) const
+Uv
+Sheet::uv(const Packed &slot) const
 {
-	if (!u0 || !v0 || !u1 || !v1)
-		return;
 	const float aw = float(max(this->w, 1));
 	const float ah = float(max(this->h, 1));
-	*u0 = float(slot.x) / aw;
-	*v0 = float(slot.y) / ah;
-	*u1 = float(slot.x + slot.w) / aw;
-	*v1 = float(slot.y + slot.h) / ah;
+	return {float(slot.x) / aw, float(slot.y) / ah,
+		float(slot.x + slot.w) / aw, float(slot.y + slot.h) / ah};
 }
 
 bool

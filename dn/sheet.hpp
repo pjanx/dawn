@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include "overlay.hpp"
+
 #include <cstdint>
 #include <vector>
 
@@ -55,8 +57,7 @@ struct Sheet {
 	// (src_w * 8). No-op if this sheet has no CPU shadow.
 	void blit(
 		Packed slot, const uint16_t *src, int src_w, int src_h, int stride);
-	void uv(
-		const Packed &slot, float *u0, float *v0, float *u1, float *v1) const;
+	[[nodiscard]] Uv uv(const Packed &slot) const;
 	[[nodiscard]] bool take_dirty();
 };
 

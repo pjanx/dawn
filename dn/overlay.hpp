@@ -22,6 +22,25 @@ struct Colour {
 	float a = 1;
 };
 
+// Two corners in framebuffer pixels.  The overlay draws axis-aligned
+// rectangles and nothing else, and it draws them on whole pixels: anything
+// that wants to sit between two of them says so in its texture instead.
+struct Box {
+	int x0 = 0;
+	int y0 = 0;
+	int x1 = 0;
+	int y1 = 0;
+	bool operator==(const Box &) const = default;
+};
+
+// The same rectangle in normalised texture coordinates.
+struct Uv {
+	float u0 = 0;
+	float v0 = 0;
+	float u1 = 0;
+	float v1 = 0;
+};
+
 struct OverlayVertex {
 	float x = 0;
 	float y = 0;
@@ -43,10 +62,7 @@ constexpr uint32_t kOverlayTexThumbs = 1;
 struct OverlayCmd {
 	uint32_t idx_offset = 0;
 	uint32_t idx_count = 0;
-	float clip_x0 = 0;
-	float clip_y0 = 0;
-	float clip_x1 = 0;
-	float clip_y1 = 0;
+	Box clip{};
 	uint32_t tex = kOverlayTexFont;
 };
 
@@ -68,41 +84,27 @@ struct ThumbUpload {
 
 class OverlayList
 {
-	struct Clip {
-		float x0 = 0;
-		float y0 = 0;
-		float x1 = 0;
-		float y1 = 0;
-	};
-
 	OverlayMesh mesh_;
 	OverlayCmd cmd_{};
-	std::vector<Clip> clip_stack_;
-	float white_u_ = 0;
-	float white_v_ = 0;
+	std::vector<Box> clip_stack_;
+	Uv white_{};
 	uint32_t tex_ = kOverlayTexFont;
 
 	void sync_clip();
-	void add_quad(float x0, float y0, float x1, float y1, float u0, float v0,
-		float u1, float v1, Colour c00, Colour c10, Colour c11, Colour c01);
+	void add_quad(Box b, Uv uv, Colour c00, Colour c10, Colour c11, Colour c01);
 
 public:
-	void begin(
-		float width_px, float height_px, float white_u, float white_v);
+	void begin(int width_px, int height_px, Uv white);
 	void end();
-	void push_clip(float x0, float y0, float x1, float y1);
+	void push_clip(Box b);
 	void pop_clip();
-	void add_rect_filled(float x0, float y0, float x1, float y1, Colour col);
-	void add_rect_filled_vgradient(
-		float x0, float y0, float x1, float y1, Colour top, Colour bottom);
-	void add_rect_stroke(float x0, float y0, float x1, float y1, Colour col,
-		float thickness = 1.f);
-	void add_line(float x0, float y0, float x1, float y1, Colour col,
-		float thickness = 1.f);
-	void add_image(float x0, float y0, float x1, float y1, float u0, float v0,
-		float u1, float v1, Colour col);
-	void add_thumb(float x0, float y0, float x1, float y1, float u0, float v0,
-		float u1, float v1, int transfer, Colour col = {1, 1, 1, 1});
+	void add_rect_filled(Box b, Colour col);
+	void add_rect_filled_vgradient(Box b, Colour top, Colour bottom);
+	// The outline is drawn inside the box, so that a rule is just a box
+	// collapsed along one axis: there is no line primitive.
+	void add_rect_stroke(Box b, Colour col, int thickness);
+	void add_image(Box b, Uv uv, Colour col);
+	void add_thumb(Box b, Uv uv, int transfer, Colour col);
 
 	[[nodiscard]] const OverlayMesh &mesh() const { return this->mesh_; }
 };
