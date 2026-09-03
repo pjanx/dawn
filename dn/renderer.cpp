@@ -293,8 +293,7 @@ Renderer::destroy()
 	this->extent_ = {};
 	this->want_extent_ = {};
 	this->overlay_format_ = VK_FORMAT_UNDEFINED;
-	this->overlay_initial_ = VK_IMAGE_LAYOUT_UNDEFINED;
-	this->overlay_final_ = VK_IMAGE_LAYOUT_UNDEFINED;
+	this->overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	this->present_about_to_queue_ = {};
 	this->present_queued_ = {};
 }
@@ -455,18 +454,13 @@ Renderer::create_swapchain()
 					 &this->framebuffers_[i]),
 			"vkCreateFramebuffer");
 	}
-	const VkImageLayout overlay_initial = dest_layout;
-	const VkImageLayout overlay_final = dest_layout;
 	if (this->overlay_format_ != dest_format ||
-		this->overlay_initial_ != overlay_initial ||
-		this->overlay_final_ != overlay_final) {
+		this->overlay_layout_ != dest_layout) {
 		if (!this->overlay_.init(this->phys_, this->device_, this->queue_,
-				this->queue_family_, dest_format, overlay_initial,
-				overlay_final))
+				this->queue_family_, dest_format, dest_layout, dest_layout))
 			die("overlay vulkan init failed");
 		this->overlay_format_ = dest_format;
-		this->overlay_initial_ = overlay_initial;
-		this->overlay_final_ = overlay_final;
+		this->overlay_layout_ = dest_layout;
 	}
 	if (dither)
 		this->overlay_.set_swapchain({this->compose_view_}, this->extent_);
@@ -536,41 +530,11 @@ Renderer::set_well_colour(float r, float g, float b)
 }
 
 void
-Renderer::set_prefer_premultiplied(bool enabled)
-{
-	this->prefer_premultiplied_ = enabled;
-}
-
-void
-Renderer::set_dest_inset(uint32_t px)
-{
-	this->dest_inset_ = px;
-}
-
-void
 Renderer::set_checker_colour(float r, float g, float b)
 {
 	this->checker_[0] = r;
 	this->checker_[1] = g;
 	this->checker_[2] = b;
-}
-
-void
-Renderer::set_checkerboard(bool enabled)
-{
-	this->checkerboard_ = enabled;
-}
-
-void
-Renderer::set_filter(bool enabled)
-{
-	this->filter_ = enabled;
-}
-
-void
-Renderer::set_transfer(dawn::Transfer transfer)
-{
-	this->transfer_ = transfer;
 }
 
 bool

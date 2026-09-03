@@ -169,8 +169,7 @@ class Renderer
 	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
 	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
 	VkFormat overlay_format_ = VK_FORMAT_UNDEFINED;
-	VkImageLayout overlay_initial_ = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkImageLayout overlay_final_ = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImageLayout overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage compose_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory compose_memory_ = VK_NULL_HANDLE;
 	VkImageView compose_view_ = VK_NULL_HANDLE;
@@ -208,15 +207,18 @@ public:
 	void set_view(float scale, float pan_x, float pan_y,
 		dawn::Orientation orientation, float angle = 0.f);
 	void set_well_colour(float r, float g, float b);
-	void set_prefer_premultiplied(bool enabled);
+	void set_prefer_premultiplied(bool enabled)
+	{
+		this->prefer_premultiplied_ = enabled;
+	}
 	void set_dither_enabled(bool enabled) { this->dither_enabled_ = enabled; }
-	void set_dest_inset(uint32_t px);
+	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
-	void set_checkerboard(bool enabled);
+	void set_checkerboard(bool enabled) { this->checkerboard_ = enabled; }
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
 	/// Nearest.
-	void set_filter(bool enabled);
-	void set_transfer(dawn::Transfer transfer);
+	void set_filter(bool enabled) { this->filter_ = enabled; }
+	void set_transfer(dawn::Transfer transfer) { this->transfer_ = transfer; }
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
