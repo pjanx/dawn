@@ -1054,6 +1054,10 @@ Window::event(QEvent *event)
 	case QEvent::WindowDeactivate:
 		focus_lost();
 		break;
+	case QEvent::Leave:
+		this->kit_.mouse_motion(-1.f, -1.f);
+		request_render();
+		break;
 	case QEvent::DragEnter:
 	case QEvent::DragMove: {
 		auto *drag = (QDropEvent *) event;
@@ -1113,6 +1117,7 @@ Window::eventFilter(QObject *watched, QEvent *event)
 {
 	if (watched != this && watched != shell())
 		return false;
+
 	// The compositor holds the pointer for as long as it moves or resizes us,
 	// and drops our keyboard focus with it. Getting the pointer back is the
 	// only word we get that the grab is over.
@@ -1122,21 +1127,29 @@ Window::eventFilter(QObject *watched, QEvent *event)
 		this->system_grab_ = false;
 		request_render();
 	}
-	if (watched != this &&
-		(event->type() == QEvent::FocusIn ||
-			event->type() == QEvent::WindowActivate))
-		focus_gained();
-	if (watched != this &&
-		(event->type() == QEvent::FocusOut ||
-			event->type() == QEvent::WindowDeactivate))
-		focus_lost();
+	if (watched != this)
+		switch (event->type()) {
+		case QEvent::FocusIn:
+		case QEvent::WindowActivate:
+			focus_gained();
+			break;
+		case QEvent::FocusOut:
+		case QEvent::WindowDeactivate:
+			focus_lost();
+			break;
+		case QEvent::Leave:
+			this->kit_.mouse_motion(-1.f, -1.f);
+			request_render();
+		default:
+			break;
+		}
 	if (event->type() != QEvent::MouseMove)
 		return false;
+
 	auto *mouse = (QMouseEvent *) event;
 	const QPointF local = mapFromGlobal(mouse->globalPosition());
-	if (local.x() < 0 || local.y() < 0 || local.x() >= width() ||
-		local.y() >= height())
-		return false;
+	// A mouse grab can legitimately put this point outside the content.
+	// Passing it through both clears hover and keeps drag captures moving.
 	this->kit_.mouse_motion(float(local.x()), float(local.y()));
 	request_render();
 	return false;
