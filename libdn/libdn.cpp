@@ -1570,7 +1570,7 @@ struct Loader
 };
 
 // The order is the default loading order.
-[[maybe_unused]] constexpr Loader loaders[] = {
+constexpr Loader loaders[] = {
 	{"libjpeg-turbo", &detail::load_jpeg, {"JPEG"}, {"image/jpeg"}, {}},
 
 	{"libwebp", &detail::load_webp, {"WebP"}, {"image/webp"}, {}},
@@ -1703,59 +1703,21 @@ struct Loader
 std::vector<std::string>
 supported_media_types()
 {
-	vector<string> types = {
-		"image/bmp",
-		"image/gif",
-		"image/jpeg",
-		"image/png",
-		"image/qoi",
-		"image/svg+xml",  // resvg is a hard dependency
-		"image/vnd.wap.wbmp",
-		"image/webp",
-		"image/x-icns",
-		// Only binary P5/P6 in practice, which Wuffs is limited to.
-		"image/x-portable-anymap",
-		"image/x-tga",
+	vector<string> types;
+	auto add = [&](const char *type) {
+		if (find(types.begin(), types.end(), type) == types.end())
+			types.emplace_back(type);
 	};
-#if DAWN_WITH_LIBRAW
-	types.push_back("image/x-dcraw");
-#endif
-#if DAWN_WITH_XCURSOR
-	types.push_back("image/x-xcursor");
-#endif
-#if DAWN_WITH_LIBHEIF
-	types.push_back("image/heic");
-	types.push_back("image/heif");
-	types.push_back("image/avif");
-#endif
-#if DAWN_WITH_LIBJXL
-	types.push_back("image/jxl");
-#endif
-#if DAWN_WITH_OPENJPEG
-	// Deliberately not image/jpx or image/jpm: OpenJPEG decodes neither
-	// JPX (Part 2) nor compound JPM, and claiming them would only fail later.
-	types.push_back("image/jp2");
-	types.push_back("image/x-jp2-codestream");
-#endif
-#if DAWN_WITH_LIBTIFF
-	types.push_back("image/tiff");
-#endif
-#if DAWN_WITH_GLYCIN
-	// Same treatment as gdk-pixbuf below: glycin's set depends on which
-	// loaders are configured on the target.
-	for (const string &type : detail::glycin_media_types()) {
-		if (find(types.begin(), types.end(), type) == types.end())
-			types.push_back(type);
+	for (const Loader &loader : loaders) {
+		if (!loader.loader)
+			continue;
+
+		for (const char *type : loader.media_types)
+			add(type);
+		if (loader.dynamic_types)
+			for (const string &type : loader.dynamic_types())
+				add(type.c_str());
 	}
-#endif
-#if DAWN_WITH_GDKPIXBUF
-	// gdk-pixbuf loaders vary by installation; skip duplicates, keeping the
-	// first occurrence so that our own types win.
-	for (const string &type : detail::gdkpixbuf_media_types()) {
-		if (find(types.begin(), types.end(), type) == types.end())
-			types.push_back(type);
-	}
-#endif
 	return types;
 }
 
