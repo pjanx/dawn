@@ -491,7 +491,7 @@ struct Popup : Panel {
 	Rect at{};
 
 	Popup();
-	void open(Kit &kit, Button *anchor = nullptr);
+	void open(Kit &kit, Button *anchor);
 	void open_at(Kit &kit, Rect anchor);
 	void open_sub(Kit &kit, Popup &owner, Button &anchor);
 	virtual void close(Kit &kit);

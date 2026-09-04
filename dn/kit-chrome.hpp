@@ -121,7 +121,7 @@ private:
 	std::vector<Target> targets_;
 	QString typed_;
 
-	void collect();
+	void collect(Widget *scope);
 	void assign_labels();
 	void refresh_rects();
 	void layout_chips(const Kit &kit);

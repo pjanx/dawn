@@ -2444,7 +2444,7 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	this->footer->erase_children();
 	this->footer->add_child(std::move(actions));
 	this->frame->min_w = min_w;
-	Popup::open(kit);
+	Popup::open(kit, nullptr);
 	this->frame->visible = true;
 }
 
@@ -5012,11 +5012,13 @@ Kit::open_popup(Popup *p)
 {
 	if (!p)
 		return;
+
 	ensure_scrim(*this);
 	for (Popup *q : this->popups_) {
 		if (q == p)
 			return;
 	}
+
 	// When the gesture began: a run of menus opened from one another is a
 	// single one, so only the first of them starts the clock.  A dialog is
 	// not part of any gesture -- it is what the gesture happens inside --
@@ -5029,6 +5031,7 @@ Kit::open_popup(Popup *p)
 	}
 	if (!gesture_open)
 		this->popup_at_ = chrono::steady_clock::now();
+
 	this->popups_.push_back(p);
 	this->scrim_->visible = true;
 	this->scrim_->r = {0, 0, this->host_w_, this->host_h_};

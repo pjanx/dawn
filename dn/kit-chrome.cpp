@@ -629,15 +629,15 @@ visible_rect(const Widget *w, Rect host)
 
 // Anything the keyboard can reach is worth a hint, so this asks focusable()
 // rather than testing for a type: a widget opts in by being reachable at all.
-// The three exceptions are containers that are focusable as a whole -- one
-// chip over the entire browser well would say nothing useful, and its files
-// get their own targets below.
+// The exception is a container that is focusable as a whole -- one chip over
+// the entire browser well would say nothing useful, and its files get their
+// own targets below.
 static void
 collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
 		return;
-	if (dynamic_cast<Popup *>(w) || dynamic_cast<Browser *>(w))
+	if (dynamic_cast<Browser *>(w))
 		return;
 	if (w->focusable() && visible_rect(w, host).w > 0.f)
 		out.push_back(w);
@@ -690,8 +690,12 @@ void
 Hint::open(Kit &kit)
 {
 	this->typed_.clear();
-	Popup::open(kit);
-	collect();
+	kit.close_transient_popups();
+	Widget *scope = kit.focus_scope();
+
+	this->visible = true;
+	kit.open_popup(this);
+	collect(scope);
 	assign_labels();
 	place(kit);
 }
@@ -825,33 +829,42 @@ Hint::motion(Kit &, float, float)
 }
 
 void
-Hint::collect()
+Hint::collect(Widget *scope)
 {
 	this->targets_.clear();
-	if (!this->page)
+	if (!scope)
 		return;
-	Rect host = this->page->r;
+
+	Rect host = scope->r;
 	if (host.w <= 0 || host.h <= 0)
 		host = {0, 0, kUnlim, kUnlim};
 	vector<Widget *> widgets;
-	collect_targets(this->page, host, widgets);
+	collect_targets(scope, host, widgets);
 	for (Widget *w : widgets) {
 		Target t;
 		t.widget = w;
 		t.at = visible_rect(w, host);
 		this->targets_.push_back(t);
 	}
+
+	// TODO(p): Turn the Browser into a composed widget.
+	if (scope != this->page)
+		return;
+
 	auto *browser = dynamic_cast<Browser *>(this->page->content);
 	if (!browser)
 		return;
+
 	const Rect well = browser->r;
 	for (int i = 0; i < int(browser->files_.size()); ++i) {
 		const Browser::File &f = browser->files_[size_t(i)];
 		if (f.tile.empty())
 			continue;
+
 		const Rect visible = intersection(f.tile, well);
 		if (visible.empty())
 			continue;
+
 		Target t;
 		t.browser = browser;
 		t.file_i = i;
