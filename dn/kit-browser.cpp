@@ -114,9 +114,6 @@ using namespace std;
 namespace dn
 {
 
-namespace
-{
-
 constexpr float kWinPadX = 4.f;
 constexpr float kItemGap = 2.f;
 constexpr float kGridPad = 8.f;
@@ -138,6 +135,9 @@ constexpr size_t kThumbRamBudget = 2ull << 30;
 
 enum class Slot : uint8_t { Left, Middle, Right };
 enum class Kind : uint8_t { Icon, Text, Sep, Search };
+
+namespace
+{
 
 struct Spec {
 	Kind kind;
@@ -177,22 +177,6 @@ constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Right, Action::DarkMode},
 	{Kind::Icon, Slot::Right, Action::Fullscreen},
 };
-
-bool apply_action(Browser &b, Action action);
-
-// Below this line the browser enumerates the local filesystem;
-// above it, and towards the host, everything is identified by URL.
-string
-dir_path(const Browser &b)
-{
-	return url_to_path(b.dir_url_).toStdString();
-}
-
-QUrl
-url_of(const string &path)
-{
-	return path_to_url(QString::fromStdString(path));
-}
 
 struct ThumbJob {
 	uint64_t gen = 0;
@@ -260,7 +244,25 @@ struct GpuFinish {
 	shared_ptr<const vector<uint8_t>> screen_icc;
 };
 
-int
+}  // namespace
+
+static bool apply_action(Browser &b, Action action);
+
+// Below this line the browser enumerates the local filesystem;
+// above it, and towards the host, everything is identified by URL.
+static string
+dir_path(const Browser &b)
+{
+	return url_to_path(b.dir_url_).toStdString();
+}
+
+static QUrl
+url_of(const string &path)
+{
+	return path_to_url(QString::fromStdString(path));
+}
+
+static int
 thumb_size_index(int size)
 {
 	for (int i = 0; i < kThumbSizeN; ++i) {
@@ -270,13 +272,13 @@ thumb_size_index(int size)
 	return 1;
 }
 
-bool
+static bool
 hidden_name(const string &name)
 {
 	return !name.empty() && name[0] == '.';
 }
 
-bool
+static bool
 is_image_filename(const QString &name)
 {
 	// The MIME database is external data: the globs need not be mere
@@ -301,7 +303,7 @@ is_image_filename(const QString &name)
 	return false;
 }
 
-shared_ptr<dawn::Profile>
+static shared_ptr<dawn::Profile>
 profile_from_icc(
 	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
@@ -312,7 +314,7 @@ profile_from_icc(
 	return cmm.get_profile_sRGB();
 }
 
-int
+static int
 thumb_atlas_max(const Browser &b)
 {
 	if (b.kit_.renderer_)
@@ -320,7 +322,7 @@ thumb_atlas_max(const Browser &b)
 	return Sheet::kSize;
 }
 
-void
+static void
 thumb_dest_params(uint32_t gw, uint32_t gh, int thumb_size, float dpr,
 	int atlas_max, uint32_t *out_w, uint32_t *out_h)
 {
@@ -355,7 +357,7 @@ thumb_dest_params(uint32_t gw, uint32_t gh, int thumb_size, float dpr,
 	*out_h = uint32_t(h);
 }
 
-void
+static void
 thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 	uint32_t *out_h)
 {
@@ -363,7 +365,7 @@ thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 		out_w, out_h);
 }
 
-size_t
+static size_t
 bundle_reservation_bytes(int top_tier)
 {
 	size_t bytes = 0;
@@ -374,7 +376,7 @@ bundle_reservation_bytes(int top_tier)
 	return bytes;
 }
 
-vector<dawn::ThumbScaler::Job::Output>
+static vector<dawn::ThumbScaler::Job::Output>
 bundle_outputs(uint32_t image_w, uint32_t image_h, int top_tier)
 {
 	vector<dawn::ThumbScaler::Job::Output> outputs;
@@ -388,7 +390,7 @@ bundle_outputs(uint32_t image_w, uint32_t image_h, int top_tier)
 	return outputs;
 }
 
-int
+static int
 label_h(const Browser &b)
 {
 	if (!b.show_names_)
@@ -397,13 +399,13 @@ label_h(const Browser &b)
 		b.kit_.px(kCapPad);
 }
 
-int
+static int
 chrome(const Kit &kit)
 {
 	return kit.px(kGlowPts + kBorder);
 }
 
-QString
+static QString
 caption_name(const string &name)
 {
 	QString s = QString::fromStdString(name);
@@ -411,14 +413,14 @@ caption_name(const string &name)
 	return s;
 }
 
-float
+static float
 row_h(const Browser &b)
 {
 	return float(b.kit_.px(float(b.thumb_size_)) + 2 * chrome(b.kit_) +
 		label_h(b));
 }
 
-bool
+static bool
 thumb_in_band(const Browser &b, const Browser::File &f, float pad)
 {
 	if (f.cell.empty())
@@ -426,7 +428,7 @@ thumb_in_band(const Browser &b, const Browser::File &f, float pad)
 	return f.cell.bottom() >= b.r.y - pad && f.cell.y <= b.r.bottom() + pad;
 }
 
-void
+static void
 request_render(const Browser &b)
 {
 	if (b.kit_.request_render)
@@ -435,7 +437,7 @@ request_render(const Browser &b)
 
 // --- Widgets -----------------------------------------------------------------
 
-bool
+static bool
 shift_enter(int key, unsigned mods)
 {
 	if (mods != unsigned(Qt::ShiftModifier))
@@ -443,7 +445,7 @@ shift_enter(int key, unsigned mods)
 	return key == Qt::Key_Return || key == Qt::Key_Enter;
 }
 
-void
+static void
 open_new_window(const Browser &b, const string &path)
 {
 	if (path.empty() || !b.page_ || !b.page_->host ||
@@ -452,7 +454,7 @@ open_new_window(const Browser &b, const string &path)
 	b.page_->host->new_window(url_of(path));
 }
 
-void
+static void
 show_file_context(
 	const Browser &b, Kit &kit, const string &path, Rect anchor, bool kbd)
 {
@@ -461,7 +463,7 @@ show_file_context(
 	b.page_->context->show(kit, url_of(path), anchor, kbd);
 }
 
-bool
+static bool
 show_cursor_context(Browser &b, Kit &kit)
 {
 	if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
@@ -474,6 +476,9 @@ show_cursor_context(Browser &b, Kit &kit)
 	show_file_context(b, kit, dir_path(b), {b.r.x, b.r.y, 0, 0}, true);
 	return true;
 }
+
+namespace
+{
 
 struct SideRow : Button {
 	string path;
@@ -546,11 +551,13 @@ SideRow::key(Kit &kit, const Key &ev)
 	return Button::key(kit, ev);
 }
 
-void layout_grid(Browser &b, Rect area);
+}  // namespace
+
+static void layout_grid(Browser &b, Rect area);
 
 // --- GPU thumbnail input -----------------------------------------------------
 
-void
+static void
 copy_bgra16(const dawn::Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
 {
 	const size_t packed = size_t(dw) * dawn::kBytesPerPixel;
@@ -558,7 +565,7 @@ copy_bgra16(const dawn::Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
 		memcpy(dst + size_t(y) * dw * 4, dawn::row_u16(src, y), packed);
 }
 
-ThumbUpdate
+static ThumbUpdate
 make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 {
 	ThumbUpdate result;
@@ -673,19 +680,20 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 
 // --- Global execution --------------------------------------------------------
 
-void apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update);
-void apply_thumb_gpu(
+static void apply_thumb(
+	Browser &b, uint64_t gen, string path, ThumbUpdate update);
+static void apply_thumb_gpu(
 	Browser &b, GpuFinish finish, dawn::ThumbScaler::Result result);
-void enqueue_thumbs(Browser &b);
+static void enqueue_thumbs(Browser &b);
 
-shared_ptr<dawn::Cmm>
+static shared_ptr<dawn::Cmm>
 worker_cmm()
 {
 	thread_local auto cmm = make_shared<dawn::Cmm>();
 	return cmm;
 }
 
-bool
+static bool
 queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	Browser *browser, GpuFinish finish, dawn::ThumbScaler::Job job)
 {
@@ -699,7 +707,7 @@ queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		key);
 }
 
-Thumbnailer::Completion
+static Thumbnailer::Completion
 display_thumb(Browser *browser, FinishJob job)
 {
 	ThumbUpdate update;
@@ -729,7 +737,7 @@ display_thumb(Browser *browser, FinishJob job)
 	};
 }
 
-Thumbnailer::Completion
+static Thumbnailer::Completion
 load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	Browser *browser, ThumbJob job)
 {
@@ -793,7 +801,7 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	};
 }
 
-void
+static void
 reset_thumb_atlas(Browser &b)
 {
 	for (Browser::File &f : b.files_)
@@ -804,7 +812,7 @@ reset_thumb_atlas(Browser &b)
 		b.kit_.renderer_->reset_thumbs();
 }
 
-void
+static void
 clear_gpu(Browser &b)
 {
 	for (Browser::File &f : b.files_) {
@@ -815,7 +823,7 @@ clear_gpu(Browser &b)
 	}
 }
 
-void
+static void
 invalidate_thumbs(Browser &b)
 {
 	++b.thumb_gen_;
@@ -836,13 +844,13 @@ invalidate_thumbs(Browser &b)
 	}
 }
 
-size_t
+static size_t
 ram_bytes(const Browser::File &f)
 {
 	return f.ram.capacity() * sizeof(uint16_t);
 }
 
-void
+static void
 trim_ram(Browser &b)
 {
 	size_t total = 0;
@@ -879,7 +887,7 @@ trim_ram(Browser &b)
 	}
 }
 
-bool
+static bool
 push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 {
 	Renderer *r = b.kit_.renderer_;
@@ -902,7 +910,7 @@ push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 	return true;
 }
 
-bool
+static bool
 repack_atlas(Browser &b, Browser::File &wanted)
 {
 	Renderer *renderer = b.kit_.renderer_;
@@ -962,7 +970,7 @@ repack_atlas(Browser &b, Browser::File &wanted)
 	return false;
 }
 
-void
+static void
 try_upload(Browser &b, Browser::File &f)
 {
 	if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0 || !f.gpu.empty())
@@ -980,7 +988,7 @@ try_upload(Browser &b, Browser::File &f)
 	f.gpu = slot;
 }
 
-void
+static void
 apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 {
 	if (finish.gen != b.thumb_gen_ || res.path.empty())
@@ -1099,7 +1107,7 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 	request_render(b);
 }
 
-void
+static void
 sync_thumbs(Browser &b)
 {
 	const float pad = row_h(b) * kPrefetchRows;
@@ -1118,7 +1126,7 @@ sync_thumbs(Browser &b)
 	enqueue_thumbs(b);
 }
 
-void
+static void
 apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 {
 	if (!update.gpu_pending)
@@ -1184,7 +1192,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 	request_render(b);
 }
 
-void
+static void
 enqueue_thumbs(Browser &b)
 {
 	if (!b.thumbnail_client_)
@@ -1308,7 +1316,7 @@ enqueue_thumbs(Browser &b)
 
 enum class CursorDir : uint8_t { Left, Right, Up, Down };
 
-int
+static int
 find_cursor_row(const Browser &b)
 {
 	if (b.cursor_ < 0)
@@ -1321,7 +1329,7 @@ find_cursor_row(const Browser &b)
 	return -1;
 }
 
-void
+static void
 clear_cursor(Browser &b)
 {
 	b.cursor_ = -1;
@@ -1329,7 +1337,7 @@ clear_cursor(Browser &b)
 	b.cursor_x_dirty_ = false;
 }
 
-void
+static void
 remember_cursor_x(Browser &b)
 {
 	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
@@ -1343,7 +1351,7 @@ remember_cursor_x(Browser &b)
 	b.cursor_x_dirty_ = false;
 }
 
-void
+static void
 remember_cursor_x_at(Browser &b, float x)
 {
 	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
@@ -1357,7 +1365,7 @@ remember_cursor_x_at(Browser &b, float x)
 	b.cursor_x_dirty_ = false;
 }
 
-void
+static void
 select_closest(Browser &b, const Browser::GridRow &row, float target_x)
 {
 	float closest = 1e30f;
@@ -1374,7 +1382,7 @@ select_closest(Browser &b, const Browser::GridRow &row, float target_x)
 	}
 }
 
-void
+static void
 scroll_to_row(Browser &b, const Browser::GridRow &row)
 {
 	const float vis = float(max(0, b.r.h - 2 * b.kit_.px(kGridPad)));
@@ -1385,7 +1393,7 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
 }
 
-void
+static void
 page_scroll(Browser &b, int dir)
 {
 	const float vis = float(max(0, b.r.h));
@@ -1396,7 +1404,7 @@ page_scroll(Browser &b, int dir)
 	request_render(b);
 }
 
-void
+static void
 move_cursor(Browser &b, CursorDir dir)
 {
 	if (b.rows_.empty())
@@ -1452,7 +1460,7 @@ move_cursor(Browser &b, CursorDir dir)
 	request_render(b);
 }
 
-void
+static void
 move_cursor_home(Browser &b)
 {
 	if (b.rows_.empty())
@@ -1465,7 +1473,7 @@ move_cursor_home(Browser &b)
 	request_render(b);
 }
 
-void
+static void
 move_cursor_end(Browser &b)
 {
 	if (b.rows_.empty())
@@ -1478,7 +1486,7 @@ move_cursor_end(Browser &b)
 	request_render(b);
 }
 
-void
+static void
 layout_grid(Browser &b, Rect area)
 {
 	const int pad = b.kit_.px(kGridPad);
@@ -1604,7 +1612,7 @@ layout_grid(Browser &b, Rect area)
 	}
 }
 
-void
+static void
 draw_checkers(Kit &kit, const Rect &tile)
 {
 	if (tile.empty())
@@ -1627,7 +1635,7 @@ draw_checkers(Kit &kit, const Rect &tile)
 	kit.clip_pop();
 }
 
-int
+static int
 hit_file(const Browser &b, float x, float y)
 {
 	for (int i = 0; i < int(b.files_.size()); ++i) {
@@ -1637,7 +1645,7 @@ hit_file(const Browser &b, float x, float y)
 	return -1;
 }
 
-bool
+static bool
 same_path(const filesystem::path &a, const filesystem::path &b)
 {
 	error_code ec;
@@ -1646,7 +1654,7 @@ same_path(const filesystem::path &a, const filesystem::path &b)
 	return a == b;
 }
 
-filesystem::path
+static filesystem::path
 without_trailing_sep(filesystem::path p)
 {
 	while (p.filename().empty()) {
@@ -1658,7 +1666,7 @@ without_trailing_sep(filesystem::path p)
 	return p;
 }
 
-string
+static string
 dir_basename(const filesystem::path &dir)
 {
 	const filesystem::path p = without_trailing_sep(dir);
@@ -1669,7 +1677,7 @@ dir_basename(const filesystem::path &dir)
 }
 
 // The browser always shows a directory: a file URL resolves to its parent.
-QUrl
+static QUrl
 dir_url_of(const QUrl &url)
 {
 	const QFileInfo info(url_to_path(url));
@@ -1677,7 +1685,7 @@ dir_url_of(const QUrl &url)
 		info.isDir() ? info.absoluteFilePath() : info.absolutePath());
 }
 
-int
+static int
 browse_cmp(const BrowseSetup &setup, const QString &name_a, int64_t mtime_a,
 	const QString &name_b, int64_t mtime_b)
 {
@@ -1696,7 +1704,7 @@ browse_cmp(const BrowseSetup &setup, const QString &name_a, int64_t mtime_a,
 // Only ever compared against another dir_ent_mtime() from the same listing,
 // so the native filesystem clock tick is fine: no need to convert to epoch
 // ms via QFileInfo, which the caller's directory_entry already made moot.
-int64_t
+static int64_t
 dir_ent_mtime(const filesystem::directory_entry &ent)
 {
 	error_code ec;
@@ -1704,20 +1712,25 @@ dir_ent_mtime(const filesystem::directory_entry &ent)
 	return ec ? 0 : int64_t(time.time_since_epoch().count());
 }
 
+namespace
+{
+
 struct DirEnt {
 	string path;
 	string name;
 	int64_t mtime = 0;
 };
 
-bool
+}  // namespace
+
+static bool
 dir_ent_less(const BrowseSetup &setup, const DirEnt &a, const DirEnt &c)
 {
 	return browse_cmp(setup, QString::fromStdString(a.name), a.mtime,
 			   QString::fromStdString(c.name), c.mtime) < 0;
 }
 
-vector<string>
+static vector<string>
 list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 {
 	vector<DirEnt> kids;
@@ -1747,7 +1760,7 @@ list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 	return out;
 }
 
-int
+static int
 index_of_dir(const vector<string> &dirs, const filesystem::path &self)
 {
 	for (int i = 0; i < int(dirs.size()); ++i) {
@@ -1757,7 +1770,7 @@ index_of_dir(const vector<string> &dirs, const filesystem::path &self)
 	return -1;
 }
 
-string
+static string
 parent_dir(const filesystem::path &dir)
 {
 	const filesystem::path p = without_trailing_sep(dir);
@@ -1767,7 +1780,7 @@ parent_dir(const filesystem::path &dir)
 	return parent.string();
 }
 
-string
+static string
 last_deep_subdir(
 	const string &dir, unordered_set<string> *seen, const BrowseSetup &setup)
 {
@@ -1786,7 +1799,7 @@ last_deep_subdir(
 	return last_deep_subdir(kids.back(), seen, setup);
 }
 
-string
+static string
 next_dir_within_parents(const filesystem::path &dir, const BrowseSetup &setup)
 {
 	const string parent = parent_dir(dir);
@@ -1799,7 +1812,7 @@ next_dir_within_parents(const filesystem::path &dir, const BrowseSetup &setup)
 	return next_dir_within_parents(parent, setup);
 }
 
-string
+static string
 tree_prev_dir(const filesystem::path &dir, const BrowseSetup &setup)
 {
 	const string parent = parent_dir(dir);
@@ -1812,7 +1825,7 @@ tree_prev_dir(const filesystem::path &dir, const BrowseSetup &setup)
 	return parent;
 }
 
-string
+static string
 tree_next_dir(const filesystem::path &dir, const BrowseSetup &setup)
 {
 	const vector<string> kids = list_subdirs(dir, setup);
@@ -1821,7 +1834,7 @@ tree_next_dir(const filesystem::path &dir, const BrowseSetup &setup)
 	return next_dir_within_parents(dir, setup);
 }
 
-void
+static void
 push_place(Browser &b, const filesystem::path &root, string path,
 	const char *name, const char *icon, string tip = {})
 {
@@ -1837,7 +1850,7 @@ push_place(Browser &b, const filesystem::path &root, string path,
 // --- Scan --------------------------------------------------------------------
 
 // Case-insensitive substring match; an empty search matches everything.
-bool
+static bool
 matches_search(const Browser &b, const string &name)
 {
 	// Scanning can outrun the toolbar: before it is built there is no field,
@@ -1848,7 +1861,7 @@ matches_search(const Browser &b, const string &name)
 		b.search_->text, Qt::CaseInsensitive);
 }
 
-void
+static void
 scan_dir(Browser &b)
 {
 	string keep;
@@ -2061,13 +2074,13 @@ scan_dir(Browser &b)
 	}
 }
 
-float
+static float
 places_scroll(const Browser &b)
 {
 	return b.places_ ? b.places_->scroll_.offset : 0;
 }
 
-void
+static void
 push_hist(vector<Browser::HistEntry> &st, const Browser &b)
 {
 	if (b.dir_url_.isEmpty())
@@ -2075,7 +2088,7 @@ push_hist(vector<Browser::HistEntry> &st, const Browser &b)
 	st.push_back({b.dir_url_, places_scroll(b)});
 }
 
-void
+static void
 open_directory(
 	Browser &b, const QUrl &url, bool record = true, float side_scroll = 0)
 {
@@ -2100,7 +2113,7 @@ open_directory(
 	request_render(b);
 }
 
-void
+static void
 set_thumb_size(Browser &b, int size)
 {
 	if (size == b.thumb_size_)
@@ -2125,7 +2138,7 @@ set_thumb_size(Browser &b, int size)
 	request_render(b);
 }
 
-void
+static void
 set_view(Browser &b, BrowserView view)
 {
 	if (view == b.view_)
@@ -2136,7 +2149,7 @@ set_view(Browser &b, BrowserView view)
 
 // --- Toolbar -----------------------------------------------------------------
 
-void
+static void
 pack_standin_icons(Browser &b)
 {
 	const int px = max(1, b.kit_.px(float(b.thumb_size_) * 0.5f));
@@ -2144,7 +2157,7 @@ pack_standin_icons(Browser &b)
 	b.kit_.pack_icon(kMissingIcon, px);
 }
 
-void
+static void
 pack_toolbar_icons(Browser &b)
 {
 	const int px = b.kit_.icon_px();
@@ -2170,7 +2183,7 @@ pack_toolbar_icons(Browser &b)
 	b.kit_.pack_icon("open-menu-symbolic", px);
 }
 
-bool
+static bool
 set_dpr(Browser &b, float dpr)
 {
 	if (!b.kit_.set_dpr(dpr))
@@ -2187,7 +2200,7 @@ set_dpr(Browser &b, float dpr)
 	return true;
 }
 
-bool
+static bool
 spec_enabled(const Browser &b, Action action)
 {
 	const int idx = thumb_size_index(b.thumb_size_);
@@ -2216,7 +2229,7 @@ spec_enabled(const Browser &b, Action action)
 	}
 }
 
-bool
+static bool
 spec_active(const Browser &b, Action action)
 {
 	switch (action) {
@@ -2245,7 +2258,7 @@ spec_active(const Browser &b, Action action)
 	}
 }
 
-unique_ptr<Widget>
+static unique_ptr<Widget>
 make_item(Browser &b, const Spec &spec)
 {
 	if (spec.kind == Kind::Sep)
@@ -2295,7 +2308,7 @@ make_item(Browser &b, const Spec &spec)
 	return n;
 }
 
-unique_ptr<ToolbarSlot>
+static unique_ptr<ToolbarSlot>
 make_slot_row(Browser &b, Slot slot)
 {
 	auto row = make_unique<ToolbarSlot>();
@@ -2307,7 +2320,7 @@ make_slot_row(Browser &b, Slot slot)
 	return row;
 }
 
-unique_ptr<Toolbar>
+static unique_ptr<Toolbar>
 make_toolbar(Browser &b)
 {
 	auto left = make_slot_row(b, Slot::Left);
@@ -2318,7 +2331,7 @@ make_toolbar(Browser &b)
 		std::move(left), std::move(mid), std::move(right));
 }
 
-unique_ptr<Sidebar>
+static unique_ptr<Sidebar>
 make_sidebar(Browser &b)
 {
 	auto list = make_unique<ScrollColumn>();
@@ -2331,7 +2344,7 @@ make_sidebar(Browser &b)
 	return side;
 }
 
-void
+static void
 fill_places(Browser &b)
 {
 	auto *list = b.places_;
@@ -2388,7 +2401,7 @@ fill_places(Browser &b)
 	b.places_dirty_ = false;
 }
 
-void
+static void
 sync_ui(Browser &b, Page &ui)
 {
 	if (ui.toolbar)
@@ -2405,7 +2418,7 @@ sync_ui(Browser &b, Page &ui)
 	}
 }
 
-bool
+static bool
 apply_action(Browser &b, Action action)
 {
 	switch (action) {
@@ -2534,7 +2547,7 @@ apply_action(Browser &b, Action action)
 	}
 }
 
-Actor
+static Actor
 make_actor(Browser &b, const HostActions &host)
 {
 	return chain_actor(
@@ -2542,8 +2555,6 @@ make_actor(Browser &b, const HostActions &host)
 		[&b](Action a) { return spec_enabled(b, a); },
 		[&b](Action a) { return spec_active(b, a); });
 }
-
-}  // namespace
 
 // --- Browser -----------------------------------------------------------------
 
@@ -2997,7 +3008,7 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	return true;
 }
 
-void
+static void
 activate_hit(Browser &b, float x, float y)
 {
 	const int i = hit_file(b, x, y);

@@ -50,9 +50,6 @@ using namespace std;
 namespace dn
 {
 
-namespace
-{
-
 constexpr float kWinPadX = 4.f;
 constexpr float kWinPadY = 2.f;
 constexpr float kItemGap = 2.f;
@@ -66,7 +63,7 @@ constexpr float kAngleFast = 1e-5f;
 constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 
 // The loader below is a local-filesystem reader, and keys its jobs by path.
-string
+static string
 viewer_local_path(const Viewer &v)
 {
 	return url_to_path(v.url_).toStdString();
@@ -75,11 +72,16 @@ viewer_local_path(const Viewer &v)
 enum class Slot : uint8_t { Left, Middle, Right };
 enum class Kind : uint8_t { Icon, Scale, Sep };
 
+namespace
+{
+
 struct Spec {
 	Kind kind;
 	Slot slot;
 	Action action;
 };
+
+}  // namespace
 
 constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Left, Action::Browse},
@@ -125,7 +127,7 @@ constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Right, Action::Fullscreen},
 };
 
-bool
+static bool
 spec_enabled(const Viewer &v, Action action)
 {
 	switch (action) {
@@ -157,7 +159,7 @@ spec_enabled(const Viewer &v, Action action)
 	}
 }
 
-bool
+static bool
 spec_active(const Viewer &v, Action action)
 {
 	switch (action) {
@@ -204,7 +206,7 @@ sync_scale_label(Viewer &v)
 	v.scale_label_->text = v.scale_text_;
 }
 
-unique_ptr<Widget>
+static unique_ptr<Widget>
 make_item(Viewer &v, const Spec &spec)
 {
 	if (spec.kind == Kind::Sep)
@@ -239,7 +241,7 @@ make_item(Viewer &v, const Spec &spec)
 	return n;
 }
 
-unique_ptr<ToolbarSlot>
+static unique_ptr<ToolbarSlot>
 make_slot_row(Viewer &v, Slot slot)
 {
 	auto row = make_unique<ToolbarSlot>();
@@ -251,7 +253,7 @@ make_slot_row(Viewer &v, Slot slot)
 	return row;
 }
 
-unique_ptr<Row>
+static unique_ptr<Row>
 meta_row(
 	const QString &lab, const QString &value, float label_w, Label *&value_out)
 {
@@ -271,7 +273,7 @@ meta_row(
 	return row;
 }
 
-QString
+static QString
 dim_text(uint32_t v)
 {
 	if (!v)
@@ -284,7 +286,7 @@ dim_text(uint32_t v)
 // FIXME: This is fucking stupid.
 constexpr int kInfoFixedKids = 6 + DAWN_WITH_JPEG_QS;
 
-void
+static void
 fill_info_texts(Viewer &v, const dawn::Image *im)
 {
 	if (!v.info_ || v.info_text_src_ == im)
@@ -313,6 +315,9 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 	}
 }
 
+namespace
+{
+
 struct OpenJob {
 	uint64_t epoch = 0;
 	Viewer::OpenKey key;
@@ -337,7 +342,9 @@ struct ScaleJob {
 	bool enable_cms = true;
 };
 
-string
+}  // namespace
+
+static string
 join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	bool no_image, bool empty_image)
 {
@@ -361,7 +368,7 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	return out;
 }
 
-shared_ptr<dawn::Profile>
+static shared_ptr<dawn::Profile>
 profile_from_icc(
 	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
@@ -371,8 +378,6 @@ profile_from_icc(
 	}
 	return cmm.get_profile_sRGB();
 }
-
-}  // namespace
 
 static bool apply_action(Viewer &v, Action action);
 static void reload_open(Viewer &v);

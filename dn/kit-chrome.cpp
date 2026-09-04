@@ -352,15 +352,12 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 // --- Settings dialog ---------------------------------------------------------
 
-namespace
-{
-
 // TODO(p): This needs to be in one place with sizes.
-const QString kThumbSizeNames[] = {QStringLiteral("Small"),
+static const QString kThumbSizeNames[] = {QStringLiteral("Small"),
 	QStringLiteral("Normal"), QStringLiteral("Large"), QStringLiteral("Huge")};
 
 // TODO(p): This must come from libdn.  Also add de/serialisation.
-vector<SettingsDraft::Loader>
+static vector<SettingsDraft::Loader>
 placeholder_loaders()
 {
 	return {
@@ -376,7 +373,7 @@ placeholder_loaders()
 	};
 }
 
-QString
+static QString
 loader_text(const SettingsDraft::Loader &loader)
 {
 	if (loader.formats.isEmpty())
@@ -386,7 +383,7 @@ loader_text(const SettingsDraft::Loader &loader)
 }
 
 // TODO(p): This sizing model is bad.
-unique_ptr<Row>
+static unique_ptr<Row>
 settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
 {
 	auto text = dialog_label(label);
@@ -401,7 +398,7 @@ settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
 	return row;
 }
 
-unique_ptr<Checkbox>
+static unique_ptr<Checkbox>
 settings_check(const char *label, bool checked)
 {
 	auto check = make_unique<Checkbox>();
@@ -409,6 +406,9 @@ settings_check(const char *label, bool checked)
 	check->checked = checked;
 	return check;
 }
+
+namespace
+{
 
 // The rows are built once and then only ever re-read from the draft:
 // Button::activate will not return into a button that its own click had freed.
@@ -453,7 +453,9 @@ LoaderRows::move(Kit &kit, int from, int dir)
 	kit.set_focus(want->enabled_ ? want : other, kit.focus_visible_);
 }
 
-unique_ptr<Button>
+}  // namespace
+
+static unique_ptr<Button>
 loader_arrow(const char *icon, const QString &tip)
 {
 	auto button = make_unique<Button>();
@@ -461,8 +463,6 @@ loader_arrow(const char *icon, const QString &tip)
 	button->tip_text = tip;
 	return button;
 }
-
-}  // namespace
 
 void
 dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
