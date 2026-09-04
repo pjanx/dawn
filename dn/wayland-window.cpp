@@ -15,9 +15,9 @@
 #include <QCloseEvent>
 #include <QCoreApplication>
 #include <QEvent>
-#include <QExposeEvent>
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPlatformSurfaceEvent>
 #include <QResizeEvent>
@@ -56,11 +56,13 @@ wayland_show_window_menu(QWindow *shell, int x, int y)
 }
 
 WaylandWindow::WaylandWindow(App *app)
-	: app_(app), backing_store_(this), content_(app, this),
+	: app_(app), content_(app, this),
 	  color_bridge_(make_unique<WaylandColorBridge>())
 {
-	setSurfaceType(QSurface::RasterSurface);
 	setTitle(QStringLiteral("dn"));
+	QSurfaceFormat shell = format();
+	shell.setAlphaBufferSize(8);
+	setFormat(shell);
 	if (app && app->needs_csd) {
 		setFlag(Qt::FramelessWindowHint);
 		// Qt Wayland treats alphaBufferSize<=0 as opaque and stamps
@@ -91,27 +93,8 @@ WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	place_content();
 	if (!this->content_.initialize(url, setup, browse))
 		return false;
-	this->initialized_ = true;
 	attach_color_management(true);
 	return true;
-}
-
-void
-WaylandWindow::render_background()
-{
-	if (!isExposed() || size().isEmpty())
-		return;
-	if (this->backing_store_.size() != size())
-		this->backing_store_.resize(size());
-
-	const QRect rect(QPoint(), size());
-	this->backing_store_.beginPaint(rect);
-	{
-		QPainter painter(this->backing_store_.paintDevice());
-		painter.fillRect(rect, Qt::black);
-	}
-	this->backing_store_.endPaint();
-	this->backing_store_.flush(rect);
 }
 
 void
@@ -151,23 +134,17 @@ WaylandWindow::event(QEvent *event)
 		place_content();
 		QCoreApplication::sendEvent(&this->content_, event);
 	}
-	if (event->type() == QEvent::UpdateRequest) {
-		render_background();
-		return true;
-	}
-	if (event->type() == QEvent::DevicePixelRatioChange)
-		requestUpdate();
 	if (event->type() == QEvent::DragEnter ||
 		event->type() == QEvent::DragMove || event->type() == QEvent::Drop)
 		return QCoreApplication::sendEvent(&this->content_, event);
-	return QWindow::event(event);
+	return QRasterWindow::event(event);
 }
 
 bool
 WaylandWindow::eventFilter(QObject *watched, QEvent *event)
 {
 	if (watched != &this->content_)
-		return QWindow::eventFilter(watched, event);
+		return QRasterWindow::eventFilter(watched, event);
 	if (event->type() == QEvent::FocusOut)
 		finish_close();
 	if (event->type() == QEvent::PlatformSurface) {
@@ -175,12 +152,9 @@ WaylandWindow::eventFilter(QObject *watched, QEvent *event)
 		if (surface_event->surfaceEventType() ==
 			QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
 			this->color_bridge_->detach();
-		} else if (this->initialized_) {
-			QTimer::singleShot(
-				0, this, [this] { attach_color_management(false); });
 		}
 	}
-	return QWindow::eventFilter(watched, event);
+	return QRasterWindow::eventFilter(watched, event);
 }
 
 void
@@ -214,13 +188,6 @@ WaylandWindow::closeEvent(QCloseEvent *event)
 }
 
 void
-WaylandWindow::exposeEvent(QExposeEvent *)
-{
-	if (isExposed())
-		render_background();
-}
-
-void
 WaylandWindow::keyPressEvent(QKeyEvent *event)
 {
 	QCoreApplication::sendEvent(&this->content_, event);
@@ -233,11 +200,19 @@ WaylandWindow::keyReleaseEvent(QKeyEvent *event)
 }
 
 void
+WaylandWindow::paintEvent(QPaintEvent *event)
+{
+	QPainter painter(this);
+	painter.setClipRegion(event->region());
+	painter.setCompositionMode(QPainter::CompositionMode_Source);
+	painter.fillRect(QRect(QPoint(), size()), Qt::transparent);
+}
+
+void
 WaylandWindow::resizeEvent(QResizeEvent *event)
 {
-	this->backing_store_.resize(event->size());
+	QRasterWindow::resizeEvent(event);
 	place_content();
-	requestUpdate();
 }
 
 QRect
@@ -263,9 +238,9 @@ WaylandWindow::place_content()
 void
 WaylandWindow::showEvent(QShowEvent *event)
 {
-	QWindow::showEvent(event);
+	QRasterWindow::showEvent(event);
 	this->content_.show();
-	requestUpdate();
+	update();
 }
 
 }  // namespace dn

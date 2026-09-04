@@ -9,27 +9,26 @@
 
 #include "window.hpp"
 
-#include <QBackingStore>
-#include <QWindow>
+#include <QRasterWindow>
 
 #include <memory>
 
 class QCloseEvent;
-class QExposeEvent;
 class QKeyEvent;
+class QPaintEvent;
 class QResizeEvent;
 class QShowEvent;
+
 namespace dn
 {
 
 class App;
 class WaylandColorBridge;
 
-class WaylandWindow final : public QWindow
+class WaylandWindow final : public QRasterWindow
 {
 	enum class CloseState { Open, WaitingForLeave, ReadyToClose };
 
-	void render_background();
 	void begin_close();
 	void finish_close();
 	void attach_color_management(bool report_fallback);
@@ -37,19 +36,17 @@ class WaylandWindow final : public QWindow
 	[[nodiscard]] QRect content_geometry() const;
 
 	App *app_ = nullptr;
-	QBackingStore backing_store_;
 	dn::Window content_;
 	std::unique_ptr<WaylandColorBridge> color_bridge_;
 	CloseState close_state_ = CloseState::Open;
-	bool initialized_ = false;
 
 protected:
 	bool event(QEvent *event) override;
 	bool eventFilter(QObject *watched, QEvent *event) override;
 	void closeEvent(QCloseEvent *event) override;
-	void exposeEvent(QExposeEvent *event) override;
 	void keyPressEvent(QKeyEvent *event) override;
 	void keyReleaseEvent(QKeyEvent *event) override;
+	void paintEvent(QPaintEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
 	void showEvent(QShowEvent *event) override;
 
