@@ -169,13 +169,8 @@ merge_loaders(const vector<string> &order, const vector<string> &disabled)
 
 		used[i] = true;
 		const dawn::LoaderInfo &info = known[i];
-		QString formats;
-		for (const string &format : info.formats) {
-			if (!formats.isEmpty())
-				formats += QStringLiteral(", ");
-			formats += QString::fromStdString(format);
-		}
-		out.push_back({QString::fromStdString(info.name), formats,
+		out.push_back({QString::fromUtf8(info.name),
+			QString::fromUtf8(info.formats),
 			find(disabled.begin(), disabled.end(), info.name) ==
 				disabled.end()});
 	};

@@ -341,8 +341,8 @@ std::vector<std::string> supported_media_types();
 
 /// One image loader, as Image::loader names it.
 struct LoaderInfo {
-	std::string name;
-	std::vector<std::string> formats;  ///< Human-readable, may be empty.
+	const char *name;
+	const char *formats;  ///< Human-readable, comma-separated; may be null.
 };
 
 /// Loaders this build has, in the default order they are tried in.

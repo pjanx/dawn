@@ -1564,29 +1564,19 @@ struct Loader
 {
 	const char *name;
 	detail::LoadFn *loader;
-	std::initializer_list<const char *> formats;
+	const char *formats;  // Human-readable, comma-separated.
 	std::initializer_list<const char *> media_types;
 	MediaTypeFn *dynamic_types;
 };
 
 // The order is the default loading order.
 constexpr Loader kLoaders[] = {
-	{"libjpeg-turbo", &detail::load_jpeg, {"JPEG"}, {"image/jpeg"}, {}},
+	{"libjpeg-turbo", &detail::load_jpeg, "JPEG", {"image/jpeg"}, {}},
 
-	{"libwebp", &detail::load_webp, {"WebP"}, {"image/webp"}, {}},
+	{"libwebp", &detail::load_webp, "WebP", {"image/webp"}, {}},
 
 	{"Wuffs", &detail::load_wuffs,
-		{
-			"BMP",
-			"GIF",
-			"JPEG (subset)",
-			"PNG",
-			"QOI",
-			"WBMP",
-			"WebP (subset)",
-			"PNM",
-			"TARGA",
-		},
+		"BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, WebP (subset)",
 		{
 			"image/bmp",
 			"image/gif",
@@ -1600,10 +1590,10 @@ constexpr Loader kLoaders[] = {
 			"image/x-tga",
 		}},
 
-	{"ICNS", &detail::load_icns, {"ICNS"}, {"image/x-icns"}, {}},
+	{"ICNS", &detail::load_icns, "ICNS", {"image/x-icns"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF-EP previews", &detail::load_tiff_ep, {"raw photos"},
+	{"TIFF-EP previews", &detail::load_tiff_ep, "raw photos",
 		{"image/x-dcraw"}, {}},
 
 	{"LibRaw",
@@ -1612,9 +1602,9 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"raw photos"}, {"image/x-dcraw"}, {}},
+		"raw photos", {"image/x-dcraw"}, {}},
 
-	{"resvg", &detail::load_resvg, {"SVG"}, {"image/svg+xml"}, {}},
+	{"resvg", &detail::load_resvg, "SVG", {"image/svg+xml"}, {}},
 
 	{"librsvg",
 #if DAWN_WITH_LIBRSVG
@@ -1622,7 +1612,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"SVG"}, {"image/svg+xml"}, {}},
+		"SVG", {"image/svg+xml"}, {}},
 
 	{"libXcursor",
 #if DAWN_WITH_XCURSOR
@@ -1630,7 +1620,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"Xcursor"}, {"image/x-xcursor"}, {}},
+		"Xcursor", {"image/x-xcursor"}, {}},
 
 	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
 	// not rely on libheif rejecting an unknown ftyp brand.
@@ -1640,7 +1630,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"JPEG XL"}, {"image/jxl"}, {}},
+		"JPEG XL", {"image/jxl"}, {}},
 
 	{"libheif",
 #if DAWN_WITH_LIBHEIF
@@ -1648,11 +1638,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{
-			"AVIF",
-			"HEIC",
-			"HEIF",
-		},
+		"AVIF, HEIC, HEIF",
 		{
 			"image/avif",
 			"image/heic",
@@ -1666,7 +1652,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"JPEG 2000"},
+		"JPEG 2000",
 		// Not image/jpx or image/jpm: OpenJPEG decodes neither JPX (Part 2)
 		// nor compound JPM, and claiming them would only fail later.
 		{"image/jp2", "image/x-jp2-codestream"}, {}},
@@ -1677,7 +1663,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		{"TIFF"}, {"image/tiff"}, {}},
+		"TIFF", {"image/tiff"}, {}},
 
 	{"Glycin",
 #if DAWN_WITH_GLYCIN
@@ -1727,11 +1713,7 @@ loaders()
 		if (!loader.loader)
 			continue;
 
-		LoaderInfo info;
-		info.name = loader.name;
-		for (const char *format : loader.formats)
-			info.formats.emplace_back(format);
-		out.push_back(std::move(info));
+		out.push_back({loader.name, loader.formats});
 	}
 	return out;
 }
