@@ -1582,7 +1582,7 @@ constexpr Loader kLoaders[] = {
 	{"ICNS", &detail::load_icns, "ICNS", {"image/x-icns"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF-EP previews", &detail::load_tiff_ep, "raw photos",
+	{"TIFF/EP previews", &detail::load_tiff_ep, "raw photos",
 		{"image/x-dcraw"}, {}},
 
 	{"LibRaw",

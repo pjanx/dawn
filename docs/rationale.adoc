@@ -5,7 +5,7 @@ This document is written from the perspective of the project lead.
 I can write the same story from different perspectives.  '`Why is it this way`'
 seems to be a useful one.
 
-I'm always open to new information.  You always miss something.
+I'm open to new information.  You always miss something.
 
 Why make this at all
 --------------------
@@ -68,11 +68,11 @@ Also see '`We care about`' in the link:../README.adoc[README].
 
 Platforms
 ---------
-I want to be able to use the software on all main OSs, as I daily driving two of
+I want to be able to use the software on all main OSs, as I daily drive two of
 them in combination.  This results in architectural pain that I'm willing to
 engineer for.  Deployment is a tad difficult:
 
- - macOS needs special build slaves, at minimum a decent ARM64 VM,
+ - macOS needs special build slaves, at minimum a decent ARM64 virtual machine,
    and more importantly a Developer ID certificate if any greater number
    of people were to use the software.
 
@@ -87,15 +87,20 @@ Language
 --------
 In principle, the project consists of several parts that may be heterogenous,
 communicating through IPCs.
-In practice, most good libraries either have a C or *C++* API, and additional
-layers are considered undesirable.  I'm not too happy here.
+
+In practice, most good libraries for reuse either have a C or *C++* API,
+and additional layers are considered undesirable.  I'm not too happy here.
+Alternatives need to be stable, which Zig isn't, and must not get on my nerves,
+which Rust and Cargo do.
+
+In any case, automated porting is a thing.
 
 Build system
 ------------
 Having tried Meson in the predecessor, I'm not willing to endure the pain again.
 Its documentation is weak (literally searching
 https://mesonbuild.com/index.html[in the dark]), it forces you to do things in
-a particular way through its remarkably weak scripting\^Wconfiguration language,
+a particular way through its remarkably weak scripting^Wconfiguration language,
 and it comes with annoying https://github.com/mesonbuild/meson/issues/1564[bugs]
 and https://github.com/mesonbuild/meson/issues/1696[limitations].
 To say something nice about it, I like `meson devenv`.
@@ -169,8 +174,8 @@ its own anyway, such as:
  - We can't get true alpha maps for our glyph cache.  Thus text is likely
    to be composited wrongly.  (Improvable with private APIs.)
 
-It's likely that we'll get rid of it eventually, whether due to licencing
-or otherwise.
+It's likely that we'll get rid of it eventually, whether due to licencing that
+makes potential App Store prohibitively expensive, or otherwise.
 
 Actual toolkit
 --------------
@@ -214,14 +219,26 @@ Selecting GPA variants is yet another story.
 
 Other file formats
 ------------------
-https://github.com/google/wuffs[*Wuffs*] is fast, supposedly safe, covers a lot
-of formats, and is tough to integrate.
+The primary loader is https://github.com/google/wuffs[*Wuffs*], which is fast,
+supposedly safe, and covers a lot of formats.  It's just moderately hard to
+integrate.
 
 With JPEG, although Wuffs has some support for it as well, it's fairly simple:
-*libjpeg-turbo*.  I also bundle
+the well-established *libjpeg-turbo*.  I also bundle
 https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
 it's interesting--having a decent scaling algorithm can otherwise be nullified
 by DCT artifacts.
+
+Raw camera photos are served with *LibRaw*, since there isn't much of a choice.
+Its automatic rendering, as well as general engineering qualities, are quite
+poor.  Thus we first try to extract full-size JPEG thumbnails from TIFF/EP
+compatible formats (I own a Nikon DSLR).
+
+I don't especially care about niche formats.  If it ever becomes desirable,
+there is an obscure project called https://snisurset.net/code/abydos/about.html[
+Abydos] which gets quite exhaustive in that regard.   The current general
+fallbacks are Glycin and/or the older GdkPixbuf.  On macOS, the system ImageIO
+covers a ton of stuff, often much better than FOSS libraries.
 
 Scaling
 -------
