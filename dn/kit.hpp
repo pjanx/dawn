@@ -219,6 +219,7 @@ struct Button : Widget {
 	bool dim = false;
 	bool flat = false;
 	bool activate_on_press = false;
+	bool focus_on_press = true;
 	float pad_x = 0;
 	std::function<void(Kit &)> on_click;
 
@@ -243,7 +244,6 @@ struct Checkbox : Button {
 	void measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool activate(Kit &kit) override;
 };
 

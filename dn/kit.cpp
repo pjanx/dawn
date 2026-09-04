@@ -837,6 +837,8 @@ Button::press(Kit &kit, float, float, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
+	if (this->focus_on_press && focusable())
+		kit.set_focus(this, true);
 	kit.pressed_ = this;
 	if (this->activate_on_press)
 		activate(kit);
@@ -956,26 +958,13 @@ Checkbox::prepare(Kit &kit)
 		cache_text(kit, checkbox_shown(kit, *this), false, 0);
 }
 
-// Like a text field, and unlike a plain button: a click leaves the keyboard
-// here, where Space will toggle it again, so the ring has to say so.  A
-// disabled one is still hit, and must not be left holding a focus that
-// nothing can move off it.
-bool
-Checkbox::press(Kit &kit, float x, float y, Qt::MouseButton button)
-{
-	if (button != Qt::LeftButton)
-		return false;
-	if (focusable())
-		kit.set_focus(this, true);
-	return Button::press(kit, x, y, button);
-}
-
 bool
 Checkbox::activate(Kit &kit)
 {
 	if (!this->enabled_)
 		return false;
 
+	kit.set_focus(this, true);
 	this->checked = !this->checked;
 	return Button::activate(kit);
 }
@@ -3457,6 +3446,7 @@ ToolbarSlot::ToolbarSlot()
 	auto button = make_unique<Button>();
 	button->visible = false;
 	button->flat = true;
+	button->focus_on_press = false;
 	button->icon = "disclose-arrow-down-symbolic";
 	button->tip_text = "More";
 	this->more = button.get();

@@ -222,6 +222,7 @@ make_item(Viewer &v, const Spec &spec)
 	}
 	auto n = make_unique<Button>();
 	n->flat = true;
+	n->focus_on_press = false;
 	const Action action = spec.action;
 	const ActionDef &d = action_def(action);
 	const bool on = spec_active(v, action);

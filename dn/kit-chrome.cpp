@@ -1002,6 +1002,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	if (this->toolbar && this->toolbar->left) {
 		auto app = make_unique<Button>();
 		app->flat = true;
+		app->focus_on_press = false;
 		app->icon = "open-menu-symbolic";
 		app->tip_text = "Menu";
 		app->activate_on_press = true;

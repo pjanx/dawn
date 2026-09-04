@@ -479,7 +479,12 @@ struct SideRow : Button {
 	string path;
 	Browser *browser = nullptr;
 
-	SideRow() { this->flat = true; }
+	SideRow()
+	{
+		this->flat = true;
+		this->focus_on_press = false;
+	}
+
 	void measure(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -2268,6 +2273,7 @@ make_item(Browser &b, const Spec &spec)
 	}
 	auto n = make_unique<Button>();
 	n->flat = true;
+	n->focus_on_press = false;
 	const Action action = spec.action;
 	const ActionDef &d = action_def(action);
 	const bool on = spec_active(b, action);
