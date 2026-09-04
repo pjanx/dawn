@@ -77,8 +77,7 @@ void dialog_location(Kit &kit, Dialog &dialog,
 	std::function<void(const QString &)> on_open);
 
 // Takes the draft by value: the dialog edits its own copy, and Save is the
-// only way anything gets back out.  An empty loader list is filled in with
-// the placeholder one.
+// only way anything gets back out.
 void dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	std::function<void(const SettingsDraft &)> on_save);
 

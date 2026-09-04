@@ -324,6 +324,9 @@ struct OpenContext {
 	int screen_dpi = 96;
 	bool enhance = false;
 	bool first_frame_only = false;
+	/// Loaders to try, by name, in this order; empty means all of them,
+	/// in the default order. Names this build lacks are skipped.
+	std::span<const std::string> loaders;
 	std::vector<std::string> *warnings = nullptr;
 	OpenTiming *timing = nullptr;
 };
@@ -335,6 +338,15 @@ ImagePtr open_from_data(
 /// MIME types this build can load: base codecs, optional libraries, and
 /// whatever gdk-pixbuf modules are installed. Order is stable.
 std::vector<std::string> supported_media_types();
+
+/// One image loader, as Image::loader names it.
+struct LoaderInfo {
+	std::string name;
+	std::vector<std::string> formats;  ///< Human-readable, may be empty.
+};
+
+/// Loaders this build has, in the default order they are tried in.
+std::vector<LoaderInfo> loaders();
 
 void orientation_dimensions(
 	const Image &image, Orientation orientation, double *width, double *height);

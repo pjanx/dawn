@@ -84,6 +84,8 @@ struct Viewer : Widget {
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
 	std::shared_ptr<const std::vector<uint8_t>> screen_icc_;
+	// OpenContext::loaders, as the settings have it.
+	std::shared_ptr<const std::vector<std::string>> loaders_;
 	bool screen_profile_fallback_ = true;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;

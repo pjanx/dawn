@@ -323,6 +323,7 @@ struct OpenJob {
 	Viewer::OpenKey key;
 	string uri;
 	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const vector<string>> loaders;
 	int dpi = 96;
 	bool enable_cms = true;
 };
@@ -945,6 +946,8 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
 	ctx.screen_dpi = open.dpi;
 	ctx.enhance = open.key.enhance;
+	if (open.loaders)
+		ctx.loaders = *open.loaders;
 	vector<string> warnings;
 	ctx.warnings = &warnings;
 	dawn::Error error;
@@ -1097,6 +1100,7 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 	job.dpi = 96;
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
+	job.loaders = v.loaders_;
 	return job;
 }
 

@@ -356,23 +356,6 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 static const QString kThumbSizeNames[] = {QStringLiteral("Small"),
 	QStringLiteral("Normal"), QStringLiteral("Large"), QStringLiteral("Huge")};
 
-// TODO(p): This must come from libdn.  Also add de/serialisation.
-static vector<SettingsDraft::Loader>
-placeholder_loaders()
-{
-	return {
-		{QStringLiteral("libwebp"), QStringLiteral("WebP"), true},
-		{QStringLiteral("libjpeg-turbo"), QStringLiteral("JPEG"), true},
-		{QStringLiteral("Wuffs"),
-			QStringLiteral("BMP, GIF, NIE, PNG, PNM, QOI, TGA, WBMP"), true},
-		{QStringLiteral("Embedded TIFF EP previews"),
-			QStringLiteral("raw photos"), true},
-		{QStringLiteral("LibRaw"), QStringLiteral("raw photos"), true},
-		{QStringLiteral("resvg"), QStringLiteral("SVG"), true},
-		{QStringLiteral("Glycin"), {}, true},
-	};
-}
-
 static QString
 loader_text(const SettingsDraft::Loader &loader)
 {
@@ -468,9 +451,6 @@ void
 dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	function<void(const SettingsDraft &)> on_save)
 {
-	if (draft.loaders.empty())
-		draft.loaders = placeholder_loaders();
-
 	// The callbacks outlive this function and share one copy between them;
 	// Save hands that copy back, and Cancel simply drops it.
 	auto state = make_shared<SettingsDraft>(std::move(draft));
@@ -531,11 +511,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	note->dim = true;
 	col->add_child(std::move(note));
 
-	auto todo = dialog_label(
-		QStringLiteral("This section is a placeholder."),
-		true, true);
-	col->add_child(std::move(todo));
-
+	// TODO(p): Might generically add menu bar toggles for all of the loaders,
+	// but it is rather technical.
 	auto rows = make_shared<LoaderRows>();
 	rows->draft = state;
 	auto loaders = make_unique<Column>();

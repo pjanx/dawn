@@ -236,6 +236,8 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
 	this->app_->settings.listen(this, [this] {
+		if (this->viewer_)
+			this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
 		if (this->browser_)
 			this->browser_->rescan();
 		request_render();
@@ -246,9 +248,11 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 		this->kit_, this->host_, this->app_->thumbnailer, &this->browser_);
 	this->viewer_ui_ =
 		make_viewer_page(this->kit_, this->host_, &this->viewer_);
-	if (this->viewer_)
+	if (this->viewer_) {
+		this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
 		this->viewer_->set_screen_profile(
 			this->cmm_, this->screen_profile_, this->screen_profile_fallback_);
+	}
 	if (this->browser_) {
 		this->browser_->set_screen_profile(this->cmm_, this->screen_profile_);
 		this->browser_->setup_ = setup;
@@ -370,6 +374,7 @@ Window::bind_host()
 			draft.icc_profile_path = QString::fromStdString(
 				settings.icc_profile_override_path);
 			draft.disable_dithering = settings.disable_dithering;
+			draft.loaders = settings.loaders;
 			dialog_settings(this->kit_, *ui->dialog, std::move(draft),
 				[this](const SettingsDraft &saved) {
 					this->app_->settings.save(saved);

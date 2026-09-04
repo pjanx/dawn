@@ -1570,7 +1570,7 @@ struct Loader
 };
 
 // The order is the default loading order.
-constexpr Loader loaders[] = {
+constexpr Loader kLoaders[] = {
 	{"libjpeg-turbo", &detail::load_jpeg, {"JPEG"}, {"image/jpeg"}, {}},
 
 	{"libwebp", &detail::load_webp, {"WebP"}, {"image/webp"}, {}},
@@ -1706,7 +1706,7 @@ supported_media_types()
 		if (find(types.begin(), types.end(), type) == types.end())
 			types.emplace_back(type);
 	};
-	for (const Loader &loader : loaders) {
+	for (const Loader &loader : kLoaders) {
 		if (!loader.loader)
 			continue;
 
@@ -1719,7 +1719,34 @@ supported_media_types()
 	return types;
 }
 
+std::vector<LoaderInfo>
+loaders()
+{
+	vector<LoaderInfo> out;
+	for (const Loader &loader : kLoaders) {
+		if (!loader.loader)
+			continue;
+
+		LoaderInfo info;
+		info.name = loader.name;
+		for (const char *format : loader.formats)
+			info.formats.emplace_back(format);
+		out.push_back(std::move(info));
+	}
+	return out;
+}
+
 // --- Open --------------------------------------------------------------------
+
+static const Loader *
+find_loader(string_view name)
+{
+	for (const Loader &loader : kLoaders) {
+		if (loader.loader && name == loader.name)
+			return &loader;
+	}
+	return nullptr;
+}
 
 static ImagePtr
 try_loader(ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *),
@@ -1741,11 +1768,23 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	ImagePtr image;
-	for (const Loader &loader : loaders) {
-		if (loader.loader &&
-			(image = try_loader(loader.loader, data, ctx, error))) {
-			image->loader = loader.name;
-			break;
+	auto attempt = [&](const Loader &loader) {
+		if (!(image = try_loader(loader.loader, data, ctx, error)))
+			return false;
+		image->loader = loader.name;
+		return true;
+	};
+
+	if (ctx.loaders.empty()) {
+		for (const Loader &loader : kLoaders) {
+			if (loader.loader && attempt(loader))
+				break;
+		}
+	} else {
+		for (const string &name : ctx.loaders) {
+			const Loader *loader = find_loader(name);
+			if (loader && attempt(*loader))
+				break;
 		}
 	}
 

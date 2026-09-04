@@ -53,6 +53,8 @@ constexpr string_view kDitheringKey = "dn/DisableDithering";
 constexpr string_view kFilenamesKey = "dn/BrowserShowFilenames";
 constexpr string_view kThumbnailKey = "dn/BrowserThumbnailSize";
 constexpr string_view kProfileKey = "dn/ICCProfileOverride";
+constexpr string_view kLoaderOrderKey = "dn/LoaderOrder";
+constexpr string_view kLoaderDisabledKey = "dn/LoaderDisabled";
 
 static void
 config_warn(string_view key, const char *message)
@@ -125,10 +127,9 @@ bookmark_separator()
 }
 
 static vector<string>
-split_bookmarks(const string &value)
+split_list(const string &value, char separator)
 {
 	vector<string> out;
-	const char separator = bookmark_separator();
 	for (size_t offset = 0; offset <= value.size();) {
 		const size_t end = value.find(separator, offset);
 		const string item = value.substr(
@@ -143,15 +144,51 @@ split_bookmarks(const string &value)
 }
 
 static string
-join_bookmarks(const vector<string> &bookmarks)
+join_list(const vector<string> &items, char separator)
 {
 	string value;
-	for (const string &bookmark : bookmarks) {
+	for (const string &item : items) {
 		if (!value.empty())
-			value += bookmark_separator();
-		value += bookmark;
+			value += separator;
+		value += item;
 	}
 	return value;
+}
+
+// Whatever the configuration does not mention is enabled, and comes last:
+// a loader added in a later version must not arrive switched off.
+static vector<SettingsDraft::Loader>
+merge_loaders(const vector<string> &order, const vector<string> &disabled)
+{
+	const vector<dawn::LoaderInfo> known = dawn::loaders();
+	vector<bool> used(known.size());
+	vector<SettingsDraft::Loader> out;
+	const auto add = [&](size_t i) {
+		if (used[i])
+			return;
+
+		used[i] = true;
+		const dawn::LoaderInfo &info = known[i];
+		QString formats;
+		for (const string &format : info.formats) {
+			if (!formats.isEmpty())
+				formats += QStringLiteral(", ");
+			formats += QString::fromStdString(format);
+		}
+		out.push_back({QString::fromStdString(info.name), formats,
+			find(disabled.begin(), disabled.end(), info.name) ==
+				disabled.end()});
+	};
+
+	for (const string &name : order) {
+		for (size_t i = 0; i < known.size(); i++) {
+			if (known[i].name == name)
+				add(i);
+		}
+	}
+	for (size_t i = 0; i < known.size(); i++)
+		add(i);
+	return out;
 }
 
 // Bookmarks are compared by path, so they are stored canonicalised: the
@@ -195,6 +232,19 @@ Settings::load_icc_override(const string &path)
 	this->icc_profile_override_path = path;
 }
 
+// An empty list is the default order to libdn, so turning everything off
+// gets everything back; there is nothing sensible to do with that anyway.
+void
+Settings::update_enabled_loaders()
+{
+	auto names = make_shared<vector<string>>();
+	for (const SettingsDraft::Loader &loader : this->loaders) {
+		if (loader.enabled)
+			names->push_back(loader.name.toStdString());
+	}
+	this->enabled_loaders = std::move(names);
+}
+
 void
 Settings::load()
 {
@@ -209,7 +259,12 @@ Settings::load()
 
 	this->bookmarks.clear();
 	if (const optional<string> value = setting(kBookmarksKey))
-		this->bookmarks = split_bookmarks(*value);
+		this->bookmarks = split_list(*value, bookmark_separator());
+
+	this->loaders = merge_loaders(
+		split_list(setting(kLoaderOrderKey).value_or(string()), ';'),
+		split_list(setting(kLoaderDisabledKey).value_or(string()), ';'));
+	update_enabled_loaders();
 
 	load_icc_override(setting(kProfileKey).value_or(string()));
 }
@@ -223,6 +278,17 @@ Settings::save(const SettingsDraft &draft)
 	set_setting(kThumbnailKey, to_string(draft.thumbnail_size));
 	set_boolean_setting(kFilenamesKey, draft.show_filenames);
 	set_boolean_setting(kDitheringKey, draft.disable_dithering);
+
+	this->loaders = draft.loaders;
+	vector<string> order, disabled;
+	for (const SettingsDraft::Loader &loader : draft.loaders) {
+		order.push_back(loader.name.toStdString());
+		if (!loader.enabled)
+			disabled.push_back(order.back());
+	}
+	update_enabled_loaders();
+	set_setting(kLoaderOrderKey, join_list(order, ';'));
+	set_setting(kLoaderDisabledKey, join_list(disabled, ';'));
 
 	const string path = draft.icc_profile_path.toStdString();
 	set_setting(kProfileKey, path);
@@ -249,7 +315,8 @@ Settings::toggle_bookmark(const string &path)
 	else
 		this->bookmarks.push_back(want);
 	notify();
-	set_setting(kBookmarksKey, join_bookmarks(this->bookmarks));
+	set_setting(
+		kBookmarksKey, join_list(this->bookmarks, bookmark_separator()));
 }
 
 void

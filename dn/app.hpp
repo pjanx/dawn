@@ -48,6 +48,7 @@ class Settings
 	std::vector<std::pair<void *, std::function<void()>>> listeners_;
 
 	void notify() const;
+	void update_enabled_loaders();
 	// Reads the profile in, so that a path that cannot be used says so when
 	// it is chosen rather than at the next repaint.
 	void load_icc_override(const std::string &path);
@@ -56,6 +57,11 @@ public:
 	std::vector<std::string> bookmarks;
 	std::vector<unsigned char> icc_profile_override;
 	std::string icc_profile_override_path;
+	// All loaders this build has, in the configured order.
+	std::vector<SettingsDraft::Loader> loaders;
+	// The enabled ones, for OpenContext::loaders.  Replaced rather than
+	// rewritten, so that a decoding thread may hold on to an older list.
+	std::shared_ptr<const std::vector<std::string>> enabled_loaders;
 	bool disable_dithering = false;
 	bool browser_show_filenames = true;
 	int browser_thumbnail_size = 256;
