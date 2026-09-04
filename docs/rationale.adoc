@@ -7,11 +7,27 @@ I'm open to new information.  You always miss something.
 
 Why make this at all
 --------------------
- - There is no good image viewer for Linux at all (2026).
-   I've been using my https://git.janouch.name/p/fiv[fiv] but it needs a lot
+ - _Image viewer:_ There is no good image viewer for Linux at all (2026).
+   I had been using my https://git.janouch.name/p/fiv[fiv] but it needed a lot
    of improvements, some of which hit against its technical stack.
+
+ - _Image organiser:_ Like before, the competition for querying and organising
+   huge piles of image files is small.  All I need is a tool with reasonable
+   interfaces for automation, and pair it with at least trivial local AI.
+
+ - _File manager:_ Linux and macOS have at best middling freely available
+   graphical https://en.wikipedia.org/wiki/File_manager#Orthodox_file_managers[
+   orthodox file managers].  I want to bring Midnight Commander to the end
+   of the last century, with MTP and SFTP support.
+
  - Various special requirements--some in the UI/UX department,
    some technological--can't all be solved through forking existing projects.
+
+Devil's advocate
+----------------
+The project is explicitly local-first, and works on top of what you already
+have on a desktop, laptop computer.  But file systems are becoming an obsolete
+concept, as is personal computing as we've known it.  It will occupy a niche.
 
 AI use
 ------
