@@ -110,7 +110,7 @@ static QString
 help_document_path()
 {
 	const QString app_dir = QCoreApplication::applicationDirPath();
-#if defined Q_OS_WIN
+#ifdef Q_OS_WIN
 	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
 		QStringLiteral("share/doc/dawn/dn.html")));
 #elif defined Q_OS_MACOS

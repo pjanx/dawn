@@ -11,10 +11,10 @@
 #include <limits>
 #include <vector>
 
-#if defined(_WIN32)
+#ifdef _WIN32
 #include <cwchar>
 #include <windows.h>
-#elif defined(__APPLE__)
+#elif defined __APPLE__
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -187,7 +187,7 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 void
 vk_add_bundled_driver_files()
 {
-#if defined(_WIN32)
+#ifdef _WIN32
 	HMODULE self = nullptr;
 	wchar_t path[MAX_PATH];
 	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
@@ -200,7 +200,7 @@ vk_add_bundled_driver_files()
 		return;
 	wcscpy(slash + 1, L"vk_swiftshader_icd.json");
 	SetEnvironmentVariableW(L"VK_ADD_DRIVER_FILES", path);
-#elif defined(__APPLE__)
+#elif defined __APPLE__
 	// This library sits in Contents/Frameworks, the manifest in Resources.
 	Dl_info info{};
 	const char *slash = nullptr;

@@ -1,5 +1,9 @@
-# Convert CIE 1931 CMF CSV (wavelength,X,Y,Z) to a C++ header.
-# Usage: awk -f cmf-to-header.awk ciexyz31_1.csv cmf-cie1931-2deg-1nm.h
+#
+# cmf-to-header.awk: convert CIE 1931 CMF CSV (wavelength,X,Y,Z) to a C++ header
+#
+# Copyright The Dawn Authors
+# SPDX-License-Identifier: MPL-2.0
+#
 
 BEGIN {
 	if (ARGC < 3) {

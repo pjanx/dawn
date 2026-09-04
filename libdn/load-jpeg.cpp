@@ -26,12 +26,12 @@
 
 #define TIFF_TABLES_CONSTANTS_ONLY
 #include "tiff-tables.h"
-#if defined(__GNUC__)
+#ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 #include "tiffer.h"
-#if defined(__GNUC__)
+#ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
 
