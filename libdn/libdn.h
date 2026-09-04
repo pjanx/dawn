@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <span>
@@ -335,18 +336,28 @@ ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
+namespace detail
+{
+using LoadFn = ImagePtr(
+	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
+}
+
+/// One image loader.  Loaders this build was configured without keep their
+/// place, with a null `load`.
+struct Loader {
+	const char *name;  ///< As Image::loader names it.
+	detail::LoadFn *load;
+	const char *formats;  ///< Human-readable, comma-separated; may be null.
+	std::initializer_list<const char *> media_types;
+	std::vector<std::string> (*dynamic_types)();
+};
+
+/// The loader table, in the default order it is tried in.
+std::span<const Loader> loaders();
+
 /// MIME types this build can load: base codecs, optional libraries, and
 /// whatever gdk-pixbuf modules are installed. Order is stable.
 std::vector<std::string> supported_media_types();
-
-/// One image loader, as Image::loader names it.
-struct LoaderInfo {
-	const char *name;
-	const char *formats;  ///< Human-readable, comma-separated; may be null.
-};
-
-/// Loaders this build has, in the default order they are tried in.
-std::vector<LoaderInfo> loaders();
 
 void orientation_dimensions(
 	const Image &image, Orientation orientation, double *width, double *height);

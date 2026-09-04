@@ -38,9 +38,6 @@ struct StageClock {
 	StageClock &operator=(const StageClock &) = delete;
 };
 
-using LoadFn = ImagePtr(
-	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-
 LoadFn load_wuffs;
 LoadFn load_icns;
 LoadFn load_jpeg;

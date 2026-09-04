@@ -34,6 +34,7 @@
 #include <charconv>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -160,18 +161,19 @@ join_list(const vector<string> &items, char separator)
 static vector<SettingsDraft::Loader>
 merge_loaders(const vector<string> &order, const vector<string> &disabled)
 {
-	const vector<dawn::LoaderInfo> known = dawn::loaders();
+	const span<const dawn::Loader> known = dawn::loaders();
 	vector<bool> used(known.size());
 	vector<SettingsDraft::Loader> out;
 	const auto add = [&](size_t i) {
-		if (used[i])
+		// A loader this build lacks can only be ignored, so do not offer it;
+		// it drops out of the stored order until the build has it again.
+		if (used[i] || !known[i].load)
 			return;
 
 		used[i] = true;
-		const dawn::LoaderInfo &info = known[i];
-		out.push_back({QString::fromUtf8(info.name),
-			QString::fromUtf8(info.formats),
-			find(disabled.begin(), disabled.end(), info.name) ==
+		out.push_back({QString::fromUtf8(known[i].name),
+			QString::fromUtf8(known[i].formats),
+			find(disabled.begin(), disabled.end(), known[i].name) ==
 				disabled.end()});
 	};
 

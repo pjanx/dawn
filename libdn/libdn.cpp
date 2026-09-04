@@ -1558,17 +1558,6 @@ exif_orientation(span<const uint8_t> exif)
 namespace
 {
 
-using MediaTypeFn = vector<string>();
-
-struct Loader
-{
-	const char *name;
-	detail::LoadFn *loader;
-	const char *formats;  // Human-readable, comma-separated.
-	std::initializer_list<const char *> media_types;
-	MediaTypeFn *dynamic_types;
-};
-
 // The order is the default loading order.
 constexpr Loader kLoaders[] = {
 	{"libjpeg-turbo", &detail::load_jpeg, "JPEG", {"image/jpeg"}, {}},
@@ -1693,7 +1682,7 @@ supported_media_types()
 			types.emplace_back(type);
 	};
 	for (const Loader &loader : kLoaders) {
-		if (!loader.loader)
+		if (!loader.load)
 			continue;
 
 		for (const char *type : loader.media_types)
@@ -1705,17 +1694,10 @@ supported_media_types()
 	return types;
 }
 
-std::vector<LoaderInfo>
+std::span<const Loader>
 loaders()
 {
-	vector<LoaderInfo> out;
-	for (const Loader &loader : kLoaders) {
-		if (!loader.loader)
-			continue;
-
-		out.push_back({loader.name, loader.formats});
-	}
-	return out;
+	return kLoaders;
 }
 
 // --- Open --------------------------------------------------------------------
@@ -1724,7 +1706,7 @@ static const Loader *
 find_loader(string_view name)
 {
 	for (const Loader &loader : kLoaders) {
-		if (loader.loader && name == loader.name)
+		if (loader.load && name == loader.name)
 			return &loader;
 	}
 	return nullptr;
@@ -1751,7 +1733,7 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	ImagePtr image;
 	auto attempt = [&](const Loader &loader) {
-		if (!(image = try_loader(loader.loader, data, ctx, error)))
+		if (!(image = try_loader(loader.load, data, ctx, error)))
 			return false;
 		image->loader = loader.name;
 		return true;
@@ -1759,7 +1741,7 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	if (ctx.loaders.empty()) {
 		for (const Loader &loader : kLoaders) {
-			if (loader.loader && attempt(loader))
+			if (loader.load && attempt(loader))
 				break;
 		}
 	} else {
