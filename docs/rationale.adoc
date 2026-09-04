@@ -33,7 +33,7 @@ Also see '`We care about`' in the link:../README.adoc[README].
 
 Platforms
 ---------
-I want to be able to use the software on all main OSs.  This results in some
+I want to be able to use the software on all main OSs.  This results in
 architectural pain that I'm willing to engineer for.  Deployment is a tad
 difficult:
 
@@ -106,9 +106,22 @@ be useful.  (I've since checked that a GDK 4 path is impossible.)
 Its largest dependency is ICU, which we don't strictly require, and Qt can
 actually be built without it if needed for smaller standalone packages.
 
-Qt is somewhat nuke-able, and the minimal platform abstraction layer it provides
-_still_ creates problems of its own anyway.  It's likely that we'll get rid of
-it eventually, whether due to licencing or otherwise.
+The minimal platform abstraction layer Qt provides _still_ creates problems of
+its own anyway, such as:
+
+ - On X11, it is not possible to change the back pixel for windows,
+   so resizes pre-paint parts of the window black.  (Solvable with a hack.)
+
+ - On Wayland, the default provided CSD is unsatisfactory.  We've made our own
+   CSDs, though it has forced us to paint CSD shadows outside the primary window
+   in a subsurface, and we need a private API to invoke the compositor's CSD
+   menu on right click.  Pointless machinery: Qt makes Wayland miserable.
+
+ - We can't get true alpha maps for our glyph cache.  Thus text is likely
+   to be composited wrongly.  (Improvable with private APIs.)
+
+It's likely that we'll get rid of it eventually, whether due to licencing
+or otherwise.
 
 Actual toolkit
 --------------

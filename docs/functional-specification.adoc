@@ -68,6 +68,18 @@ WAYLAND_DISPLAY=wayland-dn weston-debug scene-graph
 
 Other Weston backends seem to be useful for interactive testing.
 
+Compositing
+-----------
+The general UI is wrongly composited in encoded space rather than linear light:
+
+ - Qt cannot pass information on whether font rasterizers assume this.
+ - We're matching the viewer, as described below.
+
+The viewer is also wrongly composited in encoded space, unless toggled correct:
+
+ - Real macOS ICNS files in particular assume this wrong compositing is used,
+   and produce artifacts on edges with the correct method.
+
 Thumbnails
 ----------
 When loading a directory, retrieve thumbnails as fast as possible:
@@ -76,7 +88,7 @@ When loading a directory, retrieve thumbnails as fast as possible:
  - Then try to fetch existing thumbnails, in this order:
     * _wide-thumbnail-spec_
     * XDG _thumbnail-spec_
- - The nominal size is attempted first, then smaller sizes, then larger ones.
+ - The nominal size is attempted first, then larger sizes, then smaller ones.
 
 The wide thumbnail view is only happy _wide-thumbnail-spec_ images
 of the nominal size, with a declared gamut.
