@@ -30,6 +30,13 @@ inline constexpr uint32_t kBytesPerPixel = 8;
 /// Maximum width or height of a loaded / rendered pixmap (inclusive).
 inline constexpr uint32_t kMaxDimension = 65535;
 
+inline constexpr uint32_t
+fourcc(char a, char b, char c, char d)
+{
+	return uint32_t(uint8_t(a)) << 24 | uint32_t(uint8_t(b)) << 16 |
+		uint32_t(uint8_t(c)) << 8 | uint32_t(uint8_t(d));
+}
+
 // Thread safety (summary):
 // - Concurrent open()/open_from_data() of different files is OK for most
 //   codecs. TIFF loads are serialized internally (libtiff global handlers).

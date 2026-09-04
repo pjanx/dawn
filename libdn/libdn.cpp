@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <initializer_list>
 #include <mutex>
 #include <new>
 #include <numbers>
@@ -1552,6 +1553,149 @@ exif_orientation(span<const uint8_t> exif)
 	return Orientation::Unknown;
 }
 
+// --- Loaders -----------------------------------------------------------------
+
+namespace
+{
+
+using MediaTypeFn = vector<string>();
+
+struct Loader
+{
+	const char *name;
+	detail::LoadFn *loader;
+	std::initializer_list<const char *> formats;
+	std::initializer_list<const char *> media_types;
+	MediaTypeFn *dynamic_types;
+};
+
+// The order is the default loading order.
+[[maybe_unused]] constexpr Loader loaders[] = {
+	{"libjpeg-turbo", &detail::load_jpeg, {"JPEG"}, {"image/jpeg"}, {}},
+
+	{"libwebp", &detail::load_webp, {"WebP"}, {"image/webp"}, {}},
+
+	{"Wuffs", &detail::load_wuffs,
+		{
+			"BMP",
+			"GIF",
+			"JPEG (subset)",
+			"PNG",
+			"QOI",
+			"WBMP",
+			"WebP (subset)",
+			"PNM",
+			"TARGA",
+		},
+		{
+			"image/bmp",
+			"image/gif",
+			"image/jpeg",
+			"image/png",
+			"image/qoi",
+			"image/vnd.wap.wbmp",
+			"image/webp",
+			// Only binary P5/P6 in practice, which Wuffs is limited to.
+			"image/x-portable-anymap",
+			"image/x-tga",
+		}},
+
+	{"ICNS", &detail::load_icns, {"ICNS"}, {"image/x-icns"}, {}},
+
+	// Try to extract full-size previews from TIFF/EP-compatible raws.
+	{"TIFF-EP previews", &detail::load_tiff_ep, {"raw photos"},
+		{"image/x-dcraw"}, {}},
+
+	{"LibRaw",
+#if DAWN_WITH_LIBRAW
+		&detail::load_libraw,
+#else
+		{},
+#endif
+		{"raw photos"}, {"image/x-dcraw"}, {}},
+
+	{"resvg", &detail::load_resvg, {"SVG"}, {"image/svg+xml"}, {}},
+
+	{"librsvg",
+#if DAWN_WITH_LIBRSVG
+		&detail::load_librsvg,
+#else
+		{},
+#endif
+		{"SVG"}, {"image/svg+xml"}, {}},
+
+	{"libXcursor",
+#if DAWN_WITH_XCURSOR
+		&detail::load_xcursor,
+#else
+		{},
+#endif
+		{"Xcursor"}, {"image/x-xcursor"}, {}},
+
+	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
+	// not rely on libheif rejecting an unknown ftyp brand.
+	{"libjxl",
+#if DAWN_WITH_LIBJXL
+		&detail::load_jxl,
+#else
+		{},
+#endif
+		{"JPEG XL"}, {"image/jxl"}, {}},
+
+	{"libheif",
+#if DAWN_WITH_LIBHEIF
+		&detail::load_heif,
+#else
+		{},
+#endif
+		{
+			"AVIF",
+			"HEIC",
+			"HEIF",
+		},
+		{
+			"image/avif",
+			"image/heic",
+			"image/heif",
+		},
+		{}},
+
+	{"OpenJPEG",
+#if DAWN_WITH_OPENJPEG
+		&detail::load_openjpeg,
+#else
+		{},
+#endif
+		{"JPEG 2000"},
+		// Not image/jpx or image/jpm: OpenJPEG decodes neither JPX (Part 2)
+		// nor compound JPM, and claiming them would only fail later.
+		{"image/jp2", "image/x-jp2-codestream"}, {}},
+
+	{"LibTIFF",
+#if DAWN_WITH_LIBTIFF
+		&detail::load_tiff,
+#else
+		{},
+#endif
+		{"TIFF"}, {"image/tiff"}, {}},
+
+	{"Glycin",
+#if DAWN_WITH_GLYCIN
+		&detail::load_glycin, {}, {}, &detail::glycin_media_types},
+#else
+		{}, {}, {}, {}},
+#endif
+
+	{"GdkPixbuf",
+#if DAWN_WITH_GDKPIXBUF
+		&detail::load_gdkpixbuf, {}, {}, &detail::gdkpixbuf_media_types},
+#else
+		{}, {}, {}, {}},
+#endif
+};
+
+}  // namespace
+
 // --- Supported media types ---------------------------------------------------
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
@@ -1644,24 +1788,24 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	if (data.size() >= 4 && !memcmp(data.data(), "icns", 4))
 		try_next(detail::load_icns, "ICNS");
 
-	uint32_t fourcc = detail::wuffs_guess_fourcc(data);
-	switch (fourcc) {
-	case 0x424D5020:  // BMP
-	case 0x47494620:  // GIF
-	case 0x4E494520:  // NIE
-	case 0x4E50424D:  // NPBM
-	case 0x504E4720:  // PNG
-	case 0x514F4920:  // QOI
-	case 0x54474120:  // TGA
-	case 0x57424D50:  // WBMP
+	uint32_t format = detail::wuffs_guess_fourcc(data);
+	switch (format) {
+	case fourcc('B', 'M', 'P', ' '):
+	case fourcc('G', 'I', 'F', ' '):
+	case fourcc('N', 'I', 'E', ' '):
+	case fourcc('N', 'P', 'B', 'M'):
+	case fourcc('P', 'N', 'G', ' '):
+	case fourcc('Q', 'O', 'I', ' '):
+	case fourcc('T', 'G', 'A', ' '):
+	case fourcc('W', 'B', 'M', 'P'):
 		// Note that TGA/ICO/CUR/WBMP don't start with any real magic.
 		// We will fall through on failure.
 		try_next(detail::load_wuffs, "Wuffs");
 		break;
-	case 0x4A504547:  // JPEG
+	case fourcc('J', 'P', 'E', 'G'):
 		try_next(detail::load_jpeg, "libjpeg-turbo");
 		break;
-	case 0x57454250:  // WEBP
+	case fourcc('W', 'E', 'B', 'P'):
 		try_next(detail::load_webp, "libwebp");
 		break;
 	default:
