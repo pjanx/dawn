@@ -2,8 +2,10 @@ Rationale
 =========
 
 This document is written from the perspective of the project lead.
+I can write the same story from different perspectives.  '`Why is it this way`'
+seems to be a useful one.
 
-I'm open to new information.  You always miss something.
+I'm always open to new information.  You always miss something.
 
 Why make this at all
 --------------------
@@ -13,15 +15,19 @@ Why make this at all
 
  - _Image organiser:_ Like before, the competition for querying and organising
    huge piles of image files is small.  All I need is a tool with reasonable
-   interfaces for automation, and pair it with at least trivial local AI.
+   interfaces for automation, and pair it with at least trivial local AI
+   for classification.
 
  - _File manager:_ Linux and macOS have at best middling freely available
    graphical https://en.wikipedia.org/wiki/File_manager#Orthodox_file_managers[
    orthodox file managers].  I want to bring Midnight Commander to the end
-   of the last century, with MTP and SFTP support.
+   of the last century, with MTP and SFTP support.  This must be a separate mode
+   from the image browser, because it sadly does not combine.
 
  - Various special requirements--some in the UI/UX department,
    some technological--can't all be solved through forking existing projects.
+
+The reasoning goes much deeper, and it's not particularly worth expanding on.
 
 Devil's advocate
 ----------------
@@ -29,11 +35,23 @@ The project is explicitly local-first, and works on top of what you already
 have on a desktop, laptop computer.  But file systems are becoming an obsolete
 concept, as is personal computing as we've known it.  It will occupy a niche.
 
+Name
+----
+It comes from around 2013 when I wanted to make Dawn Commander.  The trail ends
+there.  And I'm finishing exactly what I've begun--this will be the file manager
+mode's name.
+
+The main binaries are to be named '`dn`' or '`dnc`' in order to save on
+keystrokes, in the pattern of '`mc`' for Midnight Commander.  I recognise the
+potential for conflicts, and won't be mad on any packagers if they rename it.
+It seems popular to use the reverse domain name notation these days.
+
 AI use
 ------
-Few people can say they have enough time.  Moreover, 2026 frontier models run
-circles around me in certain areas and aspects.  Sadly not in product design,
-where I'm not sure myself what can make sense.
+Few people can say they have enough time, and this project has monstrous scope
+for a single person.  Moreover, 2026 frontier models run circles around me in
+certain areas and aspects.  Sadly not in product design, where I'm not sure
+myself what can make sense.
 
 The model evaluation at the time of writing is that Cursor Grok 4.6 High is
 a dumb slave that doesn't question, and Opus 5 or GPT 5.6 Sol easily fix most
@@ -41,7 +59,8 @@ problems, at a significant cost.
 
 Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
 the problems become more complex.  Perhaps as I'm shifting to believing
-that the models can read my mind--adding context usually helps.
+that the models can read my mind--adding context usually helps.  Giving it
+a screenshot may easily trump describing issues in words.
 
 Constraints
 -----------
@@ -49,12 +68,13 @@ Also see '`We care about`' in the link:../README.adoc[README].
 
 Platforms
 ---------
-I want to be able to use the software on all main OSs.  This results in
-architectural pain that I'm willing to engineer for.  Deployment is a tad
-difficult:
+I want to be able to use the software on all main OSs, as I daily driving two of
+them in combination.  This results in architectural pain that I'm willing to
+engineer for.  Deployment is a tad difficult:
 
- - macOS needs special build slaves, and more importantly a Developer ID
-   certificate if any greater number of people were to use the software.
+ - macOS needs special build slaves, at minimum a decent ARM64 VM,
+   and more importantly a Developer ID certificate if any greater number
+   of people were to use the software.
 
  - Linux has many odd dependencies that make it difficult to package
    the software in a way that it wants to integrate.  Flathub has particularly
@@ -69,6 +89,18 @@ In principle, the project consists of several parts that may be heterogenous,
 communicating through IPCs.
 In practice, most good libraries either have a C or *C++* API, and additional
 layers are considered undesirable.  I'm not too happy here.
+
+Build system
+------------
+Having tried Meson in the predecessor, I'm not willing to endure the pain again.
+Its documentation is weak (literally searching
+https://mesonbuild.com/index.html[in the dark]), it forces you to do things in
+a particular way through its remarkably weak scripting\^Wconfiguration language,
+and it comes with annoying https://github.com/mesonbuild/meson/issues/1564[bugs]
+and https://github.com/mesonbuild/meson/issues/1696[limitations].
+To say something nice about it, I like `meson devenv`.
+
+I've reverted to my favourite *CMake*.  You want it, it does it.  Easily.
 
 Rendering
 ---------
@@ -99,7 +131,7 @@ subset of the library.
 UI toolkit
 ----------
 I've made my https://git.janouch.name/p/fiv[previous image viewer] using GTK.
-That toolkit has clean design.  Now for a small sample of its problems:
+That toolkit has clean design.  Now for _a small sample_ of its problems:
 
  - It has diverged significantly from my idea of what a user interface
    https://p.janouch.name/text/human-interface-guidelines.html[should be like].
@@ -113,6 +145,7 @@ discarding them is control over the visual processing pipeline.  I _need_ deep
 bit depth, I _need_ to get all gamut, and I _need_ a lot of GPU rendering.
 With a custom Vulkan swapchain.  Even SDL 3 couldn't serve me, because figuring
 out the display windows were on couldn't be achieved through its API.
+Vendoring large codebases is a problem of its own.
 
 In the end, I've almost handrolled the backend completely, but after
 a last-resort evaluation of Qt in order to try to discard it as well I've found
