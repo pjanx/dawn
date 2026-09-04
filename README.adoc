@@ -13,8 +13,8 @@ image::docs/dn.webp["Screenshot of both the browser and the viewer"]
 Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
 https://git.janouch.name/p/gallery[desires].
-Right now, we've mostly reached our first milestone, and we're mostly cleaning
-up after rapid development before we can afford to continue making large steps.
+Right now, we've mostly reached our first milestone.  Once we get there, we'll
+clean up up after rapid development, then continue making large steps.
 
 The project comes with a maintenance guarantee.
 Also see link:docs/plan.adoc[Plan],
@@ -77,8 +77,8 @@ The bottom row should look more like '`linear 188`' (a popular bug).
 
 image::docs/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
 
-Note that 'Dawn' currently implements Bayer dithering, so you might not
-be able to distinguish an 8-bit swapchain.
+Note that 'Dawn' currently implements Bayer dithering for 8-bit swapchains,
+which you may need to turn off in settings to observe the difference.
 
 Competition
 -----------

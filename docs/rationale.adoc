@@ -25,7 +25,7 @@ problems, at a significant cost.
 
 Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
 the problems become more complex.  Perhaps as I'm shifting to believing
-that the models can read my mind.
+that the models can read my mind--adding context usually helps.
 
 Constraints
 -----------
