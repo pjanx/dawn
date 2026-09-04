@@ -38,8 +38,6 @@ struct StageClock {
 	StageClock &operator=(const StageClock &) = delete;
 };
 
-uint32_t wuffs_guess_fourcc(std::span<const uint8_t> data);
-
 using LoadFn = ImagePtr(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 

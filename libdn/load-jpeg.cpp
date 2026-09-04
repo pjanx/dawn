@@ -682,6 +682,8 @@ ImagePtr
 detail::load_jpeg(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	if (data.size() < 2 || data[0] != 0xff || data[1] != 0xd8)
+		return nullptr;
 	return open_libjpeg_turbo(data, ctx, error);
 }
 

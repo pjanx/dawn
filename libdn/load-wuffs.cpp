@@ -13,13 +13,16 @@
 #define WUFFS_CONFIG__MODULE__CRC32
 #define WUFFS_CONFIG__MODULE__DEFLATE
 #define WUFFS_CONFIG__MODULE__GIF
+#define WUFFS_CONFIG__MODULE__JPEG
 #define WUFFS_CONFIG__MODULE__LZW
 #define WUFFS_CONFIG__MODULE__NETPBM
 #define WUFFS_CONFIG__MODULE__NIE
 #define WUFFS_CONFIG__MODULE__PNG
 #define WUFFS_CONFIG__MODULE__QOI
 #define WUFFS_CONFIG__MODULE__TARGA
+#define WUFFS_CONFIG__MODULE__VP8
 #define WUFFS_CONFIG__MODULE__WBMP
+#define WUFFS_CONFIG__MODULE__WEBP
 #define WUFFS_CONFIG__MODULE__ZLIB
 #include "wuffs-v0.4.c"
 
@@ -527,20 +530,14 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 
 // --- Public entry points -----------------------------------------------------
 
-uint32_t
-detail::wuffs_guess_fourcc(span<const uint8_t> data)
-{
-	wuffs_base__slice_u8 prefix =
-		wuffs_base__make_slice_u8((uint8_t *) data.data(), data.size());
-	int32_t fourcc = wuffs_base__magic_number_guess_fourcc(prefix, true);
-	return fourcc > 0 ? uint32_t(fourcc) : 0;
-}
-
 ImagePtr
 detail::load_wuffs(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	switch (wuffs_guess_fourcc(data)) {
+	wuffs_base__slice_u8 prefix =
+		wuffs_base__make_slice_u8((uint8_t *) data.data(), data.size());
+	int32_t fourcc = wuffs_base__magic_number_guess_fourcc(prefix, true);
+	switch (fourcc > 0 ? uint32_t(fourcc) : 0) {
 	case WUFFS_BASE__FOURCC__BMP:
 		return open_wuffs_using(
 			wuffs_bmp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
@@ -548,6 +545,10 @@ detail::load_wuffs(
 	case WUFFS_BASE__FOURCC__GIF:
 		return open_wuffs_using(
 			wuffs_gif__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
+			error);
+	case WUFFS_BASE__FOURCC__JPEG:
+		return open_wuffs_using(
+			wuffs_jpeg__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
 	case WUFFS_BASE__FOURCC__NIE:
 		return open_wuffs_using(
@@ -574,6 +575,10 @@ detail::load_wuffs(
 	case WUFFS_BASE__FOURCC__WBMP:
 		return open_wuffs_using(
 			wuffs_wbmp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
+			error);
+	case WUFFS_BASE__FOURCC__WEBP:
+		return open_wuffs_using(
+			wuffs_webp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
 	default:
 		set_error(error, "unsupported or unrecognized Wuffs format");

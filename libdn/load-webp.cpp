@@ -12,6 +12,7 @@
 #include <webp/demux.h>
 
 #include <cstdint>
+#include <cstring>
 
 using namespace std;
 
@@ -217,6 +218,10 @@ ImagePtr
 detail::load_webp(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	if (data.size() < 12 || memcmp(data.data(), "RIFF", 4) ||
+		memcmp(data.data() + 8, "WEBP", 4))
+		return nullptr;
+
 	// It is wholly zero-initialized by libwebp.
 	WebPDecoderConfig config = {};
 	if (!WebPInitDecoderConfig(&config)) {

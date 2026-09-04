@@ -1696,8 +1696,6 @@ constexpr Loader loaders[] = {
 
 }  // namespace
 
-// --- Supported media types ---------------------------------------------------
-
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
 // photo formats: someone else will maintain the list of file extensions for us.
 std::vector<std::string>
@@ -1743,73 +1741,13 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	ImagePtr image;
-	auto try_next = [&](detail::LoadFn *fn, const char *name) {
-		if (!image && (image = try_loader(fn, data, ctx, error)))
-			image->loader = name;
-	};
-	if (data.size() >= 4 && !memcmp(data.data(), "icns", 4))
-		try_next(detail::load_icns, "ICNS");
-
-	uint32_t format = detail::wuffs_guess_fourcc(data);
-	switch (format) {
-	case fourcc('B', 'M', 'P', ' '):
-	case fourcc('G', 'I', 'F', ' '):
-	case fourcc('N', 'I', 'E', ' '):
-	case fourcc('N', 'P', 'B', 'M'):
-	case fourcc('P', 'N', 'G', ' '):
-	case fourcc('Q', 'O', 'I', ' '):
-	case fourcc('T', 'G', 'A', ' '):
-	case fourcc('W', 'B', 'M', 'P'):
-		// Note that TGA/ICO/CUR/WBMP don't start with any real magic.
-		// We will fall through on failure.
-		try_next(detail::load_wuffs, "Wuffs");
-		break;
-	case fourcc('J', 'P', 'E', 'G'):
-		try_next(detail::load_jpeg, "libjpeg-turbo");
-		break;
-	case fourcc('W', 'E', 'B', 'P'):
-		try_next(detail::load_webp, "libwebp");
-		break;
-	default:
-		break;
+	for (const Loader &loader : loaders) {
+		if (loader.loader &&
+			(image = try_loader(loader.loader, data, ctx, error))) {
+			image->loader = loader.name;
+			break;
+		}
 	}
-
-	// Try to extract full-size previews from TIFF/EP-compatible raws,
-	// but allow for running the full render.
-#if DAWN_WITH_LIBRAW
-	if (!ctx.enhance)
-#endif
-		try_next(detail::load_tiff_ep, "TIFF-EP previews");
-#if DAWN_WITH_LIBRAW
-	try_next(detail::load_libraw, "LibRaw");
-#endif
-	try_next(detail::load_resvg, "resvg");
-#if DAWN_WITH_LIBRSVG
-	try_next(detail::load_librsvg, "librsvg");
-#endif
-#if DAWN_WITH_XCURSOR
-	try_next(detail::load_xcursor, "libXcursor");
-#endif
-	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
-	// not rely on libheif rejecting an unknown ftyp brand.
-#if DAWN_WITH_LIBJXL
-	try_next(detail::load_jxl, "libjxl");
-#endif
-#if DAWN_WITH_LIBHEIF
-	try_next(detail::load_heif, "libheif");
-#endif
-#if DAWN_WITH_OPENJPEG
-	try_next(detail::load_openjpeg, "OpenJPEG");
-#endif
-#if DAWN_WITH_LIBTIFF
-	try_next(detail::load_tiff, "LibTIFF");
-#endif
-#if DAWN_WITH_GLYCIN
-	try_next(detail::load_glycin, "Glycin");
-#endif
-#if DAWN_WITH_GDKPIXBUF
-	try_next(detail::load_gdkpixbuf, "GdkPixbuf");
-#endif
 
 	if (!image) {
 		if (error && error->message.empty())
