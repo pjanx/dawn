@@ -31,6 +31,8 @@
 	<string>${MACOSX_BUNDLE_SHORT_VERSION_STRING}</string>
 	<key>CFBundleVersion</key>
 	<string>${MACOSX_BUNDLE_BUNDLE_VERSION}</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>${MACOSX_BUNDLE_COPYRIGHT}</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -49,6 +51,20 @@
 	<false/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
+
+	<!-- Locations macOS withholds until the user consents.  The purpose
+	     string is what the consent dialog has to show; leaving one out gets
+	     the browser refused with no way for the user to say yes.  -->
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Dawn can show images kept on your Desktop.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Dawn can show images kept in your Documents folder.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Dawn can show images kept in your Downloads folder.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Dawn can show images kept on removable volumes.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>Dawn can show images kept on network volumes.</string>
 
 	<key>CFBundleDocumentTypes</key>
 	<array>

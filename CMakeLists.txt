@@ -39,6 +39,18 @@ if (WIN32 AND CMAKE_CROSSCOMPILING)
 endif()
 
 if (APPLE)
+	# Homebrew targets the host system.  With LSMinimumSystemVersion,
+	# Launch Services explains the refusal; dyld would not.
+	if (NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+		execute_process(COMMAND sw_vers -productVersion
+			OUTPUT_VARIABLE dawn_macos_version
+			OUTPUT_STRIP_TRAILING_WHITESPACE)
+		if (NOT dawn_macos_version MATCHES "^([0-9]+)")
+			message(FATAL_ERROR "Cannot tell what macOS version this is")
+		endif()
+		set(CMAKE_OSX_DEPLOYMENT_TARGET "${CMAKE_MATCH_1}.0")
+	endif()
+
 	# Build tree: bin/dn.app/Contents/MacOS vs bin/libdn.dylib.
 	# Install: MacOS/dn, Frameworks/libdn.dylib (macdeployqt leaves
 	# @rpath/libdn.dylib; Homebrew dylibs become @executable_path).
