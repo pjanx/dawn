@@ -1685,6 +1685,13 @@ constexpr Loader kLoaders[] = {
 		{},
 #endif
 		{}, {}, {}},
+
+	{"WIC",
+#if DAWN_WITH_WIC
+		&detail::load_wic, {}, {}, &detail::wic_media_types},
+#else
+		{}, {}, {}, {}},
+#endif
 };
 
 }  // namespace

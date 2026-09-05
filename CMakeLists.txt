@@ -114,6 +114,9 @@ if (APPLE)
 	option(DAWN_WITH_IMAGEIO "ImageIO fallback" ON)
 	option(DAWN_WITH_CGPDF "Core Graphics PDF page rendering" ON)
 endif()
+if (WIN32)
+	option(DAWN_WITH_WIC "Windows Imaging Component fallback" ON)
+endif()
 
 include(FetchContent)
 
