@@ -172,7 +172,7 @@ cd "$builddir/ucrt64"
 dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \
-	$pkg-zlib $pkg-shared-mime-info $pkg-gcc-libs \
+	$pkg-jxrlib $pkg-glycin $pkg-zlib $pkg-shared-mime-info $pkg-gcc-libs \
 	#$pkg-perl $pkg-perl-win32-api
 verify
 extract
@@ -181,6 +181,8 @@ configure "$@"
 
 cd -
 toolchain=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake
+# Glycin pulls in GTK 4, and with it the GdkPixbuf that it replaces.
 cmake -B "$builddir" -DCMAKE_TOOLCHAIN_FILE=$toolchain \
+	-DDAWN_WITH_GDKPIXBUF=OFF \
 	-DCMAKE_AUTOMOC_EXECUTABLE=$builddir/ucrt64/automoc \
 	-DCMAKE_AUTORCC_EXECUTABLE=$builddir/ucrt64/autorcc "$@"

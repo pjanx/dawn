@@ -10,11 +10,15 @@
 // It goes first of the two: the loaders are memory-safe and sandboxed, and it
 // gives us real 16-bit output rather than gdk-pixbuf's forced 8-bit RGB(A).
 //
-// glycin's C API exposes no ICC blob and no Exif, and its orientation getter
-// stays at 1 unless transformations are applied, so we let it apply them and
-// take the pixels as already oriented.  Colour comes from the CICP instead,
-// synthesized into a profile where we can represent it (see get_profile_cicp);
-// key-value metadata comes through Image::text.
+// glycin's orientation getter stays at 1 unless transformations are applied,
+// so we let it apply them and take the pixels as already oriented.  It exposes
+// no Exif; key-value metadata comes through Image::text.
+//
+// How much it will tell us about colour depends on its version.  From 2.2 it
+// can be told to leave the pixels in the file's own space, and hands over the
+// ICC profile to go with them, like every other loader here.  Before that the
+// CICP is all there is, synthesized into a profile where we can represent it
+// (see get_profile_cicp).
 
 #include <dawn-config.h>
 
@@ -22,6 +26,15 @@
 #include "libdn.h"
 
 #include <glycin.h>
+
+// glycin 2.2 brought the colour API, and no version macro to ask for it by.
+// GlyFrameDetails landed in the same release, and its type macro is the only
+// thing that release left visible to the preprocessor.
+#ifdef GLY_TYPE_FRAME_DETAILS
+#define DAWN_GLYCIN_2_2 1
+#else
+#define DAWN_GLYCIN_2_2 0
+#endif
 
 using namespace std;
 
@@ -128,11 +141,22 @@ load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
 	if (delay > 0)
 		image->frame_duration = delay / 1000;
 
-	// The only colour information glycin exposes is the CICP; when we can
-	// turn it into a profile, record the blob too, so the viewer reports a
-	// source profile like it does for every other loader.
+	// ensure_working_premul() turns a blob into a profile on its own.
 	shared_ptr<Profile> source;
-	if (GlyCicp *cicp = gly_frame_get_color_cicp(frame)) {
+#if DAWN_GLYCIN_2_2
+	if (GBytes *icc = gly_frame_get_color_icc_profile(frame)) {
+		gsize icc_length = 0;
+		auto *blob = (const uint8_t *) g_bytes_get_data(icc, &icc_length);
+		image->icc.assign(blob, blob + icc_length);
+		g_bytes_unref(icc);
+	}
+#endif
+
+	// A CICP brings no blob with it, so record the profile we synthesize,
+	// or the viewer would report no source profile at all.
+	GlyCicp *cicp =
+		image->icc.empty() ? gly_frame_get_color_cicp(frame) : nullptr;
+	if (cicp) {
 		source = cmm_or_default(ctx)->get_profile_cicp(
 			cicp->color_primaries, cicp->transfer_characteristics);
 		if (source)
@@ -189,6 +213,11 @@ detail::load_glycin(
 	// glycin bake it into the pixels rather than lose it entirely.
 	gly_loader_set_apply_transformations(loader, TRUE);
 	gly_loader_set_accepted_memory_formats(loader, kAcceptedFormats);
+
+#if DAWN_GLYCIN_2_2
+	// dn colour-manages for itself, and would rather have the original.
+	gly_loader_set_color_convert_icc_srgb(loader, FALSE);
+#endif
 
 	GError *gerror = nullptr;
 	GlyImage *img = gly_loader_load(loader, &gerror);

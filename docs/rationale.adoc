@@ -238,6 +238,9 @@ I don't especially care about niche formats.  If it ever becomes desirable,
 there is an obscure project called https://snisurset.net/code/abydos/about.html[
 Abydos] which gets quite exhaustive in that regard.   The current general
 fallbacks are Glycin, the older GdkPixbuf, and on macOS the system ImageIO.
+Windows Imaging Component was so ugly that I've rather added JPEG XR explicitly
+as the only thing no other loader could do (the Raw Image Extension
+on Microsoft Store uses LibRaw).
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 

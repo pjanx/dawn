@@ -22,18 +22,20 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- Memory stream -----------------------------------------------------------
 
+namespace
+{
 // OpenJPEG exposes no memory stream, only callbacks to drive one with.
 struct MemoryStream {
 	span<const uint8_t> data;
 	size_t offset = 0;
 };
 
-OPJ_SIZE_T
+}  // namespace
+
+static OPJ_SIZE_T
 stream_read(void *buffer, OPJ_SIZE_T count, void *user)
 {
 	MemoryStream *m = (MemoryStream *) user;
@@ -48,7 +50,7 @@ stream_read(void *buffer, OPJ_SIZE_T count, void *user)
 	return count;
 }
 
-OPJ_OFF_T
+static OPJ_OFF_T
 stream_skip(OPJ_OFF_T count, void *user)
 {
 	MemoryStream *m = (MemoryStream *) user;
@@ -62,7 +64,7 @@ stream_skip(OPJ_OFF_T count, void *user)
 	return count;
 }
 
-OPJ_BOOL
+static OPJ_BOOL
 stream_seek(OPJ_OFF_T offset, void *user)
 {
 	MemoryStream *m = (MemoryStream *) user;
@@ -74,6 +76,9 @@ stream_seek(OPJ_OFF_T offset, void *user)
 }
 
 // --- Decoding context --------------------------------------------------------
+
+namespace
+{
 
 struct OpenJpegLoadContext {
 	opj_codec_t *codec = nullptr;    ///< OpenJPEG decoder
@@ -98,8 +103,10 @@ OpenJpegLoadContext::~OpenJpegLoadContext()
 		opj_stream_destroy(stream);
 }
 
+}  // namespace
+
 // OpenJPEG terminates its messages with a newline, which we do not want.
-string
+static string
 trimmed(const char *message)
 {
 	string out = message ? message : "";
@@ -108,14 +115,14 @@ trimmed(const char *message)
 	return out;
 }
 
-void
+static void
 on_error(const char *message, void *user)
 {
 	OpenJpegLoadContext *ctx = (OpenJpegLoadContext *) user;
 	ctx->message = trimmed(message);
 }
 
-void
+static void
 on_warning(const char *message, void *user)
 {
 	OpenJpegLoadContext *ctx = (OpenJpegLoadContext *) user;
@@ -123,7 +130,7 @@ on_warning(const char *message, void *user)
 }
 
 // Prefers whatever OpenJPEG last had to say about the failure.
-ImagePtr
+static ImagePtr
 fail(OpenJpegLoadContext &ctx, Error *error, const char *message)
 {
 	set_error(error, ctx.message.empty() ? message : ctx.message.c_str());
@@ -133,7 +140,7 @@ fail(OpenJpegLoadContext &ctx, Error *error, const char *message)
 // The JP2 family opens with a signature box, a bare codestream with SOC
 // followed by SIZ. This loader sits in the fallback chain, so everything
 // else needs rejecting before OpenJPEG gets a say.
-OPJ_CODEC_FORMAT
+static OPJ_CODEC_FORMAT
 detect_codec(span<const uint8_t> data)
 {
 	static const uint8_t signature[] = {
@@ -147,7 +154,7 @@ detect_codec(span<const uint8_t> data)
 	return OPJ_CODEC_UNKNOWN;
 }
 
-bool
+static bool
 open_codec(OpenJpegLoadContext &ctx, OPJ_CODEC_FORMAT format, Error *error)
 {
 	if (!(ctx.codec = opj_create_decompress(format))) {
@@ -183,6 +190,9 @@ open_codec(OpenJpegLoadContext &ctx, OPJ_CODEC_FORMAT format, Error *error)
 
 // --- Sample conversion -------------------------------------------------------
 
+namespace
+{
+
 // One component resampled onto the output grid and normalised to the full
 // uint16 range. Components may be subsampled (chroma usually is), signed,
 // and of any precision the codestream cares to use.
@@ -197,7 +207,18 @@ struct Sampler {
 	int bits = 8;                     ///< Precision after `shift`
 };
 
-Sampler
+enum class Colour { Grey, Rgb, Ycc };
+
+struct Layout {
+	Colour colour = Colour::Grey;  ///< How to read the colour components
+	int comp[3] = {0, 1, 2};       ///< Their indices
+	int alpha = -1;                ///< Index of the alpha component, if any
+	bool premultiplied = false;    ///< Whether that alpha is associated
+};
+
+}  // namespace
+
+static Sampler
 make_sampler(const opj_image_comp_t &c, uint32_t dx0, uint32_t dy0)
 {
 	Sampler s;
@@ -217,7 +238,7 @@ make_sampler(const opj_image_comp_t &c, uint32_t dx0, uint32_t dy0)
 	return s;
 }
 
-uint16_t
+static uint16_t
 sample(const Sampler &s, uint32_t x, uint32_t y)
 {
 	uint32_t sx = x * s.xnum / s.xden, sy = y * s.ynum / s.yden;
@@ -234,7 +255,7 @@ sample(const Sampler &s, uint32_t x, uint32_t y)
 	return scale_nbit_to_u16(uint32_t(v) >> s.shift, s.bits);
 }
 
-uint16_t
+static uint16_t
 clamp_u16(double v)
 {
 	if (v <= 0)
@@ -246,7 +267,7 @@ clamp_u16(double v)
 
 // sYCC is full-range BT.601, its chroma planes centred on half scale. The
 // library leaves this conversion to its callers.
-void
+static void
 ycc_to_rgb(uint16_t y, uint16_t cb, uint16_t cr, uint16_t *rgb)
 {
 	double b = double(cb) - 32768, r = double(cr) - 32768;
@@ -255,16 +276,7 @@ ycc_to_rgb(uint16_t y, uint16_t cb, uint16_t cr, uint16_t *rgb)
 	rgb[2] = clamp_u16(double(y) + 1.772 * b);
 }
 
-enum class Colour { Grey, Rgb, Ycc };
-
-struct Layout {
-	Colour colour = Colour::Grey;  ///< How to read the colour components
-	int comp[3] = {0, 1, 2};       ///< Their indices
-	int alpha = -1;                ///< Index of the alpha component, if any
-	bool premultiplied = false;    ///< Whether that alpha is associated
-};
-
-bool
+static bool
 plan_layout(const opj_image_t &image, Layout *out, Error *error)
 {
 	OPJ_COLOR_SPACE space = image.color_space;
@@ -317,7 +329,7 @@ plan_layout(const opj_image_t &image, Layout *out, Error *error)
 	return true;
 }
 
-void
+static void
 write_pixels(const Layout &layout, const Sampler *samplers, Image &out)
 {
 	for (uint32_t y = 0; y < out.height; y++) {
@@ -343,7 +355,7 @@ write_pixels(const Layout &layout, const Sampler *samplers, Image &out)
 	}
 }
 
-ImagePtr
+static ImagePtr
 build_image(OpenJpegLoadContext &ctx, Error *error)
 {
 	const opj_image_t &image = *ctx.image;
@@ -388,8 +400,6 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 	ensure_working_premul_pages(*out, *ctx.octx, nullptr, layout.premultiplied);
 	return out;
 }
-
-}  // namespace
 
 // --- Public entry point ------------------------------------------------------
 

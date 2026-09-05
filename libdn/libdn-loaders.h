@@ -51,11 +51,11 @@ LoadFn load_heif;
 LoadFn load_jxl;
 LoadFn load_openjpeg;
 LoadFn load_tiff;
+LoadFn load_jxr;
 LoadFn load_glycin;
 LoadFn load_gdkpixbuf;
 LoadFn load_imageio;
 LoadFn load_cgpdf;
-LoadFn load_wic;
 
 /// MIME types provided by the installed gdk-pixbuf loaders (if built).
 std::vector<std::string> gdkpixbuf_media_types();
@@ -65,9 +65,6 @@ std::vector<std::string> glycin_media_types();
 
 /// MIME types the system ImageIO can load (if its loader is built).
 std::vector<std::string> imageio_media_types();
-
-/// MIME types provided by installed Windows Imaging Component decoders.
-std::vector<std::string> wic_media_types();
 
 /// SOF width×height product for picking among embedded JPEG previews; 0 if
 /// no SOF is found. Does not validate the rest of the bitstream.

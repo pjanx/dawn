@@ -110,12 +110,22 @@ dawn_optional_pkg(GLYCIN "glycin fallback" glycin-2)
 dawn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 
+# jxrlib ships no pkg-config file, and its headers include one another by
+# bare name, so the whole package directory has to go on the include path.
+find_path(JXRLIB_INCLUDE_DIR JXRGlue.h PATH_SUFFIXES jxrlib)
+find_library(JXRLIB_GLUE_LIBRARY jxrglue)
+find_library(JXRLIB_CORE_LIBRARY jpegxr)
+if (JXRLIB_INCLUDE_DIR AND JXRLIB_GLUE_LIBRARY AND JXRLIB_CORE_LIBRARY)
+	set(JXRLIB_FOUND TRUE)
+endif()
+option(DAWN_WITH_JXRLIB "JPEG XR support" ${JXRLIB_FOUND})
+if (DAWN_WITH_JXRLIB AND NOT JXRLIB_FOUND)
+	message(FATAL_ERROR "DAWN_WITH_JXRLIB=ON but jxrlib was not found")
+endif()
+
 if (APPLE)
 	option(DAWN_WITH_IMAGEIO "ImageIO fallback" ON)
 	option(DAWN_WITH_CGPDF "Core Graphics PDF page rendering" ON)
-endif()
-if (WIN32)
-	option(DAWN_WITH_WIC "Windows Imaging Component fallback" ON)
 endif()
 
 include(FetchContent)

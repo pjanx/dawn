@@ -1655,6 +1655,14 @@ constexpr Loader kLoaders[] = {
 #endif
 		"TIFF", {"image/tiff"}, {}},
 
+	{"jxrlib",
+#if DAWN_WITH_JXRLIB
+		&detail::load_jxr,
+#else
+		{},
+#endif
+		"JPEG XR", {"image/jxr", "image/vnd.ms-photo"}, {}},
+
 	{"Glycin",
 #if DAWN_WITH_GLYCIN
 		&detail::load_glycin, {}, {}, &detail::glycin_media_types},
@@ -1685,13 +1693,6 @@ constexpr Loader kLoaders[] = {
 		{},
 #endif
 		{}, {}, {}},
-
-	{"WIC",
-#if DAWN_WITH_WIC
-		&detail::load_wic, {}, {}, &detail::wic_media_types},
-#else
-		{}, {}, {}, {}},
-#endif
 };
 
 }  // namespace
