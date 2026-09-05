@@ -939,6 +939,7 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	OpenLoad result;
 	result.epoch = open.epoch;
 	result.key = open.key;
+
 	dawn::OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
@@ -948,6 +949,7 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	ctx.enhance = open.key.enhance;
 	if (open.loaders)
 		ctx.loaders = *open.loaders;
+
 	vector<string> warnings;
 	ctx.warnings = &warnings;
 	dawn::Error error;
@@ -957,12 +959,14 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 			open.key.path + ": " + file.errorString().toStdString();
 		return result;
 	}
+
 	const QByteArray bytes = file.readAll();
 	if (file.error() != QFileDevice::NoError) {
 		result.message =
 			open.key.path + ": " + file.errorString().toStdString();
 		return result;
 	}
+
 	const auto *data = reinterpret_cast<const uint8_t *>(bytes.constData());
 	result.image = open_from_data(
 		span<const uint8_t>(data, size_t(bytes.size())), ctx, &error);

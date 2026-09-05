@@ -1646,6 +1646,7 @@ constexpr Loader kLoaders[] = {
 		// nor compound JPM, and claiming them would only fail later.
 		{"image/jp2", "image/x-jp2-codestream"}, {}},
 
+	// LibTIFF must be after LibRaw, or it will pick up thumbnails.
 	{"LibTIFF",
 #if DAWN_WITH_LIBTIFF
 		&detail::load_tiff,
@@ -1726,6 +1727,11 @@ try_loader(ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *),
 	Error local;
 	Error *err = error ? error : &local;
 	*err = {};
+
+	// Might want to collect them per loader, or I don't know.
+	if (ctx.warnings)
+		ctx.warnings->resize(0);
+
 	return fn(data, ctx, err);
 }
 
