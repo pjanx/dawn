@@ -89,13 +89,19 @@ elseif (APPLE)
 	target_sources(libdn PRIVATE config-macos.mm)
 	target_link_libraries(libdn PRIVATE "${DAWN_COREFOUNDATION_FRAMEWORK}")
 
-	if (DAWN_WITH_IMAGEIO)
+	if (DAWN_WITH_IMAGEIO OR DAWN_WITH_CGPDF)
 		find_library(DAWN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+		target_link_libraries(libdn PRIVATE "${DAWN_COREGRAPHICS_FRAMEWORK}")
+	endif()
+
+	if (DAWN_WITH_IMAGEIO)
 		find_library(DAWN_IMAGEIO_FRAMEWORK ImageIO REQUIRED)
 		target_sources(libdn PRIVATE load-imageio.mm)
-		target_link_libraries(libdn PRIVATE
-			"${DAWN_COREGRAPHICS_FRAMEWORK}"
-			"${DAWN_IMAGEIO_FRAMEWORK}")
+		target_link_libraries(libdn PRIVATE "${DAWN_IMAGEIO_FRAMEWORK}")
+	endif()
+
+	if (DAWN_WITH_CGPDF)
+		target_sources(libdn PRIVATE load-cgpdf.mm)
 	endif()
 elseif (NOT APPLE)
 	target_sources(libdn PRIVATE

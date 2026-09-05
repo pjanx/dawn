@@ -112,6 +112,7 @@ dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 
 if (APPLE)
 	option(DAWN_WITH_IMAGEIO "ImageIO fallback" ON)
+	option(DAWN_WITH_CGPDF "Core Graphics PDF page rendering" ON)
 endif()
 
 include(FetchContent)

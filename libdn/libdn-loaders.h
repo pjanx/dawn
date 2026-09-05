@@ -54,6 +54,7 @@ LoadFn load_tiff;
 LoadFn load_glycin;
 LoadFn load_gdkpixbuf;
 LoadFn load_imageio;
+LoadFn load_cgpdf;
 
 /// MIME types provided by the installed gdk-pixbuf loaders (if built).
 std::vector<std::string> gdkpixbuf_media_types();

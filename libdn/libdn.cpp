@@ -1675,6 +1675,16 @@ constexpr Loader kLoaders[] = {
 #else
 		{}, {}, {}, {}},
 #endif
+
+	// Advertises no media type on purpose: it opens PDFs that are handed to
+	// it, while the browser keeps filtering them out, and nothing associates.
+	{"Core Graphics PDF",
+#if DAWN_WITH_CGPDF
+		&detail::load_cgpdf,
+#else
+		{},
+#endif
+		{}, {}, {}},
 };
 
 }  // namespace
