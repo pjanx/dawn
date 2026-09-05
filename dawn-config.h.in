@@ -23,5 +23,6 @@
 #cmakedefine01 DAWN_WITH_LIBTIFF
 #cmakedefine01 DAWN_WITH_GLYCIN
 #cmakedefine01 DAWN_WITH_GDKPIXBUF
+#cmakedefine01 DAWN_WITH_IMAGEIO
 
 #cmakedefine01 DN_WITH_WAYLAND

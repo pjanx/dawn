@@ -1667,6 +1667,13 @@ constexpr Loader kLoaders[] = {
 #else
 		{}, {}, {}, {}},
 #endif
+
+	{"ImageIO",
+#if DAWN_WITH_IMAGEIO
+		&detail::load_imageio, {}, {}, &detail::imageio_media_types},
+#else
+		{}, {}, {}, {}},
+#endif
 };
 
 }  // namespace

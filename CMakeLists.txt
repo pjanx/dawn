@@ -110,6 +110,10 @@ dawn_optional_pkg(GLYCIN "glycin fallback" glycin-2)
 dawn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 
+if (APPLE)
+	option(DAWN_WITH_IMAGEIO "ImageIO fallback" ON)
+endif()
+
 include(FetchContent)
 
 # The GPL fast float plugin improves performance a ton,

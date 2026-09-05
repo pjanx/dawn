@@ -153,6 +153,21 @@ if (APPLE)
 			public.xbitmap-image
 		)
 	endif()
+	if (DAWN_WITH_IMAGEIO)
+		# Ask ImageIO through the very call the loader uses.
+		# Hopefully it will match the system the program is run on as well.
+		execute_process(
+			COMMAND "${DN_SWIFT_EXECUTABLE}" -e [=[
+import ImageIO
+for type in CGImageSourceCopyTypeIdentifiers() as! [String] { print(type) }
+]=]
+			OUTPUT_VARIABLE imageio_utis
+			COMMAND_ERROR_IS_FATAL ANY
+		)
+		separate_arguments(imageio_utis UNIX_COMMAND "${imageio_utis}")
+		list(APPEND utis ${imageio_utis})
+	endif()
+	list(REMOVE_DUPLICATES utis)
 	list(SORT utis)
 
 	set(DN_MACOS_CONTENT_TYPES "")

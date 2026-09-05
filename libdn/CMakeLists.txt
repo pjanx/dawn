@@ -88,6 +88,15 @@ elseif (APPLE)
 	find_library(DAWN_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
 	target_sources(libdn PRIVATE config-macos.mm)
 	target_link_libraries(libdn PRIVATE "${DAWN_COREFOUNDATION_FRAMEWORK}")
+
+	if (DAWN_WITH_IMAGEIO)
+		find_library(DAWN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+		find_library(DAWN_IMAGEIO_FRAMEWORK ImageIO REQUIRED)
+		target_sources(libdn PRIVATE load-imageio.mm)
+		target_link_libraries(libdn PRIVATE
+			"${DAWN_COREGRAPHICS_FRAMEWORK}"
+			"${DAWN_IMAGEIO_FRAMEWORK}")
+	endif()
 elseif (NOT APPLE)
 	target_sources(libdn PRIVATE
 		config-unix.cpp ipc-unix.cpp ipc-rpc.cpp ipc-instance.cpp)

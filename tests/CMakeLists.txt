@@ -72,6 +72,15 @@ set_tests_properties(channels PROPERTIES
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+if (APPLE AND DAWN_WITH_IMAGEIO)
+	add_executable(test-imageio test-imageio.cpp)
+	target_link_libraries(test-imageio PRIVATE dawn::libdn)
+	target_compile_definitions(test-imageio PRIVATE
+		DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
+	)
+	add_test(NAME imageio COMMAND test-imageio)
+endif()
+
 add_executable(test-icns test-icns.cpp)
 target_link_libraries(test-icns PRIVATE dawn::libdn)
 add_test(NAME icns COMMAND test-icns)

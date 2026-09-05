@@ -53,12 +53,16 @@ LoadFn load_openjpeg;
 LoadFn load_tiff;
 LoadFn load_glycin;
 LoadFn load_gdkpixbuf;
+LoadFn load_imageio;
 
 /// MIME types provided by the installed gdk-pixbuf loaders (if built).
 std::vector<std::string> gdkpixbuf_media_types();
 
 /// MIME types glycin can load, per its installed loader config (if built).
 std::vector<std::string> glycin_media_types();
+
+/// MIME types the system ImageIO can load (if its loader is built).
+std::vector<std::string> imageio_media_types();
 
 /// SOF width×height product for picking among embedded JPEG previews; 0 if
 /// no SOF is found. Does not validate the rest of the bitstream.

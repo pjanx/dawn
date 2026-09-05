@@ -224,7 +224,7 @@ supposedly safe, and covers a lot of formats.  It's just moderately hard to
 integrate.
 
 With JPEG, although Wuffs has some support for it as well, it's fairly simple:
-the well-established *libjpeg-turbo*.  I also bundle
+prefer the well-established *libjpeg-turbo*.  I also bundle
 https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
 it's interesting--having a decent scaling algorithm can otherwise be nullified
 by DCT artifacts.
@@ -237,8 +237,9 @@ compatible formats (I own a Nikon DSLR).
 I don't especially care about niche formats.  If it ever becomes desirable,
 there is an obscure project called https://snisurset.net/code/abydos/about.html[
 Abydos] which gets quite exhaustive in that regard.   The current general
-fallbacks are Glycin and/or the older GdkPixbuf.  On macOS, the system ImageIO
-covers a ton of stuff, often much better than FOSS libraries.
+fallbacks are Glycin, the older GdkPixbuf, and on macOS the system ImageIO.
+
+Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 
 Scaling
 -------
