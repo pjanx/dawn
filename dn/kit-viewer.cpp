@@ -1101,7 +1101,7 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 	job.uri = path_to_url(QString::fromStdString(job.key.path))
 			  .toEncoded()
 			  .toStdString();
-	job.dpi = 96;
+	job.dpi = v.kit_.dpi_;
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
 	job.loaders = v.loaders_;

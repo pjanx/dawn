@@ -52,10 +52,11 @@ class CGPDFRenderClosure : public RenderClosure
 {
 	DocumentPtr document_;
 	size_t page_;
+	double dpi_;  ///< Pixels per inch at scale == 1
 
 public:
-	CGPDFRenderClosure(DocumentPtr document, size_t page)
-		: document_(std::move(document)), page_(page)
+	CGPDFRenderClosure(DocumentPtr document, size_t page, double dpi)
+		: document_(std::move(document)), page_(page), dpi_(dpi)
 	{
 	}
 
@@ -87,9 +88,14 @@ CGPDFRenderClosure::render_internal(
 		return nullptr;
 	}
 
+	// A PDF unit is 1/72 inch, so the page has a physical size, and showing
+	// it at 1:1 means resolving that against the screen, as resvg does for
+	// the physical units in an SVG.
+	double zoom = dpi_ / 72. * scale;
+
 	double pw = 0, ph = 0;
 	cgpdf_page_size(page, &pw, &ph);
-	double w = ceil(pw * scale), h = ceil(ph * scale);
+	double w = ceil(pw * zoom), h = ceil(ph * zoom);
 	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
 		set_error(error, "image dimensions overflow");
 		return nullptr;
@@ -123,7 +129,7 @@ CGPDFRenderClosure::render_internal(
 	// transparency would be illegible over the viewer's own backdrop.
 	CGContextSetRGBFillColor(context, 1., 1., 1., 1.);
 	CGContextFillRect(context, CGRectMake(0, 0, w, h));
-	CGContextScaleCTM(context, scale, scale);
+	CGContextScaleCTM(context, zoom, zoom);
 	CGContextConcatCTM(context,
 		CGPDFPageGetDrawingTransform(
 			page, kCGPDFCropBox, CGRectMake(0, 0, pw, ph), 0, true));
@@ -195,9 +201,11 @@ detail::load_cgpdf(
 		return nullptr;
 	}
 
+	double dpi = ctx.screen_dpi > 0 ? ctx.screen_dpi : 96;
+
 	ImagePtr head, tail;
 	for (size_t i = 1; i <= count; i++) {
-		auto closure = make_unique<CGPDFRenderClosure>(document, i);
+		auto closure = make_unique<CGPDFRenderClosure>(document, i, dpi);
 
 		Error suberror;
 		ImagePtr image = closure->render_internal(1., ctx, &suberror);

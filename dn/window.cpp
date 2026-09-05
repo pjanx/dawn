@@ -84,6 +84,22 @@ host_dpr(const QWindow &w)
 	return float(r > 0 ? r : 1.0);
 }
 
+// QScreen measures its dots against logical geometry, so what it calls the
+// physical resolution is off by the ratio.  EDID sizes are also missing or
+// invented often enough to need a fallback.
+static int
+host_dpi(const QWindow &w)
+{
+	const QScreen *screen = w.screen();
+	if (!screen)
+		return 96;
+
+	const qreal dpi = screen->physicalDotsPerInch() * w.devicePixelRatio();
+	if (!(dpi >= 24) || !(dpi <= 1200))
+		return 96;
+	return int(lround(dpi));
+}
+
 static int
 wheel_axis(const QPoint &ang, const QPoint &pix, bool horizontal)
 {
@@ -858,6 +874,7 @@ Window::render()
 	const float w = float(width());
 	const float h = float(height());
 	const float dpr = host_dpr(*this);
+	this->kit_.dpi_ = host_dpi(*this);
 	const bool fullscreen = bool(shell()->windowState() & Qt::WindowFullScreen);
 	if (this->mode_ == Mode::Browser && this->browser_)
 		this->browser_->set_host(w, h, dpr);

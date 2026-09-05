@@ -738,6 +738,7 @@ struct Kit {
 	};
 
 	float dpr_ = 1.f;
+	int dpi_ = 96;  ///< Physical pixels per inch, for physical units
 	bool inited_ = false;
 	Sheet atlas_;
 	uint32_t atlas_epoch_ = 0;
