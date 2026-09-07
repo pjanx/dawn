@@ -13,4 +13,5 @@ SpaceAfterCStyleCast: true
 AlignAfterOpenBracket: DontAlign
 AlignOperands: DontAlign
 SpacesBeforeTrailingComments: 2
+AttributeMacros: ['DAWN_FORMAT']
 WhitespaceSensitiveMacros: ['G_DEFINE_QUARK']
