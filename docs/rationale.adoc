@@ -74,8 +74,11 @@ I run my own stuff for several reasons, such as: it stays exactly as I left it,
 I can conceptually wrap it around my brain, I always have a dedicated engineer
 on hand, and I cannot be denied service.  That said, resolution of blackouts and
 Internet outages may require physical presence, and a proper failover would be
-beyond my budget, so this arrangement is far from set in stone.  GitHub is
-a passable backup or complementary solution--we already mirror there.
+beyond my budget, so this arrangement is far from set in stone.
+
+GitHub is a passable backup or complementary solution--we're alreardy using its
+GitHub Actions for free macOS machines.  If only the system wasn't designed
+wrong, and didn't force us to check in tangential CI configuration.
 
 Platforms
 ---------
@@ -88,11 +91,10 @@ for.  Deployment is a tad difficult:
    in taming Flatpaks, though Flathub--the usual distribution platform--has
    hostile policies towards AI.
 
- - macOS needs special build slaves, at minimum a decent ARM64 virtual
-   machine--GitHub luckily gives the machines out for free.  More importantly,
-   a Developer ID certificate is necessary if any greater number of people are
-   to be able to use the software, because Apple makes quarantine a serious
-   obstacle in launching it.
+ - macOS needs special build slaves, at minimum a decent ARM64 virtual machine.
+   More importantly, a Developer ID certificate is necessary if any greater
+   number of people are to be able to use the software, because Apple makes
+   quarantine a serious obstacle in launching it.
 
  - Windows is the easiest OS to package for, disappointingly.  At least it has
    a decent market share.
