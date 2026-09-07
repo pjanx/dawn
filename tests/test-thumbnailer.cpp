@@ -9,6 +9,7 @@
 #include "test.hpp"
 #include "thumbnailer.hpp"
 
+#include <QCoreApplication>
 #include <QTimer>
 
 #include <chrono>
@@ -327,6 +328,59 @@ test_bundle_reservations()
 	return true;
 }
 
+// Reservations are process-wide: one client holding a source refuses every
+// other. A client that deferred has nothing of its own to wait on, so it has
+// to be told when the slot goes away, or its placeholder stays up.
+static void
+test_reservation_handoff(QCoreApplication &app)
+{
+	dn::Thumbnailer thumbnailer(nullptr, 2);
+	int woken = 0;
+	const auto owner = thumbnailer.add_client(0, {});
+	const auto other = thumbnailer.add_client(0, [&] {
+		woken++;
+		app.quit();
+	});
+
+	dn::ThumbnailSource shared;
+	shared.uri = QByteArrayLiteral("file:///shared");
+	shared.mtime = 1;
+	shared.size = 2;
+
+	const auto held = thumbnailer.reserve_bundle(
+		owner, 0, shared, 2, 4096, dn::Thumbnailer::Priority::Visible);
+	CHECK(held != 0);
+	CHECK(thumbnailer.reserve_bundle(other, 0, shared, 2, 4096,
+			  dn::Thumbnailer::Priority::Visible) == 0);
+
+	thumbnailer.cancel_bundle(held);
+	QTimer::singleShot(2000, &app, [&] { app.quit(); });
+	app.exec();
+	CHECK(woken > 0);
+
+	// And the slot really is free now, not merely announced.
+	const auto taken = thumbnailer.reserve_bundle(
+		other, 0, shared, 2, 4096, dn::Thumbnailer::Priority::Visible);
+	CHECK(taken != 0);
+	thumbnailer.cancel_bundle(taken);
+
+	// The same has to hold for the window simply going away, which is how
+	// a browser usually gives its reservations up.  Drain first, so that
+	// this stands on its own rather than on a pump the cancel left queued.
+	const auto third = thumbnailer.add_client(0, {});
+	CHECK(thumbnailer.reserve_bundle(third, 0, shared, 2, 4096,
+			  dn::Thumbnailer::Priority::Visible) != 0);
+	QCoreApplication::processEvents();
+	woken = 0;
+	thumbnailer.remove_client(third);
+	QTimer::singleShot(2000, &app, [&] { app.quit(); });
+	app.exec();
+	CHECK(woken > 0);
+
+	thumbnailer.remove_client(owner);
+	thumbnailer.remove_client(other);
+}
+
 static void
 test_activity_transitions(QCoreApplication &app)
 {
@@ -375,6 +429,8 @@ main(int argc, char **argv)
 		{"reprioritization", [] { CHECK(test_reprioritization_order()); }},
 		{"cancel frees the key", [] { CHECK(test_cancel_frees_the_key()); }},
 		{"bundle reservations", [] { CHECK(test_bundle_reservations()); }},
+		{"reservation handoff",
+			[&] { test_reservation_handoff(application.app()); }},
 		{"activity transitions",
 			[&] { test_activity_transitions(application.app()); }},
 	});

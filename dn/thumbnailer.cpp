@@ -134,6 +134,9 @@ struct Thumbnailer::Impl {
 	unordered_map<Reservation, BundleSlot> bundles;
 	size_t worker_count = 1;
 	size_t bundle_bytes = 0;
+	// An unpublished slot was released. Whoever deferred to it, in any
+	// client, has been waiting on it and cannot know by itself.
+	bool bundles_freed = false;
 	unique_ptr<dawn::ThumbScaler> scaler;
 	QTimer timer;
 	atomic_bool pump_posted = false;
@@ -368,6 +371,7 @@ Thumbnailer::Impl::erase_unpublished(Client id)
 		}
 		bundle_bytes -= it->second.reserved_bytes;
 		it = bundles.erase(it);
+		bundles_freed = true;
 	}
 }
 
@@ -493,16 +497,20 @@ Thumbnailer::add_client(uint64_t epoch, Completion activity)
 void
 Thumbnailer::remove_client(Client id)
 {
-	lock_guard lock(impl_->mu);
-	auto found = impl_->clients.find(id);
-	if (found == impl_->clients.end())
-		return;
+	{
+		lock_guard lock(impl_->mu);
+		auto found = impl_->clients.find(id);
+		if (found == impl_->clients.end())
+			return;
 
-	impl_->erase_queued(id, found->second);
-	impl_->erase_gui(id, found->second);
-	impl_->erase_gpu(id, found->second);
-	impl_->erase_unpublished(id);
-	impl_->clients.erase(found);
+		impl_->erase_queued(id, found->second);
+		impl_->erase_gui(id, found->second);
+		impl_->erase_gpu(id, found->second);
+		impl_->erase_unpublished(id);
+		impl_->clients.erase(found);
+	}
+	// A closing window hands its reservations back to the others.
+	schedule_pump();
 }
 
 void
@@ -738,13 +746,17 @@ Thumbnailer::cancel_bundle(Reservation reservation)
 	if (!reservation)
 		return;
 
-	lock_guard lock(impl_->mu);
-	auto found = impl_->bundles.find(reservation);
-	if (found == impl_->bundles.end() || found->second.bundle)
-		return;
+	{
+		lock_guard lock(impl_->mu);
+		auto found = impl_->bundles.find(reservation);
+		if (found == impl_->bundles.end() || found->second.bundle)
+			return;
 
-	impl_->bundle_bytes -= found->second.reserved_bytes;
-	impl_->bundles.erase(found);
+		impl_->bundle_bytes -= found->second.reserved_bytes;
+		impl_->bundles.erase(found);
+		impl_->bundles_freed = true;
+	}
+	schedule_pump();
 }
 
 bool
@@ -856,10 +868,14 @@ void
 Thumbnailer::pump()
 {
 	impl_->pump_posted = false;
-	vector<Completion> encoder_activity;
+	vector<Completion> bundle_activity;
 	{
 		lock_guard lock(impl_->mu);
-		bool released = false;
+		// A slot going away matters to every client, not just its owner:
+		// reserve_bundle() refuses a source another client already holds,
+		// and refuses everyone once capacity is gone.
+		bool released = impl_->bundles_freed;
+		impl_->bundles_freed = false;
 		while (!impl_->encoded.empty()) {
 			const Reservation reservation = impl_->encoded.front();
 			impl_->encoded.pop_front();
@@ -873,9 +889,9 @@ Thumbnailer::pump()
 		if (released)
 			for (auto &entry : impl_->clients)
 				if (entry.second.activity)
-					encoder_activity.push_back(entry.second.activity);
+					bundle_activity.push_back(entry.second.activity);
 	}
-	for (Completion &notify : encoder_activity)
+	for (Completion &notify : bundle_activity)
 		notify();
 
 	// CPU completions establish browser state needed by any GPU job they
