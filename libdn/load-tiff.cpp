@@ -238,19 +238,32 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 			memcpy(packed.data() + size_t(y) * width * spp, scan.data(),
 				size_t(width) * spp * sizeof(uint16_t));
 		}
-		size_t stride = size_t(width) * spp * sizeof(uint16_t);
-		if (spp == 3)
-			pack_rgb16le_to_bgra16(*image, packed.data(), stride, 16);
-		else
-			pack_rgba16le_to_bgra16(*image, packed.data(), stride, 16);
-	}
 
-	uint16_t extras = 0;
-	uint16_t *extra_types = nullptr;
-	if (spp == 4 &&
-		TIFFGetField(tiff, TIFFTAG_EXTRASAMPLES, &extras, &extra_types) &&
-		extras > 0 && extra_types && extra_types[0] == EXTRASAMPLE_ASSOCALPHA)
-		unpremultiply_bgra16(*image);
+		uint16_t extras = 0;
+		uint16_t *extra_types = nullptr;
+		uint16_t alpha_type = spp == 4 &&
+				TIFFGetField(
+					tiff, TIFFTAG_EXTRASAMPLES, &extras, &extra_types) &&
+				extras > 0 && extra_types
+			? extra_types[0]
+			: EXTRASAMPLE_UNSPECIFIED;
+
+		size_t stride = size_t(width) * spp * sizeof(uint16_t);
+		if (spp == 3) {
+			pack_rgb16le_to_bgra16(*image, packed.data(), stride, 16);
+		} else {
+			// We accept four samples, but the fourth sample may be useless.
+			if (alpha_type != EXTRASAMPLE_ASSOCALPHA &&
+				alpha_type != EXTRASAMPLE_UNASSALPHA) {
+				for (size_t i = 3; i < packed.size(); i += 4)
+					packed[i] = 65535;
+			}
+			pack_rgba16le_to_bgra16(*image, packed.data(), stride, 16);
+		}
+
+		if (alpha_type == EXTRASAMPLE_ASSOCALPHA)
+			unpremultiply_bgra16(*image);
+	}
 
 	// Full orientation tag: we do not ask libtiff to rotate the raster.
 	uint16_t orientation = ORIENTATION_TOPLEFT;
