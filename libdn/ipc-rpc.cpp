@@ -113,7 +113,7 @@ Channel::send(span<const byte> payload, chrono::milliseconds &budget)
 bool
 Channel::recv(vector<byte> &payload, chrono::milliseconds &budget)
 {
-	for (;;) {
+	while (true) {
 		switch (conn_.read()) {
 		case Connection::Status::Frame:
 			return conn_.take_payload(payload);
@@ -160,7 +160,7 @@ ServerCore::peer_pid(uint64_t id) const
 void
 ServerCore::poll_listen()
 {
-	for (;;) {
+	while (true) {
 		Connection c = listener_.accept();
 		if (!c.ok())
 			return;
@@ -184,7 +184,7 @@ ServerCore::poll_read(uint64_t id)
 {
 	// on_payload may send, close, or drop this very connection, so
 	// nothing about it survives across the call.
-	for (;;) {
+	while (true) {
 		const auto it = conns_.find(id);
 		if (it == conns_.end())
 			return;
@@ -229,6 +229,7 @@ ServerCore::poll_write(uint64_t id)
 	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return;
+
 	Conn &c = it->second;
 	if (c.conn.flush()) {
 		if (cfg_.watch_write)
@@ -273,6 +274,7 @@ ServerCore::close_after_flush(uint64_t id)
 	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return;
+
 	it->second.closing = true;
 	if (!it->second.conn.wants_write())
 		this->drop(id);

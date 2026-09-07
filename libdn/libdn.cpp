@@ -971,9 +971,11 @@ Cmm::get_profile_parametric(
 		{primaries[2], primaries[3], 1.0},
 		{primaries[4], primaries[5], 1.0},
 	};
+
 	cmsToneCurve *curve = cmsBuildGamma(cmsContext(context_), gamma);
 	if (!curve)
 		return nullptr;
+
 	cmsToneCurve *curves[3] = {curve, curve, curve};
 	cmsHPROFILE p =
 		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, curves);

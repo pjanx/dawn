@@ -346,7 +346,7 @@ Connection::read()
 		return at_boundary ? Status::Eof : Status::Error;
 	};
 
-	for (;;) {
+	while (true) {
 		if (!m.read_pending && !m.post_read()) {
 			const DWORD e = ::GetLastError();
 			return finish(m.reader.idle() &&
@@ -404,7 +404,7 @@ Connection::flush()
 	if (!m.ok)
 		return false;
 
-	for (;;) {
+	while (true) {
 		if (m.write_pending) {
 			DWORD n = 0;
 			if (!::GetOverlappedResult(m.pipe, &m.wov, &n, FALSE)) {
@@ -653,7 +653,7 @@ Endpoint::connect(string_view service)
 		return out;
 
 	HANDLE pipe = INVALID_HANDLE_VALUE;
-	for (;;) {
+	while (true) {
 		// Without an explicit quality of service the server receives an
 		// anonymous token and cannot check who it is talking to.
 		pipe = ::CreateFileW(name.c_str(), GENERIC_READ | GENERIC_WRITE, 0,

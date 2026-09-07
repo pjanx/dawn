@@ -1031,7 +1031,7 @@ static void
 worker_loop(Viewer &v, bool foreground)
 {
 	auto cmm = make_shared<dawn::Cmm>();
-	for (;;) {
+	while (true) {
 		OpenJob open;
 		ScaleJob scale;
 		bool have_open = false;
@@ -1439,6 +1439,7 @@ image_dest_rect(const Viewer &v)
 	display_size(v, &dw, &dh);
 	if (v.scale_ <= 0.f || !dw || !dh)
 		return {};
+
 	const Vec c = image_to_view(v, {});
 	// Bounding box of the turned rectangle.
 	const float k = v.scale_;

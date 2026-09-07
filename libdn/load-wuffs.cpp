@@ -86,15 +86,15 @@ pull_passthrough(const wuffs_base__more_information *minfo,
 	const uint64_t length64 = r.max_excl - r.min_incl;
 	if (length64 > kMaxMetadataSize - dst->meta.wi ||
 		!grow_metadata_buffer(
-			storage, dst, dst->meta.wi + static_cast<size_t>(length64), error))
+			storage, dst, dst->meta.wi + size_t(length64), error))
 		return false;
 
-	const size_t offset = static_cast<size_t>(r.min_incl - pos);
-	const size_t length = static_cast<size_t>(length64);
+	const size_t offset = size_t(r.min_incl - pos);
+	const size_t length = size_t(length64);
 	memcpy(storage->data() + dst->meta.wi, src->data.ptr + offset, length);
 	dst->meta.wi += length;
 	// Seeking to the end is required by at least the GIF decoder.
-	src->meta.ri = static_cast<size_t>(r.max_excl - pos);
+	src->meta.ri = size_t(r.max_excl - pos);
 	return true;
 }
 

@@ -59,15 +59,18 @@ config_get(string_view key, Error *error)
 {
 	if (error)
 		*error = {};
+
 	CFStringRef cf_key = make_cfstring(key, error);
 	if (!cf_key)
 		return nullopt;
+
 	CFPropertyListRef value =
 		CFPreferencesCopyValue(cf_key, CFSTR(DAWN_NAMESPACE),
 			kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 	CFRelease(cf_key);
 	if (!value)
 		return nullopt;
+
 	if (CFGetTypeID(value) != CFStringGetTypeID()) {
 		CFRelease(value);
 		fail(error, "configuration value is not a string");
@@ -83,6 +86,7 @@ config_set(string_view key, string_view value, Error *error)
 {
 	if (error)
 		*error = {};
+
 	CFStringRef cf_key = make_cfstring(key, error);
 	CFStringRef cf_value = make_cfstring(value, error);
 	if (!cf_key || !cf_value) {
@@ -92,6 +96,7 @@ config_set(string_view key, string_view value, Error *error)
 			CFRelease(cf_value);
 		return false;
 	}
+
 	CFPreferencesSetValue(cf_key, cf_value, CFSTR(DAWN_NAMESPACE),
 		kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 	CFRelease(cf_key);

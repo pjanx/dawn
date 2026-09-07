@@ -146,7 +146,7 @@ struct JobQueue {
 static void
 worker(JobQueue *jobs, dawn::ScaleScaler *scaler)
 {
-	for (;;) {
+	while (true) {
 		string path;
 		{
 			unique_lock lock(jobs->mu);

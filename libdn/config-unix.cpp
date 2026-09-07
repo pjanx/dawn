@@ -208,6 +208,7 @@ config_get(string_view key, Error *error)
 {
 	if (error)
 		*error = {};
+
 	const auto parts = split_key(key);
 	if (!parts) {
 		fail(error, "invalid configuration key");
@@ -234,6 +235,7 @@ config_set(string_view key, string_view value, Error *error)
 {
 	if (error)
 		*error = {};
+
 	const auto parts = split_key(key);
 	if (!parts) {
 		fail(error, "invalid configuration key");
@@ -242,9 +244,11 @@ config_set(string_view key, string_view value, Error *error)
 	const fs::path path = config_path(error);
 	if (path.empty())
 		return false;
+
 	optional<IniFile> ini = load_ini(path, error);
 	if (!ini)
 		return false;
+
 	IniGroup *wanted = nullptr;
 	for (IniGroup &group : ini->groups)
 		if (group.name == parts->first) {
