@@ -35,12 +35,10 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 constexpr auto kSelfDesktop = QLatin1String(DAWN_NAMESPACE ".desktop");
 
-string
+static string
 read_text_file(const QString &path)
 {
 	QFile file(path);
@@ -50,7 +48,7 @@ read_text_file(const QString &path)
 	return file.readAll().toStdString();
 }
 
-bool
+static bool
 write_text_file(const QString &path, string_view text)
 {
 	QFileInfo info(path);
@@ -68,7 +66,7 @@ write_text_file(const QString &path, string_view text)
 	return file.commit();
 }
 
-bool
+static bool
 parse_bool(string_view value)
 {
 	const QString v = QString::fromUtf8(value.data(), qsizetype(value.size()))
@@ -77,7 +75,7 @@ parse_bool(string_view value)
 	return v == QLatin1String("true") || v == QLatin1String("1");
 }
 
-vector<QString>
+static vector<QString>
 split_semicolons(string_view value)
 {
 	vector<QString> out;
@@ -91,7 +89,7 @@ split_semicolons(string_view value)
 	return out;
 }
 
-QString
+static QString
 normalize_desktop_id(QString id)
 {
 	id = id.trimmed();
@@ -103,7 +101,7 @@ normalize_desktop_id(QString id)
 	return id;
 }
 
-vector<QString>
+static vector<QString>
 current_desktops()
 {
 	vector<QString> out;
@@ -116,7 +114,7 @@ current_desktops()
 	return out;
 }
 
-vector<QString>
+static vector<QString>
 locale_candidates()
 {
 	vector<QString> raw;
@@ -171,7 +169,7 @@ locale_candidates()
 using IniGroup = dawn::detail::IniGroup;
 using IniFile = dawn::detail::IniFile;
 
-vector<QString>
+static vector<QString>
 mimeapps_list_paths()
 {
 	vector<QString> paths;
@@ -193,13 +191,18 @@ mimeapps_list_paths()
 	return paths;
 }
 
+namespace
+{
+
 struct AssocSets {
 	vector<QString> defaults;
 	vector<QString> added;
 	unordered_set<QString> removed;
 };
 
-void
+}  // namespace
+
+static void
 append_unique(vector<QString> &list, const QString &id)
 {
 	if (id.isEmpty())
@@ -209,7 +212,7 @@ append_unique(vector<QString> &list, const QString &id)
 	list.push_back(id);
 }
 
-void
+static void
 apply_mimeapps(AssocSets &acc, const IniFile &ini, const QString &type)
 {
 	const string type_utf8 = type.toUtf8().toStdString();
@@ -237,7 +240,7 @@ apply_mimeapps(AssocSets &acc, const IniFile &ini, const QString &type)
 	}
 }
 
-AssocSets
+static AssocSets
 associations_for_type(const QString &type)
 {
 	AssocSets acc;
@@ -250,7 +253,7 @@ associations_for_type(const QString &type)
 	return acc;
 }
 
-vector<QString>
+static vector<QString>
 cache_ids_for_type(const QString &type)
 {
 	vector<QString> ids;
@@ -273,7 +276,7 @@ cache_ids_for_type(const QString &type)
 	return ids;
 }
 
-QString
+static QString
 desktop_path_for_name(const QString &dir, QString name, int from)
 {
 	const QString path = QDir(dir).filePath(name);
@@ -295,7 +298,7 @@ desktop_path_for_name(const QString &dir, QString name, int from)
 	return {};
 }
 
-QString
+static QString
 desktop_path_for_id(const QString &id)
 {
 	for (const QString &dir : xdg_data_dirs()) {
@@ -307,6 +310,9 @@ desktop_path_for_id(const QString &id)
 	}
 	return {};
 }
+
+namespace
+{
 
 struct Desktop {
 	QString id;
@@ -321,7 +327,9 @@ struct Desktop {
 	bool application = true;
 };
 
-QString
+}  // namespace
+
+static QString
 localized_value(const IniGroup &entry, const QString &key)
 {
 	const QString prefix = key + QLatin1String("[");
@@ -350,7 +358,7 @@ localized_value(const IniGroup &entry, const QString &key)
 	return fallback;
 }
 
-QString
+static QString
 localized_name(const IniGroup &entry)
 {
 	// GLib's display name, which users see next to ours in other file
@@ -363,7 +371,7 @@ localized_name(const IniGroup &entry)
 	return localized_value(entry, QStringLiteral("Name"));
 }
 
-bool
+static bool
 try_exec_ok(const QString &try_exec)
 {
 	if (try_exec.isEmpty())
@@ -382,7 +390,7 @@ try_exec_ok(const QString &try_exec)
 	return false;
 }
 
-bool
+static bool
 shown_on_desktop(const Desktop &d)
 {
 	const vector<QString> desks = current_desktops();
@@ -406,7 +414,7 @@ shown_on_desktop(const Desktop &d)
 	return true;
 }
 
-Desktop
+static Desktop
 load_desktop(const QString &id)
 {
 	Desktop d;
@@ -445,7 +453,7 @@ load_desktop(const QString &id)
 	return d;
 }
 
-const Desktop *
+static const Desktop *
 desktop_by_id(const QString &id)
 {
 	static unordered_map<QString, Desktop> cache;
@@ -459,7 +467,7 @@ desktop_by_id(const QString &id)
 	return &it->second;
 }
 
-bool
+static bool
 listable(const Desktop &d)
 {
 	if (d.id == kSelfDesktop)
@@ -471,7 +479,7 @@ listable(const Desktop &d)
 	return true;
 }
 
-Handler
+static Handler
 to_app(const Desktop &d)
 {
 	Handler a;
@@ -481,14 +489,14 @@ to_app(const Desktop &d)
 	return a;
 }
 
-QMimeDatabase &
+static QMimeDatabase &
 db()
 {
 	static QMimeDatabase mime;
 	return mime;
 }
 
-vector<QString>
+static vector<QString>
 ancestor_types(const QString &type)
 {
 	vector<QString> ancestors;
@@ -500,7 +508,7 @@ ancestor_types(const QString &type)
 	return ancestors;
 }
 
-void
+static void
 merge_assoc(AssocSets &into, const AssocSets &from)
 {
 	for (const QString &id : from.defaults)
@@ -512,7 +520,7 @@ merge_assoc(AssocSets &into, const AssocSets &from)
 		into.removed.erase(id);
 }
 
-bool
+static bool
 usable_id(const QString &id, const unordered_set<QString> &removed)
 {
 	if (id.isEmpty() || id == kSelfDesktop || removed.contains(id))
@@ -521,7 +529,7 @@ usable_id(const QString &id, const unordered_set<QString> &removed)
 	return d && listable(*d);
 }
 
-vector<QString>
+static vector<QString>
 split_exec(const QString &exec)
 {
 	vector<QString> args;
@@ -565,7 +573,7 @@ split_exec(const QString &exec)
 	return args;
 }
 
-QStringList
+static QStringList
 expand_exec(const Desktop &d, const QString &path)
 {
 	const QString url = QUrl::fromLocalFile(QFileInfo(path).absoluteFilePath())
@@ -627,7 +635,7 @@ expand_exec(const Desktop &d, const QString &path)
 	return out;
 }
 
-QString
+static QString
 user_mimeapps_path()
 {
 	const vector<QString> dirs = xdg_config_dirs();
@@ -636,7 +644,7 @@ user_mimeapps_path()
 	return QDir(dirs.front()).filePath(QStringLiteral("mimeapps.list"));
 }
 
-QString
+static QString
 prepend_id(const QString &value, const QString &id)
 {
 	vector<QString> ids;
@@ -651,8 +659,6 @@ prepend_id(const QString &value, const QString &id)
 	}
 	return out;
 }
-
-}  // namespace
 
 Handler
 default_for(const QString &path)
