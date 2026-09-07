@@ -39,12 +39,10 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- Multi-Picture Format ----------------------------------------------------
 
-uint32_t
+static uint32_t
 parse_mpf_mpentry(const uint8_t *p, const tiffer *T)
 {
 	uint32_t attrs = T->un->u32(p);
@@ -76,7 +74,7 @@ parse_mpf_mpentry(const uint8_t *p, const tiffer *T)
 	return offset;
 }
 
-vector<uint32_t>
+static vector<uint32_t>
 parse_mpf_index_entries(const tiffer *T, const tiffer_entry *entry)
 {
 	uint32_t count = entry->remaining_count / 16;
@@ -91,7 +89,7 @@ parse_mpf_index_entries(const tiffer *T, const tiffer_entry *entry)
 	return offsets;
 }
 
-vector<uint32_t>
+static vector<uint32_t>
 parse_mpf_index_ifd(tiffer *T)
 {
 	tiffer_entry entry = {};
@@ -106,7 +104,7 @@ parse_mpf_index_ifd(tiffer *T)
 }
 
 /// Collects pointers (into `mpf`) to the individual JPEGs of an MPF.
-bool
+static bool
 parse_mpf(vector<const uint8_t *> &individuals, const uint8_t *mpf, size_t len,
 	size_t total_len)
 {
@@ -124,6 +122,9 @@ parse_mpf(vector<const uint8_t *> &individuals, const uint8_t *mpf, size_t len,
 
 // --- Exif-derived colour profile ---------------------------------------------
 
+namespace
+{
+
 struct ExifProfileParams {
 	double whitepoint[2] = {};             ///< TIFF_WhitePoint
 	double primaries[6] = {};              ///< TIFF_PrimaryChromaticities
@@ -136,7 +137,9 @@ struct ExifProfileParams {
 	bool have_gamma = false;
 };
 
-bool
+}  // namespace
+
+static bool
 parse_exif_profile_reals(const tiffer *T, tiffer_entry *entry, double *out)
 {
 	while (tiffer_real(T, entry, out++))
@@ -145,7 +148,7 @@ parse_exif_profile_reals(const tiffer *T, tiffer_entry *entry, double *out)
 	return true;
 }
 
-void
+static void
 parse_exif_profile_subifd(
 	ExifProfileParams *params, const tiffer *T, uint32_t offset)
 {
@@ -171,7 +174,7 @@ parse_exif_profile_subifd(
 
 /// Derives an ICC-like colour profile from Exif tags, mirroring fiv's
 /// handling of sRGB/AdobeRGB Nikon JPEGs that carry no embedded ICC profile.
-shared_ptr<Profile>
+static shared_ptr<Profile>
 parse_exif_profile(Cmm &cmm, span<const uint8_t> exif)
 {
 	tiffer T = {};
@@ -214,13 +217,18 @@ parse_exif_profile(Cmm &cmm, span<const uint8_t> exif)
 
 // --- JPEG segment scanning ---------------------------------------------------
 
+namespace
+{
+
 struct JpegMetadata {
 	vector<uint8_t> exif;         ///< Exif buffer, may be empty
 	vector<uint8_t> icc;          ///< ICC profile buffer, may be empty
 	vector<const uint8_t *> mpf;  ///< Multi-Picture Format entries
 };
 
-void
+}  // namespace
+
+static void
 parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 {
 	// Because the JPEG file format is simple, just do it manually.
@@ -336,6 +344,9 @@ parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 
 // --- libjpeg error handling --------------------------------------------------
 
+namespace
+{
+
 struct LibjpegErrorMgr {
 	jpeg_error_mgr pub;
 	jmp_buf buf;
@@ -343,7 +354,9 @@ struct LibjpegErrorMgr {
 	const OpenContext *ctx = nullptr;
 };
 
-void
+}  // namespace
+
+static void
 libjpeg_error_exit(j_common_ptr cinfo)
 {
 	auto *err = (LibjpegErrorMgr *) cinfo->err;
@@ -353,7 +366,7 @@ libjpeg_error_exit(j_common_ptr cinfo)
 	longjmp(err->buf, 1);
 }
 
-void
+static void
 libjpeg_output_message(j_common_ptr cinfo)
 {
 	auto *err = (LibjpegErrorMgr *) cinfo->err;
@@ -361,6 +374,9 @@ libjpeg_output_message(j_common_ptr cinfo)
 	(*cinfo->err->format_message)(cinfo, buf);
 	add_warning(*err->ctx, buf);
 }
+
+namespace
+{
 
 struct LibjpegDecoder {
 	LibjpegErrorMgr error = {};
@@ -387,9 +403,11 @@ struct LibjpegDecoder {
 	}
 };
 
+}  // namespace
+
 // --- Decoding loops ----------------------------------------------------------
 
-void
+static void
 load_libjpeg_simple(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 {
 	(void) jpeg_start_decompress(cinfo);
@@ -401,7 +419,7 @@ load_libjpeg_simple(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 
 #if DAWN_WITH_JPEG_QS
 
-void
+static void
 load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 {
 	// Go for the maximum quality setting.
@@ -424,7 +442,7 @@ load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 
 #else
 
-inline void
+static inline void
 load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 {
 	load_libjpeg_simple(cinfo, lines);
@@ -434,7 +452,7 @@ load_libjpeg_enhanced(jpeg_decompress_struct *cinfo, JSAMPARRAY lines)
 
 #ifdef MAXJ12SAMPLE
 
-void
+static void
 load_libjpeg12_simple(jpeg_decompress_struct *cinfo, J12SAMPARRAY lines)
 {
 	(void) jpeg_start_decompress(cinfo);
@@ -447,7 +465,7 @@ load_libjpeg12_simple(jpeg_decompress_struct *cinfo, J12SAMPARRAY lines)
 #endif
 #ifdef MAXJ16SAMPLE
 
-void
+static void
 load_libjpeg16_simple(jpeg_decompress_struct *cinfo, J16SAMPARRAY lines)
 {
 	(void) jpeg_start_decompress(cinfo);
@@ -461,12 +479,12 @@ load_libjpeg16_simple(jpeg_decompress_struct *cinfo, J16SAMPARRAY lines)
 
 // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-ImagePtr open_libjpeg_turbo(
+static ImagePtr open_libjpeg_turbo(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
 /// Packs opaque interleaved EXT_BGRA / EXT_ARGB uint16 samples into working
 /// BGRA16, scaling from `bits` (12 or 16) to the full uint16 range.
-void
+static void
 pack_jpeg_ext_to_bgra16(
 	Image &dst, const uint16_t *src, size_t src_stride, int bits, bool argb)
 {
@@ -496,7 +514,7 @@ pack_jpeg_ext_to_bgra16(
 /// Finishes a decoded JPEG page: metadata, optional MPF follow-ups, then
 /// colour-manage. `bits` is 8 for JSAMPLE output, or 12/16 for high precision.
 /// When bits==8, `pixels8` is BGRA/ARGB/CMYK8; otherwise `pixels16` is used.
-void
+static void
 load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 	const OpenContext &ctx, span<const uint8_t> data, const uint8_t *pixels8,
 	const uint16_t *pixels16)
@@ -583,7 +601,7 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 	}
 }
 
-ImagePtr
+static ImagePtr
 load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	void (*loop)(jpeg_decompress_struct *, JSAMPARRAY), Error *error)
 {
@@ -685,15 +703,13 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	return image;
 }
 
-ImagePtr
+static ImagePtr
 open_libjpeg_turbo(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	return load_libjpeg_turbo(data, ctx,
 		ctx.enhance ? load_libjpeg_enhanced : load_libjpeg_simple, error);
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_jpeg(
