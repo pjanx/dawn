@@ -174,7 +174,8 @@ struct Browser : Widget {
 	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
 	void set_screen_profile(
-		std::shared_ptr<dawn::Cmm> cmm, std::shared_ptr<dawn::Profile> profile);
+		std::shared_ptr<dawn::Cmm> cmm, std::shared_ptr<dawn::Profile> profile,
+		bool force_reload = false);
 	void present(Page &ui);
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;

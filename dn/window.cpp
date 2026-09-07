@@ -248,12 +248,15 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	this->renderer_ready_ = true;
 
 	this->cmm_ = dawn::Cmm::get_default();
-	refresh_screen_profile(screen());
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
-	this->app_->settings.listen(this, [this] {
-		if (this->viewer_)
-			this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
+	this->app_->settings.listen(this, [this](SettingsChange change) {
+		if (change == SettingsChange::Preferences) {
+			this->renderer_.set_dither_enabled(
+				!this->app_->settings.disable_dithering);
+			this->resize_pending_ = true;
+			this->settings_apply_pending_ = true;
+		}
 		if (this->browser_)
 			this->browser_->rescan();
 		request_render();
@@ -264,19 +267,16 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 		this->kit_, this->host_, this->app_->thumbnailer, &this->browser_);
 	this->viewer_ui_ =
 		make_viewer_page(this->kit_, this->host_, &this->viewer_);
-	if (this->viewer_) {
+	if (this->viewer_)
 		this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
-		this->viewer_->set_screen_profile(
-			this->cmm_, this->screen_profile_, this->screen_profile_fallback_);
-	}
 	if (this->browser_) {
-		this->browser_->set_screen_profile(this->cmm_, this->screen_profile_);
 		this->browser_->setup_ = setup;
 		this->browser_->show_names_ =
 			this->app_->settings.browser_show_filenames;
 		this->browser_->thumb_size_ =
 			this->app_->settings.browser_thumbnail_size;
 	}
+	apply_screen_profile(screen(), false);
 
 	open_any(url.isEmpty() ? path_to_url(QDir::currentPath()) : url, browse);
 	return true;
@@ -708,6 +708,20 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	return changed;
 }
 
+void
+Window::apply_screen_profile(QScreen *target_screen, bool force_reload)
+{
+	if (!refresh_screen_profile(target_screen) && !force_reload)
+		return;
+
+	if (this->viewer_)
+		this->viewer_->set_screen_profile(this->cmm_, this->screen_profile_,
+			this->screen_profile_fallback_, force_reload);
+	if (this->browser_)
+		this->browser_->set_screen_profile(
+			this->cmm_, this->screen_profile_, force_reload);
+}
+
 QWindow *
 Window::shell()
 {
@@ -864,13 +878,25 @@ Window::render()
 {
 	if (!this->renderer_ready_)
 		return;
+
 	const QWindow *surface = parent() ? parent() : this;
 	if (!surface->isExposed())
 		return;
+
 	if (this->resize_pending_) {
 		this->renderer_.resize(pixel_size());
 		this->resize_pending_ = false;
 	}
+	if (this->settings_apply_pending_ && this->renderer_.extent().width &&
+		this->renderer_.extent().height) {
+		this->kit_.atlas_.dirty = true;
+		if (this->viewer_)
+			this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
+		// Dithering may have replaced the renderer target and its uploads.
+		apply_screen_profile(screen(), true);
+		this->settings_apply_pending_ = false;
+	}
+
 	const float w = float(width());
 	const float h = float(height());
 	const float dpr = host_dpr(*this);
@@ -880,11 +906,13 @@ Window::render()
 		this->browser_->set_host(w, h, dpr);
 	else if (this->viewer_)
 		this->viewer_->set_host(w, h, dpr);
+
 	// Nothing to do for a resize: relayout_popups() re-places every popup
 	// and drops the ones whose opener stopped being shown.
 	Page *ui = active_ui();
 	if (!ui)
 		return;
+
 	this->kit_.fullscreen_ = fullscreen;
 	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
 	this->kit_.csd_ = this->csd_ && !fullscreen;
@@ -912,6 +940,7 @@ Window::render()
 		set_mode(Mode::View);
 		request_render();
 	}
+
 	const bool deferred = this->present_retry_.isActive();
 	const bool presented =
 		!deferred && this->renderer_.draw_frame(this->kit_.list_.mesh());
@@ -948,14 +977,8 @@ void
 Window::handle_screen_change(QScreen *target_screen)
 {
 	this->resize_pending_ = true;
-	if (this->renderer_ready_ && refresh_screen_profile(target_screen)) {
-		if (this->viewer_)
-			this->viewer_->set_screen_profile(this->cmm_, this->screen_profile_,
-				this->screen_profile_fallback_);
-		if (this->browser_)
-			this->browser_->set_screen_profile(
-				this->cmm_, this->screen_profile_);
-	}
+	if (this->renderer_ready_)
+		apply_screen_profile(target_screen, false);
 	request_render();
 }
 

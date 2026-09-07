@@ -2104,15 +2104,16 @@ Viewer::consume_open_done()
 
 void
 Viewer::set_screen_profile(
-	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile, bool fallback)
+	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile, bool fallback,
+	bool force_reload)
 {
 	auto screen_icc = profile
 		? make_shared<const vector<uint8_t>>(profile->to_bytes())
 		: nullptr;
 	const bool changed = bool(this->screen_icc_) != bool(screen_icc) ||
 		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
-	const bool reload =
-		this->enable_cms_ && !this->url_.isEmpty() && changed;
+	const bool reload = !this->url_.isEmpty() &&
+		(force_reload || (this->enable_cms_ && changed));
 	this->cmm_ = std::move(cmm);
 	this->screen_icc_ = std::move(screen_icc);
 	this->screen_profile_ = std::move(profile);

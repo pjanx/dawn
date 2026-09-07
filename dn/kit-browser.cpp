@@ -2869,12 +2869,14 @@ Browser::hist_can_forward() const
 
 void
 Browser::set_screen_profile(
-	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile)
+	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile,
+	bool force_reload)
 {
 	auto screen_icc = profile
 		? make_shared<const vector<uint8_t>>(profile->to_bytes())
 		: nullptr;
-	const bool reload_thumbs = bool(this->screen_icc_) != bool(screen_icc) ||
+	const bool reload_thumbs = force_reload ||
+		bool(this->screen_icc_) != bool(screen_icc) ||
 		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
 	this->cmm_ = std::move(cmm);
 	this->screen_icc_ = std::move(screen_icc);

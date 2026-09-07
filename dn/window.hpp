@@ -48,6 +48,7 @@ class Window final : public QWindow
 	enum class Mode : uint8_t { View, Browser };
 
 	bool refresh_screen_profile(QScreen *target_screen);
+	void apply_screen_profile(QScreen *target_screen, bool force_reload);
 	void request_render();
 	void arm_ui_wake();
 	void render();
@@ -103,6 +104,7 @@ class Window final : public QWindow
 	bool renderer_ready_ = false;
 	bool exposed_ = false;
 	bool resize_pending_ = false;
+	bool settings_apply_pending_ = false;
 	bool update_pending_ = false;
 	bool screen_profile_fallback_ = true;
 	bool awaiting_view_ = false;

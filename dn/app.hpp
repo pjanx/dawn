@@ -41,13 +41,15 @@ enum class OpenResult : uint8_t {
 	Internal
 };
 
-/// Process-wide user settings and change notification.
-/// Notification is coarse: any change notifies all listeners.
+enum class SettingsChange : uint8_t { Bookmarks, Preferences };
+
+/// Process-wide user settings and categorized change notification.
 class Settings
 {
-	std::vector<std::pair<void *, std::function<void()>>> listeners_;
+	std::vector<std::pair<void *, std::function<void(SettingsChange)>>>
+		listeners_;
 
-	void notify() const;
+	void notify(SettingsChange change) const;
 	void update_enabled_loaders();
 	// Reads the profile in, so that a path that cannot be used says so when
 	// it is chosen rather than at the next repaint.
@@ -70,7 +72,7 @@ public:
 	void save(const SettingsDraft &draft);
 	[[nodiscard]] bool bookmarked(const std::string &path) const;
 	void toggle_bookmark(const std::string &path);
-	void listen(void *key, std::function<void()> fn);
+	void listen(void *key, std::function<void(SettingsChange)> fn);
 	void unlisten(const void *key);
 };
 

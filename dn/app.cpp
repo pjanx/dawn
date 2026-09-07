@@ -290,7 +290,7 @@ Settings::save(const SettingsDraft &draft)
 	const string path = draft.icc_profile_path.toStdString();
 	set_setting(kProfileKey, path);
 	load_icc_override(path);
-	notify();
+	notify(SettingsChange::Preferences);
 }
 
 bool
@@ -311,13 +311,13 @@ Settings::toggle_bookmark(const string &path)
 		this->bookmarks.erase(it);
 	else
 		this->bookmarks.push_back(want);
-	notify();
+	notify(SettingsChange::Bookmarks);
 	set_setting(
 		kBookmarksKey, join_list(this->bookmarks, bookmark_separator()));
 }
 
 void
-Settings::listen(void *key, function<void()> fn)
+Settings::listen(void *key, function<void(SettingsChange)> fn)
 {
 	unlisten(key);
 	this->listeners_.emplace_back(key, std::move(fn));
@@ -331,14 +331,14 @@ Settings::unlisten(const void *key)
 }
 
 void
-Settings::notify() const
+Settings::notify(SettingsChange change) const
 {
 	// All mutations originate on the GUI thread, so unlike DisplayProfileWatch
 	// this needs no queued hop.  Copy: a callback may unlisten.
 	const auto copy = this->listeners_;
 	for (const auto &item : copy)
 		if (item.second)
-			item.second();
+			item.second(change);
 }
 
 // Finder delivers a document to open as a QFileOpenEvent, not an argument.
