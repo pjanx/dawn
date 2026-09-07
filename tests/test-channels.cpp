@@ -224,24 +224,17 @@ test_jpeg_fatal_error()
 	ifstream input(path, ios::binary);
 	vector<uint8_t> bytes(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
-	CHECK(!bytes.empty());
-	if (bytes.empty())
+	CHECK(bytes.size() >= 2);
+	if (bytes.size() < 2)
 		return;
 
 	// Replace the final EOI with an invalid marker. The header and scanline are
 	// valid, so libjpeg reports the fatal error only while finishing the
 	// decompression, after the image and temporary pixel buffer have been made.
-	size_t eoi = bytes.size();
-	for (size_t i = bytes.size(); i > 1; i--) {
-		if (bytes[i - 2] == 0xff && bytes[i - 1] == 0xd9) {
-			eoi = i - 1;
-			break;
-		}
-	}
-	CHECK(eoi != bytes.size());
-	if (eoi == bytes.size())
+	CHECK(bytes[bytes.size() - 2] == 0xff && bytes.back() == 0xd9);
+	if (bytes[bytes.size() - 2] != 0xff || bytes.back() != 0xd9)
 		return;
-	bytes[eoi] = 0x02;
+	bytes.back() = 0x02;
 
 	for (bool enhance : {false, true}) {
 		dawn::OpenContext ctx;
