@@ -167,9 +167,10 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 		(deep ? kCGBitmapByteOrder16Little : kCGBitmapByteOrder32Big);
 
 	size_t stride = width * 4 * (bits / 8);
-	vector<uint8_t> pixels(stride * height);
-	CGContextRef context = CGBitmapContextCreate(
-		pixels.data(), width, height, bits, stride, space, info);
+	vector<uint16_t> pixels(stride * height / 2);
+	auto raw = (uint8_t *) pixels.data();
+	CGContextRef context =
+		CGBitmapContextCreate(raw, width, height, bits, stride, space, info);
 	if (context) {
 		CGContextSetBlendMode(context, kCGBlendModeCopy);
 		CGContextDrawImage(
@@ -195,10 +196,9 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 	// Core Graphics always premultiplies, which is what ensure_working_premul()
 	// is then told about by our caller.
 	if (deep)
-		pack_rgba16le_to_bgra16(
-			*image, (const uint16_t *) pixels.data(), stride, 16);
+		pack_rgba16le_to_bgra16(*image, pixels.data(), stride, 16);
 	else
-		pack_rgba8_to_bgra16(*image, pixels.data(), stride);
+		pack_rgba8_to_bgra16(*image, raw, stride);
 
 	if (icc) {
 		const uint8_t *bytes = CFDataGetBytePtr(icc);

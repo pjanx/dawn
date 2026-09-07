@@ -193,7 +193,7 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 		if (w->host().apply)
 			w->host().apply(a);
 	} else if (a == dn::Action::NewWindow && _app)
-		_app->open(dn::path_to_url(QDir::currentPath()));
+		_app->open(dn::path_to_url(QDir::currentPath()), {}, {}, false);
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item
