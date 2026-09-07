@@ -332,6 +332,8 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 			int(bounds.min_incl_y), op);
 	}
 
+	canvas->effective_profile = image->effective_profile;
+	canvas->profile_assumed = image->profile_assumed;
 	image = std::move(canvas);
 	return true;
 }
