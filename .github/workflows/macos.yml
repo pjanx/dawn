@@ -54,11 +54,14 @@ jobs:
               -f ref="refs/tags/${tag}" -f sha="$GITHUB_SHA" >/dev/null
           fi
 
+          # Mirroring this repository deletes the tag, and GitHub turns
+          # the release into a draft, so always publish it again, last.
           notes="Unsigned Apple Silicon build of ${GITHUB_SHA}."
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "Continuous macOS build" \
-              --notes "$notes" --target "$GITHUB_SHA" --prerelease
             gh release upload "$tag" "$asset" --clobber
+            gh release edit "$tag" --title "Continuous macOS build" \
+              --notes "$notes" --target "$GITHUB_SHA" \
+              --prerelease --draft=false
           else
             gh release create "$tag" "$asset" --verify-tag \
               --title "Continuous macOS build" --notes "$notes" --prerelease
