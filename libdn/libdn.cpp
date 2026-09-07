@@ -1788,10 +1788,15 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	if (!image->exif.empty()) {
-		Orientation o = exif_orientation(image->exif);
+	// JPEG MPF follow-ups and HEIF auxiliary images may each carry their
+	// own Exif.
+	for (Image *page = image.get(); page; page = page->page_next.get()) {
+		if (page->exif.empty())
+			continue;
+
+		const Orientation o = exif_orientation(page->exif);
 		if (o != Orientation::Unknown)
-			image->orientation = o;
+			page->orientation = o;
 	}
 	return image;
 }
