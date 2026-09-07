@@ -159,9 +159,10 @@ load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
 	if (cicp) {
 		source = cmm_or_default(ctx)->get_profile_cicp(
 			cicp->color_primaries, cicp->transfer_characteristics);
-		if (source)
+		if (source) {
 			image->icc = source->to_bytes();
-		else
+			image->effective_profile = source;
+		} else
 			add_warning(ctx,
 				"glycin: unrepresentable CICP colour space, assuming sRGB");
 		gly_cicp_free(cicp);
