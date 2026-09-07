@@ -201,7 +201,7 @@ struct Sampler {
 	uint32_t w = 0, h = 0;            ///< Extent of `data`
 	uint32_t xnum = 1, xden = 1;      ///< Output x → component x
 	uint32_t ynum = 1, yden = 1;      ///< Output y → component y
-	int32_t offset = 0;               ///< Recentres signed samples
+	int64_t offset = 0;               ///< Recentres signed samples
 	uint32_t max = 0;                 ///< Largest representable sample
 	int shift = 0;                    ///< Drops precision above 16 bits
 	int bits = 8;                     ///< Precision after `shift`
@@ -229,7 +229,7 @@ make_sampler(const opj_image_comp_t &c, uint32_t dx0, uint32_t dy0)
 	s.xden = c.dx ? c.dx : 1;
 	s.ynum = dy0;
 	s.yden = c.dy ? c.dy : 1;
-	s.offset = c.sgnd ? 1 << (c.prec - 1) : 0;
+	s.offset = c.sgnd ? int64_t(1) << (c.prec - 1) : 0;
 	s.max = c.prec >= 32 ? 0xFFFFFFFFu : (1u << c.prec) - 1;
 
 	// scale_nbit_to_u16() saturates rather than scales past 16 bits.
