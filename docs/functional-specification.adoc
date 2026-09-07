@@ -51,7 +51,7 @@ Weston
 The `gl` renderer has been observed to render upside-down while `headless`.
 This can be fixed with `--transform` but it hints at unreliability.
 
-The `desktop` shell is useful for CSD testing, and the  `kiosk` shell is useful
+The `desktop` shell is useful for CSD testing, and the `kiosk` shell is useful
 for not having to manage the window position.
 
 ```
@@ -91,7 +91,7 @@ When loading a directory, retrieve thumbnails as fast as possible:
     * XDG _thumbnail-spec_
  - The nominal size is attempted first, then larger sizes, then smaller ones.
 
-The wide thumbnail view is only happy _wide-thumbnail-spec_ images
+The wide thumbnail view is only happy with _wide-thumbnail-spec_ images
 of the nominal size, with a declared gamut.
 
 The square thumbnail view is also happy with nominal size _wide-thumbnail-spec_

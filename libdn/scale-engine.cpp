@@ -70,7 +70,7 @@ struct PushConstants {
 };
 static_assert(sizeof(PushConstants) == 92);
 
-// TODO(p): The fuck is the reason for being this lenient?
+// TODO(p): What in Hell could be a reason for being this lenient?
 constexpr float kAngleFast = 1e-5f;
 
 bool

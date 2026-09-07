@@ -99,7 +99,7 @@ Resources
 
 Acknowledgments
 ---------------
- - William R. Commander for
+ - Darrell R. Commander for
    https://github.com/libjpeg-turbo/libjpeg-turbo.git[libjpeg-turbo]
  - Marti Maria for
    https://github.com/mm2/little-cms[Little CMS]

@@ -283,7 +283,7 @@ dim_text(uint32_t v)
 	return QString::fromUtf8(buf);
 }
 
-// FIXME: This is fucking stupid.
+// FIXME: This is very stupid.
 constexpr int kInfoFixedKids = 6 + DAWN_WITH_JPEG_QS;
 
 static void

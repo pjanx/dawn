@@ -24,4 +24,4 @@ Scaling
 -------
 // TODO(p): show extreme close-ups.
 
-You can do better than use bilinear scaling.
+You can do better than to use bilinear scaling.

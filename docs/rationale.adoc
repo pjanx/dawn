@@ -5,7 +5,7 @@ This document is written from the perspective of the project lead.
 I can write the same story from different perspectives.  '`Why is it this way`'
 seems to be a useful one.
 
-I'm open to new information.  You always miss something: first you get wrong,
+I'm open to new information.  You always miss something: first you get it wrong,
 and then you get wiser.
 
 Why make this at all
@@ -14,9 +14,9 @@ Why make this at all
    I had been using my https://git.janouch.name/p/fiv[fiv] but it needed a lot
    of improvements, some of which ran up against its technical stack.
 
- - _Image organiser:_ Like before, the competition for querying and organising
+ - _Image organiser:_ As before, the competition for querying and organising
    huge piles of image files is thin.  All I need is a tool with reasonable
-   automation interfaces, and pair it with at least trivial local AI
+   automation interfaces, and to pair it with at least trivial local AI
    for classification.
 
  - _File manager:_ Linux and macOS have at best middling freely available
@@ -29,12 +29,12 @@ Why make this at all
    some technological--can't all be solved through forking existing projects.
 
 The reasoning goes much deeper, and isn't particularly worth expanding on.
-I bear all costs, as well as gains.
+I bear all costs, and reap the gains.
 
 Devil's advocate
 ----------------
 The project is explicitly local-first, and works on top of what you already
-have on a desktop, laptop computer.  But file systems are becoming an obsolete
+have on a desktop or laptop computer.  But file systems are becoming an obsolete
 concept, as is personal computing as we've known it.  It will occupy a niche.
 
 AI use
@@ -45,7 +45,8 @@ certain areas and aspects.  Sadly not in product design--that is my own burden.
 
 The model evaluation at the time of writing is that Cursor Grok 4.6 High is
 a dumb servant that doesn't question, and Opus 5 or GPT 5.6 Sol are capable of
-resolving most problems, at a significant cost.
+resolving most problems, at a significant cost.  Claude is a superb wordsmith
+if you don't let it run amok.
 
 Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
 the problems become more complex.  Perhaps as I'm shifting to a belief
@@ -55,7 +56,7 @@ a screenshot may easily trump describing issues in words.
 Name
 ----
 It comes from around 2013 when I wanted to make Dawn Commander.  The trail ends
-there.  And I'm finishing exactly what I've begun--this will be the file manager
+there.  And I'm finishing exactly what I began--this will be the file manager
 mode's name.
 
 The main binaries are to be named '`dn`' or '`dnc`' in order to save on
@@ -83,9 +84,9 @@ in combination.  This results in architectural pain that I'm willing to engineer
 for.  Deployment is a tad difficult:
 
  - Linux has many odd dependencies that make it difficult to package
-   the software in a way that it wants to integrate.  I've eventually succeeded
-   at taming Flatpaks, though Flathub--the usual distribution platform--has
-   hostile policies.
+   the software in a way that it wants to integrate.  I eventually succeeded
+   in taming Flatpaks, though Flathub--the usual distribution platform--has
+   hostile policies towards AI.
 
  - macOS needs special build slaves, at minimum a decent ARM64 virtual machine,
    and more importantly a Developer ID certificate if any greater number
@@ -102,7 +103,7 @@ communicating over IPC protocols.
 In practice, most good libraries for reuse either have a C or *C++* API,
 and additional layers are undesirable.  I'm not too happy here.
 Alternatives need to be stable, which Zig isn't, and must not come with a myriad
-papercuts, which Rust and Cargo do.
+of papercuts, which Rust and Cargo do.
 
 In any case, automated porting is a thing.
 
@@ -138,7 +139,7 @@ the slowest parts of loading an image.  However, if your copy of lcms2 has
 the _fast float_, and/or _multithreaded_ plugins, you can easily speed it up
 by a factor of 3 or more.  The catch is that they're normally not packaged
 in distributions, and they're licensed under the GPL (this may be related).
-Even if this project were to go commercial, oh-em-gee €150 won't kill me,
+Even if this project were to go commercial, oh-em-gee €150 wouldn't kill me,
 I love me colours.
 
 The ultimate speedup would be complete CM in a shader, but it's Not Easy™,
@@ -147,7 +148,7 @@ the library.
 
 UI toolkit
 ----------
-I've made my https://git.janouch.name/p/fiv[previous image viewer] using GTK.
+I made my https://git.janouch.name/p/fiv[previous image viewer] using GTK.
 That toolkit has a clean design.  Now for _a small sample_ of its problems:
 
  - It has diverged significantly from my idea of what a user interface
@@ -164,9 +165,9 @@ With a custom Vulkan swapchain.  Even SDL 3 couldn't serve me, because its API
 can't tell you which display a window is on.  Vendoring large codebases is
 a problem of its own.
 
-In the end, I've almost handrolled the backend completely, but after a final
-evaluation of Qt as part of cleaning up my notes, I've found out that *Qt
-GUI*, which lives _underneath_ Qt Widgets and Qt Quick, happens to be useful.
+In the end, I almost handrolled the backend completely, but after a final
+evaluation of Qt as part of cleaning up my notes, I found out that *Qt GUI*,
+which lives _underneath_ Qt Widgets and Qt Quick, happens to be useful.
 (I've since checked that a GDK 4 path is impossible.)
 
 Its largest dependency is ICU, which we don't strictly require, and Qt can
@@ -187,7 +188,7 @@ problems anyway, such as:
  - We can't get true alpha maps for our glyph cache.  Thus text is likely
    to be composited wrongly.  (Improvable with private APIs.)
 
-It's likely that we'll eventually drop it, whether due to licencing that
+It's likely that we'll eventually drop it, whether due to licensing that
 makes potential App Store distribution prohibitively expensive, or otherwise.
 
 Actual toolkit
@@ -201,7 +202,7 @@ an unmaintainable mess of interspersed state.
 
 And so there is a *hand-rolled retained mode UI*.
 Like in https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
-Vimperator-like hints outside a browser, and I've trivially received them.
+Vimperator-like hints outside a browser, and I trivially received them.
 In general, keyboard navigation is
 https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
 
@@ -251,8 +252,8 @@ I don't especially care about niche formats.  If it ever becomes desirable,
 there is an obscure project called https://snisurset.net/code/abydos/about.html[
 Abydos] which gets quite exhaustive in that regard.  The current general
 fallbacks are Glycin, the older GdkPixbuf, and on macOS the system ImageIO.
-Windows Imaging Component was so ugly that I've rather added JPEG XR explicitly
-as the only thing no other loader could do (the Raw Image Extension
+Windows Imaging Component was so ugly that I rather added JPEG XR explicitly
+instead as the only thing no other loader could do (the Raw Image Extension
 on Microsoft Store uses LibRaw).
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
@@ -272,12 +273,12 @@ a special path to go bilinear.
 
 With downscaling, the box area filter seems to create artifacts on
 high-frequency images where the *triangle* (antialiased bilinear) doesn't.
-Gaussian should be a bit smoother, though imperceptibly so, therefore I've
-skipped it.
+Gaussian should be a bit smoother, though imperceptibly so.  Therefore,
+I've skipped it.
 
 Thumbnails
 ----------
-Perhaps most photos or drawings are in the landscape orientation, so I prefer
+Perhaps most photos or drawings are in landscape orientation, so I prefer
 the idea of a continuous stream of same-height thumbnails, capped at
 a reasonable ratio, such as 2:1.  To show them at an appropriate quality,
 you must also store them as such.  See link:wide-thumbnail-spec.adoc[
@@ -296,6 +297,6 @@ Shadows
 -------
 The UI has a few simple shadows/glows here and there.  I've noticed that people
 often employ a shortcut where they take a mask of the thing throwing a shadow,
-then apply a Gaussian blur on it.  That doesn't create correct shadows,
+then apply a Gaussian blur to it.  That doesn't create correct shadows,
 which is particularly noticeable near right-angled corners.  We compute a proper
 equidistant mask.

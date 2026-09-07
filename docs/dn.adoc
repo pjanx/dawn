@@ -16,8 +16,7 @@ Description
 -----------
 *dn* is a general-purpose image browser and viewer: pass it a directory path
 or URL to open it for browsing, or pass an image to open it for viewing.
-In case that multiple arguments are passed, they'll be opened in
-separate windows.
+If multiple arguments are passed, they'll be opened in separate windows.
 
 For more information concerning usage, press *F1* in the application to open
 the _User Guide_.

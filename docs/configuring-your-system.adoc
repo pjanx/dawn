@@ -65,10 +65,10 @@ EndSection
 
 *nix/Wayland
 ------------
-You've chosen to go with an experimental, barely useful system.  Good luck.
-(Time of evaluation: 2026/08)
+You've chosen to go with an experimental system at the edge of usefulness.
+Good luck.  (Time of evaluation: 2026/08)
 
-*GNOME's Hell:* In _~/.config/monitors.xml_, put the following snippet within
+*GNOME Shell:* In _~/.config/monitors.xml_, put the following snippet within
 `<monitor>` sections:
 
 ```xml

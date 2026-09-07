@@ -91,7 +91,7 @@ std::optional<std::string> config_get(std::string_view key, Error *error = nullp
 bool config_set(
 	std::string_view key, std::string_view value, Error *error = nullptr);
 
-// TODO(p): Why the fuck is this called detail, and what should it be called?
+// TODO(p): Why in Hell is this called detail, and what should it be called?
 namespace detail
 {
 

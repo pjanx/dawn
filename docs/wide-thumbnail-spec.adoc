@@ -20,7 +20,7 @@ Rationale
 Photos tend to be in a 4:3 format.  Yet, nearly all file browsers at the time
 of this document's conception (end of year 2021) show previews in a square
 grid.  This wastes a lot of display real estate with padding, and looks
-subjectively awkward.  The Web at large has long been moving off of this
+subjectively awkward.  The Web at large has long been moving away from this
 concept, instead preferring freely flowing items of fixed height--notably on
 such sites as DeviantArt and Google/Duck image search.  The general Unix desktop
 keeps lagging behind.
@@ -60,7 +60,7 @@ File format
 ~~~~~~~~~~~
 To account for very large thumbnail sizes, this specification has chosen the
 WebP codec, in its _extended file format_.  Thumbnail files still derive their
-name from the MD5 hash of input URIs, as in the original standard, because
+names from the MD5 hash of input URIs, as in the original standard, because
 this widespread algorithm shows surprisingly good results for this use case.
 The filename, however, deviates in that it receives the appropriate _.webp_ file
 extension.
@@ -68,7 +68,7 @@ extension.
 Both lossy and lossless encodings may be used.  Animations are assumed to be
 representative samples, and their timing needn't be respected.  No metadata
 chunks are allowed other than _THUM_, which is described below.  Any Exif
-orientation changes need to be "baked-in" to the image.
+orientation changes need to be "baked in" to the image.
 
 Metadata
 ~~~~~~~~
