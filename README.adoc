@@ -56,7 +56,9 @@ Packages
    https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
    they work in Wine.
 
- - macOS requires a fee for a signed package to be published.  Maybe later.
+ - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
+   *unsigned* macOS Apple Silicon bundle] needs either
+   `xattr -r -d com.apple.quarantine ...`, or $99 a year.
 
 On Windows, if you run the application with a high integrity level and you
 have no true Vulkan backend installed, it may not initialise.  Manually rename
