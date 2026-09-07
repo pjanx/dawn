@@ -274,24 +274,36 @@ cache_ids_for_type(const QString &type)
 }
 
 QString
+desktop_path_for_name(const QString &dir, QString name, int from)
+{
+	const QString path = QDir(dir).filePath(name);
+	if (QFileInfo::exists(path))
+		return path;
+
+	for (int i = from; i < name.size(); ++i) {
+		if (name[i] != u'-')
+			continue;
+
+		name[i] = u'/';
+		if (QFileInfo(QDir(dir).filePath(name.left(i))).isDir()) {
+			if (QString found = desktop_path_for_name(dir, name, i + 1);
+				!found.isEmpty())
+				return found;
+		}
+		name[i] = u'-';
+	}
+	return {};
+}
+
+QString
 desktop_path_for_id(const QString &id)
 {
-	vector<QString> names;
-	names.push_back(id);
-	QString alt = id;
-	for (int i = 0; i < alt.size(); ++i) {
-		if (alt[i] == u'-') {
-			alt[i] = u'/';
-			names.push_back(alt);
-		}
-	}
 	for (const QString &dir : xdg_data_dirs()) {
-		for (const QString &name : names) {
-			const QString path =
-				QDir(dir).filePath(QStringLiteral("applications/") + name);
-			if (QFileInfo::exists(path))
-				return path;
-		}
+		const QString applications =
+			QDir(dir).filePath(QStringLiteral("applications"));
+		if (QString path = desktop_path_for_name(applications, id, 0);
+			!path.isEmpty())
+			return path;
 	}
 	return {};
 }
