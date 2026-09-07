@@ -2318,7 +2318,7 @@ make_slot_row(Browser &b, Slot slot)
 	row->gap = kItemGap;
 	for (const Spec &spec : kItems) {
 		if (spec.slot == slot)
-			row->add_item(make_item(b, spec));
+			row->add_item(make_item(b, spec), size_t(-1));
 	}
 	return row;
 }
@@ -2366,11 +2366,11 @@ fill_places(Browser &b)
 	}
 	b.kit_.forget_tree(list);
 	b.place_items_.clear();
-	list->erase_children();
+	list->erase_children(0);
 	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
 		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
 		if (d.path.empty()) {
-			list->add_child(make_unique<Sep>());
+			list->add_child(make_unique<Sep>(), size_t(-1));
 			b.place_items_.push_back({});
 			continue;
 		}
@@ -2389,7 +2389,7 @@ fill_places(Browser &b)
 			if (!path.empty())
 				open_directory(b, url_of(path));
 		};
-		list->add_child(std::move(row));
+		list->add_child(std::move(row), size_t(-1));
 		b.place_items_.push_back({item, d.path});
 	}
 	if (!restore_path.empty()) {

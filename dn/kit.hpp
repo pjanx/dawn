@@ -194,11 +194,9 @@ struct Widget {
 struct Composite : Widget {
 	std::vector<std::unique_ptr<Widget>> kids;
 
-	Widget *add_child(std::unique_ptr<Widget> child);
 	Widget *add_child(std::unique_ptr<Widget> child, std::size_t at);
 	// The inverse: detaches one child and hands its ownership back.
 	std::unique_ptr<Widget> take_child(std::size_t at);
-	void erase_children();
 	void erase_children(std::size_t from);
 	std::size_t child_count() const override { return this->kids.size(); }
 	Widget *child(std::size_t i) const override
@@ -659,7 +657,6 @@ struct ToolbarSlot : Row {
 	std::vector<Widget *> items_;
 
 	ToolbarSlot();
-	Widget *add_item(std::unique_ptr<Widget> item);
 	Widget *add_item(std::unique_ptr<Widget> item, std::size_t at);
 	// Moves everything past the split into the popup, or brings it back.
 	void lend_to(Overflow &overflow);

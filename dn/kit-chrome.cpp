@@ -37,7 +37,7 @@ Sidebar::Sidebar(unique_ptr<Widget> child)
 	this->hittable = true;
 	this->clip = true;
 	if (child)
-		add_child(std::move(child));
+		add_child(std::move(child), size_t(-1));
 }
 
 bool
@@ -219,8 +219,8 @@ shortcut_row(const ActionDef &def, float accel_w)
 	accel->min_w = accel_w;
 	accel->dim = true;
 	auto name = dialog_label(menu_label(def.label[0], nullptr));
-	row->add_child(std::move(accel));
-	row->add_child(std::move(name));
+	row->add_child(std::move(accel), size_t(-1));
+	row->add_child(std::move(name), size_t(-1));
 	return row;
 }
 
@@ -231,10 +231,11 @@ dialog_about(Kit &kit, Dialog &dialog)
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true));
+	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true), size_t(-1));
 	col->add_child(
 		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
-			false, true));
+			false, true),
+		size_t(-1));
 	dialog.show(kit, std::move(col), 360.f, dialog_close_action(dialog));
 }
 
@@ -244,11 +245,12 @@ dialog_location(
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(QStringLiteral("Enter location"), true));
+	col->add_child(
+		dialog_label(QStringLiteral("Enter location"), true), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
-	col->add_child(std::move(entry));
+	col->add_child(std::move(entry), size_t(-1));
 
 	function<void(Kit &)> submit =
 		[field, &dialog, on_open = std::move(on_open)](Kit &inner) {
@@ -261,9 +263,11 @@ dialog_location(
 
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(dialog_action(QStringLiteral("_Open"), submit));
+	actions->add_child(
+		dialog_action(QStringLiteral("_Open"), submit), size_t(-1));
 	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
-		[&dialog](Kit &inner) { dialog.close(inner); }));
+						   [&dialog](Kit &inner) { dialog.close(inner); }),
+		size_t(-1));
 	dialog.show(kit, std::move(col), 420.f, std::move(actions));
 }
 
@@ -303,7 +307,8 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 	auto col = make_unique<Column>();
 	col->gap = 2.f;
-	col->add_child(dialog_label(QStringLiteral("Keyboard Shortcuts"), true));
+	col->add_child(
+		dialog_label(QStringLiteral("Keyboard Shortcuts"), true), size_t(-1));
 	for (const MenuNode &section : tree) {
 		if (section.items.empty())
 			continue;
@@ -314,13 +319,14 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		});
 		if (!any)
 			continue;
-		col->add_child(dialog_label(menu_label(section.title, nullptr), true));
+		col->add_child(
+			dialog_label(menu_label(section.title, nullptr), true), size_t(-1));
 		for_leaves(section.items, [&](Action action) {
 			const ActionDef &def = action_def(action);
 			if (!has_shortcut(def))
 				return;
 			seen[size_t(action)] = true;
-			col->add_child(shortcut_row(def, kit.pts(accel_w)));
+			col->add_child(shortcut_row(def, kit.pts(accel_w)), size_t(-1));
 		});
 	}
 	bool other = false;
@@ -332,11 +338,12 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		if ((def.flags & ActionInMenu) || !has_shortcut(def))
 			return;
 		if (!other) {
-			col->add_child(dialog_label(QStringLiteral("Other"), true));
+			col->add_child(
+				dialog_label(QStringLiteral("Other"), true), size_t(-1));
 			other = true;
 		}
 		seen[i] = true;
-		col->add_child(shortcut_row(def, kit.pts(accel_w)));
+		col->add_child(shortcut_row(def, kit.pts(accel_w)), size_t(-1));
 	};
 	for (Action action : window_keys())
 		emit_other(action);
@@ -374,8 +381,8 @@ settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
 
 	auto row = make_unique<Row>();
 	row->gap = 8.f;
-	row->add_child(std::move(text));
-	row->add_child(std::move(control));
+	row->add_child(std::move(text), size_t(-1));
+	row->add_child(std::move(control), size_t(-1));
 	return row;
 }
 
@@ -461,7 +468,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 
 	auto col = make_unique<Column>();
 	col->gap = 4.f;
-	col->add_child(dialog_label(QStringLiteral("Settings"), true));
+	col->add_child(dialog_label(QStringLiteral("Settings"), true), size_t(-1));
 
 	auto combo = make_unique<Combo>();
 	for (const QString &name : kThumbSizeNames)
@@ -473,7 +480,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	combo->on_select = [state](Kit &, int index) {
 		state->thumbnail_size = kThumbSizes[index];
 	};
-	col->add_child(settings_row(thumb_label, label_w, std::move(combo)));
+	col->add_child(
+		settings_row(thumb_label, label_w, std::move(combo)), size_t(-1));
 
 	auto names =
 		settings_check("Show _filenames by default", state->show_filenames);
@@ -481,7 +489,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	names->on_click = [state, names_ref](Kit &) {
 		state->show_filenames = names_ref->checked;
 	};
-	col->add_child(settings_row({}, label_w, std::move(names)));
+	col->add_child(settings_row({}, label_w, std::move(names)), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	entry->text = state->icc_profile_path;
@@ -490,7 +498,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	entry->on_change = [state, entry_ref](Kit &) {
 		state->icc_profile_path = entry_ref->text;
 	};
-	col->add_child(settings_row(icc_label, label_w, std::move(entry)));
+	col->add_child(
+		settings_row(icc_label, label_w, std::move(entry)), size_t(-1));
 
 	auto dither = settings_check(
 		"Disable _dithering on 8-bit swapchains", state->disable_dithering);
@@ -498,16 +507,16 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	dither->on_click = [state, dither_ref](Kit &) {
 		state->disable_dithering = dither_ref->checked;
 	};
-	col->add_child(settings_row({}, label_w, std::move(dither)));
+	col->add_child(settings_row({}, label_w, std::move(dither)), size_t(-1));
 
-	col->add_child(make_unique<Sep>());
+	col->add_child(make_unique<Sep>(), size_t(-1));
 
 	auto note = dialog_label(
 		QStringLiteral("Image loaders may be able to handle multiple "
 					   "formats. Failures pass through."),
 		false, true);
 	note->dim = true;
-	col->add_child(std::move(note));
+	col->add_child(std::move(note), size_t(-1));
 
 	// TODO(p): Might generically add menu bar toggles for all of the loaders,
 	// but it is rather technical.
@@ -536,32 +545,35 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 		auto arrows = make_unique<Row>();
 		arrows->gap = 4.f;
 		arrows->align = Align::End;
-		arrows->add_child(std::move(up));
-		arrows->add_child(std::move(down));
+		arrows->add_child(std::move(up), size_t(-1));
+		arrows->add_child(std::move(down), size_t(-1));
 
 		auto gutter = make_unique<Panel>();
 		gutter->min_w = label_w;
-		gutter->add_child(std::move(arrows));
+		gutter->add_child(std::move(arrows), size_t(-1));
 
 		auto row = make_unique<Row>();
 		row->gap = 8.f;
-		row->add_child(std::move(gutter));
-		row->add_child(std::move(check));
-		loaders->add_child(std::move(row));
+		row->add_child(std::move(gutter), size_t(-1));
+		row->add_child(std::move(check), size_t(-1));
+		loaders->add_child(std::move(row), size_t(-1));
 	}
 	rows->sync();
-	col->add_child(std::move(loaders));
+	col->add_child(std::move(loaders), size_t(-1));
 
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(dialog_action(QStringLiteral("_Save"),
-		[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
-			dialog.close(inner);
-			if (on_save)
-				on_save(*state);
-		}));
+	actions->add_child(
+		dialog_action(QStringLiteral("_Save"),
+			[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
+				dialog.close(inner);
+				if (on_save)
+					on_save(*state);
+			}),
+		size_t(-1));
 	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
-		[&dialog](Kit &inner) { dialog.close(inner); }));
+						   [&dialog](Kit &inner) { dialog.close(inner); }),
+		size_t(-1));
 	dialog.show(kit, std::move(col), 520.f, std::move(actions));
 }
 
@@ -938,11 +950,11 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 {
 	auto title = make_unique<Titlebar>();
 	this->titlebar = title.get();
-	add_child(std::move(title));
+	add_child(std::move(title), size_t(-1));
 	this->toolbar = tb.get();
-	add_child(std::move(tb));
+	add_child(std::move(tb), size_t(-1));
 	this->sidebar = sb.get();
-	add_child(std::move(sb));
+	add_child(std::move(sb), size_t(-1));
 	if (this->sidebar) {
 		auto split = make_unique<Splitter>();
 		split->min_w = kSplitW;
@@ -963,10 +975,10 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 				: mx - float(frame.x);
 			this->sidebar_w = clamp(want, min_side, max_side) / kit.dpr_;
 		};
-		add_child(std::move(split));
+		add_child(std::move(split), size_t(-1));
 	}
 	this->content = body.get();
-	add_child(std::move(body));
+	add_child(std::move(body), size_t(-1));
 
 	// macOS has a real menu bar for this; everywhere else it is a button
 	// at the far end of the toolbar.

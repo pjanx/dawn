@@ -1518,12 +1518,6 @@ Splitter::release(Kit &, float, float, Qt::MouseButton button)
 // --- Composite ---------------------------------------------------------------
 
 Widget *
-Composite::add_child(unique_ptr<Widget> child)
-{
-	return add_child(std::move(child), size_t(-1));
-}
-
-Widget *
 Composite::add_child(unique_ptr<Widget> child, size_t at)
 {
 	Widget *raw = child.get();
@@ -1545,12 +1539,6 @@ Composite::take_child(size_t at)
 	if (child)
 		child->parent_ = nullptr;
 	return child;
-}
-
-void
-Composite::erase_children()
-{
-	erase_children(0);
 }
 
 void
@@ -2412,15 +2400,15 @@ Dialog::Dialog()
 	body->grow = true;
 	body->gap = 8.f;
 	this->body = body.get();
-	stack->add_child(std::move(body));
+	stack->add_child(std::move(body), size_t(-1));
 
 	auto footer = make_unique<Row>();
 	footer->align = Align::End;
 	this->footer = footer.get();
-	stack->add_child(std::move(footer));
+	stack->add_child(std::move(footer), size_t(-1));
 
-	f->add_child(std::move(stack));
-	add_child(std::move(f));
+	f->add_child(std::move(stack), size_t(-1));
+	add_child(std::move(f), size_t(-1));
 }
 
 void
@@ -2431,11 +2419,11 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 		return;
 
 	kit.forget_tree(this->body);
-	this->body->erase_children();
-	this->body->add_child(std::move(content));
+	this->body->erase_children(0);
+	this->body->add_child(std::move(content), size_t(-1));
 	kit.forget_tree(this->footer);
-	this->footer->erase_children();
-	this->footer->add_child(std::move(actions));
+	this->footer->erase_children(0);
+	this->footer->add_child(std::move(actions), size_t(-1));
 	this->frame->min_w = min_w;
 	Popup::open(kit, nullptr);
 	this->frame->visible = true;
@@ -2735,7 +2723,7 @@ Overflow::Overflow()
 	this->stroke = Stroke::All;
 	this->hittable = true;
 	this->visible = false;
-	add_child(std::move(column));
+	add_child(std::move(column), size_t(-1));
 }
 
 // Nothing should outlive the toolbar it borrows from, but a stranded item
@@ -2890,7 +2878,7 @@ Menu::Menu()
 	this->stroke = Stroke::All;
 	this->hittable = true;
 	this->visible = false;
-	add_child(std::move(c));
+	add_child(std::move(c), size_t(-1));
 }
 
 MenuItem *
@@ -2900,7 +2888,7 @@ Menu::add_item(const QString &text)
 	item->text = text;
 	MenuItem *ref = item.get();
 	if (this->col)
-		this->col->add_child(std::move(item));
+		this->col->add_child(std::move(item), size_t(-1));
 	return ref;
 }
 
@@ -2911,7 +2899,7 @@ Menu::add_item_with_mnemonic(const QString &text)
 	item->text = menu_label(text.toStdString().c_str(), &item->mnemonic);
 	MenuItem *ref = item.get();
 	if (this->col)
-		this->col->add_child(std::move(item));
+		this->col->add_child(std::move(item), size_t(-1));
 	return ref;
 }
 
@@ -2919,7 +2907,7 @@ void
 Menu::add_sep()
 {
 	if (this->col)
-		this->col->add_child(hsep());
+		this->col->add_child(hsep(), size_t(-1));
 }
 
 void
@@ -2933,7 +2921,7 @@ Menu::clear(Kit &kit)
 	}
 	this->subs_.clear();
 	if (this->col)
-		this->col->erase_children();
+		this->col->erase_children(0);
 }
 
 void
@@ -3168,12 +3156,12 @@ fill_combo_popup(Kit &kit, Combo &combo)
 {
 	ComboPopup &popup = *combo.popup_;
 	kit.forget_tree(popup.col);
-	popup.col->erase_children();
+	popup.col->erase_children(0);
 	for (int i = 0; i < int(combo.items.size()); i++) {
 		auto item = make_unique<ComboItem>();
 		item->text = combo.items[size_t(i)];
 		item->on_click = [&combo, i](Kit &k) { combo.select(k, i); };
-		popup.col->add_child(std::move(item));
+		popup.col->add_child(std::move(item), size_t(-1));
 	}
 	// At least as wide as what it drops from, so the list reads as the
 	// button opening up rather than as a menu that happens to be near it.
@@ -3227,7 +3215,7 @@ ComboPopup::ComboPopup()
 	this->stroke = Stroke::All;
 	this->hittable = true;
 	this->visible = false;
-	add_child(std::move(c));
+	add_child(std::move(c), size_t(-1));
 }
 
 // Picking is no reason to lose your place: the list hands focus back to the
@@ -3455,13 +3443,7 @@ ToolbarSlot::ToolbarSlot()
 	button->icon = "disclose-arrow-down-symbolic";
 	button->tip_text = "More";
 	this->more = button.get();
-	Composite::add_child(std::move(button));
-}
-
-Widget *
-ToolbarSlot::add_item(unique_ptr<Widget> item)
-{
-	return add_item(std::move(item), size_t(-1));
+	Composite::add_child(std::move(button), size_t(-1));
 }
 
 Widget *
@@ -3519,7 +3501,7 @@ ToolbarSlot::lend_to(Overflow &overflow)
 		for (size_t j = 0; j < this->kids.size(); j++) {
 			if (this->kids[j].get() != item)
 				continue;
-			overflow.col->add_child(take_child(j));
+			overflow.col->add_child(take_child(j), size_t(-1));
 			break;
 		}
 	}
@@ -3660,13 +3642,13 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 
 	this->left = left_row.get();
 	if (left_row)
-		add_child(std::move(left_row));
+		add_child(std::move(left_row), size_t(-1));
 	this->mid = mid_row.get();
 	if (mid_row)
-		add_child(std::move(mid_row));
+		add_child(std::move(mid_row), size_t(-1));
 	this->right = right_row.get();
 	if (right_row)
-		add_child(std::move(right_row));
+		add_child(std::move(right_row), size_t(-1));
 
 	this->overflow_owned_ = make_unique<Overflow>();
 	this->overflow_owned_->pad_y = kWinPadY;
@@ -3880,17 +3862,17 @@ Titlebar::Titlebar()
 	label->align = Align::Center;
 	label->bold = true;
 	this->title = label.get();
-	add_child(std::move(label));
+	add_child(std::move(label), size_t(-1));
 
 	auto min = make_title_button(this, Action::Minimize, "window-minimize");
 	this->minimize = min.get();
-	add_child(std::move(min));
+	add_child(std::move(min), size_t(-1));
 	auto max = make_title_button(this, Action::Maximize, "window-maximize");
 	this->maximize = max.get();
-	add_child(std::move(max));
+	add_child(std::move(max), size_t(-1));
 	auto cls = make_title_button(this, Action::CloseWindow, "window-close");
 	this->close = cls.get();
-	add_child(std::move(cls));
+	add_child(std::move(cls), size_t(-1));
 }
 
 void
@@ -4912,14 +4894,14 @@ paint_tooltip(Kit &kit)
 	row->gap = accel.isEmpty() ? 0.f : 8.f;
 	auto lab = make_unique<Label>();
 	lab->text = kit.tooltip_text_;
-	row->add_child(std::move(lab));
+	row->add_child(std::move(lab), size_t(-1));
 	if (!accel.isEmpty()) {
 		auto acc = make_unique<Label>();
 		acc->text = accel;
 		acc->dim = true;
-		row->add_child(std::move(acc));
+		row->add_child(std::move(acc), size_t(-1));
 	}
-	tipn.add_child(std::move(row));
+	tipn.add_child(std::move(row), size_t(-1));
 	// Ask the panel how big it wants to be rather than adding the same
 	// paddings up a second time by hand.
 	tipn.measure(kit, kUnlim, kUnlim);

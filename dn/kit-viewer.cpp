@@ -248,7 +248,7 @@ make_slot_row(Viewer &v, Slot slot)
 	row->gap = kItemGap;
 	for (const Spec &spec : kItems) {
 		if (spec.slot == slot)
-			row->add_item(make_item(v, spec));
+			row->add_item(make_item(v, spec), size_t(-1));
 	}
 	return row;
 }
@@ -268,8 +268,8 @@ meta_row(
 	v->text = value;
 	v->wrap = true;
 	value_out = v.get();
-	row->add_child(std::move(k));
-	row->add_child(std::move(v));
+	row->add_child(std::move(k), size_t(-1));
+	row->add_child(std::move(v), size_t(-1));
 	return row;
 }
 
@@ -310,8 +310,8 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 		auto val = make_unique<Label>();
 		val->wrap = true;
 		val->text = QString::fromUtf8(kv.second.data(), int(kv.second.size()));
-		list.add_child(std::move(key));
-		list.add_child(std::move(val));
+		list.add_child(std::move(key), size_t(-1));
+		list.add_child(std::move(val), size_t(-1));
 	}
 }
 
@@ -671,8 +671,8 @@ make_error(Viewer &v)
 	dismiss->icon = "x-symbolic";
 	dismiss->on_click = [&v](Kit &) { v.message_dismissed_ = true; };
 	v.error_label_ = lab.get();
-	row->add_child(std::move(lab));
-	row->add_child(std::move(dismiss));
+	row->add_child(std::move(lab), size_t(-1));
+	row->add_child(std::move(dismiss), size_t(-1));
 	auto err = make_unique<Panel>();
 	err->fill = Fill::Panel;
 	err->stroke = Stroke::Bottom;
@@ -680,7 +680,7 @@ make_error(Viewer &v)
 	err->hittable = true;
 	err->clip = true;
 	err->visible = false;
-	err->add_child(std::move(row));
+	err->add_child(std::move(row), size_t(-1));
 	v.error_ = err.get();
 	return err;
 }
@@ -699,14 +699,18 @@ make_sidebar(Viewer &v)
 	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
 
-	col->add_child(meta_row(
-		QStringLiteral("Name:"), QStringLiteral("-"), label_w, v.name_label_));
+	col->add_child(meta_row(QStringLiteral("Name:"), QStringLiteral("-"),
+					   label_w, v.name_label_),
+		size_t(-1));
 	col->add_child(meta_row(QStringLiteral("Loader:"), QStringLiteral("-"),
-		label_w, v.loader_label_));
+					   label_w, v.loader_label_),
+		size_t(-1));
 	col->add_child(meta_row(QStringLiteral("Width:"), QStringLiteral("-"),
-		label_w, v.width_label_));
+					   label_w, v.width_label_),
+		size_t(-1));
 	col->add_child(meta_row(QStringLiteral("Height:"), QStringLiteral("-"),
-		label_w, v.height_label_));
+					   label_w, v.height_label_),
+		size_t(-1));
 
 #if DAWN_WITH_JPEG_QS
 	// QuantSmooth processing can take extremely long,
@@ -726,7 +730,7 @@ make_sidebar(Viewer &v)
 		}
 	};
 	v.jpeg_quant_smooth_ = jpegqs.get();
-	col->add_child(std::move(jpegqs));
+	col->add_child(std::move(jpegqs), size_t(-1));
 #endif
 
 	auto exiftool = make_unique<Button>();
@@ -736,11 +740,11 @@ make_sidebar(Viewer &v)
 			v.page_->host->launch_exiftool(v.url_);
 	};
 	v.exiftool_button_ = exiftool.get();
-	col->add_child(std::move(exiftool));
+	col->add_child(std::move(exiftool), size_t(-1));
 
 	auto cie = make_unique<CieDiagram>();
 	v.cie_ = cie.get();
-	col->add_child(std::move(cie));
+	col->add_child(std::move(cie), size_t(-1));
 
 	auto side = make_unique<Sidebar>(std::move(col));
 	side->min_w = kInfoSidebarPts;
