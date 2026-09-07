@@ -154,7 +154,7 @@ exif_payload(const vector<uint8_t> &box)
 		size_t(box[2]) << 8 | size_t(box[3]);
 	if (offset > box.size() - 4)
 		return {};
-	return vector<uint8_t>(box.begin() + 4 + offset, box.end());
+	return vector<uint8_t>(box.begin() + ptrdiff_t(4 + offset), box.end());
 }
 
 // --- Frame decoding ----------------------------------------------------------
@@ -233,7 +233,8 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 	}
 
 	// Coalescing stays on, so every frame covers the whole canvas.
-	pack_rgba16le_to_bgra16(*image, (const uint16_t *) ctx.scratch.data(),
+	pack_rgba16le_to_bgra16(*image,
+		assume_aligned<const uint16_t>(ctx.scratch.data()),
 		size_t(ctx.info.xsize) * 4 * sizeof(uint16_t), 16);
 
 	image->icc = ctx.icc;

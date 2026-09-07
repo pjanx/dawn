@@ -138,19 +138,19 @@ locale_candidates()
 		if (loc.isEmpty() || loc == QLatin1String("C") ||
 			loc == QLatin1String("POSIX"))
 			continue;
-		const int dot = loc.indexOf(u'.');
+		const qsizetype dot = loc.indexOf(u'.');
 		if (dot >= 0)
 			loc = loc.left(dot);
 		loc.replace(u'-', u'_');
 		QString modifier;
-		const int at = loc.indexOf(u'@');
+		const qsizetype at = loc.indexOf(u'@');
 		if (at >= 0) {
 			modifier = loc.mid(at);
 			loc = loc.left(at);
 		}
 		QString lang = loc;
 		QString country;
-		const int us = loc.indexOf(u'_');
+		const qsizetype us = loc.indexOf(u'_');
 		if (us >= 0) {
 			country = loc.mid(us);
 			lang = loc.left(us);
@@ -703,8 +703,8 @@ fallback_for(const QString &path)
 	const QString type = db().mimeTypeForFile(path).name();
 	const vector<QString> ancestors = ancestor_types(type);
 	AssocSets acc = associations_for_type(type);
-	for (const QString &type : ancestors)
-		merge_assoc(acc, associations_for_type(type));
+	for (const QString &ancestor : ancestors)
+		merge_assoc(acc, associations_for_type(ancestor));
 
 	unordered_set<QString> seen;
 	const Handler def = default_for(path);
@@ -714,8 +714,8 @@ fallback_for(const QString &path)
 		seen.insert(a.id);
 
 	vector<Handler> out;
-	for (const QString &type : ancestors) {
-		for (const QString &id : cache_ids_for_type(type)) {
+	for (const QString &ancestor : ancestors) {
+		for (const QString &id : cache_ids_for_type(ancestor)) {
 			if (seen.contains(id) || !usable_id(id, acc.removed))
 				continue;
 			seen.insert(id);
@@ -770,8 +770,8 @@ set_last_used(const Handler &app, const QString &path)
 	}
 	IniGroup *added = find_group("Added Associations");
 	IniGroup *removed = find_group("Removed Associations");
-	auto drop_id = [&](IniGroup &group, const QString &type) {
-		const string type_utf8 = type.toUtf8().toStdString();
+	auto drop_id = [&](IniGroup &group, const QString &mime_type) {
+		const string type_utf8 = mime_type.toUtf8().toStdString();
 		vector<QString> kept;
 		for (const QString &existing :
 			split_semicolons(dawn::detail::ini_get(group, type_utf8))) {

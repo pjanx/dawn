@@ -80,11 +80,11 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 	if (use16) {
 		int bits = min(bit_depth, 16);
 		if (has_alpha) {
-			pack_rgba16le_to_bgra16(
-				*result, (const uint16_t *) src, size_t(src_stride), bits);
+			pack_rgba16le_to_bgra16(*result,
+				assume_aligned<const uint16_t>(src), size_t(src_stride), bits);
 		} else {
-			pack_rgb16le_to_bgra16(
-				*result, (const uint16_t *) src, size_t(src_stride), bits);
+			pack_rgb16le_to_bgra16(*result, assume_aligned<const uint16_t>(src),
+				size_t(src_stride), bits);
 		}
 	} else {
 		// Interleaved RGBA chroma even without an alpha channel; force
@@ -177,13 +177,13 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 	if (n <= 0)
 		return;
 
-	vector<heif_item_id> ids(n);
+	vector<heif_item_id> ids(static_cast<size_t>(n));
 	n = heif_image_handle_get_list_of_auxiliary_image_IDs(
 		top, filter, ids.data(), n);
 	for (int i = 0; i < n; i++) {
 		heif_image_handle *handle = nullptr;
-		heif_error err =
-			heif_image_handle_get_auxiliary_image_handle(top, ids[i], &handle);
+		heif_error err = heif_image_handle_get_auxiliary_image_handle(
+			top, ids[size_t(i)], &handle);
 		if (err.code != heif_error_Ok) {
 			add_warning(ctx, err.message);
 			continue;
@@ -221,13 +221,13 @@ detail::load_heif(
 	}
 
 	int n = heif_context_get_number_of_top_level_images(hctx);
-	vector<heif_item_id> ids(max(n, 0));
+	vector<heif_item_id> ids(size_t(max(n, 0)));
 	n = heif_context_get_list_of_top_level_image_IDs(hctx, ids.data(), n);
 
 	ImagePtr head, tail;
 	for (int i = 0; i < n; i++) {
 		heif_image_handle *handle = nullptr;
-		err = heif_context_get_image_handle(hctx, ids[i], &handle);
+		err = heif_context_get_image_handle(hctx, ids[size_t(i)], &handle);
 		if (err.code != heif_error_Ok) {
 			add_warning(ctx, err.message);
 			continue;

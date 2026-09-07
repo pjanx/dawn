@@ -34,7 +34,7 @@ static string
 type_name(uint32_t type)
 {
 	string out(4, '?');
-	for (int i = 0; i < 4; i++) {
+	for (unsigned i = 0; i < 4; i++) {
 		uint8_t c = uint8_t(type >> (24 - i * 8));
 		out[i] = c >= 0x20 && c < 0x7F ? char(c) : '?';
 	}

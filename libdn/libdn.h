@@ -210,16 +210,27 @@ row_bytes(const Image &img, uint32_t y)
 	return img.data.data() + size_t(y) * img.stride;
 }
 
+template <typename T, typename U>
+inline T *
+assume_aligned(U *p)
+{
+#if defined __GNUC__ || defined __clang__
+	return reinterpret_cast<T *>(__builtin_assume_aligned(p, alignof(T)));
+#else
+	return reinterpret_cast<T *>(p);
+#endif
+}
+
 inline uint16_t *
 row_u16(Image &img, uint32_t y)
 {
-	return (uint16_t *) row_bytes(img, y);
+	return assume_aligned<uint16_t>(row_bytes(img, y));
 }
 
 inline const uint16_t *
 row_u16(const Image &img, uint32_t y)
 {
-	return (const uint16_t *) row_bytes(img, y);
+	return assume_aligned<const uint16_t>(row_bytes(img, y));
 }
 
 /// Allocate a zeroed working-format image. Returns null on OOM / overflow.

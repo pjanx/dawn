@@ -491,8 +491,8 @@ pack_jpeg_ext_to_bgra16(
 	detail::StageClock clk(&OpenTiming::widen_ms);
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
-		const uint16_t *s =
-			(const uint16_t *) ((const uint8_t *) src + y * src_stride);
+		const uint16_t *s = assume_aligned<const uint16_t>(
+			(const uint8_t *) src + y * src_stride);
 		for (uint32_t x = 0; x < dst.width; x++) {
 			if (argb) {
 				d[0] = scale_nbit_to_u16(s[3], bits);
@@ -641,8 +641,8 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		if (!decoder.call([&] { jpeg_calc_output_dimensions(&cinfo); }))
 			return nullptr;
 	}
-	int width = int(cinfo.output_width);
-	int height = int(cinfo.output_height);
+	size_t width = size_t(cinfo.output_width);
+	size_t height = size_t(cinfo.output_height);
 
 	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
 	if (!image) {
@@ -656,22 +656,20 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		vector<uint16_t> samples;
 		{
 			detail::StageClock clk(&OpenTiming::alloc_ms);
-			samples.resize(size_t(width) * 4 * size_t(height));
+			samples.resize(width * 4 * height);
 		}
 		if (precision == 12) {
 			vector<J12SAMPROW> lines(height);
-			for (int i = 0; i < height; i++)
-				lines[i] =
-					(J12SAMPROW) (samples.data() + size_t(i) * width * 4);
+			for (size_t i = 0; i < height; i++)
+				lines[i] = (J12SAMPROW) (samples.data() + i * width * 4);
 			detail::StageClock clk(&OpenTiming::decode_ms);
 			if (!decoder.call(
 					[&] { load_libjpeg12_simple(&cinfo, lines.data()); }))
 				return nullptr;
 		} else {
 			vector<J16SAMPROW> lines(height);
-			for (int i = 0; i < height; i++)
-				lines[i] =
-					(J16SAMPROW) (samples.data() + size_t(i) * width * 4);
+			for (size_t i = 0; i < height; i++)
+				lines[i] = (J16SAMPROW) (samples.data() + i * width * 4);
 			detail::StageClock clk(&OpenTiming::decode_ms);
 			if (!decoder.call(
 					[&] { load_libjpeg16_simple(&cinfo, lines.data()); }))
@@ -685,11 +683,11 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		vector<uint8_t> pixels;
 		{
 			detail::StageClock clk(&OpenTiming::alloc_ms);
-			pixels.resize(size_t(width) * 4 * size_t(height));
+			pixels.resize(width * 4 * height);
 		}
 		vector<JSAMPROW> lines(height);
-		for (int i = 0; i < height; i++)
-			lines[i] = pixels.data() + size_t(i) * width * 4;
+		for (size_t i = 0; i < height; i++)
+			lines[i] = pixels.data() + i * width * 4;
 
 		{
 			detail::StageClock clk(&OpenTiming::decode_ms);

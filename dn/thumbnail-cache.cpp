@@ -414,7 +414,7 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	for (size_t i = 0, n = size_t(width) * height; i < n; i++) {
 		const uint32_t a = pixels[i * 4 + 3];
 		bgra[i * 4 + 3] = uint8_t((a + 128) / 257);
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			const uint32_t straight = a
 				? min(65535u,
 					  uint32_t(

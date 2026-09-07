@@ -11,6 +11,13 @@
 #define DAWN_NAMESPACE "@DAWN_NAMESPACE@"
 #define DAWN_VERSION "@PROJECT_VERSION@"
 
+#if defined __GNUC__ || defined __clang__
+#define DAWN_FORMAT(format_index, first_arg)                                   \
+	__attribute__((format(printf, format_index, first_arg)))
+#else
+#define DAWN_FORMAT(format_index, first_arg)
+#endif
+
 #cmakedefine01 DAWN_WITH_LCMS2_FAST_FLOAT
 #cmakedefine01 DAWN_WITH_LCMS2_THREADED
 #cmakedefine01 DAWN_WITH_JPEG_QS

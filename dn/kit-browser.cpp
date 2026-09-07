@@ -429,7 +429,8 @@ thumb_in_band(const Browser &b, const Browser::File &f, float pad)
 {
 	if (f.cell.empty())
 		return false;
-	return f.cell.bottom() >= b.r.y - pad && f.cell.y <= b.r.bottom() + pad;
+	return float(f.cell.bottom()) >= float(b.r.y) - pad &&
+		float(f.cell.y) <= float(b.r.bottom()) + pad;
 }
 
 static void
@@ -864,7 +865,7 @@ trim_ram(Browser &b)
 		return;
 
 	const float pad = row_h(b) * kPrefetchRows;
-	const float mid = b.r.y + b.r.h * 0.5f;
+	const float mid = float(b.r.y) + float(b.r.h) * 0.5f;
 	vector<int> idx;
 	for (int i = 0; i < int(b.files_.size()); i++) {
 		const Browser::File &f = b.files_[size_t(i)];
@@ -875,8 +876,8 @@ trim_ram(Browser &b)
 	sort(idx.begin(), idx.end(), [&](int a, int bidx) {
 		const Rect &ca = b.files_[size_t(a)].cell;
 		const Rect &cb = b.files_[size_t(bidx)].cell;
-		const float da = abs(ca.y + ca.h * 0.5f - mid);
-		const float db = abs(cb.y + cb.h * 0.5f - mid);
+		const float da = abs(float(ca.y) + float(ca.h) * 0.5f - mid);
+		const float db = abs(float(cb.y) + float(cb.h) * 0.5f - mid);
 		return da > db;
 	});
 	for (int i : idx) {
@@ -1351,7 +1352,7 @@ remember_cursor_x(Browser &b)
 		b.cursor_x_dirty_ = true;
 		return;
 	}
-	b.cursor_x_ = c.x + c.w * 0.5f;
+	b.cursor_x_ = float(c.x) + float(c.w) * 0.5f;
 	b.cursor_x_dirty_ = false;
 }
 
@@ -1390,10 +1391,10 @@ static void
 scroll_to_row(Browser &b, const Browser::GridRow &row)
 {
 	const float vis = float(max(0, b.r.h - 2 * b.kit_.px(kGridPad)));
-	if (row.y < b.scroll_.offset)
-		b.scroll_.offset = row.y;
-	else if (row.y + row.h > b.scroll_.offset + vis)
-		b.scroll_.offset = max(0.f, row.y + row.h - vis);
+	if (float(row.y) < b.scroll_.offset)
+		b.scroll_.offset = float(row.y);
+	else if (float(row.y + row.h) > b.scroll_.offset + vis)
+		b.scroll_.offset = max(0.f, float(row.y + row.h) - vis);
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
 }
 
@@ -2001,7 +2002,7 @@ scan_dir(Browser &b)
 	// and/or maybe just DBT_DEVNODES_CHANGED (trivially reload here).
 	DWORD mask = GetLogicalDrives();
 	for (int i = 0; i < 26; i++) {
-		wchar_t letter = L'A' + i;
+		wchar_t letter = wchar_t(L'A' + i);
 		if (!(mask & (1 << i)))
 			continue;
 
@@ -2039,12 +2040,12 @@ scan_dir(Browser &b)
 	vector<filesystem::path> ancestors;
 	filesystem::path cur = without_trailing_sep(root);
 	while (true) {
-		filesystem::path parent = cur.parent_path();
-		if (parent.empty() || parent == cur)
+		filesystem::path ancestor = cur.parent_path();
+		if (ancestor.empty() || ancestor == cur)
 			break;
 
-		ancestors.push_back(parent);
-		cur = parent;
+		ancestors.push_back(ancestor);
+		cur = ancestor;
 		if (ancestors.size() > 64)
 			break;
 	}

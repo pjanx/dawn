@@ -245,8 +245,8 @@ save_profile(cmsHPROFILE profile, uint8_t **data, uint32_t *size)
 }
 
 static bool
-build_row_lut(cmsHTRANSFORM srgb_to_p3, int channel, int levels, bool is_srgb,
-	uint16_t output[MAX_LEVELS][3])
+build_row_lut(cmsHTRANSFORM srgb_to_p3, enum channel channel, int levels,
+	bool is_srgb, uint16_t output[MAX_LEVELS][3])
 {
 	uint16_t input[MAX_LEVELS][3] = {{0}};
 	if (levels > MAX_LEVELS)
@@ -310,7 +310,7 @@ render_chart(uint16_t *pixels, cmsHTRANSFORM srgb_to_p3)
 
 	for (int row = 0; row < ROW_COUNT; ++row) {
 		const struct row_spec *spec = &row_specs[row];
-		int channel = spec->channel;
+		enum channel channel = spec->channel;
 		bool is_srgb = spec->is_srgb;
 		int bits = spec->bits;
 		int levels = 1 << bits;

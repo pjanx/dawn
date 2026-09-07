@@ -316,8 +316,7 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 	for (int y = 0; y < rows; y++) {
 		uint16_t *dst = this->pixels.data() +
 			(size_t(slot.y + y) * size_t(this->w) + size_t(slot.x)) * 4;
-		const auto *row = (const uint16_t *) ((const uint8_t *) src +
-			size_t(y) * size_t(stride));
+		const auto *row = (const uint8_t *) src + size_t(y) * size_t(stride);
 		memcpy(dst, row, size_t(cols) * 4 * sizeof(uint16_t));
 	}
 	this->dirty = true;

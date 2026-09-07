@@ -355,8 +355,8 @@ pack_argb32_words_to_bgra16(
 {
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
-		const uint32_t *s =
-			(const uint32_t *) ((const uint8_t *) src + y * src_stride_bytes);
+		const uint32_t *s = assume_aligned<const uint32_t>(
+			(const uint8_t *) src + y * src_stride_bytes);
 		for (uint32_t x = 0; x < dst.width; x++) {
 			uint32_t p = s[x];
 			d[0] = uint16_t((p & 0xFFu) * 257u);
@@ -374,8 +374,8 @@ pack_rgba16le_to_bgra16(
 {
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
-		const uint16_t *s =
-			(const uint16_t *) ((const uint8_t *) src + y * src_stride_bytes);
+		const uint16_t *s = assume_aligned<const uint16_t>(
+			(const uint8_t *) src + y * src_stride_bytes);
 		for (uint32_t x = 0; x < dst.width; x++) {
 			d[0] = scale_nbit_to_u16(s[2], bits);
 			d[1] = scale_nbit_to_u16(s[1], bits);
@@ -393,8 +393,8 @@ pack_rgb16le_to_bgra16(
 {
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
-		const uint16_t *s =
-			(const uint16_t *) ((const uint8_t *) src + y * src_stride_bytes);
+		const uint16_t *s = assume_aligned<const uint16_t>(
+			(const uint8_t *) src + y * src_stride_bytes);
 		for (uint32_t x = 0; x < dst.width; x++) {
 			d[0] = scale_nbit_to_u16(s[2], bits);
 			d[1] = scale_nbit_to_u16(s[1], bits);
@@ -1173,14 +1173,14 @@ Cmm::convert_cmyk8(
 		if (transform) {
 			cmsDoTransform(transform, cmyk, dst.data.data(), n);
 			cmsDeleteTransform(transform);
-			auto *out = (uint16_t *) dst.data.data();
+			auto *out = assume_aligned<uint16_t>(dst.data.data());
 			for (uint32_t i = 0; i < n; i++)
 				out[i * 4 + 3] = 65535;
 			return;
 		}
 	}
 
-	auto *out = (uint16_t *) dst.data.data();
+	auto *out = assume_aligned<uint16_t>(dst.data.data());
 	for (uint32_t i = 0; i < n; i++) {
 		int c = cmyk[i * 4 + 0], m = cmyk[i * 4 + 1], y = cmyk[i * 4 + 2],
 			k = cmyk[i * 4 + 3];

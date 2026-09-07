@@ -29,7 +29,7 @@ constexpr uint8_t kToggle = ActionInMenu | ActionToggle;
 constexpr unsigned kCtrl = unsigned(Qt::ControlModifier);
 constexpr unsigned kAlt = unsigned(Qt::AltModifier);
 constexpr unsigned kShift = unsigned(Qt::ShiftModifier);
-constexpr unsigned kMeta = unsigned(Qt::MetaModifier);
+[[maybe_unused]] constexpr unsigned kMeta = unsigned(Qt::MetaModifier);
 
 // clang-format off
 constexpr ActionDef kDefs[] = {

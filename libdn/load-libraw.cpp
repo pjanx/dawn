@@ -58,7 +58,7 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	pack_rgb16le_to_bgra16(*result, (const uint16_t *) image->data,
+	pack_rgb16le_to_bgra16(*result, assume_aligned<const uint16_t>(image->data),
 		size_t(image->width) * 3 * sizeof(uint16_t), 16);
 	libraw_dcraw_clear_mem(image);
 

@@ -419,8 +419,8 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 		image->text = ctx.texts;
 
 	image->loops = wuffs_base__image_decoder__num_animation_loops(ctx.dec);
-	image->frame_duration = int64_t(wuffs_base__frame_config__duration(&fc) /
-		WUFFS_BASE__FLICKS_PER_MILLISECOND);
+	image->frame_duration = int64_t(wuffs_base__frame_config__duration(&fc)) /
+		int64_t(WUFFS_BASE__FLICKS_PER_MILLISECOND);
 
 	bool ok = wuffs_base__status__is_ok(&status);
 	append_frame(ctx.result, ctx.result_tail, std::move(image));

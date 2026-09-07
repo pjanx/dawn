@@ -200,8 +200,8 @@ sync_scale_label(Viewer &v)
 		return;
 
 	const float scale_slot =
-		max(v.kit_.text_width(QStringLiteral("100%"), false),
-			v.kit_.text_width(v.scale_text_, false));
+		float(max(v.kit_.text_width(QStringLiteral("100%"), false),
+			v.kit_.text_width(v.scale_text_, false)));
 	v.scale_label_->min_w = scale_slot / v.kit_.dpr_;
 	v.scale_label_->text = v.scale_text_;
 }
@@ -690,7 +690,7 @@ make_sidebar(Viewer &v)
 {
 	// FIXME: This needs proper layouting.
 	const float label_w =
-		v.kit_.text_width(QStringLiteral("Height:"), true) / v.kit_.dpr_;
+		float(v.kit_.text_width(QStringLiteral("Height:"), true)) / v.kit_.dpr_;
 
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
@@ -760,7 +760,7 @@ sync_ui(Viewer &v, Page &ui)
 	ui.sync_app_menu();
 	if (v.error_) {
 		v.error_->visible = !v.message_.empty() && !v.message_dismissed_;
-		v.error_->max_h = v.kit_.host_h_ * 0.4f;
+		v.error_->max_h = float(v.kit_.host_h_) * 0.4f;
 		if (v.error_->visible && v.error_label_)
 			v.error_label_->text =
 				QStringLiteral("Error: ") + QString::fromStdString(v.message_);

@@ -152,8 +152,8 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	this->present_retry_.setSingleShot(true);
 	connect(&this->present_retry_, &QTimer::timeout, this,
 		[this] { request_render(); });
-	if (QGuiApplication *app = qGuiApp)
-		app->installEventFilter(this);
+	if (QGuiApplication *gui_app = qGuiApp)
+		gui_app->installEventFilter(this);
 	auto post = [this](function<void()> fn) {
 		QMetaObject::invokeMethod(
 			this, [fn = std::move(fn)]() { fn(); }, Qt::QueuedConnection);
@@ -557,7 +557,7 @@ Window::launch_exiftool(const QUrl &url)
 			process->deleteLater();
 		});
 	connect(process, &QProcess::finished, process,
-		[process, report, report_path, finished, show_error](
+		[process, report_path, finished, show_error](
 			int exit_code, QProcess::ExitStatus exit_status) {
 			if (*finished)
 				return;
@@ -1367,7 +1367,7 @@ Window::handle_input_method(QInputMethodEvent *event)
 
 	// The preedit caret rides in the attribute list, in UTF-16 units from
 	// the start of the preedit string.
-	auto caret = event->preeditString().size();
+	int caret = int(event->preeditString().size());
 	for (const QInputMethodEvent::Attribute &a : event->attributes()) {
 		if (a.type == QInputMethodEvent::Cursor)
 			caret = a.start;

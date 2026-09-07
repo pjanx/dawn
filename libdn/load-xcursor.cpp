@@ -84,11 +84,11 @@ xcursor_seek(XcursorFile *file, long offset, int whence)
 		return -1;
 	}
 	// This is technically too late for fseek(), but libXcursor doesn't care.
-	if (self->position < 0) {
-		errno = EINVAL;
+	if (self->position < 0 || self->position > INT_MAX) {
+		errno = self->position < 0 ? EINVAL : EOVERFLOW;
 		return -1;
 	}
-	return self->position;
+	return int(self->position);
 }
 
 const XcursorFile kMemXcursorFileAdaptor = {

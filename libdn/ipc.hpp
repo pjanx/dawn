@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <dawn-config.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -151,6 +153,7 @@ public:
 
 // Set DN_IPC_DEBUG to have the transport explain itself on stderr.
 // Everything here fails by quietly running a second dn instead.
+DAWN_FORMAT(1, 2)
 void trace(const char *fmt, ...);
 
 // A file descriptor on POSIX, a HANDLE on Windows. Both compare equal to

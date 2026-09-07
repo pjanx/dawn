@@ -124,14 +124,15 @@ legacy_gold()
 	append_entry(entries, "ics8", data);
 
 	data.clear();
-	for (uint8_t channel : {0x20, 0x70, 0xD0})
+	for (uint8_t channel : {uint8_t(0x20), uint8_t(0x70), uint8_t(0xD0)})
 		append_rle_channel(data, channel);
 	append_entry(entries, "is32", data);
 	data.assign(256, 128);
 	append_entry(entries, "s8mk", data);
 
 	data.assign({'A', 'R', 'G', 'B'});
-	for (uint8_t channel : {0x40, 0xF0, 0x40, 0x20})
+	for (uint8_t channel :
+		{uint8_t(0x40), uint8_t(0xF0), uint8_t(0x40), uint8_t(0x20)})
 		append_rle_channel(data, channel);
 	append_entry(entries, "ic04", data);
 
@@ -191,7 +192,8 @@ expect_pages(
 {
 	for (size_t i = 0; i < expected.size(); i++) {
 		if (!image) {
-			test::fail("page chain ended before page %zu", i + 1);
+			test::fail("page chain ended before page %llu",
+				(unsigned long long) (i + 1));
 			return;
 		}
 		expect_page(*image, expected[i], tolerance);

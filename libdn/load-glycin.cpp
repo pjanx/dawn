@@ -128,10 +128,12 @@ load_glycin_frame(GlyFrame *frame, const OpenContext &ctx, Error *error)
 		pack_rgba8_to_bgra16(*image, src, stride);
 		break;
 	case GLY_MEMORY_R16G16B16:
-		pack_rgb16le_to_bgra16(*image, (const uint16_t *) src, stride, 16);
+		pack_rgb16le_to_bgra16(
+			*image, assume_aligned<const uint16_t>(src), stride, 16);
 		break;
 	case GLY_MEMORY_R16G16B16A16:
-		pack_rgba16le_to_bgra16(*image, (const uint16_t *) src, stride, 16);
+		pack_rgba16le_to_bgra16(
+			*image, assume_aligned<const uint16_t>(src), stride, 16);
 		break;
 	default:
 		break;

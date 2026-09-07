@@ -414,7 +414,7 @@ struct LoaderRows {
 void
 LoaderRows::sync() const
 {
-	size_t n = int(this->draft->loaders.size());
+	const size_t n = this->draft->loaders.size();
 	for (size_t i = 0; i < n; i++) {
 		const SettingsDraft::Loader &loader = this->draft->loaders[i];
 		this->checks[i]->text = loader_text(loader);
@@ -626,7 +626,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 		return;
 	if (dynamic_cast<Browser *>(w))
 		return;
-	if (w->focusable() && visible_rect(w, host).w > 0.f)
+	if (w->focusable() && visible_rect(w, host).w > 0)
 		out.push_back(w);
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; i++)
@@ -719,7 +719,7 @@ Hint::paint(Kit &kit) const
 	if (!shown())
 		return;
 	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
-	const float th = kit.text_height(QStringLiteral("Ag"), 0.f, true);
+	const float th = float(kit.text_height(QStringLiteral("Ag"), 0.f, true));
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())
 			continue;
@@ -728,11 +728,11 @@ Hint::paint(Kit &kit) const
 		kit.draw_border(c, kit.colours_[ColourInk], kit.hairline());
 		const QString rest = t.label.mid(this->typed_.size());
 		float tx = float(c.x + kit.px(kChipPadX));
-		const float ty = float(c.y) + max(0.f, float(c.h - th) * 0.5f);
+		const float ty = float(c.y) + max(0.f, (float(c.h) - th) * 0.5f);
 		if (!this->typed_.isEmpty()) {
 			kit.emit_text(tx, ty, this->typed_,
 				col(kit.colours_[ColourInk], 0.25f), true);
-			tx += kit.text_width(this->typed_, true);
+			tx += float(kit.text_width(this->typed_, true));
 		}
 		if (!rest.isEmpty())
 			kit.emit_text(tx, ty, rest, kit.colours_[ColourInk], true);
@@ -848,14 +848,14 @@ Hint::collect(Widget *scope)
 		if (f.tile.empty())
 			continue;
 
-		const Rect visible = intersection(f.tile, well);
-		if (visible.empty())
+		const Rect clipped = intersection(f.tile, well);
+		if (clipped.empty())
 			continue;
 
 		Target t;
 		t.browser = browser;
 		t.file_i = i;
-		t.at = visible;
+		t.at = clipped;
 		this->targets_.push_back(t);
 	}
 }
@@ -876,10 +876,10 @@ Hint::refresh_rects()
 	keep.reserve(this->targets_.size());
 	for (Target &t : this->targets_) {
 		if (t.widget) {
-			const Rect visible = visible_rect(t.widget, this->page->r);
-			if (!t.widget->focusable() || visible.w <= 0.f || visible.h <= 0.f)
+			const Rect clipped = visible_rect(t.widget, this->page->r);
+			if (!t.widget->focusable() || clipped.w <= 0 || clipped.h <= 0)
 				continue;
-			t.at = visible;
+			t.at = clipped;
 			keep.push_back(t);
 			continue;
 		}
@@ -887,10 +887,10 @@ Hint::refresh_rects()
 			t.file_i >= int(t.browser->files_.size()))
 			continue;
 		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
-		const Rect visible = intersection(f.tile, t.browser->r);
-		if (visible.empty())
+		const Rect clipped = intersection(f.tile, t.browser->r);
+		if (clipped.empty())
 			continue;
-		t.at = visible;
+		t.at = clipped;
 		keep.push_back(t);
 	}
 	this->targets_ = std::move(keep);

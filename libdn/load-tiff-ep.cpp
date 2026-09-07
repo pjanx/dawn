@@ -243,7 +243,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	// (though some of them may not even reach 50 percent).
 	// Be a bit more generous than that with our crop tolerance.
 	// TODO(p): Also take into account DNG DefaultCropSize, if present.
-	if (out.pixels / (double(width) * height) < 0.95) {
+	if (double(out.pixels) / (double(width) * double(height)) < 0.95) {
 		set_error(error, "could not find a large enough JPEG preview");
 		return nullptr;
 	}

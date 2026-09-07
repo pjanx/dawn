@@ -88,7 +88,8 @@ bake_orientation(dawn::Image &image)
 	}
 
 	for (uint32_t y = 0; y < out_h; y++) {
-		uint16_t *dst_row = (uint16_t *) (out_data.data() + y * out_stride);
+		uint16_t *dst_row =
+			dawn::assume_aligned<uint16_t>(out_data.data() + y * out_stride);
 		for (uint32_t x = 0; x < out_w; x++) {
 			double sx = 0, sy = 0;
 			map_point(inv, double(x) + 0.5, double(y) + 0.5, &sx, &sy);

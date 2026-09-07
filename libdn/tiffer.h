@@ -17,19 +17,20 @@ tiffer_u64be(const uint8_t *p)
 {
 	return (uint64_t) p[0] << 56 | (uint64_t) p[1] << 48 |
 		(uint64_t) p[2] << 40 | (uint64_t) p[3] << 32 | (uint64_t) p[4] << 24 |
-		p[5] << 16 | p[6] << 8 | p[7];
+		(uint64_t) p[5] << 16 | (uint64_t) p[6] << 8 | (uint64_t) p[7];
 }
 
 static uint32_t
 tiffer_u32be(const uint8_t *p)
 {
-	return (uint32_t) p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+	return (uint32_t) p[0] << 24 | (uint32_t) p[1] << 16 |
+		(uint32_t) p[2] << 8 | (uint32_t) p[3];
 }
 
 static uint16_t
 tiffer_u16be(const uint8_t *p)
 {
-	return (uint16_t) p[0] << 8 | p[1];
+	return (uint16_t) ((uint16_t) p[0] << 8 | p[1]);
 }
 
 static uint64_t
@@ -37,19 +38,20 @@ tiffer_u64le(const uint8_t *p)
 {
 	return (uint64_t) p[7] << 56 | (uint64_t) p[6] << 48 |
 		(uint64_t) p[5] << 40 | (uint64_t) p[4] << 32 | (uint64_t) p[3] << 24 |
-		p[2] << 16 | p[1] << 8 | p[0];
+		(uint64_t) p[2] << 16 | (uint64_t) p[1] << 8 | (uint64_t) p[0];
 }
 
 static uint32_t
 tiffer_u32le(const uint8_t *p)
 {
-	return (uint32_t) p[3] << 24 | p[2] << 16 | p[1] << 8 | p[0];
+	return (uint32_t) p[3] << 24 | (uint32_t) p[2] << 16 |
+		(uint32_t) p[1] << 8 | (uint32_t) p[0];
 }
 
 static uint16_t
 tiffer_u16le(const uint8_t *p)
 {
-	return (uint16_t) p[1] << 8 | p[0];
+	return (uint16_t) ((uint16_t) p[1] << 8 | p[0]);
 }
 
 // --- TIFF --------------------------------------------------------------------
@@ -147,7 +149,7 @@ tiffer_next_ifd(struct tiffer *self)
 static size_t
 tiffer_length(const struct tiffer *self)
 {
-	return self->begin > self->end ? 0 : self->end - self->begin;
+	return self->begin > self->end ? 0 : size_t(self->end - self->begin);
 }
 
 /// Initialize a derived TIFF reader for a subIFD at the given location.
@@ -178,6 +180,8 @@ enum tiffer_type {
 	TIFFER_DOUBLE,
 	// This last type from TIFF Technical Note 1 isn't really used much.
 	TIFFER_IFD,
+
+	TIFFER_INVALID = 0xFFFF,
 };
 
 static size_t
@@ -300,15 +304,21 @@ tiffer_real(
 	// Assuming the host architecture uses IEEE 754.
 	switch (entry->type) {
 		int64_t numerator, denominator;
-	case TIFFER_FLOAT:
-		*out = *(float *) entry->p;
+	case TIFFER_FLOAT: {
+		float float_value;
+		memcpy(&float_value, entry->p, sizeof float_value);
+		*out = float_value;
 		return true;
-	case TIFFER_DOUBLE:
-		*out = *(double *) entry->p;
+	}
+	case TIFFER_DOUBLE: {
+		double double_value;
+		memcpy(&double_value, entry->p, sizeof double_value);
+		*out = double_value;
 		return true;
+	}
 	default:
 		if (tiffer_rational(self, entry, &numerator, &denominator)) {
-			*out = (double) numerator / denominator;
+			*out = (double) numerator / (double) denominator;
 			return true;
 		}
 		return false;
@@ -322,7 +332,7 @@ tiffer_next_entry(struct tiffer *self, struct tiffer_entry *entry)
 		return false;
 
 	uint16_t type = 0xFFFF;
-	entry->type = (enum tiffer_type) 0xFFFF;
+	entry->type = TIFFER_INVALID;
 	if (!tiffer_u16(self, &entry->tag) || !tiffer_u16(self, &type) ||
 		!tiffer_u32(self, &entry->remaining_count))
 		return false;

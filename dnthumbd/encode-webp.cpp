@@ -58,7 +58,7 @@ encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 	}
 
 	for (uint32_t y = 0; y < h; y++) {
-		uint32_t *dst = picture.argb + size_t(y) * picture.argb_stride;
+		uint32_t *dst = picture.argb + size_t(y) * size_t(picture.argb_stride);
 		const uint8_t *src = rgba8 + size_t(y) * w * 4;
 		for (uint32_t x = 0; x < w; x++) {
 			const uint8_t *p = src + x * 4;

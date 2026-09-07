@@ -230,8 +230,13 @@ include(CTest)
 # Keep diagnostics after bundled dependencies so that they don't apply to them.
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	add_compile_options(-Wall -Wextra -Wpedantic
-		-Wformat=2 -Wundef -Wcast-align
+		-Wconversion -Wformat=2 -Wundef -Wcast-align
 		-Wno-unused-parameter -Wno-missing-field-initializers)
+	if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+		add_compile_options(-Wshadow=local)
+	else()
+		add_compile_options(-Wshadow-uncaptured-local)
+	endif()
 	add_compile_options(
 		$<$<COMPILE_LANGUAGE:CXX>:-Wextra-semi>
 		$<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>

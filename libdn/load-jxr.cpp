@@ -117,7 +117,9 @@ sample(const uint8_t *pixel, const Layout &layout, int index)
 {
 	if (layout.bits == 8)
 		return scale_nbit_to_u16(pixel[index], 8);
-	return ((const uint16_t *) pixel)[index];
+	uint16_t value = 0;
+	memcpy(&value, pixel + size_t(index) * sizeof value, sizeof value);
+	return value;
 }
 
 static void

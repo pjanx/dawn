@@ -165,8 +165,9 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 	}
 
 	for (int py = 0; py < h; py++) {
-		auto *dst = (QRgb *) img.scanLine(py);
-		const auto *ms = (const QRgb *) mask.constScanLine(py);
+		auto *dst = dawn::assume_aligned<QRgb>(img.scanLine(py));
+		const auto *ms =
+			dawn::assume_aligned<const QRgb>(mask.constScanLine(py));
 		const double y = double(kYMax) * (1.0 - (py + 0.5) / h);
 		for (int px = 0; px < w; px++) {
 			if (!qAlpha(ms[px]))
@@ -253,7 +254,7 @@ CieDiagram::prepare(Kit &kit)
 	const int cap = caption_h(kit);
 	const Rect plot =
 		plot_rect({this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
-	if (plot.w < 8.f || plot.h < 8.f)
+	if (plot.w < 8 || plot.h < 8)
 		return;
 
 	const bool epoch_ok =

@@ -441,7 +441,7 @@ FrameWriter::push(span<const byte> payload)
 	if (payload.empty() || payload.size() > limit_)
 		return false;
 	if (off_ > 0) {
-		q_.erase(q_.begin(), q_.begin() + off_);
+		q_.erase(q_.begin(), q_.begin() + ptrdiff_t(off_));
 		off_ = 0;
 	}
 	const size_t add = 4 + payload.size();

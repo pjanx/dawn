@@ -34,7 +34,8 @@ cairo_argb32_to_image(Image &dst, cairo_surface_t *surface)
 {
 	const uint8_t *base = cairo_image_surface_get_data(surface);
 	int stride = cairo_image_surface_get_stride(surface);
-	pack_argb32_words_to_bgra16(dst, (const uint32_t *) base, size_t(stride));
+	pack_argb32_words_to_bgra16(
+		dst, assume_aligned<const uint32_t>(base), size_t(stride));
 }
 
 namespace

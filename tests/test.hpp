@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <dawn-config.h>
+
 #include <cstdarg>
 #include <cstdio>
 #include <functional>
@@ -18,6 +20,7 @@ namespace test
 inline int failures;
 inline const char *current = "setup";
 
+DAWN_FORMAT(1, 2)
 inline void
 fail(const char *format, ...)
 {

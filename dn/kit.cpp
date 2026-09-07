@@ -123,7 +123,7 @@ raster_symbolic(const char *name, int px)
 	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
 	const size_t stride = size_t(px) * 4;
 	for (int y = 0; y < px; y++) {
-		auto *row = (QRgb *) image.scanLine(y);
+		auto *row = dawn::assume_aligned<QRgb>(image.scanLine(y));
 		const auto *src =
 			(const unsigned char *) (pixmap.data() + size_t(y) * stride);
 		for (int x = 0; x < px; x++) {
@@ -213,7 +213,8 @@ raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
 
 	QRect ink;
 	for (int y = 0; y < img.height(); y++) {
-		const auto *row = (const QRgb *) img.constScanLine(y);
+		const auto *row =
+			dawn::assume_aligned<const QRgb>(img.constScanLine(y));
 		for (int x = 0; x < img.width(); x++) {
 			if (qAlpha(row[x]))
 				ink |= QRect(x, y, 1, 1);
@@ -343,7 +344,8 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 				fill_n(dst + x * 4, 4, a);
 			}
 		} else {
-			const auto *row = (const QRgb *) img.constScanLine(y);
+			const auto *row =
+				dawn::assume_aligned<const QRgb>(img.constScanLine(y));
 			for (int x = 0; x < cols; x++) {
 				dst[x * 4 + 0] = widen8(uint8_t(qRed(row[x])));
 				dst[x * 4 + 1] = widen8(uint8_t(qGreen(row[x])));
@@ -1061,7 +1063,7 @@ grapheme_before(const QString &text, int at)
 	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
 	finder.setPosition(min(at, int(text.size())));
 	const auto prev = finder.toPreviousBoundary();
-	return prev < 0 ? 0 : prev;
+	return prev < 0 ? 0 : int(prev);
 }
 
 static int
@@ -1073,7 +1075,7 @@ grapheme_after(const QString &text, int at)
 	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
 	finder.setPosition(max(at, 0));
 	const auto next = finder.toNextBoundary();
-	return next < 0 ? end : next;
+	return next < 0 ? end : int(next);
 }
 
 // Qt hands us the control codes as text too; none of them are insertable.
@@ -1129,7 +1131,7 @@ Entry::rescroll(const Kit &kit)
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const float caret = float(kit.caret_x(full, at, false));
+	const float caret_x = float(kit.caret_x(full, at, false));
 	const float text_w = float(kit.text_width(full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
@@ -1139,7 +1141,7 @@ Entry::rescroll(const Kit &kit)
 
 	// Keep the caret around the centre, but never leave a gap at either end:
 	// the text fills the box before the caret gets to be centred.
-	this->scroll_ = clamp(caret - view * 0.5f, 0.f, text_w - view);
+	this->scroll_ = clamp(caret_x - view * 0.5f, 0.f, text_w - view);
 }
 
 void
@@ -1209,11 +1211,11 @@ Entry::paint(Kit &kit) const
 	const float tx = float(in.x) - this->scroll_;
 	if (full.isEmpty()) {
 		if (!this->placeholder.isEmpty())
-			emit_text(kit, tx, ty, this->placeholder,
+			emit_text(kit, tx, float(ty), this->placeholder,
 				col(kit.colours_[ColourInk], 0.4f * kit.ink_alpha()), false,
 				-1);
 	} else {
-		emit_text(kit, tx, ty, full,
+		emit_text(kit, tx, float(ty), full,
 			col(kit.colours_[ColourInk], kit.ink_alpha()), false, -1);
 	}
 

@@ -109,6 +109,7 @@ tiff_size(thandle_t h)
 	return ((TiffIo *) h)->len;
 }
 
+DAWN_FORMAT(3, 0)
 static void
 tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 {
@@ -123,6 +124,7 @@ tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 		add_warning(*io->ctx, string(module) + ": " + buf);
 }
 
+DAWN_FORMAT(3, 0)
 static void
 tiff_warning(thandle_t h, const char *module, const char *format, va_list ap)
 {
@@ -223,7 +225,7 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 				set_error(error, "TIFF decoding error");
 				return nullptr;
 			}
-			auto *s = (const uint16_t *) scan.data();
+			auto *s = assume_aligned<const uint16_t>(scan.data());
 			auto *d = row_u16(*image, y);
 			for (uint32_t x = 0; x < width; x++) {
 				d[0] = d[1] = d[2] = s[x];
@@ -333,10 +335,10 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	vector<uint8_t> pixels(stride * img.height);
 	uint8_t *d = pixels.data();
 	for (uint32_t p : raster) {
-		*d++ = TIFFGetB(p);
-		*d++ = TIFFGetG(p);
-		*d++ = TIFFGetR(p);
-		*d++ = TIFFGetA(p);
+		*d++ = uint8_t(TIFFGetB(p));
+		*d++ = uint8_t(TIFFGetG(p));
+		*d++ = uint8_t(TIFFGetR(p));
+		*d++ = uint8_t(TIFFGetA(p));
 	}
 
 	// With associated alpha, TIFFRGBAImageGet() already premultiplies the

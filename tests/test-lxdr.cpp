@@ -51,8 +51,8 @@ check_golden(
 {
 	if (bytes_eq(got, want))
 		return;
-	test::fail(
-		"golden %s: got %zu bytes, want %zu", label, got.size(), want.size());
+	test::fail("golden %s: got %llu bytes, want %llu", label,
+		(unsigned long long) got.size(), (unsigned long long) want.size());
 	for (size_t i = 0; i < got.size(); i++)
 		fprintf(stderr, " %02x", uint8_t(got[i]));
 	fprintf(stderr, "\n");
