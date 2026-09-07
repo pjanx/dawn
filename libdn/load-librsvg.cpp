@@ -23,22 +23,22 @@ using namespace std;
 namespace dawn
 {
 
-namespace
-{
-
 // librsvg/Cairo rendering is capped at the project pixmap limit.
-constexpr double kMaxDimension = double(dawn::kMaxDimension);
+constexpr double kMaxRenderDimension = double(dawn::kMaxDimension);
 
 // Cairo's ARGB32 is a native-endian 0xAARRGGBB word, always premultiplied--
 // exactly the layout pack_argb32_words_to_bgra16() expects, association
 // (premultiplication) unchanged.
-void
+static void
 cairo_argb32_to_image(Image &dst, cairo_surface_t *surface)
 {
 	const uint8_t *base = cairo_image_surface_get_data(surface);
 	int stride = cairo_image_surface_get_stride(surface);
 	pack_argb32_words_to_bgra16(dst, (const uint32_t *) base, size_t(stride));
 }
+
+namespace
+{
 
 class LibrsvgRenderClosure : public RenderClosure
 {
@@ -62,6 +62,8 @@ public:
 		double scale, Cmm *cmm, Profile *target, Error *error);
 };
 
+}  // namespace
+
 ImagePtr
 LibrsvgRenderClosure::render(Cmm *cmm, Profile *target, double scale)
 {
@@ -76,7 +78,7 @@ LibrsvgRenderClosure::render_internal(
 	RsvgRectangle viewport = {
 		.x = 0, .y = 0, .width = width_ * scale, .height = height_ * scale};
 	double w = ceil(viewport.width), h = ceil(viewport.height);
-	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
+	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
 		set_error(error, "image dimensions overflow");
 		return nullptr;
 	}
@@ -130,8 +132,6 @@ LibrsvgRenderClosure::render_internal(
 	ensure_working_premul(*image, finish_ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_librsvg(

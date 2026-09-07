@@ -21,10 +21,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-DisplayProfile
+static DisplayProfile
 load_display_profile(QScreen *screen)
 {
 	DisplayProfile result;
@@ -58,6 +56,9 @@ load_display_profile(QScreen *screen)
 	return result;
 }
 
+namespace
+{
+
 struct CocoaSource final : DisplayProfileSource {
 	function<void()> on_change;
 	id observer = nil;
@@ -69,6 +70,8 @@ struct CocoaSource final : DisplayProfileSource {
 		return load_display_profile(screen);
 	}
 };
+
+}  // namespace
 
 CocoaSource::~CocoaSource()
 {
@@ -93,7 +96,6 @@ CocoaSource::start(function<void()> fn)
 				}] retain];
 }
 
-}  // namespace
 unique_ptr<DisplayProfileSource>
 make_display_profile_source()
 {

@@ -34,10 +34,11 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- In-memory TIFF client adaptor -------------------------------------------
+
+namespace
+{
 
 struct TiffIo {
 	const OpenContext *ctx = nullptr;
@@ -46,7 +47,9 @@ struct TiffIo {
 	string error;  ///< First hard error encountered, if any
 };
 
-tsize_t
+}  // namespace
+
+static tsize_t
 tiff_read(thandle_t h, tdata_t buf, tsize_t len)
 {
 	auto *io = (TiffIo *) h;
@@ -66,14 +69,14 @@ tiff_read(thandle_t h, tdata_t buf, tsize_t len)
 	return tsize_t(n);
 }
 
-tsize_t
+static tsize_t
 tiff_write(thandle_t, tdata_t, tsize_t)
 {
 	errno = EBADF;
 	return -1;
 }
 
-toff_t
+static toff_t
 tiff_seek(thandle_t h, toff_t offset, int whence)
 {
 	auto *io = (TiffIo *) h;
@@ -94,19 +97,19 @@ tiff_seek(thandle_t h, toff_t offset, int whence)
 	return io->position;
 }
 
-int
+static int
 tiff_close(thandle_t)
 {
 	return 0;
 }
 
-toff_t
+static toff_t
 tiff_size(thandle_t h)
 {
 	return ((TiffIo *) h)->len;
 }
 
-void
+static void
 tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
@@ -120,7 +123,7 @@ tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 		add_warning(*io->ctx, string(module) + ": " + buf);
 }
 
-void
+static void
 tiff_warning(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
@@ -138,7 +141,7 @@ tiff_warning(thandle_t h, const char *module, const char *format, va_list ap)
 // for ORIENTATION_LEFTTOP normalization already rotates the raster--only
 // a residual mirroring can remain, and apparently only these two forms of
 // it (this mirrors what fiv-io.c has empirically established works).
-void
+static void
 apply_tiff_orientation(Image &image, TIFF *tiff)
 {
 	uint16_t orientation = 0;
@@ -150,7 +153,7 @@ apply_tiff_orientation(Image &image, TIFF *tiff)
 		image.orientation = Orientation::Mirror90;
 }
 
-void
+static void
 apply_tiff_metadata(Image &image, TIFF *tiff)
 {
 	uint32_t len = 0;
@@ -167,7 +170,7 @@ apply_tiff_metadata(Image &image, TIFF *tiff)
 
 // Contiguous unsigned 16-bit grey/RGB(A) that TIFFRGBAImage would only
 // quantize to 8-bit. Reads scanlines and packs to working BGRA16.
-ImagePtr
+static ImagePtr
 load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 {
 	uint32_t width = 0, height = 0;
@@ -276,7 +279,7 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 	return image;
 }
 
-ImagePtr
+static ImagePtr
 load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 {
 	{
@@ -357,8 +360,6 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	// TODO(p): It's possible to implement ClipPath easily.
 	return image;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_tiff(

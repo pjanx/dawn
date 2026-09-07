@@ -29,8 +29,6 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 constexpr uint32_t kMaxTiles = 256;
 constexpr uint32_t kTileEdge = 4096;
@@ -38,6 +36,9 @@ constexpr VkDeviceSize kTileBytesPerPixel = 8;
 
 constexpr VkFormat kTileFormat = VK_FORMAT_R16G16B16A16_UNORM;
 constexpr VkFormat kMidFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+
+namespace
+{
 
 struct TileRect {
 	int32_t ox = 0, oy = 0, w = 0, h = 0;
@@ -68,18 +69,21 @@ struct PushConstants {
 	float bg_r = 0, bg_g = 0, bg_b = 0;
 	float checker_r = 0, checker_g = 0, checker_b = 0;
 };
+
+}  // namespace
+
 static_assert(sizeof(PushConstants) == 92);
 
 // TODO(p): What in Hell could be a reason for being this lenient?
 constexpr float kAngleFast = 1e-5f;
 
-bool
+static bool
 view_axis_aligned(const ScaleView &view)
 {
 	return fabs(view.angle) < kAngleFast;
 }
 
-bool
+static bool
 use_separable(const ScaleView &view)
 {
 	if (!view_axis_aligned(view))
@@ -89,13 +93,13 @@ use_separable(const ScaleView &view)
 	return view.filter == Filter::Expensive && view.scale < 1.f;
 }
 
-uint32_t
+static uint32_t
 ceil_div(uint32_t a, uint32_t b)
 {
 	return b == 0 ? 0 : (a + b - 1) / b;
 }
 
-bool
+static bool
 check_vk(VkResult r, const char *what, string *error)
 {
 	if (r != VK_SUCCESS) {
@@ -106,8 +110,6 @@ check_vk(VkResult r, const char *what, string *error)
 	}
 	return true;
 }
-
-}  // namespace
 
 Filter
 preferred_filter(VkPhysicalDevice phys)
@@ -1090,9 +1092,8 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0);
 	// Supply backgrounds in the selected compositing space.
 	auto background = [&](float encoded) {
-		return view.linear_blend
-			? transfer_decode(encoded, view.transfer)
-			: encoded;
+		return view.linear_blend ? transfer_decode(encoded, view.transfer)
+								 : encoded;
 	};
 	pc.bg_r = background(clear_rgba[0]);
 	pc.bg_g = background(clear_rgba[1]);

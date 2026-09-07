@@ -25,10 +25,8 @@ namespace fs = filesystem;
 
 namespace dn
 {
-namespace
-{
 
-optional<string>
+static optional<string>
 edid_md5_from_bytes(const vector<unsigned char> &edid)
 {
 	if (edid.empty())
@@ -38,7 +36,7 @@ edid_md5_from_bytes(const vector<unsigned char> &edid)
 	return md5 ? optional<string>(md5) : nullopt;
 }
 
-optional<string>
+static optional<string>
 edid_md5_for_connector(const string &connector)
 {
 	error_code error;
@@ -60,7 +58,7 @@ edid_md5_for_connector(const string &connector)
 	return nullopt;
 }
 
-vector<unsigned char>
+static vector<unsigned char>
 profile_bytes(cmsHPROFILE profile)
 {
 	cmsUInt32Number size = 0;
@@ -73,7 +71,7 @@ profile_bytes(cmsHPROFILE profile)
 	return bytes;
 }
 
-bool
+static bool
 display_device(CdDevice *device)
 {
 	if (!device)
@@ -82,7 +80,7 @@ display_device(CdDevice *device)
 	return kind == CD_DEVICE_KIND_UNKNOWN || kind == CD_DEVICE_KIND_DISPLAY;
 }
 
-DisplayProfile
+static DisplayProfile
 load_from_client(CdClient *client, const QScreen *screen)
 {
 	DisplayProfile result;
@@ -172,6 +170,9 @@ load_from_client(CdClient *client, const QScreen *screen)
 	return result;
 }
 
+namespace
+{
+
 struct ColordSource final : DisplayProfileSource {
 	CdClient *client = nullptr;
 	guint name_watch = 0;
@@ -187,7 +188,9 @@ struct ColordSource final : DisplayProfileSource {
 	void connect_async();
 };
 
-void
+}  // namespace
+
+static void
 on_device(CdClient *, CdDevice *device, gpointer data)
 {
 	auto *src = static_cast<ColordSource *>(data);
@@ -196,19 +199,19 @@ on_device(CdClient *, CdDevice *device, gpointer data)
 	src->notify();
 }
 
-void
+static void
 on_changed(CdClient *, gpointer data)
 {
 	static_cast<ColordSource *>(data)->notify();
 }
 
-void
+static void
 on_profile(CdClient *, CdProfile *, gpointer data)
 {
 	static_cast<ColordSource *>(data)->notify();
 }
 
-void
+static void
 on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 {
 	auto *src = static_cast<ColordSource *>(data);
@@ -221,7 +224,7 @@ on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 	src->notify();
 }
 
-void
+static void
 on_name_appeared(GDBusConnection *, const gchar *, const gchar *, gpointer data)
 {
 	auto *src = static_cast<ColordSource *>(data);
@@ -230,7 +233,7 @@ on_name_appeared(GDBusConnection *, const gchar *, const gchar *, gpointer data)
 	src->connect_async();
 }
 
-void
+static void
 on_name_vanished(GDBusConnection *, const gchar *, gpointer)
 {
 }
@@ -305,8 +308,6 @@ ColordSource::load(QScreen *screen)
 {
 	return load_from_client(this->client, screen);
 }
-
-}  // namespace
 
 unique_ptr<DisplayProfileSource>
 make_display_profile_source()

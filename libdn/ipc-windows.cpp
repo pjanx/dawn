@@ -24,19 +24,22 @@ namespace dawn
 {
 namespace ipc
 {
-namespace
-{
 
 // Overlapped writes pin their buffer until completion; keep that bounded
 // rather than hand the kernel a whole output queue.
 constexpr size_t kWriteChunk = 256 * 1024;
 
+namespace
+{
+
 struct LocalFreeDeleter {
 	void operator()(void *p) const { ::LocalFree((HLOCAL) p); }
 };
 
+}  // namespace
+
 // The token user of a process, as an owned SID copy.
-vector<std::byte>
+static vector<std::byte>
 process_sid(DWORD pid)
 {
 	vector<std::byte> out;
@@ -67,14 +70,14 @@ process_sid(DWORD pid)
 	return out;
 }
 
-const vector<std::byte> &
+static const vector<std::byte> &
 own_sid()
 {
 	static const vector<std::byte> sid = process_sid(::GetCurrentProcessId());
 	return sid;
 }
 
-bool
+static bool
 sid_is_own(const vector<std::byte> &sid)
 {
 	return !sid.empty() && !own_sid().empty() &&
@@ -83,7 +86,7 @@ sid_is_own(const vector<std::byte> &sid)
 
 // Pipe names are machine-global, so both the user and the Windows session
 // have to be in there: one user may be logged into several sessions.
-wstring
+static wstring
 pipe_name(string_view service)
 {
 	if (own_sid().empty())
@@ -108,7 +111,7 @@ pipe_name(string_view service)
 }
 
 // Deny everyone but the pipe's creator.
-bool
+static bool
 own_user_only(SECURITY_ATTRIBUTES &sa, unique_ptr<void, LocalFreeDeleter> &sd)
 {
 	wchar_t *text = nullptr;
@@ -131,7 +134,7 @@ own_user_only(SECURITY_ATTRIBUTES &sa, unique_ptr<void, LocalFreeDeleter> &sd)
 	return true;
 }
 
-HANDLE
+static HANDLE
 create_instance(const wstring &name, bool first)
 {
 	SECURITY_ATTRIBUTES sa{};
@@ -154,7 +157,7 @@ create_instance(const wstring &name, bool first)
 
 // There is no SO_PEERCRED here. Impersonation gives the server the client's
 // real token; a client can only go by the server's process identity.
-bool
+static bool
 client_is_own_user(HANDLE pipe)
 {
 	if (!::ImpersonateNamedPipeClient(pipe)) {
@@ -179,8 +182,6 @@ client_is_own_user(HANDLE pipe)
 	::RevertToSelf();
 	return same;
 }
-
-}  // namespace
 
 // --- Connection --------------------------------------------------------------
 

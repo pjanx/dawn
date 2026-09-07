@@ -45,7 +45,9 @@ struct WorkGate {
 	}
 };
 
-bool
+}  // namespace
+
+static bool
 test_background_reserve()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 4);
@@ -102,7 +104,7 @@ test_background_reserve()
 	return true;
 }
 
-bool
+static bool
 test_visible_reserve()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 4);
@@ -153,7 +155,7 @@ test_visible_reserve()
 	return true;
 }
 
-bool
+static bool
 test_reprioritization_order()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 1);
@@ -212,7 +214,7 @@ test_reprioritization_order()
 	return true;
 }
 
-bool
+static bool
 test_bundle_reservations()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 2);
@@ -246,7 +248,7 @@ test_bundle_reservations()
 	return true;
 }
 
-void
+static void
 test_activity_transitions(QCoreApplication &app)
 {
 	dn::Thumbnailer thumbnailer;
@@ -281,8 +283,6 @@ test_activity_transitions(QCoreApplication &app)
 	CHECK(saw_busy);
 	CHECK(saw_idle);
 }
-
-}  // namespace
 
 int
 main(int argc, char **argv)

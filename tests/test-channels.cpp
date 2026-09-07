@@ -28,34 +28,36 @@ namespace fs = filesystem;
 #error DAWN_TEST_FIXTURES_DIR must be defined
 #endif
 
-namespace
-{
-
-bool
+static bool
 near_u16(uint16_t a, uint16_t b, uint16_t tol)
 {
 	return abs(int(a) - int(b)) <= int(tol);
 }
 
+namespace
+{
+
 struct Pixel {
 	uint16_t b = 0, g = 0, r = 0, a = 0;
 };
 
-Pixel
+}  // namespace
+
+static Pixel
 pixel0(const dawn::Image &img)
 {
 	const uint16_t *p = dawn::row_u16(img, 0);
 	return {p[0], p[1], p[2], p[3]};
 }
 
-Pixel
+static Pixel
 pixel_at(const dawn::Image &img, uint32_t x, uint32_t y)
 {
 	const uint16_t *p = dawn::row_u16(img, y) + x * 4;
 	return {p[0], p[1], p[2], p[3]};
 }
 
-void
+static void
 expect_bgra(const char *label, Pixel p, uint16_t b, uint16_t g, uint16_t r,
 	uint16_t a, uint16_t tol)
 {
@@ -67,7 +69,7 @@ expect_bgra(const char *label, Pixel p, uint16_t b, uint16_t g, uint16_t r,
 	}
 }
 
-dawn::ImagePtr
+static dawn::ImagePtr
 load_fixture(const string &name)
 {
 	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / name;
@@ -83,7 +85,7 @@ load_fixture(const string &name)
 	return img;
 }
 
-void
+static void
 test_pack_helpers()
 {
 	dawn::ImagePtr img = dawn::image_new(1, 1);
@@ -139,7 +141,7 @@ test_pack_helpers()
 	}
 }
 
-void
+static void
 test_solid(const char *path, uint16_t b, uint16_t g, uint16_t r, uint16_t tol)
 {
 	dawn::ImagePtr img = load_fixture(path);
@@ -149,7 +151,7 @@ test_solid(const char *path, uint16_t b, uint16_t g, uint16_t r, uint16_t tol)
 	expect_bgra(path, pixel0(*img), b, g, r, 65535, tol);
 }
 
-void
+static void
 test_loaders_solid()
 {
 	struct Solid {
@@ -188,7 +190,7 @@ test_loaders_solid()
 #endif
 }
 
-void
+static void
 test_jpeg_cms_8_to_16()
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -217,7 +219,7 @@ test_jpeg_cms_8_to_16()
 	expect_bgra("jpeg cms blue.jpg", pixel0(*img), 65535, 0, 0, 65535, 257 * 2);
 }
 
-void
+static void
 test_jpeg_fatal_error()
 {
 	const fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg";
@@ -248,7 +250,7 @@ test_jpeg_fatal_error()
 	}
 }
 
-void
+static void
 test_cmyk_cms_opaque()
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -275,7 +277,7 @@ test_cmyk_cms_opaque()
 	CHECK(unsigned(p.b) + p.g + p.r != 0);
 }
 
-void
+static void
 test_cms_tiled()
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -308,7 +310,7 @@ test_cms_tiled()
 	}
 }
 
-void
+static void
 test_rgbw_2x2()
 {
 	dawn::ImagePtr img = load_fixture("rgbw_2x2.png");
@@ -322,7 +324,7 @@ test_rgbw_2x2()
 		"rgbw[1,1] white", pixel_at(*img, 1, 1), 65535, 65535, 65535, 65535, 0);
 }
 
-void
+static void
 test_premul_alpha()
 {
 	dawn::ImagePtr img = load_fixture("red_a128.png");
@@ -333,7 +335,7 @@ test_premul_alpha()
 	expect_bgra("red_a128 premul", pixel0(*img), 0, 0, half, half, 1);
 }
 
-void
+static void
 test_large_icc_and_p3_red()
 {
 	const fs::path path =
@@ -374,7 +376,7 @@ test_large_icc_and_p3_red()
 	CHECK(p3_red.b + 1000 < srgb_red.b);
 }
 
-void
+static void
 test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 {
 	dawn::ImagePtr img = load_fixture(path);
@@ -400,7 +402,7 @@ test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 		65535, tol);
 }
 
-void
+static void
 test_svg()
 {
 	test_svg_solid("red.svg", 0, 0, 65535);
@@ -433,7 +435,7 @@ test_svg()
 	}
 }
 
-void
+static void
 near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 {
 	if (fabs(x - xe) > tol || fabs(y - ye) > tol) {
@@ -442,7 +444,7 @@ near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 	}
 }
 
-void
+static void
 test_chromaticities()
 {
 	CHECK(dawn::profile_chromaticities(nullptr).model ==
@@ -513,7 +515,7 @@ test_chromaticities()
 	}
 }
 
-void
+static void
 test_png_text_after_idat()
 {
 	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / "text-after-idat.png";
@@ -539,7 +541,7 @@ test_png_text_after_idat()
 		CHECK(it->second == "hello");
 }
 
-void
+static void
 test_profile_transfer()
 {
 	CHECK(dawn::profile_transfer(nullptr) == dawn::Transfer::Srgb);
@@ -561,8 +563,6 @@ test_profile_transfer()
 	CHECK(g18 != nullptr);
 	CHECK(dawn::profile_transfer(g18.get()) == dawn::Transfer::Srgb);
 }
-
-}  // namespace
 
 int
 main()

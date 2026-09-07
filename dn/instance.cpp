@@ -30,15 +30,13 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 // One event-loop watch on an dawn::ipc::Waitable. Qt watches sockets on Unix
 // and overlapped completion events on Windows; nothing below cares which.
 #ifdef Q_OS_WIN
 using Watch = QWinEventNotifier;
 
-Watch *
+static Watch *
 make_watch(dawn::ipc::Waitable w, bool, QObject *parent)
 {
 	return new QWinEventNotifier((Qt::HANDLE) w, parent);
@@ -46,7 +44,7 @@ make_watch(dawn::ipc::Waitable w, bool, QObject *parent)
 #else
 using Watch = QSocketNotifier;
 
-Watch *
+static Watch *
 make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 {
 	return new QSocketNotifier(qintptr(w),
@@ -54,7 +52,7 @@ make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 }
 #endif
 
-dawn::ipc::instance::ErrorCode
+static dawn::ipc::instance::ErrorCode
 map_open_error(OpenResult r)
 {
 	switch (r) {
@@ -70,8 +68,6 @@ map_open_error(OpenResult r)
 	}
 	return dawn::ipc::instance::ErrorCode::Internal;
 }
-
-}  // namespace
 
 struct InstanceHost::Impl {
 	Impl(dawn::ipc::Listener listener, App &app, const QString &session,

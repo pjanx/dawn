@@ -78,8 +78,7 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 	if (!cmm->transform_bgra16(
 			(uint8_t *) pixel, 1, 1, srgb.get(), target, false, false))
 		return colour;
-	return {
-		pixel[2] / 65535.f, pixel[1] / 65535.f, pixel[0] / 65535.f, 1.f};
+	return {pixel[2] / 65535.f, pixel[1] / 65535.f, pixel[0] / 65535.f, 1.f};
 }
 
 static Colour
@@ -223,8 +222,8 @@ raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
 	if (ink.isEmpty())
 		return {};
 	// Ink on the border: kPad did not cover the rasteriser's spread.
-	if (ink.left() == 0 || ink.top() == 0 ||
-		ink.right() == img.width() - 1 || ink.bottom() == img.height() - 1)
+	if (ink.left() == 0 || ink.top() == 0 || ink.right() == img.width() - 1 ||
+		ink.bottom() == img.height() - 1)
 		qWarning("glyph %u overflows its %d-pixel pad", gid, kPad);
 	*origin = box.topLeft() + ink.topLeft();
 	return img.copy(ink);
@@ -558,8 +557,8 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 	const float cx1 = float(line.cursorToX(mnemonic + 1));
 	// Both font metrics grow downwards from the baseline, which is where
 	// the glyphs of this line sit as well.
-	const int uy = int(lround(
-		double(y) + line.y() + line.ascent() + raw.underlinePosition()));
+	const int uy = int(
+		lround(double(y) + line.y() + line.ascent() + raw.underlinePosition()));
 	const int th = max(1, int(lround(raw.lineThickness())));
 	const int ux0 = int(lround(x + min(cx0, cx1)));
 	const int ux1 = int(lround(x + max(cx0, cx1)));
@@ -628,8 +627,7 @@ Widget::paint(Kit &kit) const
 Widget *
 Widget::hit_at(float x, float y)
 {
-	if (!shown() || this->r.empty() ||
-		!this->r.contains(x, y))
+	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
 	for (size_t i = child_count(); i > 0; --i) {
 		if (Widget *k = child(i - 1))
@@ -793,11 +791,10 @@ Button::paint(Kit &kit) const
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->icon)
-		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - icon) / 2,
-			icon, this->icon, col(kit.colours_[ColourInk], ink_a));
+		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
+			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
-		const int tx =
-			this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
+		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
 		const int th = kit.text_height(this->text, 0, false);
 		const QString shown = button_shown(kit, *this);
 		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
@@ -927,14 +924,14 @@ Checkbox::paint(Kit &kit) const
 	kit.list_.add_rect_filled_vgradient({bx, by, bx + box, by + box},
 		col(kit.colours_[ColourEntryTop]),
 		col(kit.colours_[ColourEntryBottom]));
-	kit.draw_border({bx, by, box, box}, col(kit.colours_[ColourDivider]),
-		kit.hairline());
+	kit.draw_border(
+		{bx, by, box, box}, col(kit.colours_[ColourDivider]), kit.hairline());
 
 	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
 		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
 	if (this->checked)
-		emit_icon(kit, bx + border, by + border, icon,
-			"object-select-symbolic", col(kit.colours_[ColourInk], ink_a));
+		emit_icon(kit, bx + border, by + border, icon, "object-select-symbolic",
+			col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
 		const int th = kit.text_height(this->text, 0, false);
@@ -981,8 +978,7 @@ Label::measure(Kit &kit, int max_w, int)
 		w = max(1, iw < kUnlim ? iw : w);
 	this->r.w = w + pad_x * 2;
 	this->r.h =
-		kit.text_height(this->text, this->wrap ? w : 0, this->bold) +
-		pad_y * 2;
+		kit.text_height(this->text, this->wrap ? w : 0, this->bold) + pad_y * 2;
 }
 
 void
@@ -1294,8 +1290,7 @@ Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
 	// A click during composition would land in the middle of text the input
 	// method still owns; let it finish rather than fighting over the caret.
 	if (this->preedit.isEmpty()) {
-		const Rect in =
-			this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
+		const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 		move_caret(kit,
 			kit.index_at(this->text, x - float(in.x) + this->scroll_, false));
 	}
@@ -2050,8 +2045,7 @@ ScrollColumn::arrange(Kit &kit, Rect alloc)
 					this->scroll_.offset = y0;
 				else if (y0 + float(f->r.h) >
 					this->scroll_.offset + float(alloc.h))
-					this->scroll_.offset =
-						y0 + float(f->r.h) - float(alloc.h);
+					this->scroll_.offset = y0 + float(f->r.h) - float(alloc.h);
 				this->scroll_.clamp();
 				break;
 			}
@@ -2082,8 +2076,7 @@ ScrollColumn::paint(Kit &kit) const
 Widget *
 ScrollColumn::hit_at(float x, float y)
 {
-	if (!shown() || this->r.empty() ||
-		!this->r.contains(x, y))
+	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
 	if (this->scroll_.visible() &&
 		this->scroll_.bar_rect(this->r).contains(x, y))
@@ -2227,9 +2220,8 @@ Panel::paint(Kit &kit) const
 		kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
 		break;
 	case Stroke::Bottom:
-		kit.list_.add_rect_filled(
-			{this->r.x, this->r.bottom() - hair, this->r.right(),
-				this->r.bottom()},
+		kit.list_.add_rect_filled({this->r.x, this->r.bottom() - hair,
+									  this->r.right(), this->r.bottom()},
 			col(this->busy ? kit.colours_[ColourBusy]
 						   : kit.colours_[ColourDivider]));
 		break;
@@ -2457,8 +2449,7 @@ Dialog::place(Kit &kit)
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
 	const int margin = kit.px(kGlowPts * 2.f);
-	const int max_w =
-		max(1, min(kit.px(560.f), kit.host_w_ - margin * 2));
+	const int max_w = max(1, min(kit.px(560.f), kit.host_w_ - margin * 2));
 	const int avail_h = max(1, kit.host_h_ - margin * 2);
 	this->frame->measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
@@ -2520,20 +2511,20 @@ Dialog::motion(Kit &, float, float)
 
 // --- Menus -------------------------------------------------------------------
 
-namespace
-{
-
 constexpr float kItemGap = 2.f;
 constexpr float kMenuPad = 4.f;
 constexpr float kMenuHoldMs = 500.f;  // GTK MENU_SHELL_TIMEOUT
 
-unique_ptr<Sep>
+static unique_ptr<Sep>
 hsep()
 {
 	return make_unique<Sep>();
 }
 
 // Where an item's columns land, relative to its own left edge.
+namespace
+{
+
 struct MenuCols {
 	int label_x = 0;
 	int accel_x = 0;
@@ -2651,8 +2642,9 @@ MenuPopup::key(Kit &kit, const Key &ev)
 {
 	if (Popup::key(kit, ev))
 		return true;
-	if (ev.mods & unsigned(Qt::AltModifier | Qt::ShiftModifier |
-		Qt::ControlModifier | Qt::MetaModifier))
+	if (ev.mods &
+		unsigned(Qt::AltModifier | Qt::ShiftModifier | Qt::ControlModifier |
+			Qt::MetaModifier))
 		return false;
 
 	switch (ev.key) {
@@ -2838,8 +2830,9 @@ Overflow::key(Kit &kit, const Key &ev)
 {
 	if (Popup::key(kit, ev))
 		return true;
-	if (ev.mods & unsigned(Qt::AltModifier | Qt::ShiftModifier |
-		Qt::ControlModifier | Qt::MetaModifier))
+	if (ev.mods &
+		unsigned(Qt::AltModifier | Qt::ShiftModifier | Qt::ControlModifier |
+			Qt::MetaModifier))
 		return false;
 
 	// Keys reach a popup by bubbling out of the focused widget, so a field

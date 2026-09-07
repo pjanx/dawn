@@ -46,14 +46,11 @@ using namespace std;
 namespace dawn
 {
 
-namespace
-{
-
 // --- Metadata pulling --------------------------------------------------------
 
 constexpr size_t kMaxMetadataSize = 64 * 1024 * 1024;
 
-bool
+static bool
 grow_metadata_buffer(vector<uint8_t> *storage, wuffs_base__io_buffer *dst,
 	size_t required, Error *error)
 {
@@ -69,7 +66,7 @@ grow_metadata_buffer(vector<uint8_t> *storage, wuffs_base__io_buffer *dst,
 	return true;
 }
 
-bool
+static bool
 pull_passthrough(const wuffs_base__more_information *minfo,
 	wuffs_base__io_buffer *src, vector<uint8_t> *storage,
 	wuffs_base__io_buffer *dst, Error *error)
@@ -101,7 +98,7 @@ pull_passthrough(const wuffs_base__more_information *minfo,
 	return true;
 }
 
-bool
+static bool
 pull_metadata(wuffs_base__image_decoder *dec, wuffs_base__io_buffer *src,
 	wuffs_base__more_information *minfo, vector<uint8_t> *out, Error *error)
 {
@@ -147,6 +144,9 @@ pull_metadata(wuffs_base__image_decoder *dec, wuffs_base__io_buffer *src,
 
 // --- Frame decoding and composition ------------------------------------------
 
+namespace
+{
+
 struct WuffsLoadContext {
 	wuffs_base__image_decoder *dec = nullptr;  ///< Wuffs decoder abstraction
 	wuffs_base__io_buffer *src = nullptr;      ///< Wuffs source buffer
@@ -178,9 +178,11 @@ struct WuffsLoadContext {
 	ImagePtr restore_previous;  ///< Canvas before the previous frame
 };
 
+}  // namespace
+
 // Crops a rectangular region out of a working-format image, so that it can be
 // composited at its original position with dn::blend_image().
-ImagePtr
+static ImagePtr
 crop(const Image &src, wuffs_base__rect_ie_u32 r)
 {
 	uint32_t w = r.max_excl_x - r.min_incl_x;
@@ -196,7 +198,7 @@ crop(const Image &src, wuffs_base__rect_ie_u32 r)
 	return out;
 }
 
-bool
+static bool
 take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 {
 	wuffs_base__more_information minfo = {};
@@ -253,7 +255,7 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 	return true;
 }
 
-void
+static void
 apply_collected_metadata(WuffsLoadContext &ctx)
 {
 	for (Image *im = ctx.result.get(); im; im = im->frame_next.get()) {
@@ -268,7 +270,7 @@ apply_collected_metadata(WuffsLoadContext &ctx)
 	}
 }
 
-bool
+static bool
 load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 	const wuffs_base__frame_config &fc, Error *error)
 {
@@ -340,7 +342,7 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 
 // https://github.com/google/wuffs/blob/main/example/gifplayer/gifplayer.c
 // is pure C, and a good reference.
-bool
+static bool
 load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 {
 	wuffs_base__frame_config fc = {};
@@ -426,7 +428,7 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	return ok;
 }
 
-ImagePtr
+static ImagePtr
 open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 	const OpenContext &octx, Error *error)
 {
@@ -512,7 +514,7 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 	return ctx.result;
 }
 
-ImagePtr
+static ImagePtr
 open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
@@ -527,8 +529,6 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 		wuffs_base__ptr_u8__reader((uint8_t *) data.data(), data.size(), true);
 	return open_wuffs(dec.get(), src, ctx, error);
 }
-
-}  // namespace
 
 // --- Public entry points -----------------------------------------------------
 
@@ -572,8 +572,8 @@ detail::load_wuffs(
 			error);
 	case WUFFS_BASE__FOURCC__TGA:
 		return open_wuffs_using(
-			wuffs_targa__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
-			error);
+			wuffs_targa__decoder__alloc_as__wuffs_base__image_decoder, data,
+			ctx, error);
 	case WUFFS_BASE__FOURCC__WBMP:
 		return open_wuffs_using(
 			wuffs_wbmp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,

@@ -22,12 +22,13 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- In-memory XcursorFile adaptor -------------------------------------------
 // libXcursor checks for EOF rather than -1 on short reads, so this needs to
 // be careful to only ever report exactly as many bytes as were available.
+
+namespace
+{
 
 struct MemXcursorFile {
 	XcursorFile parent;
@@ -35,7 +36,9 @@ struct MemXcursorFile {
 	long position, len;
 };
 
-int
+}  // namespace
+
+static int
 xcursor_read(XcursorFile *file, unsigned char *buf, int len)
 {
 	auto *self = (MemXcursorFile *) file;
@@ -55,14 +58,14 @@ xcursor_read(XcursorFile *file, unsigned char *buf, int len)
 	return int(n);
 }
 
-int
+static int
 xcursor_write(XcursorFile *, unsigned char *, int)
 {
 	errno = EBADF;
 	return -1;
 }
 
-int
+static int
 xcursor_seek(XcursorFile *file, long offset, int whence)
 {
 	auto *self = (MemXcursorFile *) file;
@@ -100,7 +103,7 @@ const XcursorFile kMemXcursorFileAdaptor = {
 // XcursorImage pixels are native-endian, alpha-premultiplied 0xAARRGGBB
 // words (libXcursor already byte swaps into host order for us), exactly
 // the layout pack_argb32_words_to_bgra16() expects.
-ImagePtr
+static ImagePtr
 load_xcursor_image(const XcursorImage *src)
 {
 	if (!src->width || !src->height)
@@ -116,8 +119,6 @@ load_xcursor_image(const XcursorImage *src)
 	image->loops = 0;
 	return image;
 }
-
-}  // namespace
 
 // Cursor files bundle multiple pixel sizes of essentially the same picture,
 // each of which may in turn be animated--map "nominal sizes" to pages,

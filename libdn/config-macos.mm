@@ -20,17 +20,15 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
-void
+static void
 fail(Error *error, const char *message)
 {
 	if (error)
 		*error = {Error::Code::Io, message};
 }
 
-CFStringRef
+static CFStringRef
 make_cfstring(string_view value, Error *error)
 {
 	CFStringRef result = CFStringCreateWithBytes(kCFAllocatorDefault,
@@ -41,7 +39,7 @@ make_cfstring(string_view value, Error *error)
 	return result;
 }
 
-optional<string>
+static optional<string>
 to_utf8(CFStringRef value, Error *error)
 {
 	const CFIndex length = CFStringGetLength(value);
@@ -56,8 +54,6 @@ to_utf8(CFStringRef value, Error *error)
 	return string(bytes.data());
 }
 
-}  // namespace
-
 optional<string>
 config_get(string_view key, Error *error)
 {
@@ -66,9 +62,9 @@ config_get(string_view key, Error *error)
 	CFStringRef cf_key = make_cfstring(key, error);
 	if (!cf_key)
 		return nullopt;
-	CFPropertyListRef value = CFPreferencesCopyValue(cf_key,
-		CFSTR(DAWN_NAMESPACE), kCFPreferencesCurrentUser,
-		kCFPreferencesAnyHost);
+	CFPropertyListRef value =
+		CFPreferencesCopyValue(cf_key, CFSTR(DAWN_NAMESPACE),
+			kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
 	CFRelease(cf_key);
 	if (!value)
 		return nullopt;

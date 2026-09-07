@@ -23,14 +23,12 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- Minimal JPEG dimension sniffing -----------------------------------------
 // We only need pixel counts to pick the largest preview among candidates--
 // actual decoding, along with Exif/ICC extraction, is left to load_jpeg().
 
-int64_t
+static int64_t
 jpeg_pixel_count(const uint8_t *data, size_t len)
 {
 	return detail::jpeg_sof_pixel_count(span<const uint8_t>(data, len));
@@ -50,7 +48,7 @@ jpeg_pixel_count(const uint8_t *data, size_t len)
 // JPEG SubIFDs, and TIFFReadCustomDirectory() takes a privately defined
 // struct that may not be omitted.)
 
-bool
+static bool
 tiffer_find(const tiffer *self, uint16_t tag, tiffer_entry *entry)
 {
 	// Note that we could employ binary search, because tags must be ordered:
@@ -68,7 +66,7 @@ tiffer_find(const tiffer *self, uint16_t tag, tiffer_entry *entry)
 	return false;
 }
 
-bool
+static bool
 tiffer_find_integer(const tiffer *self, uint16_t tag, int64_t *i)
 {
 	tiffer_entry entry = {};
@@ -76,7 +74,7 @@ tiffer_find_integer(const tiffer *self, uint16_t tag, int64_t *i)
 }
 
 // In case of failure, an entry with a zero "remaining_count" is returned.
-tiffer_entry
+static tiffer_entry
 tiff_ep_subifds_init(const tiffer *T)
 {
 	tiffer_entry entry = {};
@@ -84,7 +82,7 @@ tiff_ep_subifds_init(const tiffer *T)
 	return entry;
 }
 
-bool
+static bool
 tiff_ep_subifds_next(const tiffer *T, tiffer_entry *subifds, tiffer *subT)
 {
 	// XXX: Except for a zero "remaining_count", all conditions are errors,
@@ -98,7 +96,7 @@ tiff_ep_subifds_next(const tiffer *T, tiffer_entry *subifds, tiffer *subT)
 	return true;
 }
 
-bool
+static bool
 tiff_ep_find_main(const tiffer *T, tiffer *outputT)
 {
 	// This is a mandatory field.
@@ -121,13 +119,18 @@ tiff_ep_find_main(const tiffer *T, tiffer *outputT)
 	return false;
 }
 
+namespace
+{
+
 struct TiffEpJpeg {
 	const uint8_t *jpeg = nullptr;  ///< JPEG data stream
 	size_t jpeg_length = 0;         ///< JPEG data stream length
 	int64_t pixels = 0;             ///< Number of pixels in the JPEG
 };
 
-void
+}  // namespace
+
+static void
 tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 {
 	// This is a mandatory field.
@@ -172,7 +175,7 @@ tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 	}
 }
 
-bool
+static bool
 tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out)
 {
 	// This is a mandatory field.
@@ -193,7 +196,7 @@ tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out)
 	return true;
 }
 
-ImagePtr
+static ImagePtr
 load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 {
 	// ISO/DIS 12234-2 is a fuck-up that says this should be in "IFD0",
@@ -262,8 +265,6 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	// from within their MakerNote.
 	return image;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_tiff_ep(

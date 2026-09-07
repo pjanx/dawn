@@ -22,15 +22,12 @@ using namespace std;
 namespace dawn
 {
 
-namespace
-{
-
 namespace fs = filesystem;
 
 // resvg documents share the project pixmap dimension limit.
-constexpr double kMaxDimension = double(dawn::kMaxDimension);
+constexpr double kMaxRenderDimension = double(dawn::kMaxDimension);
 
-const char *
+static const char *
 resvg_error_string(int32_t err)
 {
 	switch (err) {
@@ -50,6 +47,9 @@ resvg_error_string(int32_t err)
 		return "general failure";
 	}
 }
+
+namespace
+{
 
 class ResvgRenderClosure : public RenderClosure
 {
@@ -73,6 +73,8 @@ public:
 		double scale, Cmm *cmm, Profile *target, Error *error);
 };
 
+}  // namespace
+
 ImagePtr
 ResvgRenderClosure::render(Cmm *cmm, Profile *target, double scale)
 {
@@ -85,7 +87,7 @@ ResvgRenderClosure::render_internal(
 	double scale, Cmm *cmm, Profile *target, Error *error)
 {
 	double w = ceil(width_ * scale), h = ceil(height_ * scale);
-	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
+	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
 		set_error(error, "image dimensions overflow");
 		return nullptr;
 	}
@@ -117,8 +119,6 @@ ResvgRenderClosure::render_internal(
 	ensure_working_premul(*image, finish_ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_resvg(

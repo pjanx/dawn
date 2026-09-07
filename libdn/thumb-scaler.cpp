@@ -32,39 +32,37 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 constexpr uint32_t kBatchSlots = 2;
 constexpr uint32_t kMaxBatchReqs = 64;
 constexpr uint32_t kMaxDescriptorSets = kMaxBatchReqs * 31;
 constexpr uint64_t kReducedBudget = 256ull << 20;
 
-uint64_t
+static uint64_t
 align_up(uint64_t v, uint64_t a)
 {
 	return a ? (v + a - 1) / a * a : v;
 }
 
-uint32_t
+static uint32_t
 ceil_div(uint32_t a, uint32_t b)
 {
 	return b ? (a + b - 1) / b : 0;
 }
 
-uint32_t
+static uint32_t
 reduced_dim(uint32_t n, uint32_t k)
 {
 	return k >= 32 ? 1 : ceil_div(n, 1u << k);
 }
 
-bool
+static bool
 higher(ThumbScaler::Priority a, ThumbScaler::Priority b)
 {
 	return static_cast<uint8_t>(a) < static_cast<uint8_t>(b);
 }
 
-bool
+static bool
 check_vk(VkResult r, const char *what, string *error)
 {
 	if (r == VK_SUCCESS)
@@ -75,12 +73,17 @@ check_vk(VkResult r, const char *what, string *error)
 	return false;
 }
 
+namespace
+{
+
 struct MemoryType {
 	uint32_t index = UINT32_MAX;
 	VkMemoryPropertyFlags flags = 0;
 };
 
-MemoryType
+}  // namespace
+
+static MemoryType
 pick_memory(VkPhysicalDevice phys, uint32_t bits,
 	VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred)
 {
@@ -103,7 +106,7 @@ pick_memory(VkPhysicalDevice phys, uint32_t bits,
 	return best;
 }
 
-VkShaderModule
+static VkShaderModule
 make_shader(
 	VkDevice device, const uint32_t *code, uint32_t words, string *error)
 {
@@ -118,7 +121,7 @@ make_shader(
 	return shader;
 }
 
-bool
+static bool
 job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 {
 	if (!job.pixels || job.pixels->empty() || !job.src_w || !job.src_h ||
@@ -137,8 +140,6 @@ job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 	const uint64_t needed = uint64_t(job.stride) * (job.src_h - 1) + row_bytes;
 	return *bytes <= SIZE_MAX && needed <= available;
 }
-
-}  // namespace
 
 struct ThumbScaler::Impl {
 	struct Slot {
@@ -889,12 +890,12 @@ ThumbScaler::Impl::build_batch(
 			orientation_display_size(item.req.src_w, item.req.src_h,
 				item.req.orientation, &item.display_w, &item.display_h);
 			item.mid_off = align_up(mid_bytes, alignment);
-			mid_bytes = item.mid_off + VkDeviceSize(item.req.out_w) *
-				item.display_h * kBytesPerPixel;
+			mid_bytes = item.mid_off +
+				VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
 			item.output_off = align_up(output_bytes, alignment);
 			item.readback_off = align_up(readback_bytes, alignment);
-			const VkDeviceSize n = VkDeviceSize(item.req.out_w) *
-				item.req.out_h * kBytesPerPixel;
+			const VkDeviceSize n =
+				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
 			output_bytes = item.output_off + n;
 			readback_bytes = item.readback_off + n;
 			b.items.push_back(std::move(item));

@@ -1555,9 +1555,6 @@ exif_orientation(span<const uint8_t> exif)
 
 // --- Loaders -----------------------------------------------------------------
 
-namespace
-{
-
 // The order is the default loading order.
 constexpr Loader kLoaders[] = {
 	{"libjpeg-turbo", &detail::load_jpeg, "JPEG", {"image/jpeg"}, {}},
@@ -1582,8 +1579,8 @@ constexpr Loader kLoaders[] = {
 	{"ICNS", &detail::load_icns, "ICNS", {"image/x-icns"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF/EP previews", &detail::load_tiff_ep, "raw photos",
-		{"image/x-dcraw"}, {}},
+	{"TIFF/EP previews", &detail::load_tiff_ep, "raw photos", {"image/x-dcraw"},
+		{}},
 
 	{"LibRaw",
 #if DAWN_WITH_LIBRAW
@@ -1694,8 +1691,6 @@ constexpr Loader kLoaders[] = {
 #endif
 		{}, {}, {}},
 };
-
-}  // namespace
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
 // photo formats: someone else will maintain the list of file extensions for us.

@@ -24,10 +24,8 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
-QString
+static QString
 xdg_home_dir(const char *var, const char *default_rel)
 {
 	const QString env = qEnvironmentVariable(var);
@@ -39,7 +37,7 @@ xdg_home_dir(const char *var, const char *default_rel)
 	return QDir::cleanPath(QDir(home).filePath(QString::fromUtf8(default_rel)));
 }
 
-vector<QString>
+static vector<QString>
 split_search_path(const QString &value)
 {
 	vector<QString> out;
@@ -57,7 +55,7 @@ split_search_path(const QString &value)
 	return out;
 }
 
-void
+static void
 append_unique(vector<QString> &dirs, const QString &dir)
 {
 	if (dir.isEmpty() || !QDir::isAbsolutePath(dir))
@@ -70,7 +68,7 @@ append_unique(vector<QString> &dirs, const QString &dir)
 	dirs.push_back(clean);
 }
 
-QString
+static QString
 read_text_file(const QString &path)
 {
 	QFile file(path);
@@ -81,6 +79,9 @@ read_text_file(const QString &path)
 	text.replace(u'\r', u'\n');
 	return text;
 }
+
+namespace
+{
 
 struct MimeGlob {
 	QString type;
@@ -95,7 +96,9 @@ struct MimeDb {
 	vector<MimeGlob> globs;
 };
 
-void
+}  // namespace
+
+static void
 read_mime_subclasses(const QString &path, MimeDb &db)
 {
 	const QString text = read_text_file(path);
@@ -116,7 +119,7 @@ read_mime_subclasses(const QString &path, MimeDb &db)
 	}
 }
 
-bool
+static bool
 read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 {
 	QFile file(path);
@@ -146,7 +149,8 @@ read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 		MimeGlob g;
 		g.type = type;
 		g.glob = glob.toLower();
-		g.glob_re = QRegularExpression::fromWildcard(g.glob, Qt::CaseInsensitive);
+		g.glob_re =
+			QRegularExpression::fromWildcard(g.glob, Qt::CaseInsensitive);
 		if (is_globs2)
 			g.weight = f[0].toInt();
 		db.globs.push_back(std::move(g));
@@ -154,7 +158,7 @@ read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 	return true;
 }
 
-const MimeDb &
+static const MimeDb &
 mime_db()
 {
 	static const MimeDb db = [] {
@@ -176,7 +180,7 @@ mime_db()
 	return db;
 }
 
-void
+static void
 add_applying_transitive_closure(const QString &element,
 	const unordered_map<QString, unordered_set<QString>> &relation,
 	unordered_set<QString> &output)
@@ -192,8 +196,6 @@ add_applying_transitive_closure(const QString &element,
 	for (const QString &sub : it->second)
 		add_applying_transitive_closure(sub, relation, output);
 }
-
-}  // namespace
 
 vector<QString>
 xdg_data_dirs()

@@ -26,20 +26,17 @@
 using namespace std;
 namespace fs = filesystem;
 
-namespace
-{
+static mutex io_mu;
+static atomic<bool> any_fail{false};
 
-mutex io_mu;
-atomic<bool> any_fail{false};
-
-void
+static void
 log_err(const string &msg)
 {
 	lock_guard lock(io_mu);
 	fprintf(stderr, "%s\n", msg.c_str());
 }
 
-void
+static void
 fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 {
 	const float scale = min(1.0f, min(512.0f / float(w), 256.0f / float(h)));
@@ -47,7 +44,7 @@ fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 	*out_h = max(1u, uint32_t(float(h) * scale + 0.5f));
 }
 
-fs::path
+static fs::path
 thumb_path(const fs::path &input)
 {
 	const fs::path dir = input.parent_path();
@@ -55,7 +52,7 @@ thumb_path(const fs::path &input)
 	return dir / (stem + ".thumb.webp");
 }
 
-bool
+static bool
 process_one(const string &path, dawn::ScaleScaler *scaler)
 {
 	dawn::OpenContext ctx;
@@ -120,6 +117,9 @@ process_one(const string &path, dawn::ScaleScaler *scaler)
 	return true;
 }
 
+namespace
+{
+
 struct JobQueue {
 	mutex mu;
 	condition_variable cv;
@@ -141,7 +141,9 @@ struct JobQueue {
 	}
 };
 
-void
+}  // namespace
+
+static void
 worker(JobQueue *jobs, dawn::ScaleScaler *scaler)
 {
 	for (;;) {
@@ -160,13 +162,11 @@ worker(JobQueue *jobs, dawn::ScaleScaler *scaler)
 	}
 }
 
-void
+static void
 usage(const char *argv0)
 {
 	fprintf(stderr, "Usage: %s [-j N] IMAGE...\n", argv0);
 }
-
-}  // namespace
 
 int
 main(int argc, char **argv)

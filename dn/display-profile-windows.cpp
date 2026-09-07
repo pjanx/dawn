@@ -25,8 +25,6 @@ using namespace std;
 
 namespace dn
 {
-namespace
-{
 
 // Monitor class GUID {4d36e96e-e325-11ce-bfc1-08002be10318}
 constexpr wchar_t kSystemClass[] =
@@ -38,7 +36,7 @@ constexpr wchar_t kUserLeaf[] =
 constexpr wchar_t kUserParent[] =
 	L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ICM";
 
-DisplayProfile
+static DisplayProfile
 load_display_profile(QScreen *screen)
 {
 	DisplayProfile result;
@@ -80,6 +78,9 @@ load_display_profile(QScreen *screen)
 	return result;
 }
 
+namespace
+{
+
 struct Watch {
 	HKEY key = nullptr;
 	HANDLE event = nullptr;
@@ -93,6 +94,8 @@ struct Watch {
 	bool open(HKEY root, const wchar_t *path);
 	bool arm();
 };
+
+}  // namespace
 
 void
 Watch::close()
@@ -129,6 +132,9 @@ Watch::arm()
 			   this->event, TRUE) == ERROR_SUCCESS;
 }
 
+namespace
+{
+
 struct WcsSource final : DisplayProfileSource {
 	function<void()> on_change;
 	Watch system;
@@ -138,6 +144,8 @@ struct WcsSource final : DisplayProfileSource {
 	DisplayProfile load(QScreen *screen) override;
 	bool bind(Watch &watch, HKEY root, const wchar_t *path);
 };
+
+}  // namespace
 
 bool
 WcsSource::bind(Watch &watch, HKEY root, const wchar_t *path)
@@ -176,7 +184,6 @@ WcsSource::load(QScreen *screen)
 	return load_display_profile(screen);
 }
 
-}  // namespace
 unique_ptr<DisplayProfileSource>
 make_display_profile_source()
 {

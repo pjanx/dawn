@@ -145,6 +145,8 @@ struct Spec {
 	Action action;
 };
 
+}  // namespace
+
 constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Left, Action::Sidebar},
 	{Kind::Icon, Slot::Left, Action::Back},
@@ -177,6 +179,9 @@ constexpr Spec kItems[] = {
 	{Kind::Icon, Slot::Right, Action::DarkMode},
 	{Kind::Icon, Slot::Right, Action::Fullscreen},
 };
+
+namespace
+{
 
 struct ThumbJob {
 	uint64_t gen = 0;
@@ -304,8 +309,7 @@ is_image_filename(const QString &name)
 }
 
 static shared_ptr<dawn::Profile>
-profile_from_icc(
-	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
+profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
 	if (icc && !icc->empty()) {
 		if (auto profile = cmm.get_profile(*icc))
@@ -361,8 +365,8 @@ static void
 thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
 	uint32_t *out_h)
 {
-	thumb_dest_params(gw, gh, b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b),
-		out_w, out_h);
+	thumb_dest_params(
+		gw, gh, b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b), out_w, out_h);
 }
 
 static size_t
@@ -416,8 +420,8 @@ caption_name(const string &name)
 static float
 row_h(const Browser &b)
 {
-	return float(b.kit_.px(float(b.thumb_size_)) + 2 * chrome(b.kit_) +
-		label_h(b));
+	return float(
+		b.kit_.px(float(b.thumb_size_)) + 2 * chrome(b.kit_) + label_h(b));
 }
 
 static bool
@@ -576,8 +580,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	const int tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(job.thumb_size) * double(job.dpr)))));
 	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
-	const ThumbnailSource source = thumbnail_source(
-		QString::fromStdString(job.path), job.mtime, job.size);
+	const ThumbnailSource source =
+		thumbnail_source(QString::fromStdString(job.path), job.mtime, job.size);
 	if (job.pending) {
 		if (const ThumbnailTierPixels *pixels = job.pending->find(tier)) {
 			result.ram = *pixels->pixels;
@@ -630,8 +634,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	dawn::OpenContext ctx;
 	ctx.uri = job.path;
 	ctx.cmm = cmm;
-	ctx.screen_profile =
-		job.cacheable ? cmm->get_profile_display_p3() : screen;
+	ctx.screen_profile = job.cacheable ? cmm->get_profile_display_p3() : screen;
 	ctx.first_frame_only = true;
 	ctx.screen_dpi = 96;
 
@@ -650,8 +653,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 			thumb_dest_params(result.geometry_w, result.geometry_h, h, 1.f,
 				h * kThumbWide, &ow, &oh);
 		} else {
-			thumb_dest_params(result.geometry_w, result.geometry_h, job.thumb_size,
-				job.dpr, job.atlas_max, &ow, &oh);
+			thumb_dest_params(result.geometry_w, result.geometry_h,
+				job.thumb_size, job.dpr, job.atlas_max, &ow, &oh);
 		}
 		const double scale = min(double(ow) / double(result.geometry_w),
 			double(oh) / double(result.geometry_h));
@@ -669,8 +672,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	result.transfer = profile_transfer(ctx.screen_profile.get());
 	result.gpu_purpose = job.cacheable
 		? (job.priority == Thumbnailer::Priority::Dimensions
-				? GpuPurpose::CacheOnly
-				: GpuPurpose::CacheDisplay)
+				  ? GpuPurpose::CacheOnly
+				  : GpuPurpose::CacheDisplay)
 		: GpuPurpose::Display;
 	result.tier = tier;
 	result.persistent_checked = job.cacheable;
@@ -769,7 +772,7 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			gpu.src_h = src.height;
 			gpu.outputs = job.cacheable
 				? bundle_outputs(
-					update.geometry_w, update.geometry_h, update.tier)
+					  update.geometry_w, update.geometry_h, update.tier)
 				: vector<dawn::ThumbScaler::Job::Output>{{ow, oh, -1}};
 			gpu.orientation = update.orientation;
 			gpu.transfer = update.transfer;
@@ -927,14 +930,14 @@ repack_atlas(Browser &b, Browser::File &wanted)
 			if (&f == &wanted || thumb_in_band(b, f, pad))
 				active.push_back(&f);
 		}
-		sort(active.begin(), active.end(), [](const Browser::File *a,
-										 const Browser::File *other) {
-			if (a->ram_h != other->ram_h)
-				return a->ram_h > other->ram_h;
-			return a->ram_w > other->ram_w;
-		});
+		sort(active.begin(), active.end(),
+			[](const Browser::File *a, const Browser::File *other) {
+				if (a->ram_h != other->ram_h)
+					return a->ram_h > other->ram_h;
+				return a->ram_w > other->ram_w;
+			});
 		for (int side = max(Sheet::kSize, b.sheet_.w); side <= cap;
-			 side = side < cap ? min(cap, side * 2) : cap + 1) {
+			side = side < cap ? min(cap, side * 2) : cap + 1) {
 			Sheet fresh(side, false);
 			vector<Sheet::Packed> placements;
 			placements.reserve(active.size());
@@ -954,8 +957,8 @@ repack_atlas(Browser &b, Browser::File &wanted)
 			for (size_t i = 0; i < active.size(); ++i) {
 				Browser::File &f = *active[i];
 				const Sheet::Packed &slot = placements[i];
-				uploads.push_back({f.ram.data(), f.ram_w, f.ram_h,
-					slot.x, slot.y});
+				uploads.push_back(
+					{f.ram.data(), f.ram_w, f.ram_h, slot.x, slot.y});
 			}
 			if (uploads.empty() || !renderer->rebuild_thumbs(uploads, side))
 				return false;
@@ -1018,8 +1021,8 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			bundle->image_height = finish.image_h;
 			bundle->top_tier = finish.requested_tier;
 			for (dawn::ThumbScaler::Result::Output &output : res.outputs) {
-				auto pixels = make_shared<const vector<uint16_t>>(
-					std::move(output.data));
+				auto pixels =
+					make_shared<const vector<uint16_t>>(std::move(output.data));
 				bundle->tiers.push_back({output.tag, output.width,
 					output.height, std::move(pixels)});
 			}
@@ -1061,8 +1064,8 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			display.tier = finish.requested_tier;
 			display.screen_icc = std::move(finish.screen_icc);
 			Browser *browser = &b;
-			if (!b.thumbnailer_.submit(b.thumbnail_client_, finish.gen,
-					finish.priority,
+			if (!b.thumbnailer_.submit(
+					b.thumbnail_client_, finish.gen, finish.priority,
 					[browser, display = std::move(display)]() mutable {
 						return display_thumb(browser, std::move(display));
 					},
@@ -1199,8 +1202,8 @@ enqueue_thumbs(Browser &b)
 		return;
 
 	const float pad = row_h(b) * kPrefetchRows;
-	const int target_tier = thumbnail_tier_for_height(max(
-		1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
+	const int target_tier = thumbnail_tier_for_height(
+		max(1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
 	vector<int> vis, pre, background;
 	for (int i = 0; i < int(b.files_.size()); ++i) {
 		const Browser::File &f = b.files_[size_t(i)];
@@ -1566,8 +1569,7 @@ layout_grid(Browser &b, Rect area)
 			f.cap_text =
 				b.kit_.elide_lines(caption_name(f.name), ow, kCapLines, false);
 			f.cap = {0, 0, ow,
-				b.kit_.text_height(f.cap_text, ow, false) +
-					b.kit_.px(kCapPad)};
+				b.kit_.text_height(f.cap_text, ow, false) + b.kit_.px(kCapPad)};
 		}
 		if (!row.empty() && row_w + gap + ow > avail)
 			flush();
@@ -2122,8 +2124,8 @@ set_thumb_size(Browser &b, int size)
 	++b.thumb_gen_;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
-	const int target_tier = thumbnail_tier_for_height(max(
-		1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
+	const int target_tier = thumbnail_tier_for_height(
+		max(1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
 	for (Browser::File &f : b.files_) {
 		f.ram_pending = false;
 		f.reservation = 0;
@@ -2868,9 +2870,8 @@ Browser::hist_can_forward() const
 }
 
 void
-Browser::set_screen_profile(
-	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile,
-	bool force_reload)
+Browser::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
+	shared_ptr<dawn::Profile> profile, bool force_reload)
 {
 	auto screen_icc = profile
 		? make_shared<const vector<uint8_t>>(profile->to_bytes())

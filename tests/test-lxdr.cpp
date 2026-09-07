@@ -22,11 +22,8 @@
 using namespace std;
 namespace inst = dawn::ipc::instance;
 
-namespace
-{
-
 template <typename T>
-vector<byte>
+static vector<byte>
 encoded(const T &value)
 {
 	vector<byte> buf;
@@ -36,7 +33,7 @@ encoded(const T &value)
 	return buf;
 }
 
-bool
+static bool
 bytes_eq(span<const byte> got, span<const uint8_t> want)
 {
 	if (got.size() != want.size())
@@ -48,7 +45,7 @@ bytes_eq(span<const byte> got, span<const uint8_t> want)
 	return true;
 }
 
-void
+static void
 check_golden(
 	const char *label, const vector<byte> &got, span<const uint8_t> want)
 {
@@ -61,7 +58,7 @@ check_golden(
 	fprintf(stderr, "\n");
 }
 
-void
+static void
 test_round_trip_hello_reply()
 {
 	{
@@ -102,7 +99,7 @@ test_round_trip_hello_reply()
 	}
 }
 
-void
+static void
 test_round_trip_result()
 {
 	{
@@ -131,7 +128,7 @@ test_round_trip_result()
 	}
 }
 
-void
+static void
 test_round_trip_frames()
 {
 	{
@@ -248,7 +245,7 @@ test_round_trip_frames()
 	}
 }
 
-void
+static void
 test_goldens()
 {
 	// Hello{1, "b"}: u32be version, u32be len+"b"
@@ -285,7 +282,7 @@ test_goldens()
 		encoded(inst::Error{inst::ErrorCode::NotFound, "x"}), kError);
 }
 
-void
+static void
 test_truncation()
 {
 	const vector<byte> full = encoded(inst::Hello{1, "b"});
@@ -306,7 +303,7 @@ test_truncation()
 	CHECK(view.session == "b");
 }
 
-void
+static void
 test_trailing_bytes()
 {
 	vector<byte> buf = encoded(inst::Hello{1, "b"});
@@ -319,7 +316,7 @@ test_trailing_bytes()
 	CHECK(!ok || dec.remaining() != 0);
 }
 
-void
+static void
 test_invalid_utf8()
 {
 	{
@@ -340,7 +337,7 @@ test_invalid_utf8()
 	}
 }
 
-void
+static void
 test_zero_and_unknown_enum()
 {
 	for (byte tag : {byte{0}, byte{99}}) {
@@ -351,7 +348,7 @@ test_zero_and_unknown_enum()
 	}
 }
 
-void
+static void
 test_unknown_union_tag()
 {
 	const byte raw[] = {byte{99}};
@@ -360,7 +357,7 @@ test_unknown_union_tag()
 	CHECK(!decode(dec, view));
 }
 
-void
+static void
 test_huge_array_count()
 {
 	const size_t n = dawn::ipc::Decoder::kMaxElements + 1;
@@ -389,8 +386,6 @@ test_huge_array_count()
 		CHECK(dec.error() == dawn::ipc::DecodeError::Limit);
 	}
 }
-
-}  // namespace
 
 int
 main()

@@ -21,10 +21,8 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
-void
+static void
 fail(Error *error, const char *operation, LSTATUS status = ERROR_SUCCESS)
 {
 	if (!error)
@@ -35,7 +33,7 @@ fail(Error *error, const char *operation, LSTATUS status = ERROR_SUCCESS)
 		error->message += ": Windows error " + to_string(status);
 }
 
-optional<wstring>
+static optional<wstring>
 to_wide(string_view value, Error *error)
 {
 	if (value.empty())
@@ -48,14 +46,14 @@ to_wide(string_view value, Error *error)
 	}
 	wstring out(size_t(size), L'\0');
 	if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-		int(value.size()), out.data(), size)) {
+			int(value.size()), out.data(), size)) {
 		fail(error, "cannot convert configuration string", GetLastError());
 		return nullopt;
 	}
 	return out;
 }
 
-optional<string>
+static optional<string>
 to_utf8(wstring_view value, Error *error)
 {
 	if (value.empty())
@@ -68,19 +66,24 @@ to_utf8(wstring_view value, Error *error)
 	}
 	string out(size_t(size), '\0');
 	if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-		int(value.size()), out.data(), size, nullptr, nullptr)) {
+			int(value.size()), out.data(), size, nullptr, nullptr)) {
 		fail(error, "cannot convert configuration string", GetLastError());
 		return nullopt;
 	}
 	return out;
 }
 
+namespace
+{
+
 struct RegistryName {
 	wstring subkey;
 	wstring value;
 };
 
-optional<RegistryName>
+}  // namespace
+
+static optional<RegistryName>
 registry_name(string_view key, Error *error)
 {
 	const size_t slash = key.rfind('/');
@@ -99,8 +102,6 @@ registry_name(string_view key, Error *error)
 		return nullopt;
 	return RegistryName{std::move(*wide_subkey), std::move(*wide_value)};
 }
-
-}  // namespace
 
 optional<string>
 config_get(string_view key, Error *error)

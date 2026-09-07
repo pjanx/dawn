@@ -28,15 +28,12 @@ using namespace std;
 namespace dawn
 {
 
-namespace
-{
-
 // All pages of a document share it, and outlive load_cgpdf().
 using DocumentPtr = shared_ptr<CGPDFDocument>;
 
 // The crop box is what a page means to show, and the drawing transform
 // takes care of both its origin and the page's /Rotate.
-void
+static void
 cgpdf_page_size(CGPDFPageRef page, double *width, double *height)
 {
 	CGRect box = CGPDFPageGetBoxRect(page, kCGPDFCropBox);
@@ -47,6 +44,9 @@ cgpdf_page_size(CGPDFPageRef page, double *width, double *height)
 		*height = box.size.width;
 	}
 }
+
+namespace
+{
 
 class CGPDFRenderClosure : public RenderClosure
 {
@@ -64,6 +64,8 @@ public:
 	ImagePtr render_internal(
 		double scale, const OpenContext &ctx, Error *error);
 };
+
+}  // namespace
 
 ImagePtr
 CGPDFRenderClosure::render(Cmm *cmm, Profile *target, double scale)
@@ -156,8 +158,6 @@ CGPDFRenderClosure::render_internal(
 	ensure_working_premul(*image, ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
-
-}  // namespace
 
 ImagePtr
 detail::load_cgpdf(

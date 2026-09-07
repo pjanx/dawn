@@ -21,8 +21,6 @@ using namespace std;
 
 namespace dawn
 {
-namespace
-{
 
 // --- Decoding context --------------------------------------------------------
 
@@ -34,6 +32,9 @@ constexpr size_t kBoxChunk = 4096;
 // the BGRA working format. Requesting float output instead would only be
 // truncated back to 16 bits on the way in.
 constexpr JxlPixelFormat kFormat = {4, JXL_TYPE_UINT16, JXL_LITTLE_ENDIAN, 0};
+
+namespace
+{
 
 struct JxlLoadContext {
 	JxlDecoder *dec = nullptr;  ///< libjxl decoder
@@ -55,13 +56,15 @@ struct JxlLoadContext {
 	~JxlLoadContext();
 };
 
+}  // namespace
+
 JxlLoadContext::~JxlLoadContext()
 {
 	if (dec)
 		JxlDecoderDestroy(dec);
 }
 
-bool
+static bool
 setup_decoder(JxlLoadContext &ctx, span<const uint8_t> data, Error *error)
 {
 	if (JxlDecoderSubscribeEvents(ctx.dec,
@@ -94,7 +97,7 @@ setup_decoder(JxlLoadContext &ctx, span<const uint8_t> data, Error *error)
 // --- Metadata boxes ----------------------------------------------------------
 
 // Closes off the box in progress, trimming it to what libjxl really wrote.
-void
+static void
 finish_box(JxlLoadContext &ctx)
 {
 	if (!ctx.box_dest)
@@ -108,7 +111,7 @@ finish_box(JxlLoadContext &ctx)
 
 // Starts collecting a box, if it is one of the two we care about. The rest
 // are left alone for libjxl to skip over.
-void
+static void
 start_box(JxlLoadContext &ctx)
 {
 	finish_box(ctx);
@@ -128,7 +131,7 @@ start_box(JxlLoadContext &ctx)
 }
 
 // Doubles the payload buffer of a box that outgrew it.
-void
+static void
 expand_box(JxlLoadContext &ctx)
 {
 	size_t used = ctx.box.size() - JxlDecoderReleaseBoxBuffer(ctx.dec);
@@ -141,7 +144,7 @@ expand_box(JxlLoadContext &ctx)
 // payload starts with a four-byte big-endian offset to the TIFF header
 // (ISO/IEC 18181-2). Left in place, the Exif parser would read that offset
 // as the byte order mark and reject the whole block.
-vector<uint8_t>
+static vector<uint8_t>
 exif_payload(const vector<uint8_t> &box)
 {
 	if (box.size() < 4)
@@ -158,7 +161,7 @@ exif_payload(const vector<uint8_t> &box)
 
 // The profile the returned pixels are actually in. We do no conversion here;
 // dawn colour-manages from this, as it does for every other loader.
-void
+static void
 take_icc_profile(JxlLoadContext &ctx)
 {
 	size_t size = 0;
@@ -177,7 +180,7 @@ take_icc_profile(JxlLoadContext &ctx)
 
 // Frame durations count ticks, whose length the codestream header defines as
 // a fraction of a second.
-bool
+static bool
 take_frame_header(JxlLoadContext &ctx, Error *error)
 {
 	JxlFrameHeader frame = {};
@@ -195,7 +198,7 @@ take_frame_header(JxlLoadContext &ctx, Error *error)
 	return true;
 }
 
-bool
+static bool
 bind_frame_buffer(JxlLoadContext &ctx, Error *error)
 {
 	size_t size = 0;
@@ -214,7 +217,7 @@ bind_frame_buffer(JxlLoadContext &ctx, Error *error)
 	return true;
 }
 
-bool
+static bool
 append_decoded_frame(JxlLoadContext &ctx, Error *error)
 {
 	// This also catches a frame arriving before the header we subscribed to.
@@ -247,7 +250,7 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 
 // Pumps the decoder once, dispatching whatever it has to report. Returns
 // false on failure, and sets `done` once there is nothing left to decode.
-bool
+static bool
 process_event(JxlLoadContext &ctx, bool *done, Error *error)
 {
 	switch (JxlDecoderProcessInput(ctx.dec)) {
@@ -292,8 +295,6 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 	}
 	return true;
 }
-
-}  // namespace
 
 // --- Public entry point ------------------------------------------------------
 

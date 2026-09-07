@@ -30,10 +30,7 @@ namespace fs = filesystem;
 #error DAWN_TEST_FIXTURES_DIR must be defined
 #endif
 
-namespace
-{
-
-dawn::ImagePtr
+static dawn::ImagePtr
 load(const char *name, const vector<string> &loaders, shared_ptr<dawn::Cmm> cmm,
 	shared_ptr<dawn::Profile> screen)
 {
@@ -53,7 +50,7 @@ load(const char *name, const vector<string> &loaders, shared_ptr<dawn::Cmm> cmm,
 
 // Compares the ImageIO decoding of a fixture against its default one,
 // which is whatever loader the table would normally pick for it.
-dawn::ImagePtr
+static dawn::ImagePtr
 compare(const char *name, int tolerance, shared_ptr<dawn::Profile> screen)
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -101,7 +98,7 @@ compare(const char *name, int tolerance, shared_ptr<dawn::Profile> screen)
 
 // PNG decodes losslessly either way, so the identity path must be exact
 // but for premultiplication rounding.
-void
+static void
 test_solids()
 {
 	constexpr int tolerance = 2 * 257;
@@ -116,7 +113,7 @@ test_solids()
 
 // Both loaders hand lcms2 the same embedded Display P3 profile, so both must
 // perform exactly one conversion into an AdobeRGB-like screen profile.
-void
+static void
 test_no_double_conversion()
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -139,8 +136,6 @@ test_no_double_conversion()
 	CHECK(p3_red[0] + 1000 < srgb_red[0]);
 	CHECK(!image->profile_assumed);
 }
-
-}  // namespace
 
 int
 main()

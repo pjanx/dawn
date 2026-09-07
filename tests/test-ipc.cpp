@@ -31,10 +31,10 @@
 using namespace std;
 namespace inst = dawn::ipc::instance;
 
+#ifndef _WIN32
 namespace
 {
 
-#ifndef _WIN32
 struct SocketPair {
 	int fds[2] = {-1, -1};
 
@@ -53,7 +53,9 @@ struct SocketPair {
 	explicit operator bool() const { return fds[0] >= 0; }
 };
 
-bool
+}  // namespace
+
+static bool
 write_all(int fd, const void *p, size_t n)
 {
 	const auto *b = static_cast<const uint8_t *>(p);
@@ -72,7 +74,7 @@ write_all(int fd, const void *p, size_t n)
 	return true;
 }
 
-void
+static void
 put_u32be(uint8_t *out, uint32_t n)
 {
 	out[0] = uint8_t((n >> 24) & 0xff);
@@ -83,7 +85,7 @@ put_u32be(uint8_t *out, uint32_t n)
 
 #endif
 
-bool
+static bool
 payload_eq(const vector<byte> &got, span<const uint8_t> want)
 {
 	if (got.size() != want.size())
@@ -96,7 +98,7 @@ payload_eq(const vector<byte> &got, span<const uint8_t> want)
 }
 
 #ifndef _WIN32
-void
+static void
 test_fragmented()
 {
 	SocketPair pair;
@@ -125,7 +127,7 @@ test_fragmented()
 	CHECK(payload_eq(got, kPayload));
 }
 
-void
+static void
 test_two_frames_one_write()
 {
 	SocketPair pair;
@@ -155,7 +157,7 @@ test_two_frames_one_write()
 	CHECK(payload_eq(second, kB));
 }
 
-void
+static void
 test_empty_payload()
 {
 	SocketPair pair;
@@ -171,7 +173,7 @@ test_empty_payload()
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 }
 
-void
+static void
 test_oversize_length()
 {
 	SocketPair pair;
@@ -187,7 +189,7 @@ test_oversize_length()
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 }
 
-void
+static void
 test_write_read_pair()
 {
 	SocketPair pair;
@@ -216,7 +218,7 @@ test_write_read_pair()
 // on, and neither half is exercised by the loopback tests above.
 constexpr char kService[] = "test";
 
-void
+static void
 test_listen_arbitrates()
 {
 	auto first = dawn::ipc::Endpoint::listen(kService);
@@ -229,7 +231,7 @@ test_listen_arbitrates()
 	CHECK(second.status == dawn::ipc::Endpoint::ListenStatus::InUse);
 }
 
-void
+static void
 test_endpoint_roundtrip()
 {
 	auto listen = dawn::ipc::Endpoint::listen(kService);
@@ -284,7 +286,7 @@ constexpr char kInstanceService[] = "test-instance";
 constexpr char kSession[] = "test-session";
 constexpr uint32_t kMaxPayload = 4096;
 
-vector<byte>
+static vector<byte>
 frame_bytes(const inst::Frame &frame)
 {
 	vector<byte> buf;
@@ -294,7 +296,7 @@ frame_bytes(const inst::Frame &frame)
 	return buf;
 }
 
-inst::Frame
+static inst::Frame
 hello_frame(uint32_t version, string_view session)
 {
 	inst::Hello hello;
@@ -305,7 +307,7 @@ hello_frame(uint32_t version, string_view session)
 	return frame;
 }
 
-inst::Frame
+static inst::Frame
 open_frame(uint64_t id)
 {
 	inst::OpenRequest open;
@@ -318,7 +320,7 @@ open_frame(uint64_t id)
 	return frame;
 }
 
-inst::Frame
+static inst::Frame
 cancel_frame(uint64_t id)
 {
 	inst::Frame frame;
@@ -329,6 +331,9 @@ cancel_frame(uint64_t id)
 // A server, and one raw connection standing in for a client. Everything is
 // single-threaded: the peer writes, then pump() runs the server by hand
 // until an answer comes back.
+namespace
+{
+
 struct Fixture {
 	unique_ptr<inst::Server> server;
 	dawn::ipc::Connection peer;
@@ -344,6 +349,8 @@ struct Fixture {
 	bool closed();
 	void poll();
 };
+
+}  // namespace
 
 void
 Fixture::poll()
@@ -438,7 +445,7 @@ Fixture::closed()
 }
 
 // Complete the handshake, and report the payload limit it settled on.
-bool
+static bool
 handshake(Fixture &f, uint32_t &limit)
 {
 	if (!f.send(
@@ -461,7 +468,7 @@ handshake(Fixture &f, uint32_t &limit)
 	return true;
 }
 
-void
+static void
 test_instance_handshake()
 {
 	Fixture f;
@@ -486,7 +493,7 @@ test_instance_handshake()
 	CHECK(f.requests == 1);
 }
 
-void
+static void
 test_instance_version_mismatch()
 {
 	Fixture f;
@@ -514,7 +521,7 @@ test_instance_version_mismatch()
 	CHECK(f.closed());
 }
 
-void
+static void
 test_instance_session_mismatch()
 {
 	Fixture f;
@@ -536,7 +543,7 @@ test_instance_session_mismatch()
 	CHECK(f.closed());
 }
 
-void
+static void
 test_instance_request_before_hello()
 {
 	Fixture f;
@@ -550,7 +557,7 @@ test_instance_request_before_hello()
 	CHECK(f.requests == 0);
 }
 
-void
+static void
 test_instance_zero_id()
 {
 	Fixture f;
@@ -564,7 +571,7 @@ test_instance_zero_id()
 	CHECK(f.requests == 0);
 }
 
-void
+static void
 test_instance_duplicate_id()
 {
 	Fixture f;
@@ -590,7 +597,7 @@ test_instance_duplicate_id()
 		CHECK(held[0].cancelled());
 }
 
-void
+static void
 test_instance_out_of_order()
 {
 	Fixture f;
@@ -646,7 +653,7 @@ test_instance_out_of_order()
 	}
 }
 
-void
+static void
 test_instance_cancel()
 {
 	Fixture f;
@@ -693,7 +700,7 @@ test_instance_cancel()
 		CHECK(err->error.code == inst::ErrorCode::Cancelled);
 }
 
-void
+static void
 test_instance_cancel_unknown()
 {
 	Fixture f;
@@ -711,7 +718,7 @@ test_instance_cancel_unknown()
 	CHECK(holds_alternative<inst::PayloadResponseView>(view.payload.value));
 }
 
-void
+static void
 test_instance_dropped_call()
 {
 	Fixture f;
@@ -739,7 +746,7 @@ test_instance_dropped_call()
 		CHECK(err->error.code == inst::ErrorCode::Internal);
 }
 
-void
+static void
 test_instance_oversize()
 {
 	Fixture f;
@@ -766,8 +773,6 @@ test_instance_oversize()
 	CHECK(f.closed());
 	CHECK(f.requests == 0);
 }
-
-}  // namespace
 
 int
 main()
