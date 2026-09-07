@@ -1411,12 +1411,14 @@ Window::sync_input_method()
 	// to us would mutate the tree mid-pass; hand it to the event loop.
 	if (this->ime_sync_pending_)
 		return;
+
 	this->ime_sync_pending_ = true;
 	this->kit_.post([this] {
 		this->ime_sync_pending_ = false;
 		QInputMethod *im = QGuiApplication::inputMethod();
 		if (!im)
 			return;
+
 		TextTarget target;
 		const bool on = this->kit_.text_target(target);
 		im->update(Qt::ImQueryInput);

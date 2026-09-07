@@ -402,6 +402,7 @@ struct Viewer::Worker {
 	vector<OpenJob> pending_preloads;
 	optional<ActiveOpen> active_open;
 	vector<ActiveOpen> active_preloads;
+	shared_ptr<bool> post_guard = make_shared<bool>();
 	thread foreground;
 	array<thread, 2> preloads;
 };
@@ -447,8 +448,15 @@ request_render(Viewer &v)
 static void
 post_gui(const Viewer &v, function<void()> fn)
 {
-	if (v.kit_.post)
-		v.kit_.post(std::move(fn));
+	if (!v.kit_.post)
+		return;
+
+	// Viewer destruction and posted callbacks are serialized on the GUI thread.
+	weak_ptr<bool> guard = v.worker_->post_guard;
+	v.kit_.post([guard = std::move(guard), fn = std::move(fn)] {
+		if (guard.lock())
+			fn();
+	});
 }
 
 static void
