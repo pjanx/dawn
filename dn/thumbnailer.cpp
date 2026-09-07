@@ -598,6 +598,48 @@ Thumbnailer::reprioritize(
 }
 
 bool
+Thumbnailer::cancel(Client id, const string &key)
+{
+	bool found_any = false;
+	{
+		lock_guard lock(impl_->mu);
+		auto client = impl_->clients.find(id);
+		if (client == impl_->clients.end())
+			return false;
+
+		// A queued task stays in its deque; pop_cpu() drops it on sight.
+		// One that is already running keeps its worker: it can only be
+		// stopped from landing, which the caller's identity check does.
+		if (auto found = client->second.keyed.find(key);
+			found != client->second.keyed.end()) {
+			if (found->second->queued) {
+				found->second->queued = false;
+				client->second.queued--;
+			}
+			client->second.keyed.erase(found);
+			found_any = true;
+		}
+		for (auto it = impl_->gpu_tasks.begin();
+			it != impl_->gpu_tasks.end();) {
+			if (it->second.client != id || it->second.key != key) {
+				it++;
+				continue;
+			}
+			if (impl_->scaler)
+				impl_->scaler->cancel(it->first);
+			client->second.gpu--;
+			it = impl_->gpu_tasks.erase(it);
+			found_any = true;
+		}
+		if (found_any)
+			client->second.activity_pending = true;
+	}
+	if (found_any)
+		schedule_pump();
+	return found_any;
+}
+
+bool
 Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 	dawn::ThumbScaler::Job job, GpuCompletion completion, string key)
 {

@@ -95,6 +95,9 @@ public:
 		std::string key);
 	bool reprioritize(Client client, uint64_t epoch, Priority priority,
 		const std::string &key);
+	/// Drop work that has been superseded, freeing its key for a
+	/// replacement. Work already running still reports its result.
+	bool cancel(Client client, const std::string &key);
 	/// Copies owned job pixels on a worker. Safe on the GUI thread.
 	bool submit_gpu(Client client, uint64_t epoch, Priority priority,
 		dawn::ThumbScaler::Job job, GpuCompletion completion, std::string key);

@@ -220,6 +220,79 @@ test_reprioritization_order()
 	return true;
 }
 
+// The keyed slot is what stops two jobs for one path from running at once.
+// A superseded job has to give it up, or its replacement can never be
+// submitted -- which is what a rescan of a changed file needs.
+static bool
+test_cancel_frees_the_key()
+{
+	dn::Thumbnailer thumbnailer(nullptr, 1);
+	const auto client = thumbnailer.add_client(0, {});
+	WorkGate gate;
+	bool blocker_started = false;
+	int ran = 0;
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+			[&] {
+				unique_lock lock(gate.mu);
+				blocker_started = true;
+				gate.changed.notify_all();
+				gate.changed.wait(lock, [&] { return gate.released; });
+				return dn::Thumbnailer::Completion{};
+			},
+			{}))
+		return false;
+	{
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return blocker_started; }))
+			return false;
+	}
+
+	auto work = [&] {
+		lock_guard lock(gate.mu);
+		ran++;
+		gate.changed.notify_all();
+		return dn::Thumbnailer::Completion{};
+	};
+	if (!thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+		gate.unblock();
+		return false;
+	}
+	// Same key, and the first one is still queued behind the blocker.
+	if (thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+		gate.unblock();
+		test::fail("a duplicate key was accepted");
+		return false;
+	}
+	if (!thumbnailer.cancel(client, "a")) {
+		gate.unblock();
+		test::fail("cancelling a queued key reported nothing to cancel");
+		return false;
+	}
+	if (!thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+		gate.unblock();
+		test::fail("the replacement was still refused after cancelling");
+		return false;
+	}
+
+	gate.unblock();
+	{
+		unique_lock lock(gate.mu);
+		if (!gate.wait(lock, [&] { return ran > 0; }))
+			return false;
+	}
+	// The cancelled one must not have run as well.
+	if (!thumbnailer.busy(client) && ran != 1) {
+		fprintf(stderr, "keyed work ran %d times\n", ran);
+		return false;
+	}
+	thumbnailer.remove_client(client);
+	CHECK(ran == 1);
+	return true;
+}
+
 static bool
 test_bundle_reservations()
 {
@@ -300,6 +373,7 @@ main(int argc, char **argv)
 		{"background worker reserve", [] { CHECK(test_background_reserve()); }},
 		{"visible worker reserve", [] { CHECK(test_visible_reserve()); }},
 		{"reprioritization", [] { CHECK(test_reprioritization_order()); }},
+		{"cancel frees the key", [] { CHECK(test_cancel_frees_the_key()); }},
 		{"bundle reservations", [] { CHECK(test_bundle_reservations()); }},
 		{"activity transitions",
 			[&] { test_activity_transitions(application.app()); }},

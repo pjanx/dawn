@@ -40,25 +40,49 @@ struct BrowseSetup {
 
 struct Browser : Widget {
 	struct File {
+		// Identity.  mtime and size say which version of the file the
+		// thumbnail state below is about; a completion carrying different
+		// ones is for a version that has since been replaced.
 		std::string path;
 		std::string name;
 		int64_t mtime = 0;
 		uint64_t size = 0;
+
+		// Source geometry.  Known independently of whether any thumbnail
+		// pixels exist, and kept across a thumbnail-size change.
 		uint32_t image_w = 0;
 		uint32_t image_h = 0;
-		int ram_w = 0;
-		int ram_h = 0;
-		int ram_tier = -1;
-		std::vector<uint16_t> ram;
-		bool ram_interim = false;
-		bool ram_pending = false;
-		bool persistent_checked = false;
-		bool generation_needed = false;
-		Thumbnailer::Reservation reservation = 0;
-		bool regen_failed = false;
-		dawn::Transfer transfer = dawn::Transfer::Srgb;
+
+		// The display copy: pixels converted for the current display.  A
+		// size change keeps these and refits them, so they are reset only
+		// when the display itself changes, or under the RAM budget.
+		struct Pixels {
+			std::vector<uint16_t> ram;
+			int w = 0;
+			int h = 0;
+			// Which cache tier these came from, -1 if from none.
+			int tier = -1;
+			dawn::Transfer transfer = dawn::Transfer::Srgb;
+		};
+		Pixels pixels;
+
+		// Atlas residency, a separate fact from having the pixels: it can
+		// be evicted and pushed again without touching them.
 		Sheet::Packed gpu;
-		bool failed = false;
+
+		// What this file still owes the current generation.  All of it is
+		// scheduling state, so a new generation resets the lot.
+		struct Progress {
+			Thumbnailer::Reservation reservation = 0;
+			bool pending = false;
+			bool interim = false;
+			bool persistent_checked = false;
+			bool generation_needed = false;
+			bool regen_failed = false;
+			bool failed = false;
+		};
+		Progress progress;
+
 		Rect tile{};
 		Rect cell{};
 		QString cap_text;

@@ -243,6 +243,10 @@ struct GpuFinish {
 	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
 	GpuPurpose purpose = GpuPurpose::Display;
 	Thumbnailer::Reservation reservation = 0;
+	// Which version of the file this is about.  Kept beside `source`,
+	// whose mtime is truncated to whole seconds for the disk convention.
+	int64_t mtime = 0;
+	uint64_t size = 0;
 	ThumbnailSource source;
 	uint32_t image_w = 0, image_h = 0;
 	int requested_tier = 0;
@@ -685,8 +689,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 
 // --- Global execution --------------------------------------------------------
 
-static void apply_thumb(
-	Browser &b, uint64_t gen, string path, ThumbUpdate update);
+static void apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime,
+	uint64_t size, ThumbUpdate update);
 static void apply_thumb_gpu(
 	Browser &b, GpuFinish finish, dawn::ThumbScaler::Result result);
 static void enqueue_thumbs(Browser &b);
@@ -736,10 +740,12 @@ display_thumb(Browser *browser, FinishJob job)
 		update.ram_h = job.height;
 		update.failed = false;
 	}
-	return [browser, gen = job.gen, path = std::move(job.path),
-			   update = std::move(update)]() mutable {
-		apply_thumb(*browser, gen, std::move(path), std::move(update));
-	};
+	return
+		[browser, gen = job.gen, path = std::move(job.path), mtime = job.mtime,
+			size = job.size, update = std::move(update)]() mutable {
+			apply_thumb(
+				*browser, gen, std::move(path), mtime, size, std::move(update));
+		};
 }
 
 static Thumbnailer::Completion
@@ -784,6 +790,8 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			finish.priority = job.priority;
 			finish.purpose = update.gpu_purpose;
 			finish.reservation = job.reservation;
+			finish.mtime = job.mtime;
+			finish.size = job.size;
 			finish.source = thumbnail_source(
 				QString::fromStdString(job.path), job.mtime, job.size);
 			finish.image_w = update.geometry_w;
@@ -800,10 +808,12 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	}
 	if (job.reservation && !update.gpu_pending)
 		thumbnailer.cancel_bundle(job.reservation);
-	return [browser, gen = job.gen, path = std::move(job.path),
-			   update = std::move(update)]() mutable {
-		apply_thumb(*browser, gen, std::move(path), std::move(update));
-	};
+	return
+		[browser, gen = job.gen, path = std::move(job.path), mtime = job.mtime,
+			size = job.size, update = std::move(update)]() mutable {
+			apply_thumb(
+				*browser, gen, std::move(path), mtime, size, std::move(update));
+		};
 }
 
 static void
@@ -835,24 +845,18 @@ invalidate_thumbs(Browser &b)
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
 	reset_thumb_atlas(b);
+	// The atlas went with reset_thumb_atlas(); the display copy is for a
+	// display, or a size, that no longer applies, and nothing is owed.
 	for (Browser::File &f : b.files_) {
-		vector<uint16_t>().swap(f.ram);
-		f.ram_w = f.ram_h = 0;
-		f.ram_tier = -1;
-		f.ram_interim = false;
-		f.ram_pending = false;
-		f.persistent_checked = false;
-		f.generation_needed = false;
-		f.reservation = 0;
-		f.regen_failed = false;
-		f.failed = false;
+		f.pixels = {};
+		f.progress = {};
 	}
 }
 
 static size_t
 ram_bytes(const Browser::File &f)
 {
-	return f.ram.capacity() * sizeof(uint16_t);
+	return f.pixels.ram.capacity() * sizeof(uint16_t);
 }
 
 static void
@@ -869,7 +873,8 @@ trim_ram(Browser &b)
 	vector<int> idx;
 	for (int i = 0; i < int(b.files_.size()); i++) {
 		const Browser::File &f = b.files_[size_t(i)];
-		if (f.ram.empty() || f.ram_pending || thumb_in_band(b, f, pad))
+		if (f.pixels.ram.empty() || f.progress.pending ||
+			thumb_in_band(b, f, pad))
 			continue;
 		idx.push_back(i);
 	}
@@ -885,10 +890,13 @@ trim_ram(Browser &b)
 			break;
 		Browser::File &f = b.files_[size_t(i)];
 		total -= ram_bytes(f);
-		vector<uint16_t>().swap(f.ram);
-		f.ram_w = f.ram_h = 0;
-		f.ram_tier = -1;
-		f.ram_interim = false;
+		// The atlas entry, if any, stays: residency is its own fact.  It
+		// is still drawn through this bitmap's transfer function, so that
+		// outlives the pixels it came with.
+		const dawn::Transfer transfer = f.pixels.transfer;
+		f.pixels = {};
+		f.pixels.transfer = transfer;
+		f.progress.interim = false;
 	}
 }
 
@@ -900,16 +908,16 @@ push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 		return false;
 
 	bool recreated = false;
-	if (!r->upload_thumb(f.ram.data(), f.ram_w, f.ram_h, slot.x, slot.y,
-			b.sheet_.w, &recreated))
+	if (!r->upload_thumb(f.pixels.ram.data(), f.pixels.w, f.pixels.h, slot.x,
+			slot.y, b.sheet_.w, &recreated))
 		return false;
 	if (!recreated)
 		return true;
 	for (Browser::File &o : b.files_) {
-		if (o.gpu.empty() || o.ram.empty())
+		if (o.gpu.empty() || o.pixels.ram.empty())
 			continue;
-		if (!r->upload_thumb(o.ram.data(), o.ram_w, o.ram_h, o.gpu.x, o.gpu.y,
-				b.sheet_.w, nullptr))
+		if (!r->upload_thumb(o.pixels.ram.data(), o.pixels.w, o.pixels.h,
+				o.gpu.x, o.gpu.y, b.sheet_.w, nullptr))
 			return false;
 	}
 	return true;
@@ -927,16 +935,16 @@ repack_atlas(Browser &b, Browser::File &wanted)
 	for (float pad : bands) {
 		vector<Browser::File *> active;
 		for (Browser::File &f : b.files_) {
-			if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0)
+			if (f.pixels.ram.empty() || f.pixels.w <= 0 || f.pixels.h <= 0)
 				continue;
 			if (&f == &wanted || thumb_in_band(b, f, pad))
 				active.push_back(&f);
 		}
 		sort(active.begin(), active.end(),
 			[](const Browser::File *a, const Browser::File *other) {
-				if (a->ram_h != other->ram_h)
-					return a->ram_h > other->ram_h;
-				return a->ram_w > other->ram_w;
+				if (a->pixels.h != other->pixels.h)
+					return a->pixels.h > other->pixels.h;
+				return a->pixels.w > other->pixels.w;
 			});
 		for (int side = max(Sheet::kSize, b.sheet_.w); side <= cap;
 			side = side < cap ? min(cap, side * 2) : cap + 1) {
@@ -945,7 +953,7 @@ repack_atlas(Browser &b, Browser::File &wanted)
 			placements.reserve(active.size());
 			bool fits = true;
 			for (Browser::File *f : active) {
-				Sheet::Packed slot = fresh.alloc(f->ram_w, f->ram_h);
+				Sheet::Packed slot = fresh.alloc(f->pixels.w, f->pixels.h);
 				if (slot.empty()) {
 					fits = false;
 					break;
@@ -959,8 +967,8 @@ repack_atlas(Browser &b, Browser::File &wanted)
 			for (size_t i = 0; i < active.size(); i++) {
 				Browser::File &f = *active[i];
 				const Sheet::Packed &slot = placements[i];
-				uploads.push_back(
-					{f.ram.data(), f.ram_w, f.ram_h, slot.x, slot.y});
+				uploads.push_back({f.pixels.ram.data(), f.pixels.w, f.pixels.h,
+					slot.x, slot.y});
 			}
 			if (uploads.empty() || !renderer->rebuild_thumbs(uploads, side))
 				return false;
@@ -978,10 +986,11 @@ repack_atlas(Browser &b, Browser::File &wanted)
 static void
 try_upload(Browser &b, Browser::File &f)
 {
-	if (f.ram.empty() || f.ram_w <= 0 || f.ram_h <= 0 || !f.gpu.empty())
+	if (f.pixels.ram.empty() || f.pixels.w <= 0 || f.pixels.h <= 0 ||
+		!f.gpu.empty())
 		return;
 
-	Sheet::Packed slot = b.sheet_.alloc(f.ram_w, f.ram_h);
+	Sheet::Packed slot = b.sheet_.alloc(f.pixels.w, f.pixels.h);
 	if (slot.empty()) {
 		repack_atlas(b, f);
 		return;
@@ -1001,16 +1010,18 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 
 	bool matched = false;
 	for (Browser::File &f : b.files_) {
-		if (f.path != res.path)
+		if (f.path != res.path || f.mtime != finish.mtime ||
+			f.size != finish.size)
 			continue;
 		matched = true;
 		if (res.failed || res.outputs.empty()) {
 			if (finish.reservation)
 				b.thumbnailer_.cancel_bundle(finish.reservation);
-			f.reservation = 0;
-			f.ram_pending = false;
-			f.regen_failed = !f.ram.empty() && f.ram_interim;
-			f.failed = f.ram.empty();
+			f.progress.reservation = 0;
+			f.progress.pending = false;
+			f.progress.regen_failed =
+				!f.pixels.ram.empty() && f.progress.interim;
+			f.progress.failed = f.pixels.ram.empty();
 			b.thumb_inflight_.erase(f.path);
 			break;
 		}
@@ -1030,18 +1041,18 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			}
 			if (!b.thumbnailer_.publish_bundle(finish.reservation, bundle)) {
 				b.thumbnailer_.cancel_bundle(finish.reservation);
-				f.reservation = 0;
-				f.ram_pending = false;
-				f.failed = f.ram.empty();
+				f.progress.reservation = 0;
+				f.progress.pending = false;
+				f.progress.failed = f.pixels.ram.empty();
 				b.thumb_inflight_.erase(f.path);
 				break;
 			}
-			f.reservation = 0;
-			f.persistent_checked = true;
-			f.generation_needed = false;
-			f.regen_failed = false;
+			f.progress.reservation = 0;
+			f.progress.persistent_checked = true;
+			f.progress.generation_needed = false;
+			f.progress.regen_failed = false;
 			if (finish.purpose == GpuPurpose::CacheOnly) {
-				f.ram_pending = false;
+				f.progress.pending = false;
 				b.thumb_inflight_.erase(f.path);
 				break;
 			}
@@ -1049,8 +1060,8 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			const ThumbnailTierPixels *pixels =
 				bundle->find(finish.requested_tier);
 			if (!pixels) {
-				f.ram_pending = false;
-				f.failed = f.ram.empty();
+				f.progress.pending = false;
+				f.progress.failed = f.pixels.ram.empty();
 				b.thumb_inflight_.erase(f.path);
 				break;
 			}
@@ -1058,6 +1069,8 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			display.gen = finish.gen;
 			display.priority = finish.priority;
 			display.path = f.path;
+			display.mtime = finish.mtime;
+			display.size = finish.size;
 			display.image_w = finish.image_w;
 			display.image_h = finish.image_h;
 			display.width = pixels->width;
@@ -1072,8 +1085,8 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 						return display_thumb(browser, std::move(display));
 					},
 					f.path)) {
-				f.ram_pending = false;
-				f.failed = f.ram.empty();
+				f.progress.pending = false;
+				f.progress.failed = f.pixels.ram.empty();
 				b.thumb_inflight_.erase(f.path);
 			}
 			break;
@@ -1081,22 +1094,22 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 
 		dawn::ThumbScaler::Result::Output &output = res.outputs.front();
 		if (!output.width || !output.height || output.data.empty()) {
-			f.ram_pending = false;
-			f.failed = f.ram.empty();
+			f.progress.pending = false;
+			f.progress.failed = f.pixels.ram.empty();
 			b.thumb_inflight_.erase(f.path);
 			break;
 		}
 		if (!f.gpu.empty())
 			b.sheet_.release(f.gpu);
 		f.gpu = {};
-		f.ram = std::move(output.data);
-		f.ram_w = int(output.width);
-		f.ram_h = int(output.height);
-		f.ram_tier = -1;
-		f.ram_interim = false;
-		f.ram_pending = false;
-		f.regen_failed = false;
-		f.failed = false;
+		f.pixels.ram = std::move(output.data);
+		f.pixels.w = int(output.width);
+		f.pixels.h = int(output.height);
+		f.pixels.tier = -1;
+		f.progress.interim = false;
+		f.progress.pending = false;
+		f.progress.regen_failed = false;
+		f.progress.failed = false;
 		b.thumb_inflight_.erase(f.path);
 		if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
 			try_upload(b, f);
@@ -1105,7 +1118,12 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 	if (!matched) {
 		if (finish.reservation)
 			b.thumbnailer_.cancel_bundle(finish.reservation);
-		b.thumb_inflight_.erase(res.path);
+		// Only this version's bookkeeping is ours to drop; a newer one may
+		// already have a job of its own registered under the same path.
+		if (auto it = b.thumb_inflight_.find(res.path);
+			it != b.thumb_inflight_.end() && it->second.mtime == finish.mtime &&
+			it->second.size == finish.size)
+			b.thumb_inflight_.erase(it);
 	}
 	trim_ram(b);
 	enqueue_thumbs(b);
@@ -1131,26 +1149,37 @@ sync_thumbs(Browser &b)
 	enqueue_thumbs(b);
 }
 
+// A rescan does not start a new generation, so `gen` alone does not say
+// that this result is still wanted: the file at `path` may since have been
+// replaced by another version of itself.  mtime and size say which one this
+// was made from, and only that one may be touched.
 static void
-apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
+apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
+	ThumbUpdate update)
 {
-	if (!update.gpu_pending)
-		b.thumb_inflight_.erase(path);
+	const auto owned = [&](const Browser::ThumbInflight &active) {
+		return active.mtime == mtime && active.size == size;
+	};
+	if (!update.gpu_pending) {
+		if (auto it = b.thumb_inflight_.find(path);
+			it != b.thumb_inflight_.end() && owned(it->second))
+			b.thumb_inflight_.erase(it);
+	}
 	if (gen != b.thumb_gen_)
 		return;
 
 	for (Browser::File &f : b.files_) {
-		if (f.path != path)
+		if (f.path != path || f.mtime != mtime || f.size != size)
 			continue;
-		if (update.failed && update.regeneration && !f.ram.empty() &&
-			f.ram_interim) {
-			f.ram_pending = false;
-			f.regen_failed = true;
+		if (update.failed && update.regeneration && !f.pixels.ram.empty() &&
+			f.progress.interim) {
+			f.progress.pending = false;
+			f.progress.regen_failed = true;
 			break;
 		}
-		f.failed = update.failed;
-		f.persistent_checked |= update.persistent_checked;
-		f.generation_needed = update.generation_needed;
+		f.progress.failed = update.failed;
+		f.progress.persistent_checked |= update.persistent_checked;
+		f.progress.generation_needed = update.generation_needed;
 		if (update.failed) {
 			f.image_w = 0;
 			f.image_h = 0;
@@ -1168,25 +1197,25 @@ apply_thumb(Browser &b, uint64_t gen, string path, ThumbUpdate update)
 			}
 		}
 		if (update.failed) {
-			vector<uint16_t>().swap(f.ram);
-			f.ram_w = f.ram_h = 0;
-			f.ram_tier = -1;
-			f.ram_interim = false;
-			f.ram_pending = false;
+			vector<uint16_t>().swap(f.pixels.ram);
+			f.pixels.w = f.pixels.h = 0;
+			f.pixels.tier = -1;
+			f.progress.interim = false;
+			f.progress.pending = false;
 		} else if (update.gpu_pending) {
-			f.ram_pending = true;
-			f.transfer = update.transfer;
+			f.progress.pending = true;
+			f.pixels.transfer = update.transfer;
 			if (!update.regeneration)
-				f.ram_interim = update.interim;
+				f.progress.interim = update.interim;
 		} else if (!update.ram.empty() && update.ram_w && update.ram_h) {
-			f.ram = std::move(update.ram);
-			f.ram_w = int(update.ram_w);
-			f.ram_h = int(update.ram_h);
-			f.ram_tier = update.ram_tier;
-			f.ram_interim = update.interim;
-			f.ram_pending = false;
-			f.regen_failed = false;
-			f.transfer = update.transfer;
+			f.pixels.ram = std::move(update.ram);
+			f.pixels.w = int(update.ram_w);
+			f.pixels.h = int(update.ram_h);
+			f.pixels.tier = update.ram_tier;
+			f.progress.interim = update.interim;
+			f.progress.pending = false;
+			f.progress.regen_failed = false;
+			f.pixels.transfer = update.transfer;
 			if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
 				try_upload(b, f);
 			trim_ram(b);
@@ -1220,6 +1249,10 @@ enqueue_thumbs(Browser &b)
 				active->second.size == f.size &&
 				active->second.tier == target_tier;
 			if (!same) {
+				// Dropping the bookkeeping is not enough: the superseded
+				// job still holds this path as its key, and submit() would
+				// refuse the replacement until it finished.
+				b.thumbnailer_.cancel(b.thumbnail_client_, f.path);
 				b.thumb_inflight_.erase(active);
 			} else {
 				const Thumbnailer::Priority desired = visible
@@ -1233,13 +1266,14 @@ enqueue_thumbs(Browser &b)
 				continue;
 			}
 		}
-		if (f.failed || f.ram_pending ||
-			(f.regen_failed && f.generation_needed))
+		if (f.progress.failed || f.progress.pending ||
+			(f.progress.regen_failed && f.progress.generation_needed))
 			continue;
-		bool needed = f.generation_needed || !f.persistent_checked;
+		bool needed =
+			f.progress.generation_needed || !f.progress.persistent_checked;
 		if (visible || prefetched)
-			needed |= f.ram.empty() || f.ram_interim ||
-				(f.ram_tier >= 0 && f.ram_tier != target_tier);
+			needed |= f.pixels.ram.empty() || f.progress.interim ||
+				(f.pixels.tier >= 0 && f.pixels.tier != target_tier);
 		if (!needed)
 			continue;
 		if (visible)
@@ -1269,14 +1303,14 @@ enqueue_thumbs(Browser &b)
 			const ThumbnailSource source = thumbnail_source(
 				QString::fromStdString(f.path), f.mtime, f.size);
 			job.pending = b.thumbnailer_.pending_bundle(source, target_tier);
-			job.skip_cache = f.generation_needed && !job.pending;
+			job.skip_cache = f.progress.generation_needed && !job.pending;
 			if (job.cacheable && job.skip_cache) {
 				job.reservation = b.thumbnailer_.reserve_bundle(
 					b.thumbnail_client_, job.gen, source, target_tier,
 					bundle_reservation_bytes(target_tier), priority);
 				if (!job.reservation)
 					continue;
-				f.reservation = job.reservation;
+				f.progress.reservation = job.reservation;
 			}
 			Thumbnailer *thumbnailer = &b.thumbnailer_;
 			const auto client = b.thumbnail_client_;
@@ -1295,7 +1329,7 @@ enqueue_thumbs(Browser &b)
 					target_tier, priority, regeneration};
 			} else if (reservation) {
 				b.thumbnailer_.cancel_bundle(reservation);
-				f.reservation = 0;
+				f.progress.reservation = 0;
 			}
 		}
 	};
@@ -1958,22 +1992,13 @@ scan_dir(Browser &b)
 		Browser::File &o = old[it->second];
 		if (o.mtime != f.mtime || o.size != f.size)
 			continue;
+		// Same path, same version: everything about it still holds.
 		f.image_w = o.image_w;
 		f.image_h = o.image_h;
-		f.ram = std::move(o.ram);
-		f.ram_w = o.ram_w;
-		f.ram_h = o.ram_h;
-		f.ram_tier = o.ram_tier;
-		f.ram_interim = o.ram_interim;
-		f.ram_pending = o.ram_pending;
-		f.persistent_checked = o.persistent_checked;
-		f.generation_needed = o.generation_needed;
-		f.reservation = o.reservation;
-		f.regen_failed = o.regen_failed;
-		f.transfer = o.transfer;
+		f.pixels = std::move(o.pixels);
+		f.progress = o.progress;
 		f.gpu = o.gpu;
 		o.gpu = {};
-		f.failed = o.failed;
 	}
 	for (Browser::File &o : old) {
 		if (!o.gpu.empty())
@@ -2128,15 +2153,13 @@ set_thumb_size(Browser &b, int size)
 	b.thumb_inflight_.clear();
 	const int target_tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
+	// The bitmaps and their atlas entries stay: the layout hands them a new
+	// destination rectangle and they are refitted to it.  Only what the old
+	// size had been working towards is dropped.
 	for (Browser::File &f : b.files_) {
-		f.ram_pending = false;
-		f.reservation = 0;
-		f.persistent_checked = false;
-		f.generation_needed = false;
-		if (!f.ram.empty())
-			f.ram_interim = f.ram_tier != target_tier;
-		f.regen_failed = false;
-		f.failed = false;
+		f.progress = {};
+		if (!f.pixels.ram.empty())
+			f.progress.interim = f.pixels.tier != target_tier;
 	}
 	enqueue_thumbs(b);
 	request_render(b);
@@ -2707,23 +2730,33 @@ Browser::paint(Kit &kit) const
 		const bool focused =
 			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
 		if (!f.gpu.empty()) {
+			// The tile is reserved from the source geometry, which may
+			// already describe a newer version of the file than the atlas
+			// entry does.  Fit the bitmap by its own dimensions rather
+			// than stretching it to whatever the layout reserved.
+			const float fit =
+				min(float(tw) / float(f.gpu.w), float(thp) / float(f.gpu.h));
+			const int dw = max(1, int(lround(float(f.gpu.w) * fit)));
+			const int dh = max(1, int(lround(float(f.gpu.h) * fit)));
+			const int dx = tx + (tw - dw) / 2;
+			const int dy = ty + (thp - dh) / 2;
 			const int border = kit.px(kBorder);
 			// The frame fills the band the glow starts outside of, so it
 			// sits against the thumbnail without eating into the image.
 			const Rect outer = {
-				tx - border, ty - border, tw + 2 * border, thp + 2 * border};
+				dx - border, dy - border, dw + 2 * border, dh + 2 * border};
 			kit.draw_glow(outer, focused ? glow_hot : glow_idle);
-			draw_checkers(kit, {tx, ty, tw, thp});
+			draw_checkers(kit, {dx, dy, dw, dh});
 			kit.list_.add_rect_stroke(outer.box(), frame, border);
-			kit.list_.add_thumb({tx, ty, tx + tw, ty + thp},
-				this->sheet_.uv(f.gpu), int(f.transfer), {1, 1, 1, 1});
+			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh},
+				this->sheet_.uv(f.gpu), int(f.pixels.transfer), {1, 1, 1, 1});
 		} else {
 			kit.list_.add_rect_filled({tx, ty, tx + tw, ty + thp},
 				focused ? kit.colours_[ColourPress]
 						: kit.colours_[ColourHover]);
 			const int sz = min(tw, thp) / 2;
 			kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
-				f.failed ? kMissingIcon : kPendingIcon, ink);
+				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
 		}
 		if (this->show_names_ && f.cap.h > 0) {
 			kit.clip_to(f.cap);
