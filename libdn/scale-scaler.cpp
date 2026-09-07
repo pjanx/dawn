@@ -65,6 +65,7 @@ instance_has_extension(const char *name)
 	if (vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr) !=
 		VK_SUCCESS)
 		return false;
+
 	vector<VkExtensionProperties> exts(count);
 	if (vkEnumerateInstanceExtensionProperties(nullptr, &count, exts.data()) !=
 		VK_SUCCESS)
@@ -390,8 +391,8 @@ ScaleScaler::init(string *error)
 
 bool
 ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
-	size_t stride, uint32_t want_out_w, uint32_t want_out_h, ScaleOutput *out,
-	string *error)
+	size_t stride, uint32_t want_out_w, uint32_t want_out_h,
+	Orientation orientation, ScaleOutput *out, string *error)
 {
 	if (!out) {
 		if (error)
@@ -421,13 +422,17 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 	vkGetPhysicalDeviceProperties(s.phys, &props);
 	const uint32_t max_dim = props.limits.maxImageDimension2D;
 
+	// Tiles hold the stored image; the mid buffer is oriented already.
+	uint32_t disp_w = 0, disp_h = 0;
+	orientation_display_size(src_w, src_h, orientation, &disp_w, &disp_h);
+
 	const uint32_t edge = min(4096u, max_dim);
 	const uint32_t grid_cols = max(1u, ceil_div(src_w, edge));
 	const uint32_t grid_rows = max(1u, ceil_div(src_h, edge));
 	const uint32_t mid_cols_est = max(1u, ceil_div(want_out_w, max_dim));
-	const uint32_t mid_rows_est = max(1u, ceil_div(src_h, max_dim));
+	const uint32_t mid_rows_est = max(1u, ceil_div(disp_h, max_dim));
 	const uint32_t mid_pad_w_est = ceil_div(want_out_w, mid_cols_est);
-	const uint32_t mid_pad_h_est = ceil_div(src_h, mid_rows_est);
+	const uint32_t mid_pad_h_est = ceil_div(disp_h, mid_rows_est);
 	const uint32_t tile_pad_w_est = ceil_div(src_w, grid_cols);
 	const uint32_t tile_pad_h_est = ceil_div(src_h, grid_rows);
 	const uint64_t tile_bytes =
@@ -485,9 +490,10 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 	}
 
 	ScaleView view{};
-	view.scale = float(want_out_w) / float(src_w);
+	view.scale = float(want_out_w) / float(disp_w);
 	view.filter = preferred_filter(s.phys);
 	view.transfer = Transfer::Srgb;
+	view.orientation = orientation;
 	const float clear[4] = {0, 0, 0, 0};
 	if (!s.engine.record(
 			s.cmd, dest_fb, want_out_w, want_out_h, view, clear, error)) {

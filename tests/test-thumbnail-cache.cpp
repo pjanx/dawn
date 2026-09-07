@@ -119,6 +119,15 @@ test_cache_entries(const QTemporaryDir &inputs)
 	CHECK(hit.image_width == 20 && hit.image_height == 10);
 	CHECK(hit.tier == 0);
 	CHECK(!hit.interim);
+	// Written as opaque red in BGRA16, and it has to come back as red:
+	// the file is RGBA, so the channel order survives a round trip only if
+	// both ends agree.  Near-lossless coding moves the values a little.
+	if (hit.pixels.size() >= 4) {
+		CHECK(hit.pixels[0] < 4096);
+		CHECK(hit.pixels[1] < 4096);
+		CHECK(hit.pixels[2] > 61440);
+		CHECK(hit.pixels[3] > 61440);
+	}
 
 	const QString cached = QDir(dn::thumbnail_cache_root())
 							   .filePath(QStringLiteral("wide-normal/%1.webp")

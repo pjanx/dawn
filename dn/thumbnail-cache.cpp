@@ -19,7 +19,6 @@
 
 #include <webp/decode.h>
 #include <webp/demux.h>
-#include <webp/encode.h>
 #include <webp/mux.h>
 
 #include <algorithm>
@@ -410,61 +409,48 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 		thumbnail_cache_contains(source.path))
 		return false;
 
-	vector<uint8_t> bgra(size_t(width) * height * 4);
+	// Working pixels are premultiplied BGRA16; the file wants straight
+	// RGBA8, which is also what the shared encoder takes.
+	vector<uint8_t> rgba(size_t(width) * height * 4);
 	for (size_t i = 0, n = size_t(width) * height; i < n; i++) {
 		const uint32_t a = pixels[i * 4 + 3];
-		bgra[i * 4 + 3] = uint8_t((a + 128) / 257);
+		rgba[i * 4 + 3] = uint8_t((a + 128) / 257);
 		for (size_t c = 0; c < 3; c++) {
 			const uint32_t straight = a
 				? min(65535u,
 					  uint32_t(
 						  (uint64_t(pixels[i * 4 + c]) * 65535u + a / 2) / a))
 				: 0;
-			bgra[i * 4 + c] = uint8_t((straight + 128) / 257);
+			rgba[i * 4 + (2 - c)] = uint8_t((straight + 128) / 257);
 		}
 	}
 
-	WebPConfig config{};
-	WebPPicture picture{};
-	WebPMemoryWriter writer{};
+	vector<uint8_t> encoded;
+	string encode_error;
+	if (!dawn::encode_thumbnail_webp(width, height, rgba.data(),
+			size_t(width) * 4, &encoded, &encode_error)) {
+		if (error)
+			*error = QString::fromStdString(encode_error);
+		return false;
+	}
+
+	// The cache entry is that image plus the chunk identifying its source.
 	WebPData assembled{};
-	WebPMux *mux = nullptr;
-	bool ok = WebPConfigInit(&config) && WebPConfigLosslessPreset(&config, 6);
-	config.near_lossless = 95;
-	config.thread_level = 0;
-	ok = ok && WebPValidateConfig(&config) && WebPPictureInit(&picture);
-	if (ok) {
-		picture.use_argb = 1;
-		picture.width = int(width);
-		picture.height = int(height);
-		ok = WebPPictureImportBGRA(&picture, bgra.data(), int(width * 4));
-	}
-	WebPMemoryWriterInit(&writer);
-	if (ok) {
-		picture.writer = WebPMemoryWrite;
-		picture.custom_ptr = &writer;
-		ok = WebPEncode(&config, &picture);
-	}
-	if (ok) {
-		mux = WebPMuxNew();
-		const WebPData image{writer.mem, writer.size};
-		const QByteArray metadata =
-			make_metadata(source, image_width, image_height);
-		const WebPData thum{
-			reinterpret_cast<const uint8_t *>(metadata.constData()),
-			size_t(metadata.size())};
-		ok = mux && WebPMuxSetImage(mux, &image, 1) == WEBP_MUX_OK &&
-			WebPMuxSetChunk(mux, "THUM", &thum, 1) == WEBP_MUX_OK &&
-			WebPMuxAssemble(mux, &assembled) == WEBP_MUX_OK;
-	}
-	WebPPictureFree(&picture);
-	WebPMemoryWriterClear(&writer);
+	WebPMux *mux = WebPMuxNew();
+	const WebPData image{encoded.data(), encoded.size()};
+	const QByteArray metadata =
+		make_metadata(source, image_width, image_height);
+	const WebPData thum{reinterpret_cast<const uint8_t *>(metadata.constData()),
+		size_t(metadata.size())};
+	const bool ok = mux && WebPMuxSetImage(mux, &image, 1) == WEBP_MUX_OK &&
+		WebPMuxSetChunk(mux, "THUM", &thum, 1) == WEBP_MUX_OK &&
+		WebPMuxAssemble(mux, &assembled) == WEBP_MUX_OK;
 	if (mux)
 		WebPMuxDelete(mux);
 	if (!ok) {
 		WebPDataClear(&assembled);
 		if (error)
-			*error = QStringLiteral("WebP encoding failed");
+			*error = QStringLiteral("WebP muxing failed");
 		return false;
 	}
 

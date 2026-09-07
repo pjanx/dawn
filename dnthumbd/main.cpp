@@ -5,9 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "encode-webp.hpp"
-#include "orient.hpp"
-
 #include "libdn.h"
 #include "libdnvk.h"
 
@@ -74,26 +71,28 @@ process_one(const string &path, dawn::ScaleScaler *scaler)
 		return false;
 	}
 
-	if (!dnthumbd::bake_orientation(*image)) {
-		log_err(path + ": bake_orientation failed");
-		return false;
-	}
+	// The scaler orients as it filters; fit against the oriented size.
+	const dawn::Orientation orientation =
+		dawn::orientation_or_0(image->orientation);
+	uint32_t disp_w = 0, disp_h = 0;
+	dawn::orientation_display_size(
+		image->width, image->height, orientation, &disp_w, &disp_h);
 
 	uint32_t out_w = 0, out_h = 0;
-	fit_size(image->width, image->height, &out_w, &out_h);
+	fit_size(disp_w, disp_h, &out_w, &out_h);
 
 	dawn::ScaleOutput scaled;
 	string vk_err;
 	if (!scaler->scale(image->width, image->height, image->data.data(),
-			image->stride, out_w, out_h, &scaled, &vk_err)) {
+			image->stride, out_w, out_h, orientation, &scaled, &vk_err)) {
 		log_err(path + ": scale failed: " + vk_err);
 		return false;
 	}
 
 	vector<uint8_t> webp;
 	string enc_err;
-	if (!dnthumbd::encode_webp_rgba8(scaled.width, scaled.height,
-			scaled.rgba8.data(), &webp, &enc_err)) {
+	if (!dawn::encode_thumbnail_webp(scaled.width, scaled.height,
+			scaled.rgba8.data(), size_t(scaled.width) * 4, &webp, &enc_err)) {
 		log_err(path + ": encode failed: " + enc_err);
 		return false;
 	}

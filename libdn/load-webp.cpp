@@ -10,6 +10,7 @@
 
 #include <webp/decode.h>
 #include <webp/demux.h>
+#include <webp/encode.h>
 
 #include <cstdint>
 #include <cstring>
@@ -261,6 +262,50 @@ detail::load_webp(
 	ensure_working_premul_pages(
 		*image, ctx, /*source=*/nullptr, /*input_premul=*/premultiply);
 	return image;
+}
+
+// --- TO BE MOVED TO DNTHUMBD -------------------------------------------------
+
+// The cache stores near-lossless WebP: thumbnails are re-encoded rarely and
+// read often, and banding survives every later rescale.
+bool
+encode_thumbnail_webp(uint32_t width, uint32_t height, const uint8_t *rgba8,
+	size_t stride, vector<uint8_t> *out, string *error)
+{
+	if (!out || !rgba8 || !width || !height) {
+		if (error)
+			*error = "invalid encode_thumbnail_webp arguments";
+		return false;
+	}
+	out->clear();
+
+	WebPConfig config{};
+	WebPPicture picture{};
+	WebPMemoryWriter writer{};
+	WebPMemoryWriterInit(&writer);
+	bool ok = WebPConfigInit(&config) && WebPConfigLosslessPreset(&config, 6);
+	config.near_lossless = 95;
+	// One image at a time, on a caller that is already a worker of its own.
+	config.thread_level = 0;
+	ok = ok && WebPValidateConfig(&config) && WebPPictureInit(&picture);
+	if (ok) {
+		picture.use_argb = 1;
+		picture.width = int(width);
+		picture.height = int(height);
+		ok = WebPPictureImportRGBA(&picture, rgba8, int(stride));
+	}
+	if (ok) {
+		picture.writer = WebPMemoryWrite;
+		picture.custom_ptr = &writer;
+		ok = WebPEncode(&config, &picture);
+	}
+	if (ok)
+		out->assign(writer.mem, writer.mem + writer.size);
+	else if (error)
+		*error = "WebP encoding failed";
+	WebPPictureFree(&picture);
+	WebPMemoryWriterClear(&writer);
+	return ok;
 }
 
 }  // namespace dawn

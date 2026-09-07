@@ -85,7 +85,8 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 			string vk_err;
 			const auto s0 = chrono::steady_clock::now();
 			const bool ok = scaler->scale(img->width, img->height,
-				img->data.data(), img->stride, ow, oh, &scaled, &vk_err);
+				img->data.data(), img->stride, ow, oh,
+				dawn::Orientation::Rotate0, &scaled, &vk_err);
 			const auto s1 = chrono::steady_clock::now();
 			const double scale_ms =
 				chrono::duration<double, milli>(s1 - s0).count();

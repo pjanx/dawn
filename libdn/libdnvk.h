@@ -50,10 +50,12 @@ public:
 	void destroy();
 
 	/// `pixels` is BGRA_PREMUL_4X16LE; `stride` bytes per row.
-	/// Scales to exactly `out_w`×`out_h` with sRGB-aware filtering.
+	/// Scales to exactly `out_w`×`out_h` with sRGB-aware filtering,
+	/// applying `orientation` on the way, so `src_w`×`src_h` is the stored
+	/// size and `out_w`×`out_h` is a display-oriented one.
 	bool scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
-		size_t stride, uint32_t out_w, uint32_t out_h, ScaleOutput *out,
-		std::string *error);
+		size_t stride, uint32_t out_w, uint32_t out_h, Orientation orientation,
+		ScaleOutput *out, std::string *error);
 };
 
 }  // namespace dawn

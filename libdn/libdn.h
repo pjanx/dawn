@@ -432,4 +432,13 @@ bool read_file(
 	const std::string &path, std::vector<uint8_t> *out, Error *error);
 std::string uri_to_path(const std::string &uri);
 
+// --- TO BE MOVED TO DNTHUMBD -------------------------------------------------
+
+/// Encode straight (non-premultiplied) RGBA8 as the near-lossless WebP the
+/// wide-thumbnail cache stores. `stride` is bytes per row. Callers that need
+/// a cache entry still have to wrap the result in its metadata chunk.
+bool encode_thumbnail_webp(uint32_t width, uint32_t height,
+	const uint8_t *rgba8, size_t stride, std::vector<uint8_t> *out,
+	std::string *error);
+
 }  // namespace dawn
