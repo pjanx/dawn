@@ -154,7 +154,7 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-		error);
+		error, nullptr);
 	if (mem_type == UINT32_MAX) {
 		vkDestroyBuffer(device, staging, nullptr);
 		return false;

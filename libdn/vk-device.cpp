@@ -74,7 +74,7 @@ vk_memory_type(VkPhysicalDevice phys, uint32_t bits,
 	VkPhysicalDeviceMemoryProperties properties{};
 	vkGetPhysicalDeviceMemoryProperties(phys, &properties);
 	uint32_t best = UINT32_MAX;
-	for (uint32_t i = 0; i < properties.memoryTypeCount; ++i) {
+	for (uint32_t i = 0; i < properties.memoryTypeCount; i++) {
 		if (!(bits & (1u << i)) ||
 			(properties.memoryTypes[i].propertyFlags & flags) != flags)
 			continue;

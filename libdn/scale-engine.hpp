@@ -65,11 +65,11 @@ public:
 	/// readback.
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkFormat dest_format,
-		VkImageLayout dest_final_layout, std::string *error = nullptr);
+		VkImageLayout dest_final_layout, std::string *error);
 	void destroy();
 
 	bool set_image(uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride,
-		std::string *error = nullptr);
+		std::string *error);
 	void clear_image();
 
 	[[nodiscard]] uint32_t image_width() const;
@@ -77,21 +77,21 @@ public:
 	[[nodiscard]] bool has_image() const;
 
 	bool ensure_viewport(
-		uint32_t viewport_w, uint32_t viewport_h, std::string *error = nullptr);
+		uint32_t viewport_w, uint32_t viewport_h, std::string *error);
 	void set_dest_inset(
 		uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
 
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
 		uint32_t viewport_h, const ScaleView &view, const float clear_rgba[4],
-		std::string *error = nullptr);
+		std::string *error);
 	/// Dest-pass CLEAR only (no H/V). For presenting the well with no pixmap.
 	bool record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		uint32_t viewport_w, uint32_t viewport_h, const float clear_rgba[4],
-		std::string *error = nullptr);
+		std::string *error);
 
 	bool create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 		VkDeviceMemory *mem, VkImageView *view, VkFramebuffer *fb,
-		std::string *error = nullptr);
+		std::string *error);
 	void destroy_offscreen(VkImage *image, VkDeviceMemory *mem,
 		VkImageView *view, VkFramebuffer *fb);
 

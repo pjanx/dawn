@@ -78,18 +78,13 @@ struct Error {
 	Code code = Code::Ok;
 	std::string message;
 
-	explicit
-	operator bool() const
-	{
-		return code != Code::Ok;
-	}
+	explicit operator bool() const { return code != Code::Ok; }
 };
 
 /// Read and write an opaque application configuration value.
 /// A missing value is not an error and returns std::nullopt.
-std::optional<std::string> config_get(std::string_view key, Error *error = nullptr);
-bool config_set(
-	std::string_view key, std::string_view value, Error *error = nullptr);
+std::optional<std::string> config_get(std::string_view key, Error *error);
+bool config_set(std::string_view key, std::string_view value, Error *error);
 
 // TODO(p): Why in Hell is this called detail, and what should it be called?
 namespace detail
@@ -269,8 +264,8 @@ public:
 
 	std::shared_ptr<Profile> get_profile(const void *data, size_t len);
 	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
-	std::shared_ptr<Profile> get_profile_sRGB(bool cache = false);
-	std::shared_ptr<Profile> get_profile_display_p3(bool cache = false);
+	std::shared_ptr<Profile> get_profile_sRGB(bool cache);
+	std::shared_ptr<Profile> get_profile_display_p3(bool cache);
 	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
 	std::shared_ptr<Profile> get_profile_parametric(
 		double gamma, double whitepoint[2], double primaries[6]);
@@ -306,16 +301,8 @@ public:
 	void finish_page(Image &page, Profile *target);
 	ImagePtr finish(ImagePtr image, Profile *target);
 
-	bool
-	broken_premul() const
-	{
-		return broken_premul_;
-	}
-	void *
-	context()
-	{
-		return context_;
-	}
+	bool broken_premul() const { return broken_premul_; }
+	void *context() { return context_; }
 };
 
 struct OpenContext {

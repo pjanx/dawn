@@ -22,8 +22,8 @@
 #include <libdn.h>
 
 #include <memory>
-#include <string>
 #include <span>
+#include <string>
 
 class QCloseEvent;
 class QExposeEvent;
@@ -142,13 +142,12 @@ protected:
 	void wheelEvent(QWheelEvent *event) override;
 
 public:
-	explicit Window(App *app, QWindow *parent = nullptr);
+	explicit Window(App *app, QWindow *parent);
 	~Window() override;
 
-	bool initialize(
-		const QUrl &url, BrowseSetup setup = {}, bool browse = false);
+	bool initialize(const QUrl &url, BrowseSetup setup, bool browse);
 	void shutdown();
-	void open_any(const QUrl &url, bool browse = false);
+	void open_any(const QUrl &url, bool browse);
 	[[nodiscard]] QUrl current_url() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }

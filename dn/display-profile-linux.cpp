@@ -107,7 +107,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 
 	CdDevice *matched = nullptr;
 	string method;
-	for (guint i = 0; i < devices->len; ++i) {
+	for (guint i = 0; i < devices->len; i++) {
 		auto *device = static_cast<CdDevice *>(g_ptr_array_index(devices, i));
 		if (!cd_device_connect_sync(device, nullptr, &error)) {
 			g_clear_error(&error);
@@ -123,7 +123,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 	}
 	if (!matched) {
 		if (auto edid_md5 = edid_md5_for_connector(connector)) {
-			for (guint i = 0; i < devices->len; ++i) {
+			for (guint i = 0; i < devices->len; i++) {
 				auto *device =
 					static_cast<CdDevice *>(g_ptr_array_index(devices, i));
 				const char *md5 = cd_device_get_metadata_item(

@@ -47,7 +47,7 @@ load_display_profile(QScreen *screen)
 		return result;
 
 	MONITORINFOEXW monitor{};
-	monitor.cbSize = sizeof(monitor);
+	monitor.cbSize = sizeof monitor;
 	if (!GetMonitorInfoW(native->handle(), &monitor))
 		return result;
 	HDC dc = CreateDCW(L"DISPLAY", monitor.szDevice, nullptr, nullptr);

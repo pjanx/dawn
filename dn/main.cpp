@@ -238,7 +238,7 @@ main(int argc, char **argv)
 			// Notifiers armed; Qt delivers them only in exec().
 			// A Hello during init may time out (250ms) and isolate.
 			host = make_unique<dn::InstanceHost>(
-				std::move(listen.listener), app, session);
+				std::move(listen.listener), app, session, nullptr);
 		}
 	}
 #endif

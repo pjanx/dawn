@@ -41,17 +41,27 @@ desktop_unescape(string_view value)
 {
 	string out;
 	out.reserve(value.size());
-	for (size_t i = 0; i < value.size(); ++i) {
+	for (size_t i = 0; i < value.size(); i++) {
 		if (value[i] != '\\' || i + 1 == value.size()) {
 			out += value[i];
 			continue;
 		}
 		switch (value[++i]) {
-		case 'n': out += '\n'; break;
-		case 'r': out += '\r'; break;
-		case 't': out += '\t'; break;
-		case 's': out += ' '; break;
-		default: out += value[i]; break;
+		case 'n':
+			out += '\n';
+			break;
+		case 'r':
+			out += '\r';
+			break;
+		case 't':
+			out += '\t';
+			break;
+		case 's':
+			out += ' ';
+			break;
+		default:
+			out += value[i];
+			break;
 		}
 	}
 	return out;
@@ -64,11 +74,21 @@ desktop_escape(string_view value)
 	out.reserve(value.size());
 	for (const char c : value) {
 		switch (c) {
-		case '\\': out += "\\\\"; break;
-		case '\n': out += "\\n"; break;
-		case '\r': out += "\\r"; break;
-		case '\t': out += "\\t"; break;
-		default: out += c; break;
+		case '\\':
+			out += "\\\\";
+			break;
+		case '\n':
+			out += "\\n";
+			break;
+		case '\r':
+			out += "\\r";
+			break;
+		case '\t':
+			out += "\\t";
+			break;
+		default:
+			out += c;
+			break;
 		}
 	}
 	return out;
@@ -81,16 +101,15 @@ ini_parse(string_view text)
 	IniGroup *group = nullptr;
 	for (size_t offset = 0; offset <= text.size();) {
 		const size_t end = text.find_first_of("\r\n", offset);
-		string line(text.substr(offset,
-			end == string::npos ? string::npos : end - offset));
+		string line(text.substr(
+			offset, end == string::npos ? string::npos : end - offset));
 		const string stripped = trim(line);
 		if (stripped.empty() || stripped[0] == '#') {
 			if (!group)
 				ini.preamble.push_back(line);
 		} else if (stripped.size() >= 2 && stripped.front() == '[' &&
 			stripped.back() == ']' && stripped.find('=') == string::npos) {
-			ini.groups.push_back(
-				{stripped.substr(1, stripped.size() - 2), {}});
+			ini.groups.push_back({stripped.substr(1, stripped.size() - 2), {}});
 			group = &ini.groups.back();
 		} else if (group) {
 			const size_t equals = line.find('=');
@@ -103,8 +122,8 @@ ini_parse(string_view text)
 			break;
 		offset = end +
 			(text[end] == '\r' && end + 1 < text.size() && text[end + 1] == '\n'
-				? 2
-				: 1);
+					? 2
+					: 1);
 	}
 	return ini;
 }
@@ -161,8 +180,8 @@ split_key(string_view key)
 	const size_t slash = key.rfind('/');
 	if (slash == string_view::npos || slash == 0 || slash + 1 == key.size())
 		return nullopt;
-	return pair<string, string>{string(key.substr(0, slash)),
-		string(key.substr(slash + 1))};
+	return pair<string, string>{
+		string(key.substr(0, slash)), string(key.substr(slash + 1))};
 }
 
 static fs::path
@@ -195,7 +214,8 @@ load_ini(const fs::path &path, Error *error)
 		fail(error, "cannot open configuration file");
 		return nullopt;
 	}
-	string text((istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
+	string text(
+		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
 	if (input.bad()) {
 		fail(error, "cannot read configuration file");
 		return nullopt;

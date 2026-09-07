@@ -161,7 +161,7 @@ OverlayList::add_thumb(Box b, Uv uv, int transfer, Colour col)
 	this->tex_ = kOverlayTexThumbs;
 	add_quad(b, uv, col, col, col, col);
 	const size_t first = this->mesh_.vertices.size() - 4;
-	for (size_t i = first; i < this->mesh_.vertices.size(); ++i) {
+	for (size_t i = first; i < this->mesh_.vertices.size(); i++) {
 		OverlayVertex &vertex = this->mesh_.vertices[i];
 		vertex.atlas_x0 = uv.u0;
 		vertex.atlas_y0 = uv.v0;
@@ -186,7 +186,7 @@ merge_free(vector<Sheet::Packed> &free)
 		});
 	vector<Sheet::Packed> out;
 	out.push_back(free.front());
-	for (size_t i = 1; i < free.size(); ++i) {
+	for (size_t i = 1; i < free.size(); i++) {
 		Sheet::Packed &last = out.back();
 		if (last.x + last.w == free[i].x)
 			last.w += free[i].w;
@@ -226,7 +226,7 @@ Sheet::grow(int side)
 			return;
 		vector<uint16_t> next(size_t(nw) * size_t(nh) * 4, 0);
 		if (this->w > 0 && this->h > 0 && !this->pixels.empty()) {
-			for (int y = 0; y < this->h; ++y) {
+			for (int y = 0; y < this->h; y++) {
 				memcpy(next.data() + size_t(y) * size_t(nw) * 4,
 					this->pixels.data() + size_t(y) * size_t(this->w) * 4,
 					size_t(this->w) * 8);
@@ -250,7 +250,7 @@ Sheet::alloc(int tw, int th)
 	for (Shelf &shelf : this->shelves_) {
 		if (shelf.h != th)
 			continue;
-		for (size_t i = 0; i < shelf.free.size(); ++i) {
+		for (size_t i = 0; i < shelf.free.size(); i++) {
 			Packed &span = shelf.free[i];
 			if (span.w < tw)
 				continue;
@@ -313,7 +313,7 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 		stride = src_w * int(sizeof(uint16_t) * 4);
 	const int cols = min(slot.w, src_w);
 	const int rows = min(slot.h, src_h);
-	for (int y = 0; y < rows; ++y) {
+	for (int y = 0; y < rows; y++) {
 		uint16_t *dst = this->pixels.data() +
 			(size_t(slot.y + y) * size_t(this->w) + size_t(slot.x)) * 4;
 		const auto *row = (const uint16_t *) ((const uint8_t *) src +

@@ -73,8 +73,8 @@ struct SettingsDraft {
 void dialog_about(Kit &kit, Dialog &dialog);
 void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
 	std::span<const Action> keys);
-void dialog_location(Kit &kit, Dialog &dialog,
-	std::function<void(const QString &)> on_open);
+void dialog_location(
+	Kit &kit, Dialog &dialog, std::function<void(const QString &)> on_open);
 
 // Takes the draft by value: the dialog edits its own copy, and Save is the
 // only way anything gets back out.

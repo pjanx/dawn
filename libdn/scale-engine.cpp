@@ -704,8 +704,8 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 
 	VkMemoryRequirements mr{};
 	vkGetImageMemoryRequirements(device, tile_image, &mr);
-	uint32_t mem_type = vk_memory_type(
-		phys, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
+	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
 	if (mem_type == UINT32_MAX)
 		return false;
 	VkMemoryAllocateInfo mai{
@@ -763,7 +763,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 	mem_type = vk_memory_type(phys, smr.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		error);
+		error, nullptr);
 	if (mem_type == UINT32_MAX) {
 		vkDestroyBuffer(device, staging, nullptr);
 		return false;
@@ -983,8 +983,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 
 	VkMemoryRequirements mr{};
 	vkGetImageMemoryRequirements(device, mid_image, &mr);
-	uint32_t mem_type = vk_memory_type(
-		phys, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
+	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
 	if (mem_type == UINT32_MAX)
 		return false;
 	VkMemoryAllocateInfo mai{
@@ -1170,7 +1170,7 @@ ScaleEngine::Impl::cmd_h_pass(
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
 	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof(pc), &pc);
+		0, sizeof pc, &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1246,7 +1246,7 @@ ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_horiz, 0, 1, &dset_horiz, 0, nullptr);
 	vkCmdPushConstants(cmd, pipeline_layout_horiz, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof(pc), &pc);
+		0, sizeof pc, &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1284,7 +1284,7 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
 	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof(pc), &pc);
+		0, sizeof pc, &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1706,8 +1706,8 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 
 	VkMemoryRequirements mr{};
 	vkGetImageMemoryRequirements(e.device, *image, &mr);
-	uint32_t mem_type = vk_memory_type(
-		e.phys, mr.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error);
+	uint32_t mem_type = vk_memory_type(e.phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
 	if (mem_type == UINT32_MAX) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;

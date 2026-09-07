@@ -52,7 +52,7 @@ ThumbnailHit thumbnail_cache_lookup(const ThumbnailSource &source,
 
 bool thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	const uint16_t *pixels, uint32_t width, uint32_t height,
-	uint32_t image_width, uint32_t image_height, QString *error = nullptr);
+	uint32_t image_width, uint32_t image_height, QString *error);
 
 void thumbnail_cache_invalidate();
 

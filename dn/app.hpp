@@ -84,7 +84,10 @@ protected:
 	bool event(QEvent *event) override;
 
 public:
-	App(int &argc, char **argv) : QGuiApplication(argc, argv) {}
+	App(int &argc, char **argv)
+		: QGuiApplication(argc, argv), thumbnailer(nullptr, 0)
+	{
+	}
 
 	QVulkanInstance vulkan_instance;
 	GpuContext gpu;
@@ -96,8 +99,8 @@ public:
 	bool needs_csd = false;
 
 	bool init();
-	OpenResult open(const QUrl &url, const QString &activation_token = {},
-		BrowseSetup setup = {}, bool browse = false);
+	OpenResult open(const QUrl &url, const QString &activation_token,
+		BrowseSetup setup, bool browse);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);
 	// Not quit(): that name is taken by a static QCoreApplication slot,

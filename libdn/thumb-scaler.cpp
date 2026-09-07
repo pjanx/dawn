@@ -91,7 +91,7 @@ pick_memory(VkPhysicalDevice phys, uint32_t bits,
 	vkGetPhysicalDeviceMemoryProperties(phys, &props);
 	MemoryType best;
 	int best_score = -1;
-	for (uint32_t i = 0; i < props.memoryTypeCount; ++i) {
+	for (uint32_t i = 0; i < props.memoryTypeCount; i++) {
 		if (!(bits & (1u << i)))
 			continue;
 		const auto flags = props.memoryTypes[i].propertyFlags;
@@ -471,7 +471,7 @@ bool
 ThumbScaler::Impl::alloc_range(uint64_t bytes, Slot *slot)
 {
 	bytes = align_up(bytes, alignment);
-	for (size_t i = 0; i < free_ranges.size(); ++i) {
+	for (size_t i = 0; i < free_ranges.size(); i++) {
 		Range &r = free_ranges[i];
 		if (r.size < bytes)
 			continue;
@@ -548,7 +548,7 @@ ThumbScaler::Impl::choose_k_impl(uint32_t w, uint32_t h, uint32_t *out) const
 {
 	if (!w || !h || !out || !max_image_dim)
 		return false;
-	for (uint32_t k = 0; k < 32; ++k) {
+	for (uint32_t k = 0; k < 32; k++) {
 		const uint32_t rw = reduced_dim(w, k), rh = reduced_dim(h, k);
 		const uint64_t bytes = uint64_t(rw) * rh * kBytesPerPixel;
 		if (rw <= max_image_dim && rh <= max_image_dim &&
@@ -645,7 +645,7 @@ ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
 	VkDescriptorBufferInfo info[2] = {
 		{in.handle, in_off, in_size}, {out.handle, out_off, out_size}};
 	VkWriteDescriptorSet writes[2]{};
-	for (uint32_t i = 0; i < 2; ++i) {
+	for (uint32_t i = 0; i < 2; i++) {
 		writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		writes[i].dstSet = set;
 		writes[i].dstBinding = i;
@@ -690,7 +690,7 @@ ThumbScaler::Impl::record_reduce(
 	const Buffer *input = &b.source;
 	VkDeviceSize input_off = item.source_off;
 	bool linear = false;
-	for (uint32_t level = 0; level < s.info.k; ++level) {
+	for (uint32_t level = 0; level < s.info.k; level++) {
 		const uint32_t dw = ceil_div(sw, 2), dh = ceil_div(sh, 2);
 		const bool last = level + 1 == s.info.k;
 		Buffer *output = last ? &s.reduced : ((level & 1u) ? &b.pong : &b.ping);
@@ -706,7 +706,7 @@ ThumbScaler::Impl::record_reduce(
 			last ? item.req.tile_ox >> s.info.k : 0,
 			last ? item.req.tile_oy >> s.info.k : 0, uint32_t(s.info.transfer),
 			s.info.opaque ? 1u : 0u, linear ? 1u : 0u};
-		dispatch(b.cmd, reduce, set, &push, sizeof(push), dw, dh);
+		dispatch(b.cmd, reduce, set, &push, sizeof push, dw, dh);
 		barrier(b.cmd, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -749,7 +749,7 @@ ThumbScaler::Impl::record_h(Batch &b, Item &item, string *error)
 		uint32_t(orientation_or_0(item.req.orientation)),
 		uint32_t(item.req.transfer), item.req.opaque ? 1u : 0u,
 		linear ? 1u : 0u};
-	dispatch(b.cmd, scale_h, set, &push, sizeof(push), item.req.out_w,
+	dispatch(b.cmd, scale_h, set, &push, sizeof push, item.req.out_w,
 		item.display_h);
 	return true;
 }
@@ -770,7 +770,7 @@ ThumbScaler::Impl::record_v(Batch &b, Item &item, string *error)
 		item.req.out_h, item.req.out_w, item.req.out_w,
 		uint32_t(orientation_or_0(item.req.orientation)),
 		uint32_t(item.req.transfer), item.req.opaque ? 1u : 0u, 0};
-	dispatch(b.cmd, scale_v, set, &push, sizeof(push), item.req.out_w,
+	dispatch(b.cmd, scale_v, set, &push, sizeof push, item.req.out_w,
 		item.req.out_h);
 	return true;
 }
@@ -1070,7 +1070,7 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		e.destroy_all();
 		return false;
 	}
-	for (uint32_t i = 0; i < kBatchSlots; ++i) {
+	for (uint32_t i = 0; i < kBatchSlots; i++) {
 		e.batches[i].cmd = commands[i];
 		VkFenceCreateInfo fi{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
 		if (!check_vk(vkCreateFence(device, &fi, nullptr, &e.batches[i].fence),
@@ -1081,7 +1081,7 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		}
 	}
 	VkDescriptorSetLayoutBinding bindings[2]{};
-	for (uint32_t i = 0; i < 2; ++i) {
+	for (uint32_t i = 0; i < 2; i++) {
 		bindings[i].binding = i;
 		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		bindings[i].descriptorCount = 1;
@@ -1261,12 +1261,12 @@ ThumbScaler::Impl::queue_full(const Job &job)
 	bool opaque = true;
 	auto *dst = static_cast<uint8_t *>(slot.mapped);
 	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels->data());
-	for (uint32_t y = 0; y < job.src_h; ++y) {
+	for (uint32_t y = 0; y < job.src_h; y++) {
 		const auto *row =
 			reinterpret_cast<const uint16_t *>(src + y * job.stride);
 		memcpy(dst, row, size_t(row_bytes));
 		if (opaque) {
-			for (uint32_t x = 0; x < job.src_w; ++x) {
+			for (uint32_t x = 0; x < job.src_w; x++) {
 				if (row[x * 4 + 3] != 65535) {
 					opaque = false;
 					break;
@@ -1341,7 +1341,7 @@ ThumbScaler::queue(const Job &job)
 		if (!e.claim(tile_row * tile.h, job.user, job.priority, &slot))
 			break;
 		auto *dst = static_cast<uint8_t *>(slot.mapped);
-		for (uint32_t y = 0; y < tile.h; ++y) {
+		for (uint32_t y = 0; y < tile.h; y++) {
 			const uint8_t *src = base + size_t(tile.oy + y) * job.stride +
 				size_t(tile.ox) * kBytesPerPixel;
 			memcpy(dst, src, tile_row);
@@ -1412,7 +1412,7 @@ ThumbScaler::cancel(uint64_t user)
 	e.canceled.insert(user);
 	for (auto it = e.pending.begin(); it != e.pending.end();) {
 		if (it->req.user != user) {
-			++it;
+			it++;
 			continue;
 		}
 		found = true;
@@ -1474,7 +1474,7 @@ ThumbScaler::flush()
 				it = e.pending.erase(it);
 				item_room -= cost;
 			} else {
-				++it;
+				it++;
 			}
 		}
 		for (auto &entry : e.sessions) {

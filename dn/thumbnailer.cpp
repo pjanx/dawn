@@ -168,16 +168,16 @@ Thumbnailer::Impl::Impl(Thumbnailer *thumbnailer, unsigned worker_count)
 		[thumbnailer] { thumbnailer->pump(); });
 
 	unsigned count =
-		worker_count ? worker_count : std::thread::hardware_concurrency();
+		worker_count ? worker_count : thread::hardware_concurrency();
 	if (!count)
 		count = 1;
 	this->worker_count = count;
 	background_max = min<size_t>(4, max<size_t>(1, count / 4));
 	workers.reserve(count);
-	for (unsigned i = 0; i < count; ++i)
+	for (unsigned i = 0; i < count; i++)
 		workers.emplace_back([this] { worker_loop(); });
 	encoders.reserve(count);
-	for (unsigned i = 0; i < count; ++i)
+	for (unsigned i = 0; i < count; i++)
 		encoders.emplace_back([this] { encoder_loop(); });
 }
 
@@ -222,7 +222,7 @@ bool
 Thumbnailer::Impl::have_cpu() const
 {
 	const bool reserve = worker_count > 1 && cpu_running >= worker_count - 1;
-	for (size_t priority = 0; priority < cpu.size(); ++priority) {
+	for (size_t priority = 0; priority < cpu.size(); priority++) {
 		if (priority == priority_index(Priority::Prefetch) && reserve)
 			continue;
 		if (priority >= priority_index(Priority::Dimensions) &&
@@ -238,7 +238,7 @@ Thumbnailer::Impl::have_cpu() const
 bool
 Thumbnailer::Impl::pop_cpu(shared_ptr<CpuTask> *task)
 {
-	for (size_t priority = 0; priority < cpu.size(); ++priority) {
+	for (size_t priority = 0; priority < cpu.size(); priority++) {
 		const bool reserve =
 			worker_count > 1 && cpu_running >= worker_count - 1;
 		if (priority == priority_index(Priority::Prefetch) && reserve)
@@ -308,8 +308,8 @@ Thumbnailer::Impl::worker_loop()
 			if (client != clients.end() && completion &&
 				client->second.epoch == task->epoch) {
 				client->second.gui++;
-				gui.push_back({task->client, task->epoch, task->running_priority,
-					std::move(completion)});
+				gui.push_back({task->client, task->epoch,
+					task->running_priority, std::move(completion)});
 			}
 		}
 		task->gate->store(true, memory_order_release);
@@ -363,7 +363,7 @@ Thumbnailer::Impl::erase_unpublished(Client id)
 {
 	for (auto it = bundles.begin(); it != bundles.end();) {
 		if (it->second.client != id || it->second.bundle) {
-			++it;
+			it++;
 			continue;
 		}
 		bundle_bytes -= it->second.reserved_bytes;
@@ -388,7 +388,7 @@ Thumbnailer::Impl::erase_gui(Client id, ClientState &state)
 			state.gui--;
 			it = gui.erase(it);
 		} else {
-			++it;
+			it++;
 		}
 	}
 }
@@ -403,7 +403,7 @@ Thumbnailer::Impl::erase_gpu(Client id, ClientState &state)
 			state.gpu--;
 			it = gpu_tasks.erase(it);
 		} else {
-			++it;
+			it++;
 		}
 	}
 }
@@ -649,7 +649,8 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 					impl_->fail_gpu(gpu_id, std::move(path));
 				}
 				return Completion{};
-			})) {
+			},
+			{})) {
 		lock_guard lock(impl_->mu);
 		impl_->drop_gpu(gpu_id);
 		return false;
@@ -683,8 +684,8 @@ Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
 	if (!reservation)
 		reservation = impl_->next_reservation++;
 	impl_->bundles.emplace(reservation,
-		Impl::BundleSlot{reservation, id, epoch, source, top_tier, bytes,
-			priority, {}});
+		Impl::BundleSlot{
+			reservation, id, epoch, source, top_tier, bytes, priority, {}});
 	impl_->bundle_bytes += bytes;
 	return reservation;
 }
@@ -787,13 +788,15 @@ Thumbnailer::foreground_busy(Client id) const
 	}
 	for (const auto &[gpu_id, task] : impl_->gpu_tasks) {
 		(void) gpu_id;
-		if (task.client == id && priority_index(task.priority) <
-			priority_index(Priority::Dimensions))
+		if (task.client == id &&
+			priority_index(task.priority) <
+				priority_index(Priority::Dimensions))
 			return true;
 	}
 	for (const Impl::GuiTask &task : impl_->gui)
-		if (task.client == id && priority_index(task.priority) <
-			priority_index(Priority::Dimensions))
+		if (task.client == id &&
+			priority_index(task.priority) <
+				priority_index(Priority::Dimensions))
 			return true;
 	return false;
 }
@@ -836,7 +839,7 @@ Thumbnailer::pump()
 	// CPU completions establish browser state needed by any GPU job they
 	// queued. Always apply them before polling those jobs.
 	size_t gui_count = 0;
-	for (; gui_count < kGuiBatch; ++gui_count) {
+	for (; gui_count < kGuiBatch; gui_count++) {
 		Completion completion;
 		{
 			lock_guard lock(impl_->mu);
@@ -874,7 +877,7 @@ Thumbnailer::pump()
 			Impl::GpuTask &task = it->second;
 			if (!task.result ||
 				(task.gate && !task.gate->load(memory_order_acquire))) {
-				++it;
+				it++;
 				continue;
 			}
 			auto client = impl_->clients.find(task.client);

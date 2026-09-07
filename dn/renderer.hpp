@@ -51,7 +51,7 @@ class OverlayVulkan
 		VkImage *image, VkDeviceMemory *memory, VkImageView *view,
 		VkDescriptorSet set, VkComponentMapping swizzle) const;
 	bool copy_rgba16(const void *pixels, int width, int height, VkImage image,
-		VkImageLayout layout, int dst_x = 0, int dst_y = 0) const;
+		VkImageLayout layout, int dst_x, int dst_y) const;
 	bool create_sampled(
 		int width, int height, VkImage *image, VkDeviceMemory *memory) const;
 	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
@@ -113,7 +113,7 @@ public:
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side, bool *recreated = nullptr);
+		int dst_y, int atlas_side, bool *recreated);
 	bool rebuild_thumbs(
 		const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();
@@ -206,7 +206,7 @@ public:
 		uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride);
 	void clear_image();
 	void set_view(float scale, float pan_x, float pan_y,
-		dawn::Orientation orientation, float angle = 0.f);
+		dawn::Orientation orientation, float angle);
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled)
 	{
@@ -224,7 +224,7 @@ public:
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side, bool *recreated = nullptr);
+		int dst_y, int atlas_side, bool *recreated);
 	bool rebuild_thumbs(
 		const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();

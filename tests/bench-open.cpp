@@ -33,8 +33,7 @@ usage(const char *argv0)
 static void
 fit_size(uint32_t w, uint32_t h, uint32_t *out_w, uint32_t *out_h)
 {
-	const float scale =
-		min(1.0f, min(512.0f / float(w), 256.0f / float(h)));
+	const float scale = min(1.0f, min(512.0f / float(w), 256.0f / float(h)));
 	*out_w = max(1u, uint32_t(float(w) * scale + 0.5f));
 	*out_h = max(1u, uint32_t(float(h) * scale + 0.5f));
 }
@@ -48,7 +47,7 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 	ctx.first_frame_only = true;
 	ctx.uri = path;
 	if (cms) {
-		auto srgb = cmm->get_profile_sRGB();
+		auto srgb = cmm->get_profile_sRGB(false);
 		if (!srgb) {
 			fprintf(stderr, "%s: get_profile_sRGB failed\n", path);
 			return 1;
@@ -70,15 +69,13 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 			rc = 1;
 			continue;
 		}
-		const double open_ms =
-			chrono::duration<double, milli>(t1 - t0).count();
+		const double open_ms = chrono::duration<double, milli>(t1 - t0).count();
 		const double rest_ms = open_ms - st.file_ms - st.decode_ms -
 			st.alloc_ms - st.cms_ms - st.widen_ms;
 		if (repeats > 1)
 			printf("%d  ", i + 1);
-		printf(
-			"file %.1f  decode %.1f  alloc %.1f  cms %.1f  widen %.1f  "
-			"rest %.1f  open %.1f  %ux%u  %s",
+		printf("file %.1f  decode %.1f  alloc %.1f  cms %.1f  widen %.1f  "
+			   "rest %.1f  open %.1f  %ux%u  %s",
 			st.file_ms, st.decode_ms, st.alloc_ms, st.cms_ms, st.widen_ms,
 			rest_ms, open_ms, img->width, img->height, path);
 		if (scaler) {
@@ -97,8 +94,8 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 				rc = 1;
 				continue;
 			}
-			printf("  scale %.1f  %ux%u\n", scale_ms, scaled.width,
-				scaled.height);
+			printf(
+				"  scale %.1f  %ux%u\n", scale_ms, scaled.width, scaled.height);
 		} else {
 			printf("\n");
 		}

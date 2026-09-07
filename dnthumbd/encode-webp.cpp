@@ -14,9 +14,11 @@
 
 using namespace std;
 
-namespace dnthumbd {
+namespace dnthumbd
+{
 
-bool encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
+bool
+encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 	vector<uint8_t> *out, string *error)
 {
 	if (!out || !rgba8 || w == 0 || h == 0) {
@@ -61,7 +63,7 @@ bool encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 		for (uint32_t x = 0; x < w; x++) {
 			const uint8_t *p = src + x * 4;
 			dst[x] = (uint32_t(p[3]) << 24) | (uint32_t(p[0]) << 16) |
-				 (uint32_t(p[1]) << 8) | uint32_t(p[2]);
+				(uint32_t(p[1]) << 8) | uint32_t(p[2]);
 		}
 	}
 
@@ -73,7 +75,7 @@ bool encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 	if (!WebPEncode(&config, &picture)) {
 		if (error)
 			*error = string("WebPEncode failed (code ") +
-				 to_string(int(picture.error_code)) + ")";
+				to_string(int(picture.error_code)) + ")";
 		WebPPictureFree(&picture);
 		WebPMemoryWriterClear(&writer);
 		return false;
@@ -94,4 +96,4 @@ bool encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 	return true;
 }
 
-} // namespace dnthumbd
+}  // namespace dnthumbd

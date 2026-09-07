@@ -218,19 +218,19 @@ apply_mimeapps(AssocSets &acc, const IniFile &ini, const QString &type)
 	const string type_utf8 = type.toUtf8().toStdString();
 	for (const IniGroup &group : ini.groups) {
 		if (group.name == "Default Applications") {
-			for (const QString &id : split_semicolons(
-					 dawn::detail::ini_get(group, type_utf8)))
+			for (const QString &id :
+				split_semicolons(dawn::detail::ini_get(group, type_utf8)))
 				append_unique(acc.defaults, normalize_desktop_id(id));
 		} else if (group.name == "Added Associations") {
-			for (const QString &id : split_semicolons(
-					 dawn::detail::ini_get(group, type_utf8))) {
+			for (const QString &id :
+				split_semicolons(dawn::detail::ini_get(group, type_utf8))) {
 				const QString nid = normalize_desktop_id(id);
 				if (!acc.removed.contains(nid))
 					append_unique(acc.added, nid);
 			}
 		} else if (group.name == "Removed Associations") {
-			for (const QString &id : split_semicolons(
-					 dawn::detail::ini_get(group, type_utf8))) {
+			for (const QString &id :
+				split_semicolons(dawn::detail::ini_get(group, type_utf8))) {
 				const QString nid = normalize_desktop_id(id);
 				if (find(acc.added.begin(), acc.added.end(), nid) ==
 					acc.added.end())
@@ -268,8 +268,8 @@ cache_ids_for_type(const QString &type)
 		for (const IniGroup &group : ini.groups) {
 			if (group.name != "MIME Cache")
 				continue;
-			for (const QString &id : split_semicolons(
-					 dawn::detail::ini_get(group, type_utf8)))
+			for (const QString &id :
+				split_semicolons(dawn::detail::ini_get(group, type_utf8)))
 				append_unique(ids, normalize_desktop_id(id));
 		}
 	}
@@ -283,7 +283,7 @@ desktop_path_for_name(const QString &dir, QString name, int from)
 	if (QFileInfo::exists(path))
 		return path;
 
-	for (int i = from; i < name.size(); ++i) {
+	for (int i = from; i < name.size(); i++) {
 		if (name[i] != u'-')
 			continue;
 
@@ -345,10 +345,10 @@ localized_value(const IniGroup &entry, const QString &key)
 		}
 		if (!item_key.startsWith(prefix) || !item_key.endsWith(u']'))
 			continue;
-		const QString loc = item_key.mid(
-			prefix.size(), item_key.size() - prefix.size() - 1);
-		localized.insert({loc, QString::fromStdString(
-								 dawn::detail::desktop_unescape(kv.second))});
+		const QString loc =
+			item_key.mid(prefix.size(), item_key.size() - prefix.size() - 1);
+		localized.insert({loc,
+			QString::fromStdString(dawn::detail::desktop_unescape(kv.second))});
 	}
 	for (const QString &loc : locale_candidates()) {
 		const auto it = localized.find(loc);
@@ -434,15 +434,14 @@ load_desktop(const QString &id)
 	if (!entry)
 		return d;
 
-	const QString type = QString::fromStdString(
-		dawn::detail::ini_get(*entry, "Type"))
-						 .trimmed();
+	const QString type =
+		QString::fromStdString(dawn::detail::ini_get(*entry, "Type")).trimmed();
 	d.application = type.isEmpty() || type == QLatin1String("Application");
 	d.name = localized_name(*entry);
-	d.icon = QString::fromStdString(dawn::detail::desktop_unescape(
-		dawn::detail::ini_get(*entry, "Icon")));
-	d.exec = QString::fromStdString(dawn::detail::desktop_unescape(
-		dawn::detail::ini_get(*entry, "Exec")));
+	d.icon = QString::fromStdString(
+		dawn::detail::desktop_unescape(dawn::detail::ini_get(*entry, "Icon")));
+	d.exec = QString::fromStdString(
+		dawn::detail::desktop_unescape(dawn::detail::ini_get(*entry, "Exec")));
 	d.try_exec = QString::fromStdString(dawn::detail::desktop_unescape(
 		dawn::detail::ini_get(*entry, "TryExec")));
 	d.hidden = parse_bool(dawn::detail::ini_get(*entry, "Hidden"));
@@ -535,7 +534,7 @@ split_exec(const QString &exec)
 	vector<QString> args;
 	QString cur;
 	bool in_quote = false;
-	for (int i = 0; i < exec.size(); ++i) {
+	for (int i = 0; i < exec.size(); i++) {
 		const QChar c = exec[i];
 		if (in_quote) {
 			if (c == u'\\' && i + 1 < exec.size()) {
@@ -590,7 +589,7 @@ expand_exec(const Desktop &d, const QString &path)
 			continue;
 		}
 		QString built;
-		for (int i = 0; i < arg.size(); ++i) {
+		for (int i = 0; i < arg.size(); i++) {
 			if (arg[i] != u'%' || i + 1 >= arg.size()) {
 				built += arg[i];
 				continue;
@@ -797,10 +796,10 @@ set_last_used(const Handler &app, const QString &path)
 		}
 	};
 	const string type_utf8 = type.toUtf8().toStdString();
-	const QString previous = QString::fromStdString(
-		dawn::detail::ini_get(*added, type_utf8));
-	dawn::detail::ini_set(*added, type_utf8,
-		prepend_id(previous, id).toUtf8().toStdString());
+	const QString previous =
+		QString::fromStdString(dawn::detail::ini_get(*added, type_utf8));
+	dawn::detail::ini_set(
+		*added, type_utf8, prepend_id(previous, id).toUtf8().toStdString());
 	if (removed)
 		drop_id(*removed, type);
 	write_text_file(dest, dawn::detail::ini_serialize(ini));

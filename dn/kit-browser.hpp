@@ -162,7 +162,7 @@ struct Browser : Widget {
 	void init();
 	void destroy();
 	void set_host(float width_pts, float height_pts, float dpr);
-	void open_dir(const QUrl &url, bool record = true);
+	void open_dir(const QUrl &url, bool record);
 	void rescan();
 	bool hist_back();
 	bool hist_forward();
@@ -173,9 +173,8 @@ struct Browser : Widget {
 	void file_gone(const QUrl &url);
 	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
-	void set_screen_profile(
-		std::shared_ptr<dawn::Cmm> cmm, std::shared_ptr<dawn::Profile> profile,
-		bool force_reload = false);
+	void set_screen_profile(std::shared_ptr<dawn::Cmm> cmm,
+		std::shared_ptr<dawn::Profile> profile, bool force_reload);
 	void present(Page &ui);
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;

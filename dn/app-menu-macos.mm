@@ -163,7 +163,7 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 
 - (BOOL)performKeyEquivalent:(NSEvent *)event
 {
-	(void)event;
+	(void) event;
 	return NO;
 }
 
@@ -334,8 +334,8 @@ adopt_app_menu(id target)
 	if ([loader respondsToSelector:@selector(aboutMenuItem)])
 		claim_item([loader aboutMenuItem], Action::About, target, @"", 0);
 	if ([loader respondsToSelector:@selector(preferencesMenuItem)])
-		claim_item([loader preferencesMenuItem], Action::Settings, target,
-			@",", NSEventModifierFlagCommand);
+		claim_item([loader preferencesMenuItem], Action::Settings, target, @",",
+			NSEventModifierFlagCommand);
 }
 
 void

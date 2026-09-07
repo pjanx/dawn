@@ -13,7 +13,8 @@
 
 using namespace std;
 
-namespace dnthumbd {
+namespace dnthumbd
+{
 
 static bool
 invert_matrix(const dawn::Matrix &m, dawn::Matrix *out)

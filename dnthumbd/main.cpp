@@ -59,7 +59,7 @@ process_one(const string &path, dawn::ScaleScaler *scaler)
 	ctx.uri = path;
 	// One Cmm per job — do not share get_default() across worker threads.
 	ctx.cmm = make_shared<dawn::Cmm>();
-	ctx.screen_profile = ctx.cmm->get_profile_sRGB();
+	ctx.screen_profile = ctx.cmm->get_profile_sRGB(false);
 	ctx.first_frame_only = true;
 
 	dawn::Error error;

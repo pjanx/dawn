@@ -19,7 +19,7 @@
 #include <vector>
 
 using namespace std;
-using namespace std::chrono_literals;
+using namespace chrono_literals;
 
 namespace
 {
@@ -56,7 +56,7 @@ test_background_reserve()
 			thumbnailer.background_limit());
 		return false;
 	}
-	const auto client = thumbnailer.add_client();
+	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	int background_started = 0;
 	bool visible_started = false;
@@ -67,9 +67,9 @@ test_background_reserve()
 		gate.changed.wait(lock, [&] { return gate.released; });
 		return dn::Thumbnailer::Completion{};
 	};
-	for (int i = 0; i < 2; ++i) {
-		if (!thumbnailer.submit(
-				client, 0, dn::Thumbnailer::Priority::Dimensions, background)) {
+	for (int i = 0; i < 2; i++) {
+		if (!thumbnailer.submit(client, 0,
+				dn::Thumbnailer::Priority::Dimensions, background, {})) {
 			gate.unblock();
 			return false;
 		}
@@ -81,12 +81,14 @@ test_background_reserve()
 			return false;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			lock_guard lock(gate.mu);
-			visible_started = true;
-			gate.changed.notify_all();
-			return dn::Thumbnailer::Completion{};
-		}))
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+			[&] {
+				lock_guard lock(gate.mu);
+				visible_started = true;
+				gate.changed.notify_all();
+				return dn::Thumbnailer::Completion{};
+			},
+			{}))
 		return false;
 	{
 		unique_lock lock(gate.mu);
@@ -108,7 +110,7 @@ static bool
 test_visible_reserve()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 4);
-	const auto client = thumbnailer.add_client();
+	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	int prefetch_started = 0;
 	bool visible_started = false;
@@ -119,9 +121,9 @@ test_visible_reserve()
 		gate.changed.wait(lock, [&] { return gate.released; });
 		return dn::Thumbnailer::Completion{};
 	};
-	for (int i = 0; i < 4; ++i) {
+	for (int i = 0; i < 4; i++) {
 		if (!thumbnailer.submit(
-				client, 0, dn::Thumbnailer::Priority::Prefetch, prefetch)) {
+				client, 0, dn::Thumbnailer::Priority::Prefetch, prefetch, {})) {
 			gate.unblock();
 			return false;
 		}
@@ -133,12 +135,14 @@ test_visible_reserve()
 			return false;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			lock_guard lock(gate.mu);
-			visible_started = true;
-			gate.changed.notify_all();
-			return dn::Thumbnailer::Completion{};
-		})) {
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+			[&] {
+				lock_guard lock(gate.mu);
+				visible_started = true;
+				gate.changed.notify_all();
+				return dn::Thumbnailer::Completion{};
+			},
+			{})) {
 		gate.unblock();
 		return false;
 	}
@@ -159,17 +163,19 @@ static bool
 test_reprioritization_order()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 1);
-	const auto client = thumbnailer.add_client();
+	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	bool blocker_started = false;
 	vector<int> order;
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			unique_lock lock(gate.mu);
-			blocker_started = true;
-			gate.changed.notify_all();
-			gate.changed.wait(lock, [&] { return gate.released; });
-			return dn::Thumbnailer::Completion{};
-		}))
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+			[&] {
+				unique_lock lock(gate.mu);
+				blocker_started = true;
+				gate.changed.notify_all();
+				gate.changed.wait(lock, [&] { return gate.released; });
+				return dn::Thumbnailer::Completion{};
+			},
+			{}))
 		return false;
 	{
 		unique_lock lock(gate.mu);
@@ -218,7 +224,7 @@ static bool
 test_bundle_reservations()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 2);
-	const auto client = thumbnailer.add_client(7);
+	const auto client = thumbnailer.add_client(7, {});
 	dn::ThumbnailSource a;
 	a.uri = QByteArrayLiteral("file:///a");
 	a.mtime = 1;
@@ -251,7 +257,7 @@ test_bundle_reservations()
 static void
 test_activity_transitions(QCoreApplication &app)
 {
-	dn::Thumbnailer thumbnailer;
+	dn::Thumbnailer thumbnailer(nullptr, 0);
 	WorkGate gate;
 	bool saw_busy = false;
 	bool saw_idle = false;
@@ -265,11 +271,13 @@ test_activity_transitions(QCoreApplication &app)
 			app.quit();
 		}
 	});
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible, [&] {
-			unique_lock lock(gate.mu);
-			gate.changed.wait(lock, [&] { return gate.released; });
-			return dn::Thumbnailer::Completion{};
-		})) {
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+			[&] {
+				unique_lock lock(gate.mu);
+				gate.changed.wait(lock, [&] { return gate.released; });
+				return dn::Thumbnailer::Completion{};
+			},
+			{})) {
 		test::fail("could not submit thumbnail work");
 		return;
 	}
@@ -287,7 +295,7 @@ test_activity_transitions(QCoreApplication &app)
 int
 main(int argc, char **argv)
 {
-	test::Application application(argc, argv);
+	test::Application application(argc, argv, nullptr);
 	return test::run({
 		{"background worker reserve", [] { CHECK(test_background_reserve()); }},
 		{"visible worker reserve", [] { CHECK(test_visible_reserve()); }},

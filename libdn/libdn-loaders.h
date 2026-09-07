@@ -19,8 +19,7 @@ inline thread_local OpenTiming *open_timing = nullptr;
 
 struct OpenTimingGuard {
 	OpenTiming *prev;
-	explicit OpenTimingGuard(OpenTiming *t)
-		: prev(open_timing)
+	explicit OpenTimingGuard(OpenTiming *t) : prev(open_timing)
 	{
 		open_timing = t;
 	}

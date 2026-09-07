@@ -80,25 +80,24 @@ public:
 		Maintenance,
 	};
 
-	explicit Thumbnailer(QObject *parent = nullptr, unsigned workers = 0);
+	explicit Thumbnailer(QObject *parent, unsigned workers);
 	~Thumbnailer() override;
 
 	Thumbnailer(const Thumbnailer &) = delete;
 	Thumbnailer &operator=(const Thumbnailer &) = delete;
 
 	bool init(const GpuContext &gpu);
-	Client add_client(uint64_t epoch = 0, Completion activity = {});
+	Client add_client(uint64_t epoch, Completion activity);
 	void remove_client(Client client);
 	void set_epoch(Client client, uint64_t epoch);
 
 	bool submit(Client client, uint64_t epoch, Priority priority, Work work,
-		std::string key = {});
+		std::string key);
 	bool reprioritize(Client client, uint64_t epoch, Priority priority,
 		const std::string &key);
 	/// Copies owned job pixels on a worker. Safe on the GUI thread.
 	bool submit_gpu(Client client, uint64_t epoch, Priority priority,
-		dawn::ThumbScaler::Job job, GpuCompletion completion,
-		std::string key = {});
+		dawn::ThumbScaler::Job job, GpuCompletion completion, std::string key);
 	Reservation reserve_bundle(Client client, uint64_t epoch,
 		const ThumbnailSource &source, int top_tier, size_t bytes,
 		Priority priority);

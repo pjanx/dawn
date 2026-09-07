@@ -82,7 +82,7 @@ locus_path(int w, int h)
 	};
 	QPointF p0 = xy(0);
 	path.moveTo(xy_to_px(p0.x(), p0.y(), w, h));
-	for (int i = 1; i < kCmfN; ++i) {
+	for (int i = 1; i < kCmfN; i++) {
 		QPointF p = xy(i);
 		path.lineTo(xy_to_px(p.x(), p.y(), w, h));
 	}
@@ -140,7 +140,7 @@ stroke_poly(
 		return;
 	QPainterPath path;
 	path.moveTo(xy_to_px(c.x[0], c.y[0], w, h));
-	for (int i = 1; i < c.n; ++i)
+	for (int i = 1; i < c.n; i++)
 		path.lineTo(xy_to_px(c.x[i], c.y[i], w, h));
 	path.closeSubpath();
 	p.strokePath(path, pen);
@@ -164,11 +164,11 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 		mp.fillPath(locus_path(w, h), Qt::white);
 	}
 
-	for (int py = 0; py < h; ++py) {
+	for (int py = 0; py < h; py++) {
 		auto *dst = (QRgb *) img.scanLine(py);
 		const auto *ms = (const QRgb *) mask.constScanLine(py);
 		const double y = double(kYMax) * (1.0 - (py + 0.5) / h);
-		for (int px = 0; px < w; ++px) {
+		for (int px = 0; px < w; px++) {
 			if (!qAlpha(ms[px]))
 				continue;
 			const double x = double(kXMax) * (px + 0.5) / w;
@@ -219,7 +219,7 @@ same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 		return false;
 	if (a.have_white && (a.wx != b.wx || a.wy != b.wy))
 		return false;
-	for (int i = 0; i < a.n; ++i) {
+	for (int i = 0; i < a.n; i++) {
 		if (a.x[i] != b.x[i] || a.y[i] != b.y[i])
 			return false;
 	}
@@ -251,8 +251,8 @@ CieDiagram::prepare(Kit &kit)
 	kit.cache_text(kTargetLab, false);
 
 	const int cap = caption_h(kit);
-	const Rect plot = plot_rect(
-		{this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
+	const Rect plot =
+		plot_rect({this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
 	if (plot.w < 8.f || plot.h < 8.f)
 		return;
 
@@ -285,8 +285,8 @@ void
 CieDiagram::paint(Kit &kit) const
 {
 	const int cap = caption_h(kit);
-	const Rect plot = plot_rect(
-		{this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
+	const Rect plot =
+		plot_rect({this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
 	const int x0 = plot.x > 0 ? plot.x : this->r.x;
 	const int cap_y0 = plot.h >= 8 ? plot.y + plot.h : this->r.y;
 	const int y = cap_y0 + kit.px(kCapGap);
@@ -300,8 +300,8 @@ CieDiagram::paint(Kit &kit) const
 	const int cx = x0 + cap_w / 2;
 	const int gap = kit.px(4.f);
 	const int widthS = kit.text_width(kSourceLab, true);
-	kit.emit_text(float(cx - gap - widthS), float(y), kSourceLab, kBlackCol,
-		true);
+	kit.emit_text(
+		float(cx - gap - widthS), float(y), kSourceLab, kBlackCol, true);
 	kit.emit_text(float(cx + gap), float(y), kTargetLab, kWhiteCol, true);
 }
 

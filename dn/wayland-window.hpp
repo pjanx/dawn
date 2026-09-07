@@ -54,8 +54,7 @@ public:
 	explicit WaylandWindow(App *app);
 	~WaylandWindow() override;
 
-	bool initialize(
-		const QUrl &url, BrowseSetup setup = {}, bool browse = false);
+	bool initialize(const QUrl &url, BrowseSetup setup, bool browse);
 };
 
 // What Qt's own CSD does on titlebar right-click, in shell-local coordinates.

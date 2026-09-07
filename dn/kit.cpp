@@ -72,7 +72,7 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 		return colour;
 	uint16_t pixel[4] = {
 		uint16_t(b * 257), uint16_t(g * 257), uint16_t(r * 257), 65535};
-	auto srgb = cmm->get_profile_sRGB();
+	auto srgb = cmm->get_profile_sRGB(false);
 	if (!srgb)
 		return colour;
 	if (!cmm->transform_bgra16(
@@ -122,11 +122,11 @@ raster_symbolic(const char *name, int px)
 
 	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
 	const size_t stride = size_t(px) * 4;
-	for (int y = 0; y < px; ++y) {
+	for (int y = 0; y < px; y++) {
 		auto *row = (QRgb *) image.scanLine(y);
 		const auto *src =
 			(const unsigned char *) (pixmap.data() + size_t(y) * stride);
-		for (int x = 0; x < px; ++x) {
+		for (int x = 0; x < px; x++) {
 			const int a = src[x * 4 + 3];
 			row[x] = qRgba(a, a, a, a);
 		}
@@ -212,9 +212,9 @@ raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
 	painter.end();
 
 	QRect ink;
-	for (int y = 0; y < img.height(); ++y) {
+	for (int y = 0; y < img.height(); y++) {
 		const auto *row = (const QRgb *) img.constScanLine(y);
-		for (int x = 0; x < img.width(); ++x) {
+		for (int x = 0; x < img.width(); x++) {
 			if (qAlpha(row[x]))
 				ink |= QRect(x, y, 1, 1);
 		}
@@ -333,18 +333,18 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 
 	const int rows = min(rect.h, img.height());
 	const int cols = min(rect.w, img.width());
-	for (int y = 0; y < rows; ++y) {
+	for (int y = 0; y < rows; y++) {
 		uint16_t *dst = kit.atlas_.pixels.data() +
 			(size_t(rect.y + y) * size_t(kit.atlas_.w) + size_t(rect.x)) * 4;
 		if (coverage) {
 			const uchar *row = img.constScanLine(y);
-			for (int x = 0; x < cols; ++x) {
+			for (int x = 0; x < cols; x++) {
 				const uint16_t a = widen8(row[x]);
 				fill_n(dst + x * 4, 4, a);
 			}
 		} else {
 			const auto *row = (const QRgb *) img.constScanLine(y);
-			for (int x = 0; x < cols; ++x) {
+			for (int x = 0; x < cols; x++) {
 				dst[x * 4 + 0] = widen8(uint8_t(qRed(row[x])));
 				dst[x * 4 + 1] = widen8(uint8_t(qGreen(row[x])));
 				dst[x * 4 + 2] = widen8(uint8_t(qBlue(row[x])));
@@ -358,7 +358,7 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 static int
 font_id(Kit &kit, const QRawFont &raw)
 {
-	for (size_t i = 0; i < kit.fonts_.size(); ++i) {
+	for (size_t i = 0; i < kit.fonts_.size(); i++) {
 		if (kit.fonts_[i] == raw)
 			return int(i);
 	}
@@ -401,7 +401,7 @@ cache_ascii(Kit &kit, bool bold)
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid())
 		return;
-	for (int cp = 0x20; cp <= 0x7E; ++cp) {
+	for (int cp = 0x20; cp <= 0x7E; cp++) {
 		const QList<quint32> indexes =
 			raw.glyphIndexesForString(QString(QChar(cp)));
 		if (indexes.isEmpty())
@@ -432,7 +432,7 @@ cache_text(Kit &kit, const QString &text, bool bold, int wrap)
 static void
 rebuild_atlas(Kit &kit)
 {
-	++kit.atlas_epoch_;
+	kit.atlas_epoch_++;
 	kit.icons_.clear();
 	kit.glyphs_.clear();
 	kit.fonts_.clear();
@@ -444,11 +444,11 @@ rebuild_atlas(Kit &kit)
 	if (white.empty())
 		return;
 	kit.white_ = white;
-	for (int y = 0; y < white.h; ++y) {
+	for (int y = 0; y < white.h; y++) {
 		uint16_t *dst = kit.atlas_.pixels.data() +
 			size_t(white.y + y) * size_t(kit.atlas_.w) * 4 +
 			size_t(white.x) * 4;
-		for (int x = 0; x < white.w; ++x) {
+		for (int x = 0; x < white.w; x++) {
 			dst[x * 4 + 0] = 65535;
 			dst[x * 4 + 1] = 65535;
 			dst[x * 4 + 2] = 65535;
@@ -465,11 +465,11 @@ rebuild_atlas(Kit &kit)
 		const int y_max = gn - 1;
 		const double x_scale = 1.0 / double(max(1, x_max));
 		const double y_scale = 1.0 / double(max(1, y_max));
-		for (int y = 0; y <= y_max; ++y) {
+		for (int y = 0; y <= y_max; y++) {
 			uint16_t *dst = kit.atlas_.pixels.data() +
 				size_t(glow.y + y) * size_t(kit.atlas_.w) * 4 +
 				size_t(glow.x) * 4;
-			for (int x = 0; x <= x_max; ++x) {
+			for (int x = 0; x <= x_max; x++) {
 				const double xn = x_scale * double(x_max - x);
 				const double yn = y_scale * double(y_max - y);
 				const double v = min(sqrt(xn * xn + yn * yn), 1.0);
@@ -520,7 +520,7 @@ emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
 		const QList<quint32> gids = run.glyphIndexes();
 		const QList<QPointF> pos = run.positions();
 		const int n = int(min(gids.size(), pos.size()));
-		for (int i = 0; i < n; ++i) {
+		for (int i = 0; i < n; i++) {
 			// The shaper positions the pen in fractions of a pixel, and
 			// kerning lives in those fractions.  Split one off into the
 			// phase the glyph was rasterised at, so that the quad can stay
@@ -610,7 +610,7 @@ void
 Widget::paint_children(Kit &kit) const
 {
 	const size_t n = child_count();
-	for (size_t i = 0; i < n; ++i) {
+	for (size_t i = 0; i < n; i++) {
 		if (const Widget *k = child(i))
 			k->paint(kit);
 	}
@@ -643,7 +643,7 @@ Widget::prepare(Kit &kit)
 	if (!shown())
 		return;
 	const size_t n = child_count();
-	for (size_t i = 0; i < n; ++i) {
+	for (size_t i = 0; i < n; i++) {
 		if (Widget *k = child(i))
 			k->prepare(kit);
 	}
@@ -1518,6 +1518,12 @@ Splitter::release(Kit &, float, float, Qt::MouseButton button)
 // --- Composite ---------------------------------------------------------------
 
 Widget *
+Composite::add_child(unique_ptr<Widget> child)
+{
+	return add_child(std::move(child), size_t(-1));
+}
+
+Widget *
 Composite::add_child(unique_ptr<Widget> child, size_t at)
 {
 	Widget *raw = child.get();
@@ -1542,10 +1548,16 @@ Composite::take_child(size_t at)
 }
 
 void
+Composite::erase_children()
+{
+	erase_children(0);
+}
+
+void
 Composite::erase_children(size_t from)
 {
 	from = min(from, this->kids.size());
-	for (size_t i = from; i < this->kids.size(); ++i) {
+	for (size_t i = from; i < this->kids.size(); i++) {
 		if (this->kids[i])
 			this->kids[i]->parent_ = nullptr;
 	}
@@ -1579,14 +1591,14 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 		if (!k || !k->shown())
 			continue;
 		if (k->grows()) {
-			++growers;
-			++vis;
+			growers++;
+			vis++;
 			continue;
 		}
 		k->measure(kit, hz ? kUnlim : iw, hz ? ih : kUnlim);
 		used += hz ? k->r.w : k->r.h;
 		cross = max(cross, hz ? k->r.h : k->r.w);
-		++vis;
+		vis++;
 	}
 	const int gaps = kit.px(this->gap) * max(0, vis - 1);
 	if (growers) {
@@ -1631,9 +1643,9 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		Widget *k = child.get();
 		if (!k || !k->shown())
 			continue;
-		++vis;
+		vis++;
 		if (k->grows()) {
-			++growers;
+			growers++;
 			continue;
 		}
 		k->measure(kit, hz ? kUnlim : in.w, hz ? in.h : kUnlim);
@@ -1662,7 +1674,7 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		if (!k || !k->shown())
 			continue;
 		packed += (hz ? k->r.w : k->r.h) + gap;
-		++nv;
+		nv++;
 	}
 	if (nv)
 		packed -= gap;
@@ -1745,7 +1757,7 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
 	};
 
 	const size_t n = this->kids.size();
-	for (size_t i = 0; i < n; ++i) {
+	for (size_t i = 0; i < n; i++) {
 		Widget *k = this->kids[i].get();
 		// A hidden child keeps whatever rect it had: clearing it here would
 		// be measuring as a side effect, and a width is what focusable()
@@ -1767,7 +1779,7 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
 			flush(i);
 		line_w += kept ? need : k->r.w;
 		line_h = max(line_h, k->r.h);
-		++kept;
+		kept++;
 	}
 	flush(n);
 	if (y)
@@ -1813,19 +1825,19 @@ Flow::arrange(Kit &kit, Rect alloc)
 		// field then fills its line the way it fills the bar, instead of
 		// sitting at its minimum with a ragged gap after it.
 		int used = 0, growers = 0, vis = 0;
-		for (size_t i = line.first; i < line.first + line.count; ++i) {
+		for (size_t i = line.first; i < line.first + line.count; i++) {
 			Widget *k = this->kids[i].get();
 			if (!k || !k->shown())
 				continue;
 			used += k->r.w;
-			++vis;
+			vis++;
 			if (k->grows())
-				++growers;
+				growers++;
 		}
 		const int slack = max(0, in.w - used - gap * max(0, vis - 1));
 
 		int x = in.x, got = 0;
-		for (size_t i = line.first; i < line.first + line.count; ++i) {
+		for (size_t i = line.first; i < line.first + line.count; i++) {
 			Widget *k = this->kids[i].get();
 			if (!k || !k->shown())
 				continue;
@@ -2563,7 +2575,7 @@ collect_focusable(Widget *w, vector<Widget *> &out)
 	if (w->focusable())
 		out.push_back(w);
 	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; ++i)
+	for (size_t i = 0; i < n; i++)
 		collect_focusable(w->child(i), out);
 }
 
@@ -2578,7 +2590,7 @@ collect_mnemonics(Widget *w, QChar letter, vector<Widget *> &out)
 	if (w->mnemonic_key().toLower() == letter)
 		out.push_back(w);
 	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; ++i)
+	for (size_t i = 0; i < n; i++)
 		collect_mnemonics(w->child(i), letter, out);
 }
 
@@ -2650,7 +2662,7 @@ MenuPopup::key(Kit &kit, const Key &ev)
 	switch (ev.key) {
 	case Qt::Key_Up:
 	case Qt::Key_Down:
-		kit.cycle_focus(this, ev.key == Qt::Key_Up ? -1 : 1);
+		kit.cycle_focus(this, ev.key == Qt::Key_Up ? -1 : 1, true);
 		focus_item(kit, kit.focus_, true);
 		return true;
 	case Qt::Key_Right:
@@ -2790,7 +2802,7 @@ Overflow::step_line(Kit &kit, int dir)
 	const auto it = find(items.begin(), items.end(), kit.focus_);
 	if (it == items.end()) {
 		this->want_x_ = -1;
-		kit.cycle_focus(this, dir);
+		kit.cycle_focus(this, dir, true);
 		return;
 	}
 
@@ -2813,7 +2825,7 @@ Overflow::step_line(Kit &kit, int dir)
 	const int line_y = items[size_t(j)]->r.y;
 	int best = j;
 	float least = 1e30f;
-	for (int k = 0; k < n; ++k) {
+	for (int k = 0; k < n; k++) {
 		if (items[size_t(k)]->r.y != line_y)
 			continue;
 		const float d = abs(centre_of(items[size_t(k)]) - this->want_x_);
@@ -2845,7 +2857,7 @@ Overflow::key(Kit &kit, const Key &ev)
 	case Qt::Key_Right:
 		// The items read as one strip that happens to be folded.
 		this->want_x_ = -1;
-		kit.cycle_focus(this, ev.key == Qt::Key_Left ? -1 : 1);
+		kit.cycle_focus(this, ev.key == Qt::Key_Left ? -1 : 1, true);
 		break;
 	case Qt::Key_Home:
 		this->want_x_ = -1;
@@ -2855,7 +2867,7 @@ Overflow::key(Kit &kit, const Key &ev)
 		// Entering the strip backwards from nowhere lands on its last item.
 		this->want_x_ = -1;
 		kit.set_focus(nullptr, true);
-		kit.cycle_focus(this, -1);
+		kit.cycle_focus(this, -1, true);
 		break;
 	case Qt::Key_Up:
 	case Qt::Key_Down:
@@ -3447,6 +3459,12 @@ ToolbarSlot::ToolbarSlot()
 }
 
 Widget *
+ToolbarSlot::add_item(unique_ptr<Widget> item)
+{
+	return add_item(std::move(item), size_t(-1));
+}
+
+Widget *
 ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
 {
 	// The lent run is a pair of indices into items_, so nothing may shift
@@ -3460,14 +3478,14 @@ ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
 	Composite::add_child(std::move(item), at);
 	this->items_.insert(this->items_.begin() + ptrdiff_t(at), raw);
 	if (at < this->split_)
-		++this->split_;
+		this->split_++;
 	return raw;
 }
 
 void
 ToolbarSlot::sync_layout_visible()
 {
-	for (size_t i = 0; i < this->items_.size(); ++i) {
+	for (size_t i = 0; i < this->items_.size(); i++) {
 		// Only ever one of the two: what is lent starts at the split, so an
 		// item is either shown in the popup's Flow or kept here by the bar.
 		this->items_[i]->layout_visible =
@@ -3492,13 +3510,13 @@ ToolbarSlot::lend_to(Overflow &overflow)
 	const size_t end = this->items_.size();
 	size_t a = min(this->split_, end), b = end;
 	while (a < b && is_sep(this->items_[a]))
-		++a;
+		a++;
 	while (b > a && is_sep(this->items_[b - 1]))
 		--b;
-	for (size_t i = a; i < b; ++i) {
+	for (size_t i = a; i < b; i++) {
 		Widget *item = this->items_[i];
 		// Ownership follows the widget: whoever lays it out holds it.
-		for (size_t j = 0; j < this->kids.size(); ++j) {
+		for (size_t j = 0; j < this->kids.size(); j++) {
 			if (this->kids[j].get() != item)
 				continue;
 			overflow.col->add_child(take_child(j));
@@ -3529,9 +3547,9 @@ ToolbarSlot::reclaim()
 	// Back in bar order, ahead of more, which is the last child throughout.
 	// Everything below the run stayed here, so that is where it resumes.
 	size_t at = first;
-	for (size_t i = first; i < last; ++i) {
+	for (size_t i = first; i < last; i++) {
 		Widget *item = this->items_[i];
-		for (size_t j = 0; j < overflow->col->kids.size(); ++j) {
+		for (size_t j = 0; j < overflow->col->kids.size(); j++) {
 			if (overflow->col->kids[j].get() != item)
 				continue;
 			Composite::add_child(overflow->col->take_child(j), at++);
@@ -3587,7 +3605,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 	// decide nothing overflows, and close the popup that is holding them.
 	int total = 0;
 	int shown = 0;
-	for (size_t i = 0; i < end; ++i) {
+	for (size_t i = 0; i < end; i++) {
 		Widget *item = this->items_[i];
 		if (!item->visible)
 			continue;
@@ -3605,7 +3623,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 		int kept = 0;
 		bool full = false;
 		this->split_ = 0;
-		for (size_t i = 0; i < end; ++i) {
+		for (size_t i = 0; i < end; i++) {
 			Widget *item = this->items_[i];
 			if (!item->visible) {
 				if (!full)
@@ -3618,7 +3636,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 				continue;
 			}
 			used += need;
-			++kept;
+			kept++;
 			this->split_ = i + 1;
 		}
 		while (this->split_ > 0 && is_sep(this->items_[this->split_ - 1]))
@@ -4426,7 +4444,7 @@ Kit::focus_scope() const
 void
 Kit::cycle_focus(int dir)
 {
-	cycle_focus(focus_scope(), dir);
+	cycle_focus(focus_scope(), dir, true);
 }
 
 bool
@@ -4437,7 +4455,7 @@ Kit::cycle_focus(Widget *scope, int dir, bool wrap)
 	if (items.empty())
 		return false;
 	int i = -1;
-	for (int k = 0, n = int(items.size()); k < n; ++k) {
+	for (int k = 0, n = int(items.size()); k < n; k++) {
 		if (items[size_t(k)] == this->focus_) {
 			i = k;
 			break;
@@ -4612,7 +4630,7 @@ Kit::mouse_motion(float x, float y)
 bool
 Kit::track_popups(float x, float y)
 {
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
 		if (*it && (*it)->motion(*this, x, y))
 			return true;
 	}
@@ -4718,7 +4736,7 @@ Kit::destroy()
 	this->inited_ = false;
 	this->popups_.clear();
 	this->scrim_.reset();
-	++this->atlas_epoch_;
+	this->atlas_epoch_++;
 	this->icons_.clear();
 	this->glyphs_.clear();
 	this->fonts_.clear();
@@ -4955,7 +4973,7 @@ wake_tree(const Widget *w)
 		return -1;
 	int ms = w->wake_ms();
 	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; ++i)
+	for (size_t i = 0; i < n; i++)
 		ms = sooner(ms, wake_tree(w->child(i)));
 	return ms;
 }
@@ -5044,7 +5062,7 @@ Kit::close_popups()
 void
 Kit::close_transient_popups()
 {
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
 		if (*it && !(*it)->transient()) {
 			close_above(*it);
 			return;
@@ -5097,7 +5115,7 @@ Kit::hit(float x, float y)
 		if (p && p->shown() && p->transient())
 			transient_open = true;
 	}
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
 		Popup *p = *it;
 		if (!p || !p->shown() || (transient_open && !p->transient()))
 			continue;
@@ -5106,7 +5124,7 @@ Kit::hit(float x, float y)
 	}
 	// Before the scrim: pressing the button a list came out of has to reach
 	// the button, which is what closes it again.
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); ++it) {
+	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
 		Popup *p = *it;
 		if (!p || !p->shown())
 			continue;

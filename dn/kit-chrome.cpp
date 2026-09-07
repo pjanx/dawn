@@ -172,8 +172,8 @@ dialog_action(const QString &text, function<void(Kit &)> on_click)
 static unique_ptr<Button>
 dialog_close_action(Dialog &dialog)
 {
-	return dialog_action(QStringLiteral("_Close"),
-		[&dialog](Kit &kit) { dialog.close(kit); });
+	return dialog_action(
+		QStringLiteral("_Close"), [&dialog](Kit &kit) { dialog.close(kit); });
 }
 
 static QString
@@ -235,13 +235,12 @@ dialog_about(Kit &kit, Dialog &dialog)
 	col->add_child(
 		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
 			false, true));
-	dialog.show(
-		kit, std::move(col), 360.f, dialog_close_action(dialog));
+	dialog.show(kit, std::move(col), 360.f, dialog_close_action(dialog));
 }
 
 void
-dialog_location(Kit &kit, Dialog &dialog,
-	function<void(const QString &)> on_open)
+dialog_location(
+	Kit &kit, Dialog &dialog, function<void(const QString &)> on_open)
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
@@ -346,8 +345,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	emit_other(Action::Cancel);
 	if (viewer)
 		emit_other(Action::ZoomLevel);
-	dialog.show(
-		kit, std::move(col), 520.f, dialog_close_action(dialog));
+	dialog.show(kit, std::move(col), 520.f, dialog_close_action(dialog));
 }
 
 // --- Settings dialog ---------------------------------------------------------
@@ -468,7 +466,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	auto combo = make_unique<Combo>();
 	for (const QString &name : kThumbSizeNames)
 		combo->items.push_back(name);
-	for (int i = 0; i < int(std::size(kThumbSizes)); i++) {
+	for (int i = 0; i < int(size(kThumbSizes)); i++) {
 		if (kThumbSizes[i] == state->thumbnail_size)
 			combo->current = i;
 	}
@@ -477,8 +475,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	};
 	col->add_child(settings_row(thumb_label, label_w, std::move(combo)));
 
-	auto names = settings_check("Show _filenames by default",
-		state->show_filenames);
+	auto names =
+		settings_check("Show _filenames by default", state->show_filenames);
 	Checkbox *names_ref = names.get();
 	names->on_click = [state, names_ref](Kit &) {
 		state->show_filenames = names_ref->checked;
@@ -494,8 +492,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	};
 	col->add_child(settings_row(icc_label, label_w, std::move(entry)));
 
-	auto dither = settings_check("Disable _dithering on 8-bit swapchains",
-		state->disable_dithering);
+	auto dither = settings_check(
+		"Disable _dithering on 8-bit swapchains", state->disable_dithering);
 	Checkbox *dither_ref = dither.get();
 	dither->on_click = [state, dither_ref](Kit &) {
 		state->disable_dithering = dither_ref->checked;
@@ -619,7 +617,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 	if (w->focusable() && visible_rect(w, host).w > 0.f)
 		out.push_back(w);
 	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; ++i)
+	for (size_t i = 0; i < n; i++)
 		collect_targets(w->child(i), host, out);
 }
 
@@ -643,7 +641,7 @@ label_len(int n)
 	int len = 1;
 	int cap = kNChars;
 	while (cap < n && len < 8) {
-		++len;
+		len++;
 		cap *= kNChars;
 	}
 	return len;
@@ -757,7 +755,7 @@ Hint::key(Kit &kit, const Key &ev)
 			any = true;
 			if (t.label == next) {
 				exact = &t;
-				++exact_n;
+				exact_n++;
 			}
 		}
 		if (!any)
@@ -833,7 +831,7 @@ Hint::collect(Widget *scope)
 		return;
 
 	const Rect well = browser->r;
-	for (int i = 0; i < int(browser->files_.size()); ++i) {
+	for (int i = 0; i < int(browser->files_.size()); i++) {
 		const Browser::File &f = browser->files_[size_t(i)];
 		if (f.tile.empty())
 			continue;
@@ -855,7 +853,7 @@ Hint::assign_labels()
 {
 	const int n = int(this->targets_.size());
 	const int len = label_len(n);
-	for (int i = 0; i < n; ++i)
+	for (int i = 0; i < n; i++)
 		this->targets_[size_t(i)].label = label_at(i, len);
 }
 
@@ -867,8 +865,7 @@ Hint::refresh_rects()
 	for (Target &t : this->targets_) {
 		if (t.widget) {
 			const Rect visible = visible_rect(t.widget, this->page->r);
-			if (!t.widget->focusable() || visible.w <= 0.f ||
-				visible.h <= 0.f)
+			if (!t.widget->focusable() || visible.w <= 0.f || visible.h <= 0.f)
 				continue;
 			t.at = visible;
 			keep.push_back(t);
@@ -1121,8 +1118,8 @@ Page::arrange(Kit &kit, Rect alloc)
 			const int sw = kit.px(this->splitter->min_w);
 			// The grab strip straddles the boundary, half on each side.
 			const int sx = (this->sidebar_side == Side::Right
-					   ? this->well_.x + this->well_.w
-					   : this->well_.x) -
+								   ? this->well_.x + this->well_.w
+								   : this->well_.x) -
 				sw / 2;
 			this->splitter->arrange(kit, {sx, body_y, sw, body_h});
 		} else {
@@ -1153,7 +1150,7 @@ Page::key(Kit &kit, const Key &ev)
 	}
 	Widget *panes[3];
 	int n = 0, i = 0;
-	for (size_t c = 0; c < child_count(); ++c) {
+	for (size_t c = 0; c < child_count(); c++) {
 		Widget *k = child(c);
 		if (!k || !k->visible ||
 			(k != this->toolbar && k != this->sidebar && k != this->content))

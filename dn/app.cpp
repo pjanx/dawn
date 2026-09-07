@@ -305,8 +305,7 @@ void
 Settings::toggle_bookmark(const string &path)
 {
 	const string want = canonical_dir(path);
-	const auto it =
-		find(this->bookmarks.begin(), this->bookmarks.end(), want);
+	const auto it = find(this->bookmarks.begin(), this->bookmarks.end(), want);
 	if (it != this->bookmarks.end())
 		this->bookmarks.erase(it);
 	else
@@ -350,7 +349,7 @@ App::event(QEvent *event)
 		return true;
 	}
 	if (event->type() == QEvent::FileOpen) {
-		open(url_normalized(((QFileOpenEvent *) event)->url()));
+		open(url_normalized(((QFileOpenEvent *) event)->url()), {}, {}, false);
 		return true;
 	}
 	return QGuiApplication::event(event);
@@ -473,7 +472,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	}
 #endif
 
-	auto window = make_unique<Window>(this);
+	auto window = make_unique<Window>(this, nullptr);
 	if (!window->initialize(resolved, setup, browse))
 		return OpenResult::Internal;
 	apply_activation_token(activation_token);

@@ -38,8 +38,7 @@ url_normalized(const QUrl &url)
 QUrl
 url_from_user_input(const QString &input, const QString &working_dir)
 {
-	auto url =
-		QUrl::fromUserInput(input, working_dir, QUrl::AssumeLocalFile);
+	auto url = QUrl::fromUserInput(input, working_dir, QUrl::AssumeLocalFile);
 	if (!url.isValid())
 		url = path_to_url(QDir(working_dir).absoluteFilePath(input));
 	return url_normalized(url);

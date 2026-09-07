@@ -146,8 +146,8 @@ struct Viewer : Widget {
 	[[nodiscard]] bool has_view() const;
 	[[nodiscard]] bool consume_open_done();
 	void set_screen_profile(std::shared_ptr<dawn::Cmm> cmm,
-		std::shared_ptr<dawn::Profile> profile, bool fallback = true,
-		bool force_reload = false);
+		std::shared_ptr<dawn::Profile> profile, bool fallback,
+		bool force_reload);
 	void present(Page &ui);
 	[[nodiscard]] int wake_ms() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;

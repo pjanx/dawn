@@ -150,8 +150,8 @@ std::span<const Action> window_keys();
 std::span<const Action> browser_keys();
 std::span<const Action> viewer_keys();
 
-void copy_files(QMimeData *mime, std::span<const QUrl> urls, bool cut = false);
-void copy_files(std::span<const QUrl> urls, bool cut = false);
+void copy_files(QMimeData *mime, std::span<const QUrl> urls, bool cut);
+void copy_files(std::span<const QUrl> urls, bool cut);
 bool move_to_trash(const QString &abs_path);
 
 }  // namespace dn

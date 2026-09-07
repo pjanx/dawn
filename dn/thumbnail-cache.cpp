@@ -203,7 +203,7 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	hit.width = image->width;
 	hit.height = image->height;
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
-	for (uint32_t y = 0; y < hit.height; ++y)
+	for (uint32_t y = 0; y < hit.height; y++)
 		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
 			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
 	hit.tier = tier;
@@ -238,7 +238,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	if (!valid_metadata(meta, source))
 		return {};
 
-	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB();
+	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB(false);
 	if (!cmm->transform_bgra16(image->data.data(), image->width, image->height,
 			srgb.get(), screen, true, true))
 		return {};
@@ -246,7 +246,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	hit.width = image->width;
 	hit.height = image->height;
 	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
-	for (uint32_t y = 0; y < hit.height; ++y)
+	for (uint32_t y = 0; y < hit.height; y++)
 		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
 			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
 	hit.tier = tier;
@@ -414,7 +414,7 @@ thumbnail_cache_write(const ThumbnailSource &source, int tier,
 	for (size_t i = 0, n = size_t(width) * height; i < n; i++) {
 		const uint32_t a = pixels[i * 4 + 3];
 		bgra[i * 4 + 3] = uint8_t((a + 128) / 257);
-		for (int c = 0; c < 3; ++c) {
+		for (int c = 0; c < 3; c++) {
 			const uint32_t straight = a
 				? min(65535u,
 					  uint32_t(

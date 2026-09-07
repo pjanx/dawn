@@ -194,7 +194,7 @@ static void
 sync_scale_label(Viewer &v)
 {
 	char scale_buf[16];
-	snprintf(scale_buf, sizeof(scale_buf), "%.f%%", double(v.scale_ * 100.f));
+	snprintf(scale_buf, sizeof scale_buf, "%.f%%", double(v.scale_ * 100.f));
 	v.scale_text_ = QString::fromUtf8(scale_buf);
 	if (!v.scale_label_)
 		return;
@@ -279,7 +279,7 @@ dim_text(uint32_t v)
 	if (!v)
 		return QStringLiteral("-");
 	char buf[16];
-	snprintf(buf, sizeof(buf), "%u", v);
+	snprintf(buf, sizeof buf, "%u", v);
 	return QString::fromUtf8(buf);
 }
 
@@ -361,7 +361,7 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	else if (empty_image && parts.empty())
 		parts.push_back("empty image");
 	string out;
-	for (size_t i = 0; i < parts.size(); ++i) {
+	for (size_t i = 0; i < parts.size(); i++) {
 		if (i)
 			out += '\n';
 		out += parts[i];
@@ -370,14 +370,13 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 }
 
 static shared_ptr<dawn::Profile>
-profile_from_icc(
-	dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
+profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 {
 	if (icc && !icc->empty()) {
 		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
-	return cmm.get_profile_sRGB();
+	return cmm.get_profile_sRGB(false);
 }
 
 static bool apply_action(Viewer &v, Action action);
@@ -622,7 +621,7 @@ stop_worker(Viewer &v)
 {
 	if (!v.worker_)
 		return;
-	++v.load_epoch_;
+	v.load_epoch_++;
 	{
 		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->stop = true;
@@ -690,8 +689,8 @@ static unique_ptr<Sidebar>
 make_sidebar(Viewer &v)
 {
 	// FIXME: This needs proper layouting.
-	const float label_w = v.kit_.text_width(QStringLiteral("Height:"), true)
-		/ v.kit_.dpr_;
+	const float label_w =
+		v.kit_.text_width(QStringLiteral("Height:"), true) / v.kit_.dpr_;
 
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
@@ -700,8 +699,8 @@ make_sidebar(Viewer &v)
 	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
 
-	col->add_child(meta_row(QStringLiteral("Name:"), QStringLiteral("-"),
-		label_w, v.name_label_));
+	col->add_child(meta_row(
+		QStringLiteral("Name:"), QStringLiteral("-"), label_w, v.name_label_));
 	col->add_child(meta_row(QStringLiteral("Loader:"), QStringLiteral("-"),
 		label_w, v.loader_label_));
 	col->add_child(meta_row(QStringLiteral("Width:"), QStringLiteral("-"),
@@ -794,7 +793,7 @@ sync_ui(Viewer &v, Page &ui)
 			shared_ptr<dawn::Profile> srgb;
 			if (!img.have_primaries) {
 				auto cmm = v.cmm_ ? v.cmm_ : dawn::Cmm::get_default();
-				srgb = cmm->get_profile_sRGB();
+				srgb = cmm->get_profile_sRGB(false);
 				img = profile_chromaticities(srgb.get());
 				image_dashed = true;
 			}
@@ -917,25 +916,23 @@ apply_open_result(Viewer &v, OpenLoad result)
 		return;
 	const string current = viewer_local_path(v);
 	if (!v.detached_ && result.key.path != current &&
-		result.key.path != v.previous_path_ &&
-		result.key.path != v.next_path_)
+		result.key.path != v.previous_path_ && result.key.path != v.next_path_)
 		return;
 	auto found = find_if(v.open_cache_.begin(), v.open_cache_.end(),
 		[&](const Viewer::CachedOpen &entry) {
 			return entry.key == result.key;
 		});
 	if (found == v.open_cache_.end()) {
-		v.open_cache_.push_back(
-			{std::move(result.key), std::move(result.image),
-				std::move(result.message)});
+		v.open_cache_.push_back({std::move(result.key), std::move(result.image),
+			std::move(result.message)});
 		found = prev(v.open_cache_.end());
 	} else {
 		found->image = std::move(result.image);
 		found->message = std::move(result.message);
 	}
 	Viewer::CachedOpen *cached = &*found;
-	if (!v.detached_ && cached->key ==
-		Viewer::OpenKey{current, v.enhance_jpeg_})
+	if (!v.detached_ &&
+		cached->key == Viewer::OpenKey{current, v.enhance_jpeg_})
 		apply_open(v, v.open_gen_, cached->image, cached->message);
 	if (v.open_cache_.size() > 3)
 		v.open_cache_.erase(v.open_cache_.begin());
@@ -1107,8 +1104,8 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 	job.epoch = v.load_epoch_;
 	job.key = std::move(key);
 	job.uri = path_to_url(QString::fromStdString(job.key.path))
-			  .toEncoded()
-			  .toStdString();
+				  .toEncoded()
+				  .toStdString();
 	job.dpi = v.kit_.dpi_;
 	job.enable_cms = v.enable_cms_;
 	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
@@ -1143,11 +1140,11 @@ start_open(Viewer &v, bool invalidate)
 	if (!v.worker_ || v.url_.isEmpty())
 		return;
 	if (invalidate) {
-		++v.load_epoch_;
+		v.load_epoch_++;
 		v.open_cache_.clear();
 	}
-	++v.open_gen_;
-	++v.scale_gen_;
+	v.open_gen_++;
+	v.scale_gen_++;
 	v.opening_ = true;
 	v.open_done_ = false;
 	v.detached_ = false;
@@ -1155,8 +1152,7 @@ start_open(Viewer &v, bool invalidate)
 	v.scale_failed_ = false;
 	const string path = viewer_local_path(v);
 	const Viewer::OpenKey key{path, v.enhance_jpeg_};
-	Viewer::CachedOpen *cached =
-		invalidate ? nullptr : find_cached(v, key);
+	Viewer::CachedOpen *cached = invalidate ? nullptr : find_cached(v, key);
 	{
 		lock_guard lock(v.worker_->mu);
 		v.worker_->epoch = v.load_epoch_;
@@ -1251,7 +1247,7 @@ post_scale(Viewer &v)
 {
 	if (!v.worker_ || !v.current_ || !v.current_->render)
 		return;
-	++v.scale_gen_;
+	v.scale_gen_++;
 	v.scale_job_pending_ = true;
 	v.scale_job_target_ = v.scale_;
 	v.scale_failed_ = false;
@@ -1276,7 +1272,7 @@ ensure_vector_frame(Viewer &v)
 
 	if (v.scale_ == 1.f) {
 		if (v.scale_job_pending_) {
-			++v.scale_gen_;
+			v.scale_gen_++;
 			v.scale_job_pending_ = false;
 			if (v.worker_) {
 				lock_guard<mutex> lock(v.worker_->mu);
@@ -1594,7 +1590,7 @@ snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 static void
 cancel_scale(Viewer &v)
 {
-	++v.scale_gen_;
+	v.scale_gen_++;
 	v.scale_job_pending_ = false;
 	v.scale_failed_ = false;
 	v.page_scaled_.reset();
@@ -1689,10 +1685,10 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 	const uint32_t w = im.width;
 	const uint32_t h = im.height;
 	vector<uint8_t> bgra(size_t(w) * h * 4);
-	for (uint32_t y = 0; y < h; ++y) {
+	for (uint32_t y = 0; y < h; y++) {
 		const uint16_t *s = row_u16(im, y);
 		uint8_t *d = bgra.data() + size_t(y) * w * 4;
-		for (uint32_t x = 0; x < w; ++x) {
+		for (uint32_t x = 0; x < w; x++) {
 			d[0] = uint8_t(s[0] >> 8);
 			d[1] = uint8_t(s[1] >> 8);
 			d[2] = uint8_t(s[2] >> 8);
@@ -1703,10 +1699,10 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 	}
 	dawn::unpremultiply_bgra8(bgra.data(), w, h, size_t(w) * 4);
 	QImage image(int(w), int(h), QImage::Format_ARGB32);
-	for (uint32_t y = 0; y < h; ++y) {
+	for (uint32_t y = 0; y < h; y++) {
 		const uint8_t *s = bgra.data() + size_t(y) * w * 4;
 		auto *d = reinterpret_cast<QRgb *>(image.scanLine(int(y)));
-		for (uint32_t x = 0; x < w; ++x) {
+		for (uint32_t x = 0; x < w; x++) {
 			d[x] = qRgba(s[2], s[1], s[0], s[3]);
 			s += 4;
 		}
@@ -1722,7 +1718,7 @@ copy_frame(const Viewer &v)
 		copy_image(mime, *v.frame_);
 	if (!v.url_.isEmpty()) {
 		const QUrl files[] = {v.url_};
-		copy_files(mime, files);
+		copy_files(mime, files, false);
 	}
 	QGuiApplication::clipboard()->setMimeData(mime);
 }
@@ -2059,8 +2055,8 @@ void
 Viewer::cancel_loads()
 {
 	const bool discard_current = this->opening_;
-	++this->open_gen_;
-	++this->scale_gen_;
+	this->open_gen_++;
+	this->scale_gen_++;
 	this->opening_ = false;
 	this->open_done_ = false;
 	this->detached_ = true;
@@ -2104,9 +2100,8 @@ Viewer::consume_open_done()
 }
 
 void
-Viewer::set_screen_profile(
-	shared_ptr<dawn::Cmm> cmm, shared_ptr<dawn::Profile> profile, bool fallback,
-	bool force_reload)
+Viewer::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
+	shared_ptr<dawn::Profile> profile, bool fallback, bool force_reload)
 {
 	auto screen_icc = profile
 		? make_shared<const vector<uint8_t>>(profile->to_bytes())

@@ -515,7 +515,8 @@ ensure_working_premul(
 		if (owned)
 			image.effective_profile = owned;
 		else if (!source) {
-			image.effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
+			image.effective_profile =
+				cmm_or_default(ctx)->get_profile_sRGB(false);
 			image.profile_assumed = true;
 		}
 	}
@@ -543,7 +544,8 @@ ensure_working_premul_pages(
 		if (owned)
 			page.effective_profile = owned;
 		else if (!source) {
-			page.effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
+			page.effective_profile =
+				cmm_or_default(ctx)->get_profile_sRGB(false);
 			page.profile_assumed = true;
 		}
 	}
@@ -689,7 +691,7 @@ constexpr float kTransferMaxErr = 1.5f / 65535.f;
 static bool
 curve_matches(const cmsToneCurve *curve, Transfer transfer)
 {
-	for (int i = 0; i < kTransferSamples; ++i) {
+	for (int i = 0; i < kTransferSamples; i++) {
 		const float x = float(i) / float(kTransferSamples - 1);
 		const float y = cmsEvalToneCurveFloat(curve, x);
 		if (fabsf(y - transfer_decode(x, transfer)) > kTransferMaxErr)
@@ -794,7 +796,7 @@ profile_chromaticities(const Profile *profile)
 		};
 		const uint8_t paper[4] = {0, 0, 0, 0};
 		c.have_white = xf_xy(xf, paper, &c.wx, &c.wy);
-		for (int i = 0; i < 6; ++i) {
+		for (int i = 0; i < 6; i++) {
 			if (!xf_xy(xf, corners[i], &c.x[i], &c.y[i])) {
 				cmsDeleteTransform(xf);
 				return c;
@@ -818,7 +820,7 @@ profile_chromaticities(const Profile *profile)
 		};
 		const uint8_t white[3] = {255, 255, 255};
 		c.have_white = xf_xy(xf, white, &c.wx, &c.wy);
-		for (int i = 0; i < 3; ++i) {
+		for (int i = 0; i < 3; i++) {
 			if (!xf_xy(xf, corners[i], &c.x[i], &c.y[i])) {
 				cmsDeleteTransform(xf);
 				return c;
@@ -930,7 +932,7 @@ Cmm::get_profile_display_p3(bool cache)
 
 	constexpr size_t samples = 4096;
 	vector<cmsUInt16Number> transfer(samples);
-	for (size_t i = 0; i < samples; ++i) {
+	for (size_t i = 0; i < samples; i++) {
 		const double encoded = double(i) / double(samples - 1);
 		const double linear = encoded <= 0.04045
 			? encoded / 12.92
@@ -1119,7 +1121,7 @@ Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 {
 	shared_ptr<Profile> src_fallback;
 	if (target && !source) {
-		src_fallback = get_profile_sRGB();
+		src_fallback = get_profile_sRGB(false);
 		source = src_fallback.get();
 	}
 	if (!source || !target)
@@ -1140,7 +1142,7 @@ Cmm::transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst, uint32_t width,
 {
 	shared_ptr<Profile> src_fallback;
 	if (target && !source) {
-		src_fallback = get_profile_sRGB();
+		src_fallback = get_profile_sRGB(false);
 		source = src_fallback.get();
 	}
 	if (!src || !dst || !source || !target)
@@ -1216,7 +1218,7 @@ Cmm::finish_page(Image &page, Profile *target)
 		if (source)
 			page.effective_profile = source;
 		else {
-			page.effective_profile = get_profile_sRGB();
+			page.effective_profile = get_profile_sRGB(false);
 			page.profile_assumed = true;
 		}
 	}
@@ -1696,7 +1698,7 @@ constexpr Loader kLoaders[] = {
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
 // photo formats: someone else will maintain the list of file extensions for us.
-std::vector<std::string>
+vector<string>
 supported_media_types()
 {
 	vector<string> types;
@@ -1717,7 +1719,7 @@ supported_media_types()
 	return types;
 }
 
-std::span<const Loader>
+span<const Loader>
 loaders()
 {
 	return kLoaders;

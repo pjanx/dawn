@@ -27,7 +27,7 @@ fail(const char *format, ...)
 	vfprintf(stderr, format, args);
 	va_end(args);
 	fputc('\n', stderr);
-	++failures;
+	failures++;
 }
 
 inline void

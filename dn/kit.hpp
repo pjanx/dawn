@@ -19,8 +19,8 @@
 #include <Qt>
 
 #include <chrono>
-#include <cstddef>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -194,11 +194,12 @@ struct Widget {
 struct Composite : Widget {
 	std::vector<std::unique_ptr<Widget>> kids;
 
-	Widget *add_child(
-		std::unique_ptr<Widget> child, std::size_t at = std::size_t(-1));
+	Widget *add_child(std::unique_ptr<Widget> child);
+	Widget *add_child(std::unique_ptr<Widget> child, std::size_t at);
 	// The inverse: detaches one child and hands its ownership back.
 	std::unique_ptr<Widget> take_child(std::size_t at);
-	void erase_children(std::size_t from = 0);
+	void erase_children();
+	void erase_children(std::size_t from);
 	std::size_t child_count() const override { return this->kids.size(); }
 	Widget *child(std::size_t i) const override
 	{
@@ -658,8 +659,8 @@ struct ToolbarSlot : Row {
 	std::vector<Widget *> items_;
 
 	ToolbarSlot();
-	Widget *add_item(
-		std::unique_ptr<Widget> item, std::size_t at = std::size_t(-1));
+	Widget *add_item(std::unique_ptr<Widget> item);
+	Widget *add_item(std::unique_ptr<Widget> item, std::size_t at);
 	// Moves everything past the split into the popup, or brings it back.
 	void lend_to(Overflow &overflow);
 	void reclaim();
@@ -841,13 +842,12 @@ struct Kit {
 	bool activate_mnemonic(Widget *scope, int key);
 	Widget *focus_scope() const;
 	void cycle_focus(int dir);
-	bool cycle_focus(Widget *scope, int dir, bool wrap = true);
+	bool cycle_focus(Widget *scope, int dir, bool wrap);
 	void focus_first(Widget *scope);
 	bool key(const Key &ev);
 	bool input_method(const QString &commit, const QString &preedit, int caret);
 	[[nodiscard]] bool text_target(TextTarget &out) const;
-	bool mouse_press(
-		float x, float y, Qt::MouseButton button, unsigned mods = 0);
+	bool mouse_press(float x, float y, Qt::MouseButton button, unsigned mods);
 	bool mouse_release(float x, float y, Qt::MouseButton button);
 	bool mouse_motion(float x, float y);
 	bool mouse_scroll(float x, float y, int delta);
@@ -865,10 +865,7 @@ struct Kit {
 		float x, float y, const QString &text, Colour colour, bool bold);
 	void draw_glow(Rect w, Colour col);
 	// An inactive window halves whatever alpha its ink already had.
-	[[nodiscard]] float ink_alpha() const
-	{
-		return this->active_ ? 1.f : 0.5f;
-	}
+	[[nodiscard]] float ink_alpha() const { return this->active_ ? 1.f : 0.5f; }
 	void focus_ring(Rect w);   // 1pt inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
 	// Rect-shaped wrappers over the corner-based draw list.

@@ -174,8 +174,8 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 		// Wants shell-local logical coordinates, while the kit passes
 		// device pixels; we may also hang off the shell by the glow.
 		const qreal dpr = qreal(host_dpr(*this));
-		const QPoint p = position() +
-			QPoint(int(qreal(x) / dpr), int(qreal(y) / dpr));
+		const QPoint p =
+			position() + QPoint(int(qreal(x) / dpr), int(qreal(y) / dpr));
 		wayland_show_window_menu(shell(), p.x(), p.y());
 	};
 #endif
@@ -237,8 +237,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	// TODO: Pass an explicit presentation policy from WaylandWindow instead of
 	// using parenthood as this platform/role proxy.
 	this->renderer_.set_prefer_premultiplied(this->csd_);
-	this->renderer_.set_dither_enabled(
-		!this->app_->settings.disable_dithering);
+	this->renderer_.set_dither_enabled(!this->app_->settings.disable_dithering);
 	if (!this->renderer_.init(
 			this->app_->gpu, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
@@ -343,10 +342,10 @@ Window::bind_host()
 			if (!ui || !ui->dialog)
 				break;
 
-			dialog_location(this->kit_, *ui->dialog,
-				[this](const QString &location) {
-					open_any(url_from_user_input(
-						location, QDir::currentPath()));
+			dialog_location(
+				this->kit_, *ui->dialog, [this](const QString &location) {
+					open_any(url_from_user_input(location, QDir::currentPath()),
+						false);
 				});
 			request_render();
 			break;
@@ -387,8 +386,8 @@ Window::bind_host()
 			SettingsDraft draft;
 			draft.thumbnail_size = settings.browser_thumbnail_size;
 			draft.show_filenames = settings.browser_show_filenames;
-			draft.icc_profile_path = QString::fromStdString(
-				settings.icc_profile_override_path);
+			draft.icc_profile_path =
+				QString::fromStdString(settings.icc_profile_override_path);
 			draft.disable_dithering = settings.disable_dithering;
 			draft.loaders = settings.loaders;
 			dialog_settings(this->kit_, *ui->dialog, std::move(draft),
@@ -437,7 +436,7 @@ Window::bind_host()
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
-		this->app_->open(url, {}, setup);
+		this->app_->open(url, {}, setup, false);
 	};
 	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
 	this->host_.trash = [this](QUrl url) { trash_url(url); };
@@ -681,7 +680,8 @@ Window::refresh_screen_profile(QScreen *target_screen)
 			label = this->app_->settings.icc_profile_override_path;
 			source = "configuration";
 		} else {
-			qWarning("configuration dn/ICCProfileOverride: invalid ICC profile");
+			qWarning(
+				"configuration dn/ICCProfileOverride: invalid ICC profile");
 		}
 	}
 	if (!next) {
@@ -697,7 +697,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		}
 	}
 	if (!next)
-		next = this->cmm_->get_profile_sRGB();
+		next = this->cmm_->get_profile_sRGB(false);
 	this->screen_profile_fallback_ = source == "srgb";
 
 	const bool changed =
@@ -816,7 +816,7 @@ Window::viewer_file_index(const QUrl &url) const
 {
 	if (!this->browser_ || url.isEmpty())
 		return -1;
-	for (int n = 0; n < int(this->browser_->files_.size()); ++n) {
+	for (int n = 0; n < int(this->browser_->files_.size()); n++) {
 		if (this->browser_->file_url(n) == url)
 			return n;
 	}
@@ -1121,7 +1121,7 @@ Window::event(QEvent *event)
 			event->ignore();
 			return true;
 		}
-		open_any(url);
+		open_any(url, false);
 		drop->acceptProposedAction();
 		return true;
 	}
@@ -1257,14 +1257,14 @@ Window::open_any(const QUrl &url, bool browse)
 	const QFileInfo info(path);
 	if (info.isDir()) {
 		if (this->browser_)
-			this->browser_->open_dir(url);
+			this->browser_->open_dir(url, true);
 		cancel_viewer_loads();
 		set_mode(Mode::Browser);
 	} else if (browse) {
 		// A file with --browse is a request to point at it, not to view it:
 		// browse the parent and put the cursor on the file.
 		if (this->browser_) {
-			this->browser_->open_dir(path_to_url(info.absolutePath()));
+			this->browser_->open_dir(path_to_url(info.absolutePath()), true);
 			this->browser_->select_file(url);
 		}
 		cancel_viewer_loads();
@@ -1277,7 +1277,7 @@ Window::open_any(const QUrl &url, bool browse)
 			const QFileInfo parent(info.absolutePath());
 			if (parent.exists() && parent.isDir() && parent.isReadable())
 				this->browser_->open_dir(
-					path_to_url(parent.absoluteFilePath()));
+					path_to_url(parent.absoluteFilePath()), true);
 		}
 		sync_viewer_preloads();
 	}
@@ -1553,8 +1553,8 @@ Window::wheelEvent(QWheelEvent *event)
 	// those should pan, while a real wheel falls through to discrete zooming.
 	if (event->device()->type() == QInputDevice::DeviceType::TouchPad &&
 		(pix.x() || pix.y())) {
-		if (kit_.pan(x, y, float(pix.x()) / kit_.dpr_,
-				float(pix.y()) / kit_.dpr_)) {
+		if (kit_.pan(
+				x, y, float(pix.x()) / kit_.dpr_, float(pix.y()) / kit_.dpr_)) {
 			request_render();
 			event->accept();
 			return;
@@ -1655,7 +1655,7 @@ Window::handle_touch(QTouchEvent *event)
 			x1 = float(p.position().x());
 			y1 = float(p.position().y());
 		}
-		++n;
+		n++;
 	}
 	if (event->type() == QEvent::TouchCancel || n < 2) {
 		this->touch_pinch_ = false;

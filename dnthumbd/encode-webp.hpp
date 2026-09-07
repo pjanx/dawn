@@ -11,9 +11,10 @@
 #include <string>
 #include <vector>
 
-namespace dnthumbd {
+namespace dnthumbd
+{
 
 bool encode_webp_rgba8(uint32_t w, uint32_t h, const uint8_t *rgba8,
 	std::vector<uint8_t> *out, std::string *error);
 
-} // namespace dnthumbd
+}  // namespace dnthumbd

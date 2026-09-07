@@ -26,8 +26,7 @@ namespace dawn
 void vk_add_bundled_driver_files();
 
 uint32_t vk_memory_type(VkPhysicalDevice phys, uint32_t bits,
-	VkMemoryPropertyFlags flags, std::string *error = nullptr,
-	VkDeviceSize *heap_size = nullptr);
+	VkMemoryPropertyFlags flags, std::string *error, VkDeviceSize *heap_size);
 
 bool vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	std::function<bool(VkPhysicalDevice, uint32_t)> present,

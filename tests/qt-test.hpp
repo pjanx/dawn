@@ -32,7 +32,7 @@ class Application
 	}
 
 public:
-	Application(int &argc, char **argv, const char *name = nullptr)
+	Application(int &argc, char **argv, const char *name)
 		: app_(prepare(argc, cache_, inputs_), argv)
 	{
 		if (name)

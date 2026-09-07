@@ -200,8 +200,9 @@ WaylandColorBridge::attach(QWindow *window)
 	// (winId changes meaning across Qt versions.)
 	auto *iface = QGuiApplication::platformNativeInterface();
 	if (iface) {
-		this->surface_ = static_cast<wl_surface *>(
-			iface->nativeResourceForWindow(QByteArrayLiteral("surface"), window));
+		this->surface_ =
+			static_cast<wl_surface *>(iface->nativeResourceForWindow(
+				QByteArrayLiteral("surface"), window));
 	}
 	if (!this->display_ || !this->surface_)
 		return;

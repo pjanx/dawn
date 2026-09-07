@@ -90,7 +90,7 @@ payload_eq(const vector<byte> &got, span<const uint8_t> want)
 {
 	if (got.size() != want.size())
 		return false;
-	for (size_t i = 0; i < got.size(); ++i) {
+	for (size_t i = 0; i < got.size(); i++) {
 		if (uint8_t(got[i]) != want[i])
 			return false;
 	}
@@ -109,14 +109,14 @@ test_fragmented()
 	CHECK(conn.ok());
 
 	static constexpr uint8_t kPayload[] = {1, 2, 3, 4, 5};
-	uint8_t wire[4 + sizeof(kPayload)];
-	put_u32be(wire, uint32_t(sizeof(kPayload)));
-	memcpy(wire + 4, kPayload, sizeof(kPayload));
+	uint8_t wire[4 + sizeof kPayload];
+	put_u32be(wire, uint32_t(sizeof kPayload));
+	memcpy(wire + 4, kPayload, sizeof kPayload);
 
-	for (size_t i = 0; i < sizeof(wire); ++i) {
+	for (size_t i = 0; i < sizeof wire; i++) {
 		CHECK(write_all(peer, &wire[i], 1));
 		const auto st = conn.read();
-		if (i + 1 < sizeof(wire))
+		if (i + 1 < sizeof wire)
 			CHECK(st == dawn::ipc::Connection::Status::NeedMore);
 		else
 			CHECK(st == dawn::ipc::Connection::Status::Frame);
@@ -144,7 +144,7 @@ test_two_frames_one_write()
 	memcpy(wire + 4, kA, 5);
 	put_u32be(wire + 9, 5);
 	memcpy(wire + 13, kB, 5);
-	CHECK(write_all(peer, wire, sizeof(wire)));
+	CHECK(write_all(peer, wire, sizeof wire));
 
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> first;
@@ -169,7 +169,7 @@ test_empty_payload()
 
 	uint8_t len[4];
 	put_u32be(len, 0);
-	CHECK(write_all(peer, len, sizeof(len)));
+	CHECK(write_all(peer, len, sizeof len));
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 }
 
@@ -185,7 +185,7 @@ test_oversize_length()
 
 	uint8_t len[4];
 	put_u32be(len, dawn::ipc::Connection::kMaxPayload + 1);
-	CHECK(write_all(peer, len, sizeof(len)));
+	CHECK(write_all(peer, len, sizeof len));
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Error);
 }
 
@@ -247,7 +247,7 @@ test_endpoint_roundtrip()
 	// The connect completion may not have been posted yet; an event loop
 	// would be woken by the listener instead of spinning like this.
 	dawn::ipc::Connection server;
-	for (int i = 0; i < 100 && !server.ok(); ++i)
+	for (int i = 0; i < 100 && !server.ok(); i++)
 		server = listen.listener.accept();
 	CHECK(server.ok());
 	if (!server.ok())
@@ -377,7 +377,7 @@ Fixture::start()
 		this->conn_id = id;
 	};
 	cfg.on_request = [this](inst::Call call, const inst::RequestView &req) {
-		++this->requests;
+		this->requests++;
 		if (this->handler)
 			this->handler(std::move(call), req);
 		else
@@ -392,7 +392,7 @@ Fixture::start()
 		return false;
 	this->peer = std::move(connect.conn);
 
-	for (int i = 0; i < 100 && !this->conn_id; ++i)
+	for (int i = 0; i < 100 && !this->conn_id; i++)
 		this->poll();
 	CHECK(this->conn_id != 0);
 	return this->conn_id != 0;
@@ -408,7 +408,7 @@ Fixture::send(const inst::Frame &frame)
 bool
 Fixture::recv(inst::FrameView &view, vector<byte> &storage)
 {
-	for (int i = 0; i < 200; ++i) {
+	for (int i = 0; i < 200; i++) {
 		this->poll();
 		const auto st = this->peer.read();
 		if (st == dawn::ipc::Connection::Status::Frame) {
@@ -428,7 +428,7 @@ Fixture::recv(inst::FrameView &view, vector<byte> &storage)
 bool
 Fixture::closed()
 {
-	for (int i = 0; i < 200; ++i) {
+	for (int i = 0; i < 200; i++) {
 		this->poll();
 		const auto st = this->peer.read();
 		if (st == dawn::ipc::Connection::Status::Eof ||
@@ -613,7 +613,7 @@ test_instance_out_of_order()
 	CHECK(handshake(f, limit));
 	CHECK(f.send(open_frame(11)));
 	CHECK(f.send(open_frame(12)));
-	for (int i = 0; i < 100 && f.requests < 2; ++i)
+	for (int i = 0; i < 100 && f.requests < 2; i++)
 		f.poll();
 	CHECK(f.requests == 2);
 	CHECK(held.size() == 2);
@@ -663,14 +663,14 @@ test_instance_cancel()
 	vector<inst::Call> held;
 	int cancels = 0;
 	f.handler = [&held, &cancels](inst::Call call, const inst::RequestView &) {
-		call.on_cancel([&cancels] { ++cancels; });
+		call.on_cancel([&cancels] { cancels++; });
 		held.push_back(std::move(call));
 	};
 
 	uint32_t limit = 0;
 	CHECK(handshake(f, limit));
 	CHECK(f.send(open_frame(3)));
-	for (int i = 0; i < 100 && f.requests < 1; ++i)
+	for (int i = 0; i < 100 && f.requests < 1; i++)
 		f.poll();
 	CHECK(held.size() == 1);
 	if (held.size() != 1)
@@ -678,7 +678,7 @@ test_instance_cancel()
 	CHECK(!held[0].cancelled());
 
 	CHECK(f.send(cancel_frame(3)));
-	for (int i = 0; i < 100 && cancels == 0; ++i)
+	for (int i = 0; i < 100 && cancels == 0; i++)
 		f.poll();
 	CHECK(cancels == 1);
 	CHECK(held[0].cancelled());

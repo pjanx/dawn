@@ -24,7 +24,7 @@ class InstanceHost : public QObject
 public:
 	// Takes over the bound listener. Forwards Open requests to app.open.
 	InstanceHost(dawn::ipc::Listener listener, App &app, QString session,
-		QObject *parent = nullptr);
+		QObject *parent);
 	~InstanceHost() override;
 
 private:

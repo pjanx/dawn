@@ -131,7 +131,7 @@ struct Sheet {
 	std::vector<Shelf> shelves_;
 
 	Sheet() = default;
-	explicit Sheet(int side, bool keep_pixels = true);
+	explicit Sheet(int side, bool keep_pixels);
 
 	void clear();
 	void grow(int side);

@@ -134,7 +134,7 @@ Decoder::take_be(uint64_t &v, size_t width)
 	if (remaining() < width)
 		return fail(DecodeError::Truncated);
 	uint64_t x = 0;
-	for (size_t i = 0; i < width; ++i)
+	for (size_t i = 0; i < width; i++)
 		x = (x << 8) | uint8_t(in_[off_ + i]);
 	off_ += width;
 	v = x;
@@ -290,7 +290,7 @@ utf8_validate(string_view s)
 	while (p < end) {
 		const uint8_t c = *p;
 		if (c <= 0x7F) {
-			++p;
+			p++;
 			continue;
 		}
 		int extra = 0;
@@ -313,12 +313,12 @@ utf8_validate(string_view s)
 		}
 		if (end - p < extra + 1)
 			return false;
-		++p;
-		for (int i = 0; i < extra; ++i) {
+		p++;
+		for (int i = 0; i < extra; i++) {
 			if ((*p & 0xC0) != 0x80)
 				return false;
 			cp = (cp << 6) | (*p & 0x3F);
-			++p;
+			p++;
 		}
 		if (cp < min_cp || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
 			return false;

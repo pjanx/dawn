@@ -38,7 +38,7 @@ bytes_eq(span<const byte> got, span<const uint8_t> want)
 {
 	if (got.size() != want.size())
 		return false;
-	for (size_t i = 0; i < got.size(); ++i) {
+	for (size_t i = 0; i < got.size(); i++) {
 		if (uint8_t(got[i]) != want[i])
 			return false;
 	}
@@ -53,7 +53,7 @@ check_golden(
 		return;
 	test::fail(
 		"golden %s: got %zu bytes, want %zu", label, got.size(), want.size());
-	for (size_t i = 0; i < got.size(); ++i)
+	for (size_t i = 0; i < got.size(); i++)
 		fprintf(stderr, " %02x", uint8_t(got[i]));
 	fprintf(stderr, "\n");
 }
@@ -287,7 +287,7 @@ test_truncation()
 {
 	const vector<byte> full = encoded(inst::Hello{1, "b"});
 	CHECK(!full.empty());
-	for (size_t n = 0; n < full.size(); ++n) {
+	for (size_t n = 0; n < full.size(); n++) {
 		dawn::ipc::Decoder dec(span<const byte>(full.data(), n));
 		inst::HelloView view{};
 		const bool ok = decode(dec, view);

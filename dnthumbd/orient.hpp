@@ -9,9 +9,11 @@
 
 #include "libdn.h"
 
-namespace dnthumbd {
+namespace dnthumbd
+{
 
-/// Bake EXIF orientation into image.data (BGRA16 premul); set orientation Rotate0.
+/// Bake EXIF orientation into image.data (BGRA16 premul); set orientation
+/// Rotate0.
 bool bake_orientation(dawn::Image &image);
 
-} // namespace dnthumbd
+}  // namespace dnthumbd

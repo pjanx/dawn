@@ -114,7 +114,7 @@ create_display_p3_profile()
 {
 	constexpr size_t samples = 4096;
 	vector<cmsUInt16Number> transfer(samples);
-	for (size_t i = 0; i < samples; ++i) {
+	for (size_t i = 0; i < samples; i++) {
 		const double encoded = double(i) / double(samples - 1);
 		const double linear = encoded <= 0.04045
 			? encoded / 12.92
@@ -179,9 +179,9 @@ write_display_p3_vs_srgb_red(const fs::path &path)
 
 	vector<uint8_t> raw;
 	raw.reserve(100 * (1 + 200 * 3));
-	for (int y = 0; y < 100; ++y) {
+	for (int y = 0; y < 100; y++) {
 		raw.push_back(0);
-		for (int x = 0; x < 200; ++x) {
+		for (int x = 0; x < 200; x++) {
 			const uint8_t *color = x < 100 ? p3_red : srgb_red_in_p3;
 			raw.insert(raw.end(), color, color + 3);
 		}
@@ -386,7 +386,7 @@ write_cmyk_lab_icc(const fs::path &path)
 	cmsWriteTag(h, cmsSigMediaWhitePointTag, &d50);
 
 	cmsUInt16Number tab[16 * 3];
-	for (int i = 0; i < 16; ++i) {
+	for (int i = 0; i < 16; i++) {
 		tab[i * 3 + 0] = 0xFFFF;
 		tab[i * 3 + 1] = 0x8080;
 		tab[i * 3 + 2] = 0x8080;

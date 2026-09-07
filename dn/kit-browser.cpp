@@ -270,7 +270,7 @@ url_of(const string &path)
 static int
 thumb_size_index(int size)
 {
-	for (int i = 0; i < kThumbSizeN; ++i) {
+	for (int i = 0; i < kThumbSizeN; i++) {
 		if (kThumbSizes[i] == size)
 			return i;
 	}
@@ -315,7 +315,7 @@ profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
-	return cmm.get_profile_sRGB();
+	return cmm.get_profile_sRGB(false);
 }
 
 static int
@@ -565,7 +565,7 @@ static void
 copy_bgra16(const dawn::Image &src, uint16_t *dst, uint32_t dw, uint32_t dh)
 {
 	const size_t packed = size_t(dw) * dawn::kBytesPerPixel;
-	for (uint32_t y = 0; y < dh; ++y)
+	for (uint32_t y = 0; y < dh; y++)
 		memcpy(dst + size_t(y) * dw * 4, dawn::row_u16(src, y), packed);
 }
 
@@ -585,7 +585,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	if (job.pending) {
 		if (const ThumbnailTierPixels *pixels = job.pending->find(tier)) {
 			result.ram = *pixels->pixels;
-			shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
+			shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3(false);
 			if (p3 && screen && !result.ram.empty() &&
 				cmm->transform_bgra16(
 					reinterpret_cast<uint8_t *>(result.ram.data()),
@@ -634,7 +634,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	dawn::OpenContext ctx;
 	ctx.uri = job.path;
 	ctx.cmm = cmm;
-	ctx.screen_profile = job.cacheable ? cmm->get_profile_display_p3() : screen;
+	ctx.screen_profile =
+		job.cacheable ? cmm->get_profile_display_p3(false) : screen;
 	ctx.first_frame_only = true;
 	ctx.screen_dpi = 96;
 
@@ -722,7 +723,7 @@ display_thumb(Browser *browser, FinishJob job)
 	update.ram_tier = job.tier;
 
 	auto cmm = worker_cmm();
-	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
+	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3(false);
 	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
 	if (p3 && screen && !display.empty() &&
@@ -829,7 +830,7 @@ clear_gpu(Browser &b)
 static void
 invalidate_thumbs(Browser &b)
 {
-	++b.thumb_gen_;
+	b.thumb_gen_++;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
 	reset_thumb_atlas(b);
@@ -865,7 +866,7 @@ trim_ram(Browser &b)
 	const float pad = row_h(b) * kPrefetchRows;
 	const float mid = b.r.y + b.r.h * 0.5f;
 	vector<int> idx;
-	for (int i = 0; i < int(b.files_.size()); ++i) {
+	for (int i = 0; i < int(b.files_.size()); i++) {
 		const Browser::File &f = b.files_[size_t(i)];
 		if (f.ram.empty() || f.ram_pending || thumb_in_band(b, f, pad))
 			continue;
@@ -906,8 +907,8 @@ push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
 	for (Browser::File &o : b.files_) {
 		if (o.gpu.empty() || o.ram.empty())
 			continue;
-		if (!r->upload_thumb(
-				o.ram.data(), o.ram_w, o.ram_h, o.gpu.x, o.gpu.y, b.sheet_.w))
+		if (!r->upload_thumb(o.ram.data(), o.ram_w, o.ram_h, o.gpu.x, o.gpu.y,
+				b.sheet_.w, nullptr))
 			return false;
 	}
 	return true;
@@ -954,7 +955,7 @@ repack_atlas(Browser &b, Browser::File &wanted)
 				continue;
 			vector<ThumbUpload> uploads;
 			uploads.reserve(active.size());
-			for (size_t i = 0; i < active.size(); ++i) {
+			for (size_t i = 0; i < active.size(); i++) {
 				Browser::File &f = *active[i];
 				const Sheet::Packed &slot = placements[i];
 				uploads.push_back(
@@ -964,7 +965,7 @@ repack_atlas(Browser &b, Browser::File &wanted)
 				return false;
 			for (Browser::File &f : b.files_)
 				f.gpu = {};
-			for (size_t i = 0; i < active.size(); ++i)
+			for (size_t i = 0; i < active.size(); i++)
 				active[i]->gpu = placements[i];
 			b.sheet_ = std::move(fresh);
 			return !wanted.gpu.empty();
@@ -1205,7 +1206,7 @@ enqueue_thumbs(Browser &b)
 	const int target_tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(b.thumb_size_) * double(b.kit_.dpr_)))));
 	vector<int> vis, pre, background;
-	for (int i = 0; i < int(b.files_.size()); ++i) {
+	for (int i = 0; i < int(b.files_.size()); i++) {
 		const Browser::File &f = b.files_[size_t(i)];
 		const bool visible = thumb_in_band(b, f, 0.f);
 		const bool prefetched = !visible && thumb_in_band(b, f, pad);
@@ -1324,7 +1325,7 @@ find_cursor_row(const Browser &b)
 {
 	if (b.cursor_ < 0)
 		return -1;
-	for (int i = 0; i < int(b.rows_.size()); ++i) {
+	for (int i = 0; i < int(b.rows_.size()); i++) {
 		const Browser::GridRow &row = b.rows_[size_t(i)];
 		if (b.cursor_ >= row.first && b.cursor_ < row.first + row.count)
 			return i;
@@ -1372,7 +1373,7 @@ static void
 select_closest(Browser &b, const Browser::GridRow &row, float target_x)
 {
 	float closest = 1e30f;
-	for (int i = 0; i < row.count; ++i) {
+	for (int i = 0; i < row.count; i++) {
 		const int fi = row.first + i;
 		if (fi < 0 || fi >= int(b.files_.size()))
 			break;
@@ -1541,7 +1542,7 @@ layout_grid(Browser &b, Rect area)
 		row_w = 0;
 	};
 
-	for (int i = 0; i < int(b.files_.size()); ++i) {
+	for (int i = 0; i < int(b.files_.size()); i++) {
 		Browser::File &f = b.files_[size_t(i)];
 		// thumb_dest() answers in pixels, which is what the grid wants:
 		// no round trip through points, and nothing to snap back.
@@ -1625,8 +1626,8 @@ draw_checkers(Kit &kit, const Rect &tile)
 	kit.draw_fill(tile, bg);
 	const int nx = max(1, (tile.w + kCheck - 1) / kCheck);
 	const int ny = max(1, (tile.h + kCheck - 1) / kCheck);
-	for (int j = 0; j < ny; ++j) {
-		for (int i = 0; i < nx; ++i) {
+	for (int j = 0; j < ny; j++) {
+		for (int i = 0; i < nx; i++) {
 			if (((i + j) & 1) == 0)
 				continue;
 			const int x0 = tile.x + i * kCheck;
@@ -1640,7 +1641,7 @@ draw_checkers(Kit &kit, const Rect &tile)
 static int
 hit_file(const Browser &b, float x, float y)
 {
-	for (int i = 0; i < int(b.files_.size()); ++i) {
+	for (int i = 0; i < int(b.files_.size()); i++) {
 		if (b.files_[size_t(i)].tile.contains(x, y))
 			return i;
 	}
@@ -1765,7 +1766,7 @@ list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 static int
 index_of_dir(const vector<string> &dirs, const filesystem::path &self)
 {
-	for (int i = 0; i < int(dirs.size()); ++i) {
+	for (int i = 0; i < int(dirs.size()); i++) {
 		if (same_path(dirs[size_t(i)], self))
 			return i;
 	}
@@ -1980,7 +1981,7 @@ scan_dir(Browser &b)
 	b.files_ = std::move(files);
 	clear_cursor(b);
 	if (!keep.empty()) {
-		for (int i = 0; i < int(b.files_.size()); ++i) {
+		for (int i = 0; i < int(b.files_.size()); i++) {
 			if (b.files_[size_t(i)].path == keep) {
 				b.cursor_ = i;
 				remember_cursor_x(b);
@@ -1999,7 +2000,7 @@ scan_dir(Browser &b)
 	// respond to DBT_DEVICEARRIVAL, DBT_DEVICEREMOVECOMPLETE,
 	// and/or maybe just DBT_DEVNODES_CHANGED (trivially reload here).
 	DWORD mask = GetLogicalDrives();
-	for (int i = 0; i < 26; ++i) {
+	for (int i = 0; i < 26; i++) {
 		wchar_t letter = L'A' + i;
 		if (!(mask & (1 << i)))
 			continue;
@@ -2103,7 +2104,7 @@ open_directory(
 	}
 	b.dir_url_ = dir;
 	b.size_cache_.clear();
-	++b.thumb_gen_;
+	b.thumb_gen_++;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
 	reset_thumb_atlas(b);
@@ -2121,7 +2122,7 @@ set_thumb_size(Browser &b, int size)
 	if (size == b.thumb_size_)
 		return;
 	b.thumb_size_ = size;
-	++b.thumb_gen_;
+	b.thumb_gen_++;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
 	const int target_tier = thumbnail_tier_for_height(
@@ -2366,7 +2367,7 @@ fill_places(Browser &b)
 	b.kit_.forget_tree(list);
 	b.place_items_.clear();
 	list->erase_children();
-	for (int i = 0; i < int(b.side_dirs_.size()); ++i) {
+	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
 		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
 		if (d.path.empty()) {
 			list->add_child(make_unique<Sep>());
@@ -2413,7 +2414,7 @@ sync_ui(Browser &b, Page &ui)
 		fill_places(b);
 	else {
 		const size_t n = min(b.place_items_.size(), b.side_dirs_.size());
-		for (size_t i = 0; i < n; ++i) {
+		for (size_t i = 0; i < n; i++) {
 			if (Button *button = b.place_items_[i].button)
 				button->active = b.side_dirs_[i].current;
 		}
@@ -2536,7 +2537,7 @@ apply_action(Browser &b, Action action)
 	case Action::Copy:
 		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
 			const QUrl files[] = {b.file_url(b.cursor_)};
-			copy_files(files);
+			copy_files(files, false);
 		}
 		return true;
 	case Action::Trash:
@@ -2623,7 +2624,7 @@ Browser::select_file(const QUrl &url)
 	clear_cursor(*this);
 	const string path = url_to_path(url).toStdString();
 	if (!path.empty()) {
-		for (int i = 0; i < int(this->files_.size()); ++i) {
+		for (int i = 0; i < int(this->files_.size()); i++) {
 			if (this->files_[size_t(i)].path == path) {
 				this->cursor_ = i;
 				remember_cursor_x(*this);
@@ -2685,7 +2686,7 @@ void
 Browser::paint(Kit &kit) const
 {
 	if (kit.renderer_)
-		kit.renderer_->set_view(1.f, 0.f, 0.f, dawn::Orientation::Rotate0);
+		kit.renderer_->set_view(1.f, 0.f, 0.f, dawn::Orientation::Rotate0, 0.f);
 	kit.clip_to(this->r);
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
 	const int th = kit.px(float(this->thumb_size_));
@@ -2694,7 +2695,7 @@ Browser::paint(Kit &kit) const
 	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
 	const Colour glow_idle = {ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
 	const Colour frame = kit.colours_[ColourFrame];
-	for (int i = 0; i < int(this->files_.size()); ++i) {
+	for (int i = 0; i < int(this->files_.size()); i++) {
 		const File &f = this->files_[size_t(i)];
 		if (!thumb_in_band(*this, f, 0.f))
 			continue;

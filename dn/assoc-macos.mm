@@ -125,7 +125,7 @@ recommended_for(const QString &path)
 	const Handler def = default_for(path);
 	vector<Handler> out;
 	const CFIndex n = CFArrayGetCount(handlers);
-	for (CFIndex i = 0; i < n; ++i) {
+	for (CFIndex i = 0; i < n; i++) {
 		NSString *bid =
 			(__bridge NSString *) CFArrayGetValueAtIndex(handlers, i);
 		NSURL *app_url = app_url_for_bundle_id(bid);
@@ -172,11 +172,11 @@ launch(const Handler &app, const QString &path)
 
 	// The launch is asynchronous, so failures can only be reported later,
 	// and the caller has nothing to do with them anyway.
-	[[NSWorkspace sharedWorkspace] openURLs:@[ file ]
-					   withApplicationAtURL:app_url
-							  configuration:[NSWorkspaceOpenConfiguration
-												configuration]
-						  completionHandler:nil];
+	[[NSWorkspace sharedWorkspace]
+					openURLs:@[ file ]
+		withApplicationAtURL:app_url
+			   configuration:[NSWorkspaceOpenConfiguration configuration]
+		   completionHandler:nil];
 	return true;
 }
 
