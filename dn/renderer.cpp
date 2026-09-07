@@ -920,56 +920,17 @@ Renderer::create_dither()
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
 	stages[1].module = this->dither_frag_;
 	stages[1].pName = "main";
-	VkPipelineVertexInputStateCreateInfo vertex_input{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-	VkPipelineInputAssemblyStateCreateInfo input_assembly{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-	};
-	VkPipelineViewportStateCreateInfo viewport{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		.viewportCount = 1,
-		.scissorCount = 1,
-	};
-	VkPipelineRasterizationStateCreateInfo raster{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_NONE,
-		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.f,
-	};
-	VkPipelineMultisampleStateCreateInfo multisample{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-	};
-	VkPipelineColorBlendAttachmentState blend_attachment{
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-	};
-	VkPipelineColorBlendStateCreateInfo blend{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &blend_attachment,
-	};
-	VkDynamicState dynamic_states[] = {
-		VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-	VkPipelineDynamicStateCreateInfo dynamic{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 2,
-		.pDynamicStates = dynamic_states,
-	};
 	VkGraphicsPipelineCreateInfo pipeline_info{
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		.stageCount = 2,
 		.pStages = stages,
-		.pVertexInputState = &vertex_input,
-		.pInputAssemblyState = &input_assembly,
-		.pViewportState = &viewport,
-		.pRasterizationState = &raster,
-		.pMultisampleState = &multisample,
-		.pColorBlendState = &blend,
-		.pDynamicState = &dynamic,
+		.pVertexInputState = &dawn::kNoVertexInput,
+		.pInputAssemblyState = &dawn::kTriangleList,
+		.pViewportState = &dawn::kOneViewport,
+		.pRasterizationState = &dawn::kRasterFill,
+		.pMultisampleState = &dawn::kNoMultisample,
+		.pColorBlendState = &dawn::kBlendReplace,
+		.pDynamicState = &dawn::kDynamicViewportScissor,
 		.layout = this->dither_layout_,
 		.renderPass = this->dither_rp_,
 	};
@@ -1228,60 +1189,17 @@ OverlayVulkan::create_pipeline()
 		.vertexAttributeDescriptionCount = 6,
 		.pVertexAttributeDescriptions = attributes,
 	};
-	VkPipelineInputAssemblyStateCreateInfo input_assembly{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-	};
-	VkPipelineViewportStateCreateInfo viewport{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		.viewportCount = 1,
-		.scissorCount = 1,
-	};
-	VkPipelineRasterizationStateCreateInfo raster{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_NONE,
-		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.f,
-	};
-	VkPipelineMultisampleStateCreateInfo multisample{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-	};
-	VkPipelineColorBlendAttachmentState blend_attachment{
-		.blendEnable = VK_TRUE,
-		.srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-		.colorBlendOp = VK_BLEND_OP_ADD,
-		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-		.alphaBlendOp = VK_BLEND_OP_ADD,
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-	};
-	VkPipelineColorBlendStateCreateInfo blend{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &blend_attachment,
-	};
-	VkDynamicState dynamic_states[] = {
-		VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-	VkPipelineDynamicStateCreateInfo dynamic{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = 2,
-		.pDynamicStates = dynamic_states,
-	};
 	VkGraphicsPipelineCreateInfo pipeline_info{
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		.stageCount = 2,
 		.pStages = stages,
 		.pVertexInputState = &vertex_input,
-		.pInputAssemblyState = &input_assembly,
-		.pViewportState = &viewport,
-		.pRasterizationState = &raster,
-		.pMultisampleState = &multisample,
-		.pColorBlendState = &blend,
-		.pDynamicState = &dynamic,
+		.pInputAssemblyState = &dawn::kTriangleList,
+		.pViewportState = &dawn::kOneViewport,
+		.pRasterizationState = &dawn::kRasterFill,
+		.pMultisampleState = &dawn::kNoMultisample,
+		.pColorBlendState = &dawn::kBlendPremulOver,
+		.pDynamicState = &dawn::kDynamicViewportScissor,
 		.layout = this->pipeline_layout_,
 		.renderPass = this->render_pass_,
 	};

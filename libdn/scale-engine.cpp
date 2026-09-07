@@ -18,7 +18,6 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -443,63 +442,13 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 	if (!vert)
 		return false;
 
-	VkPipelineVertexInputStateCreateInfo vi{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-	VkPipelineInputAssemblyStateCreateInfo ia{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-		.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-	};
-	VkPipelineViewportStateCreateInfo vp{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-		.viewportCount = 1,
-		.scissorCount = 1,
-	};
-	VkPipelineRasterizationStateCreateInfo rs{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-		.polygonMode = VK_POLYGON_MODE_FILL,
-		.cullMode = VK_CULL_MODE_NONE,
-		.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-		.lineWidth = 1.f,
-	};
-	VkPipelineMultisampleStateCreateInfo ms{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-		.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-	};
 	// H-pass writes the mid buffer as-is. V-pass is premul-over the
 	// dest clear (view well, or transparent for offscreen readback) so
 	// SVG/PNG alpha sits on that background instead of replacing it.
-	VkPipelineColorBlendAttachmentState blend_replace{
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-	};
-	VkPipelineColorBlendAttachmentState blend_premul_over{
-		.blendEnable = VK_TRUE,
-		.srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
-		.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-		.colorBlendOp = VK_BLEND_OP_ADD,
-		.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
-		.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-		.alphaBlendOp = VK_BLEND_OP_ADD,
-		.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-			VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-	};
-	array dyn_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-	VkPipelineDynamicStateCreateInfo dyn{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-		.dynamicStateCount = uint32_t(dyn_states.size()),
-		.pDynamicStates = dyn_states.data(),
-	};
-
 	auto make_pipe = [&](VkShaderModule frag, VkPipelineLayout layout,
 						 VkRenderPass rp,
-						 const VkPipelineColorBlendAttachmentState *blend_att,
+						 const VkPipelineColorBlendStateCreateInfo *cb,
 						 VkPipeline *out) -> bool {
-		VkPipelineColorBlendStateCreateInfo cb{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-			.attachmentCount = 1,
-			.pAttachments = blend_att,
-		};
 		VkPipelineShaderStageCreateInfo stages[2] = {
 			{
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -518,13 +467,13 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 			.stageCount = 2,
 			.pStages = stages,
-			.pVertexInputState = &vi,
-			.pInputAssemblyState = &ia,
-			.pViewportState = &vp,
-			.pRasterizationState = &rs,
-			.pMultisampleState = &ms,
-			.pColorBlendState = &cb,
-			.pDynamicState = &dyn,
+			.pVertexInputState = &kNoVertexInput,
+			.pInputAssemblyState = &kTriangleList,
+			.pViewportState = &kOneViewport,
+			.pRasterizationState = &kRasterFill,
+			.pMultisampleState = &kNoMultisample,
+			.pColorBlendState = cb,
+			.pDynamicState = &kDynamicViewportScissor,
 			.layout = layout,
 			.renderPass = rp,
 			.subpass = 0,
@@ -538,20 +487,20 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		VkPipeline *out;
 		VkPipelineLayout layout;
 		VkRenderPass rp;
-		const VkPipelineColorBlendAttachmentState *blend;
+		const VkPipelineColorBlendStateCreateInfo *blend;
 		const uint32_t *code;
 		uint32_t words;
 	} variants[] = {
-		{&pipeline_h, pipeline_layout_tiles, mid_render_pass, &blend_replace,
+		{&pipeline_h, pipeline_layout_tiles, mid_render_pass, &kBlendReplace,
 			scale_h_bilinear, scale_h_bilinear_words},
 		{&pipeline_v, pipeline_layout_horiz, dest_render_pass,
-			&blend_premul_over, scale_v_bilinear, scale_v_bilinear_words},
+			&kBlendPremulOver, scale_v_bilinear, scale_v_bilinear_words},
 		{&pipeline_2d_nearest, pipeline_layout_tiles, dest_render_pass,
-			&blend_premul_over, scale_2d_nearest, scale_2d_nearest_words},
+			&kBlendPremulOver, scale_2d_nearest, scale_2d_nearest_words},
 		{&pipeline_2d_bilinear, pipeline_layout_tiles, dest_render_pass,
-			&blend_premul_over, scale_2d_bilinear, scale_2d_bilinear_words},
+			&kBlendPremulOver, scale_2d_bilinear, scale_2d_bilinear_words},
 		{&pipeline_2d_nohalo, pipeline_layout_tiles, dest_render_pass,
-			&blend_premul_over, scale_2d_nohalo, scale_2d_nohalo_words},
+			&kBlendPremulOver, scale_2d_nohalo, scale_2d_nohalo_words},
 	};
 
 	bool ok = true;
