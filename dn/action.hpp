@@ -120,12 +120,10 @@ struct MenuNode {
 	const char *title = nullptr;
 	Action action = Action::None;
 	std::vector<MenuNode> items = {};
-	MenuNode() = default;
-	MenuNode(Action a) : action(a) {}
-	MenuNode(const char *t, std::initializer_list<MenuNode> xs)
-		: title(t), items(xs)
-	{
-	}
+
+	static MenuNode item(Action action);
+	static MenuNode group(
+		const char *title, std::initializer_list<MenuNode> items);
 };
 
 struct Actor {
@@ -136,7 +134,7 @@ struct Actor {
 
 const ActionDef &action_def(Action);
 Action match_key(std::span<const Action> scope, int key, unsigned mods);
-QString accel_label(const Accel &);
+QString accel_key_label(const Accel &);
 QString accel_label(const ActionDef &);
 QString menu_label(const char *label, int *mnemonic_index);
 const char *action_label(const ActionDef &, bool checked);
@@ -150,7 +148,7 @@ std::span<const Action> window_keys();
 std::span<const Action> browser_keys();
 std::span<const Action> viewer_keys();
 
-void copy_files(QMimeData *mime, std::span<const QUrl> urls, bool cut);
+void set_file_mime_data(QMimeData *mime, std::span<const QUrl> urls, bool cut);
 void copy_files(std::span<const QUrl> urls, bool cut);
 bool move_to_trash(const QString &abs_path);
 

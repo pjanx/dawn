@@ -28,7 +28,7 @@ class WaylandColorBridge
 	wp_image_description_v1 *pending_description_ = nullptr;
 
 	void request_preferred();
-	void description_ready(wp_image_description_v1 *description);
+	void apply_description(wp_image_description_v1 *description);
 
 	static void registry_global(void *data, wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t);

@@ -78,7 +78,7 @@ WaylandColorBridge::request_preferred()
 }
 
 void
-WaylandColorBridge::description_ready(wp_image_description_v1 *description)
+WaylandColorBridge::apply_description(wp_image_description_v1 *description)
 {
 	if (description != this->pending_description_)
 		return;
@@ -150,7 +150,7 @@ void
 WaylandColorBridge::description_ready(
 	void *data, wp_image_description_v1 *description, uint32_t)
 {
-	static_cast<WaylandColorBridge *>(data)->description_ready(description);
+	static_cast<WaylandColorBridge *>(data)->apply_description(description);
 }
 
 const wl_registry_listener WaylandColorBridge::kRegistryListener = {

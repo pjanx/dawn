@@ -262,7 +262,7 @@ public:
 
 	static std::shared_ptr<Cmm> get_default();
 
-	std::shared_ptr<Profile> get_profile(const void *data, size_t len);
+	std::shared_ptr<Profile> get_profile_data(const void *data, size_t len);
 	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
 	std::shared_ptr<Profile> get_profile_sRGB(bool cache);
 	std::shared_ptr<Profile> get_profile_display_p3(bool cache);

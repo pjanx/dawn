@@ -2650,7 +2650,7 @@ MenuPopup::key(Kit &kit, const Key &ev)
 	switch (ev.key) {
 	case Qt::Key_Up:
 	case Qt::Key_Down:
-		kit.cycle_focus(this, ev.key == Qt::Key_Up ? -1 : 1, true);
+		kit.cycle_focus_in(this, ev.key == Qt::Key_Up ? -1 : 1, true);
 		focus_item(kit, kit.focus_, true);
 		return true;
 	case Qt::Key_Right:
@@ -2790,7 +2790,7 @@ Overflow::step_line(Kit &kit, int dir)
 	const auto it = find(items.begin(), items.end(), kit.focus_);
 	if (it == items.end()) {
 		this->want_x_ = -1;
-		kit.cycle_focus(this, dir, true);
+		kit.cycle_focus_in(this, dir, true);
 		return;
 	}
 
@@ -2845,7 +2845,7 @@ Overflow::key(Kit &kit, const Key &ev)
 	case Qt::Key_Right:
 		// The items read as one strip that happens to be folded.
 		this->want_x_ = -1;
-		kit.cycle_focus(this, ev.key == Qt::Key_Left ? -1 : 1, true);
+		kit.cycle_focus_in(this, ev.key == Qt::Key_Left ? -1 : 1, true);
 		break;
 	case Qt::Key_Home:
 		this->want_x_ = -1;
@@ -2855,7 +2855,7 @@ Overflow::key(Kit &kit, const Key &ev)
 		// Entering the strip backwards from nowhere lands on its last item.
 		this->want_x_ = -1;
 		kit.set_focus(nullptr, true);
-		kit.cycle_focus(this, -1, true);
+		kit.cycle_focus_in(this, -1, true);
 		break;
 	case Qt::Key_Up:
 	case Qt::Key_Down:
@@ -4426,11 +4426,11 @@ Kit::focus_scope() const
 void
 Kit::cycle_focus(int dir)
 {
-	cycle_focus(focus_scope(), dir, true);
+	cycle_focus_in(focus_scope(), dir, true);
 }
 
 bool
-Kit::cycle_focus(Widget *scope, int dir, bool wrap)
+Kit::cycle_focus_in(Widget *scope, int dir, bool wrap)
 {
 	vector<Widget *> items;
 	collect_focusable(scope, items);

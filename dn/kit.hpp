@@ -839,7 +839,7 @@ struct Kit {
 	bool activate_mnemonic(Widget *scope, int key);
 	Widget *focus_scope() const;
 	void cycle_focus(int dir);
-	bool cycle_focus(Widget *scope, int dir, bool wrap);
+	bool cycle_focus_in(Widget *scope, int dir, bool wrap);
 	void focus_first(Widget *scope);
 	bool key(const Key &ev);
 	bool input_method(const QString &commit, const QString &preedit, int caret);

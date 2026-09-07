@@ -1722,7 +1722,7 @@ copy_frame(const Viewer &v)
 		copy_image(mime, *v.frame_);
 	if (!v.url_.isEmpty()) {
 		const QUrl files[] = {v.url_};
-		copy_files(mime, files, false);
+		set_file_mime_data(mime, files, false);
 	}
 	QGuiApplication::clipboard()->setMimeData(mime);
 }

@@ -302,111 +302,128 @@ constexpr Action kViewerKeys[] = {
 };
 
 // clang-format off
-const MenuNode kFileMenu{"_File", {
-	Action::NewWindow,
-	Action::CloseWindow,
+const MenuNode kFileMenu = MenuNode::group("_File", {
+	MenuNode::item(Action::NewWindow),
+	MenuNode::item(Action::CloseWindow),
 	{},
-	Action::Reload,
+	MenuNode::item(Action::Reload),
 	{},
-	Action::Settings,
+	MenuNode::item(Action::Settings),
 	{},
-	Action::Quit,
-}};
+	MenuNode::item(Action::Quit),
+});
 
-const MenuNode kHelpMenu{"_Help", {
-	Action::Help,
-	Action::Shortcuts,
-	Action::About,
-}};
+const MenuNode kHelpMenu = MenuNode::group("_Help", {
+	MenuNode::item(Action::Help),
+	MenuNode::item(Action::Shortcuts),
+	MenuNode::item(Action::About),
+});
 
 const MenuNode kBrowserMenu[] = {
 	kFileMenu,
-	{"_Go", {
-		Action::Back,
-		Action::Forward,
-		Action::Location,
+	MenuNode::group("_Go", {
+		MenuNode::item(Action::Back),
+		MenuNode::item(Action::Forward),
+		MenuNode::item(Action::Location),
 		{},
-		Action::DirPrev,
-		Action::DirNext,
-		Action::DirParent,
-		Action::DirHome,
-	}},
-	{"_View", {
-		Action::Sidebar,
+		MenuNode::item(Action::DirPrev),
+		MenuNode::item(Action::DirNext),
+		MenuNode::item(Action::DirParent),
+		MenuNode::item(Action::DirHome),
+	}),
+	MenuNode::group("_View", {
+		MenuNode::item(Action::Sidebar),
 		{},
-		Action::ThumbPlus,
-		Action::ThumbMinus,
+		MenuNode::item(Action::ThumbPlus),
+		MenuNode::item(Action::ThumbMinus),
 		{},
-		Action::ViewTile,
-		Action::ViewGrid,
+		MenuNode::item(Action::ViewTile),
+		MenuNode::item(Action::ViewGrid),
 		// TODO: Action::ViewList,
 		{},
-		Action::Filenames,
-		Action::Filter,
+		MenuNode::item(Action::Filenames),
+		MenuNode::item(Action::Filter),
 		{},
-		Action::SortDir,
-		Action::SortName,
-		Action::SortTime,
+		MenuNode::item(Action::SortDir),
+		MenuNode::item(Action::SortName),
+		MenuNode::item(Action::SortTime),
 		{},
-		Action::Search,
-		Action::Hint,
-		Action::DarkMode,
-		Action::Fullscreen,
-	}},
+		MenuNode::item(Action::Search),
+		MenuNode::item(Action::Hint),
+		MenuNode::item(Action::DarkMode),
+		MenuNode::item(Action::Fullscreen),
+	}),
 	kHelpMenu,
 };
 
 const MenuNode kViewerMenu[] = {
 	kFileMenu,
-	{"_Go", {
-		Action::Back,
-		Action::Forward,
-		Action::Location,
+	MenuNode::group("_Go", {
+		MenuNode::item(Action::Back),
+		MenuNode::item(Action::Forward),
+		MenuNode::item(Action::Location),
 		{},
-		Action::Browse,
-		Action::PrevFile,
-		Action::NextFile,
-	}},
-	{"_View", {
-		Action::Information,
+		MenuNode::item(Action::Browse),
+		MenuNode::item(Action::PrevFile),
+		MenuNode::item(Action::NextFile),
+	}),
+	MenuNode::group("_View", {
+		MenuNode::item(Action::Information),
 		{},
-		Action::ZoomIn,
-		Action::ZoomOut,
-		Action::Zoom1,
-		Action::Fit,
-		Action::FitWidth,
-		Action::FitHeight,
+		MenuNode::item(Action::ZoomIn),
+		MenuNode::item(Action::ZoomOut),
+		MenuNode::item(Action::Zoom1),
+		MenuNode::item(Action::Fit),
+		MenuNode::item(Action::FitWidth),
+		MenuNode::item(Action::FitHeight),
 		{},
-		Action::Lock,
-		Action::Fixate,
+		MenuNode::item(Action::Lock),
+		MenuNode::item(Action::Fixate),
 		{},
-		Action::ColorManagement,
-		Action::Smooth,
-		Action::Checkerboard,
-		Action::BlendLinearLight,
+		MenuNode::item(Action::ColorManagement),
+		MenuNode::item(Action::Smooth),
+		MenuNode::item(Action::Checkerboard),
+		MenuNode::item(Action::BlendLinearLight),
 		{},
-		Action::Hint,
-		Action::DarkMode,
-		Action::Fullscreen,
-	}},
-	{"_Image", {
-		Action::RotateLeft,
-		Action::Mirror,
-		Action::RotateRight,
+		MenuNode::item(Action::Hint),
+		MenuNode::item(Action::DarkMode),
+		MenuNode::item(Action::Fullscreen),
+	}),
+	MenuNode::group("_Image", {
+		MenuNode::item(Action::RotateLeft),
+		MenuNode::item(Action::Mirror),
+		MenuNode::item(Action::RotateRight),
 		{},
-		Action::PageFirst,
-		Action::PagePrevious,
-		Action::PageNext,
-		Action::PageLast,
+		MenuNode::item(Action::PageFirst),
+		MenuNode::item(Action::PagePrevious),
+		MenuNode::item(Action::PageNext),
+		MenuNode::item(Action::PageLast),
 		{},
-		Action::FrameFirst,
-		Action::FramePrevious,
-		Action::PlayPause,
-		Action::FrameNext,
-	}},
+		MenuNode::item(Action::FrameFirst),
+		MenuNode::item(Action::FramePrevious),
+		MenuNode::item(Action::PlayPause),
+		MenuNode::item(Action::FrameNext),
+	}),
 	kHelpMenu,
 };
 // clang-format on
+
+MenuNode
+MenuNode::item(Action action)
+{
+	MenuNode node;
+	node.action = action;
+	return node;
+}
+
+MenuNode
+MenuNode::group(const char *title, initializer_list<MenuNode> items)
+{
+	MenuNode node;
+	node.title = title;
+	node.items = items;
+	return node;
+}
 
 const ActionDef &
 action_def(Action action)
@@ -430,7 +447,7 @@ match_key(span<const Action> scope, int key, unsigned mods)
 }
 
 QString
-accel_label(const Accel &a)
+accel_key_label(const Accel &a)
 {
 	if (!a.key)
 		return {};
@@ -449,7 +466,7 @@ accel_label(const ActionDef &def)
 		s.replace(QLatin1Char('-'), QChar(0x2212));
 		return s;
 	}
-	return accel_label(def.keys[0]);
+	return accel_key_label(def.keys[0]);
 }
 
 QString
@@ -537,7 +554,7 @@ viewer_keys()
 }
 
 void
-copy_files(QMimeData *mime, span<const QUrl> urls, bool cut)
+set_file_mime_data(QMimeData *mime, span<const QUrl> urls, bool cut)
 {
 	if (!mime)
 		return;
@@ -568,7 +585,7 @@ void
 copy_files(span<const QUrl> urls, bool cut)
 {
 	auto *mime = new QMimeData;
-	copy_files(mime, urls, cut);
+	set_file_mime_data(mime, urls, cut);
 	QGuiApplication::clipboard()->setMimeData(mime);
 }
 

@@ -48,7 +48,7 @@ Sidebar::key(Kit &kit, const Key &ev)
 	if (ev.key != Qt::Key_Up && ev.key != Qt::Key_Down)
 		return false;
 	const int dir = ev.key == Qt::Key_Up ? -1 : 1;
-	return kit.cycle_focus(this, dir, false);
+	return kit.cycle_focus_in(this, dir, false);
 }
 
 // --- Context menu ------------------------------------------------------------
@@ -183,7 +183,7 @@ shortcut_accel(const ActionDef &def)
 		return QString::fromUtf8(def.accel);
 	QString s;
 	for (const Accel &a : def.keys) {
-		const QString part = accel_label(a);
+		const QString part = accel_key_label(a);
 		if (part.isEmpty())
 			continue;
 		if (!s.isEmpty())
