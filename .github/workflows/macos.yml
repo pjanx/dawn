@@ -1,0 +1,65 @@
+name: macOS build
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-continuous
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew install cmake pkgconf glslang molten-vk qtbase resvg \
+            shared-mime-info vulkan-loader jpeg-turbo webp zlib
+
+      - name: Build package
+        run: |
+          PKG_CONFIG_PATH="$(brew --prefix zlib)/lib/pkgconfig" \
+            cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          cmake --build build --target package --parallel
+          archive=$(find build -maxdepth 1 -name 'Dawn-*.zip' -print -quit)
+          test -n "$archive"
+          cp "$archive" Dawn-latest-macOS-arm64.zip
+
+      - name: Publish continuous build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=continuous
+          asset=Dawn-latest-macOS-arm64.zip
+          get_ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}"
+          update_ref="repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}"
+
+          if gh api "$get_ref" >/dev/null 2>&1; then
+            gh api --method PATCH "$update_ref" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" -f sha="$GITHUB_SHA" >/dev/null
+          fi
+
+          notes="Unsigned Apple Silicon build of ${GITHUB_SHA}."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "Continuous macOS build" \
+              --notes "$notes" --target "$GITHUB_SHA" --prerelease
+            gh release upload "$tag" "$asset" --clobber
+          else
+            gh release create "$tag" "$asset" --verify-tag \
+              --title "Continuous macOS build" --notes "$notes" --prerelease
+          fi
