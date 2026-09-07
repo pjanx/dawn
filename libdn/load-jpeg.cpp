@@ -362,6 +362,21 @@ libjpeg_output_message(j_common_ptr cinfo)
 	add_warning(*err->ctx, buf);
 }
 
+/// Calls into libjpeg from a stack frame containing no C++ objects that need
+/// unwinding. This also keeps libjpeg-mutated state outside the function that
+/// invokes setjmp(), so it remains valid after a fatal error. The callable and
+/// any functions below it must likewise have no live non-trivial locals when
+/// libjpeg is entered.
+template <typename F>
+bool
+libjpeg_try(LibjpegErrorMgr &err, F &&call)
+{
+	if (setjmp(err.buf))
+		return false;
+	call();
+	return true;
+}
+
 // --- Decoding loops ----------------------------------------------------------
 
 void
@@ -570,16 +585,16 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	cinfo.err = jpeg_std_error(&jerr.pub);
 	jerr.pub.error_exit = libjpeg_error_exit;
 	jerr.pub.output_message = libjpeg_output_message;
-	if (setjmp(jerr.buf)) {
-		jpeg_destroy_decompress(&cinfo);
-		return nullptr;
-	}
-
 	{
 		detail::StageClock clk(&OpenTiming::decode_ms);
-		jpeg_create_decompress(&cinfo);
-		jpeg_mem_src(&cinfo, data.data(), (unsigned long) data.size());
-		(void) jpeg_read_header(&cinfo, TRUE);
+		if (!libjpeg_try(jerr, [&] {
+				jpeg_create_decompress(&cinfo);
+				jpeg_mem_src(&cinfo, data.data(), (unsigned long) data.size());
+				(void) jpeg_read_header(&cinfo, TRUE);
+			})) {
+			jpeg_destroy_decompress(&cinfo);
+			return nullptr;
+		}
 	}
 
 	int precision = cinfo.data_precision;
@@ -603,7 +618,10 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 
 	{
 		detail::StageClock clk(&OpenTiming::decode_ms);
-		jpeg_calc_output_dimensions(&cinfo);
+		if (!libjpeg_try(jerr, [&] { jpeg_calc_output_dimensions(&cinfo); })) {
+			jpeg_destroy_decompress(&cinfo);
+			return nullptr;
+		}
 	}
 	int width = int(cinfo.output_width);
 	int height = int(cinfo.output_height);
@@ -611,7 +629,8 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
 	if (!image) {
 		set_error(error, "image allocation failure");
-		longjmp(jerr.buf, 1);
+		jpeg_destroy_decompress(&cinfo);
+		return nullptr;
 	}
 
 #if defined MAXJ12SAMPLE || defined MAXJ16SAMPLE
@@ -623,23 +642,43 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 			samples.resize(size_t(width) * 4 * size_t(height));
 		}
 		if (precision == 12) {
-			auto lines =
-				J12SAMPARRAY((*cinfo.mem->alloc_small)((j_common_ptr) &cinfo,
-					JPOOL_IMAGE, sizeof(J12SAMPROW) * height));
+			J12SAMPARRAY lines = nullptr;
+			if (!libjpeg_try(jerr, [&] {
+					lines = J12SAMPARRAY(
+						(*cinfo.mem->alloc_small)((j_common_ptr) &cinfo,
+							JPOOL_IMAGE, sizeof(J12SAMPROW) * height));
+				})) {
+				jpeg_destroy_decompress(&cinfo);
+				return nullptr;
+			}
 			for (int i = 0; i < height; i++)
 				lines[i] =
 					(J12SAMPROW) (samples.data() + size_t(i) * width * 4);
 			detail::StageClock clk(&OpenTiming::decode_ms);
-			load_libjpeg12_simple(&cinfo, lines);
+			if (!libjpeg_try(
+					jerr, [&] { load_libjpeg12_simple(&cinfo, lines); })) {
+				jpeg_destroy_decompress(&cinfo);
+				return nullptr;
+			}
 		} else {
-			auto lines =
-				J16SAMPARRAY((*cinfo.mem->alloc_small)((j_common_ptr) &cinfo,
-					JPOOL_IMAGE, sizeof(J16SAMPROW) * height));
+			J16SAMPARRAY lines = nullptr;
+			if (!libjpeg_try(jerr, [&] {
+					lines = J16SAMPARRAY(
+						(*cinfo.mem->alloc_small)((j_common_ptr) &cinfo,
+							JPOOL_IMAGE, sizeof(J16SAMPROW) * height));
+				})) {
+				jpeg_destroy_decompress(&cinfo);
+				return nullptr;
+			}
 			for (int i = 0; i < height; i++)
 				lines[i] =
 					(J16SAMPROW) (samples.data() + size_t(i) * width * 4);
 			detail::StageClock clk(&OpenTiming::decode_ms);
-			load_libjpeg16_simple(&cinfo, lines);
+			if (!libjpeg_try(
+					jerr, [&] { load_libjpeg16_simple(&cinfo, lines); })) {
+				jpeg_destroy_decompress(&cinfo);
+				return nullptr;
+			}
 		}
 		load_jpeg_finalize(image, use_cmyk, use_argb, precision, ctx, data,
 			nullptr, samples.data());
@@ -651,14 +690,24 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 			detail::StageClock clk(&OpenTiming::alloc_ms);
 			pixels.resize(size_t(width) * 4 * size_t(height));
 		}
-		auto lines = JSAMPARRAY((*cinfo.mem->alloc_small)(
-			(j_common_ptr) &cinfo, JPOOL_IMAGE, sizeof(JSAMPROW) * height));
+		JSAMPARRAY lines = nullptr;
+		if (!libjpeg_try(jerr, [&] {
+				lines =
+					JSAMPARRAY((*cinfo.mem->alloc_small)((j_common_ptr) &cinfo,
+						JPOOL_IMAGE, sizeof(JSAMPROW) * height));
+			})) {
+			jpeg_destroy_decompress(&cinfo);
+			return nullptr;
+		}
 		for (int i = 0; i < height; i++)
 			lines[i] = pixels.data() + size_t(i) * width * 4;
 
 		{
 			detail::StageClock clk(&OpenTiming::decode_ms);
-			loop(&cinfo, lines);
+			if (!libjpeg_try(jerr, [&] { loop(&cinfo, lines); })) {
+				jpeg_destroy_decompress(&cinfo);
+				return nullptr;
+			}
 		}
 		load_jpeg_finalize(
 			image, use_cmyk, use_argb, 8, ctx, data, pixels.data(), nullptr);

@@ -218,6 +218,44 @@ test_jpeg_cms_8_to_16()
 }
 
 void
+test_jpeg_fatal_error()
+{
+	const fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg";
+	ifstream input(path, ios::binary);
+	vector<uint8_t> bytes(
+		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
+	CHECK(!bytes.empty());
+	if (bytes.empty())
+		return;
+
+	// Replace the final EOI with an invalid marker. The header and scanline are
+	// valid, so libjpeg reports the fatal error only while finishing the
+	// decompression, after the image and temporary pixel buffer have been made.
+	size_t eoi = bytes.size();
+	for (size_t i = bytes.size(); i > 1; i--) {
+		if (bytes[i - 2] == 0xff && bytes[i - 1] == 0xd9) {
+			eoi = i - 1;
+			break;
+		}
+	}
+	CHECK(eoi != bytes.size());
+	if (eoi == bytes.size())
+		return;
+	bytes[eoi] = 0x02;
+
+	for (bool enhance : {false, true}) {
+		dawn::OpenContext ctx;
+		ctx.enhance = enhance;
+		ctx.first_frame_only = true;
+		dawn::Error error;
+		dawn::ImagePtr img = dawn::detail::load_jpeg(bytes, ctx, &error);
+		CHECK(img == nullptr);
+		CHECK(error);
+		CHECK(!error.message.empty());
+	}
+}
+
+void
 test_cmyk_cms_opaque()
 {
 	auto cmm = dawn::Cmm::get_default();
@@ -540,6 +578,7 @@ main()
 		{"packing", test_pack_helpers},
 		{"solid image loaders", test_loaders_solid},
 		{"JPEG CMS", test_jpeg_cms_8_to_16},
+		{"JPEG fatal error", test_jpeg_fatal_error},
 		{"CMYK CMS", test_cmyk_cms_opaque},
 		{"tiled CMS", test_cms_tiled},
 		{"RGBW image", test_rgbw_2x2},
