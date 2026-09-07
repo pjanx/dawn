@@ -20,11 +20,6 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-	add_compile_options(-Wall -Wextra -Wpedantic
-		-Wno-unused-parameter -Wno-missing-field-initializers)
-endif()
-
 if (WIN32 AND CMAKE_CROSSCOMPILING)
 	set(DAWN_MSYS2_PREFIX "${PROJECT_BINARY_DIR}/ucrt64")
 	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
@@ -231,6 +226,17 @@ configure_file(
 
 include_directories("${PROJECT_SOURCE_DIR}")
 include(CTest)
+
+# Keep diagnostics after bundled dependencies so that they don't apply to them.
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+	add_compile_options(-Wall -Wextra -Wpedantic
+		-Wformat=2 -Wundef -Wcast-align
+		-Wno-unused-parameter -Wno-missing-field-initializers)
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:CXX>:-Wextra-semi>
+		$<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>
+		$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>)
+endif()
 
 add_subdirectory(libdn)
 add_subdirectory(dnthumbd)

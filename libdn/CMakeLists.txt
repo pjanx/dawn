@@ -64,7 +64,7 @@ if (DAWN_WITH_LIBTIFF)
 endif()
 if (DAWN_WITH_JXRLIB)
 	target_sources(libdn PRIVATE load-jxr.cpp)
-	target_include_directories(libdn PRIVATE "${JXRLIB_INCLUDE_DIR}")
+	target_include_directories(libdn SYSTEM PRIVATE "${JXRLIB_INCLUDE_DIR}")
 	target_link_libraries(libdn PRIVATE
 		"${JXRLIB_GLUE_LIBRARY}" "${JXRLIB_CORE_LIBRARY}")
 endif()
