@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew install cmake pkgconf glslang molten-vk qtbase resvg \
+          brew install cmake pkgconf glslang molten-vk qtbase resvg rust \
             shared-mime-info vulkan-loader jpeg-turbo webp zlib
 
       - name: Build package

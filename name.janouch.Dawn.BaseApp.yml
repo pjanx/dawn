@@ -118,6 +118,15 @@ modules:
         url: https://www.libraw.org/data/LibRaw-0.22.2.tar.gz
         sha256: de86b035655accff8d4010f1a221fdf50d353cb7b1422ba26f14a0db92612cfa
 
+  # Only the library and its GD image device are retained by the application.
+  - name: libwmf
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.15.tar.gz
+        sha256: 379ae041dd53ab35f55c9b73a78a31f1ce530e925023c31607b05f2199d867e6
+
   # Dawn looks for Debian's flat include/jxrlib, upstream nests by component.
   - name: jxrlib
     buildsystem: simple
@@ -129,27 +138,3 @@ modules:
         url: https://github.com/mircomir/jxrlib.git
         tag: '1.4.2'
         commit: 568cc2c4e09cf04412bc53a3e03e678ecd1d4693
-
-  # Only glycin-image-rs: HEIF, JPEG XL, SVG and raw have their own loaders.
-  # Unlike resvg, the release tarball does not vendor its crates.
-  - name: glycin
-    buildsystem: meson
-    build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
-      build-args:
-        - --share=network
-      env:
-        CARGO_HOME: /run/build/glycin/cargo
-    config-opts:
-      - -Dglycin-loaders=true
-      - -Dloaders=glycin-image-rs
-      - -Dlibglycin=true
-      - -Dlibglycin-gtk4=false
-      - -Dglycin-thumbnailer=false
-      - -Dintrospection=false
-      - -Dvapi=false
-      - -Dtests=false
-    sources:
-      - type: archive
-        url: https://download.gnome.org/sources/glycin/2.1/glycin-2.1.5.tar.xz
-        sha256: 6c09757ee906330a60b6705753aa56bca007ad219b95e6e3537510d41bc341c8

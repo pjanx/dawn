@@ -110,12 +110,20 @@ dawn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
 dawn_optional_pkg(LIBJXL "JPEG XL support" libjxl)
 dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
 dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
-dawn_optional_pkg(GLYCIN "glycin fallback" glycin-2)
-dawn_optional_pkg(GDKPIXBUF "gdk-pixbuf fallback" gdk-pixbuf-2.0)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
+dawn_optional_pkg(LIBWMF "WMF support" libwmf)
 
-# jxrlib ships no pkg-config file, and its headers include one another by
-# bare name, so the whole package directory has to go on the include path.
+find_program(CARGO_EXECUTABLE cargo)
+if (CARGO_EXECUTABLE)
+	set(CARGO_FOUND TRUE)
+endif()
+option(DAWN_WITH_DNRS "Rust image loader" ${CARGO_FOUND})
+if (DAWN_WITH_DNRS AND NOT CARGO_FOUND)
+	message(FATAL_ERROR "DAWN_WITH_DNRS=ON but cargo was not found")
+endif()
+
+# jxrlib ships no pkg-config file, and its headers include one another
+# by bare name, so the whole package directory has to go on the include path.
 find_path(JXRLIB_INCLUDE_DIR JXRGlue.h PATH_SUFFIXES jxrlib)
 find_library(JXRLIB_GLUE_LIBRARY jxrglue)
 find_library(JXRLIB_CORE_LIBRARY jpegxr)
@@ -128,7 +136,7 @@ if (DAWN_WITH_JXRLIB AND NOT JXRLIB_FOUND)
 endif()
 
 if (APPLE)
-	option(DAWN_WITH_IMAGEIO "ImageIO fallback" ON)
+	option(DAWN_WITH_IMAGEIO "ImageIO loader" ON)
 	option(DAWN_WITH_CGPDF "Core Graphics PDF page rendering" ON)
 endif()
 
@@ -191,7 +199,7 @@ else()
 	target_include_directories(lcms2_threaded PUBLIC
 		$<BUILD_INTERFACE:${lcms2_SOURCE_DIR}/plugins/threaded/include>)
 
-	# FIXME: LibRaw, GdkPixbuf, Glycin may transitively link to system lcms2.
+	# FIXME: LibRaw may transitively link to system lcms2.
 	# What gives?  Clear in LINK_INTERFACE_LIBRARIES?
 	target_link_libraries(dawn-lcms2 INTERFACE
 		lcms2 lcms2_fast_float lcms2_threaded)
@@ -244,6 +252,9 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 		$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>)
 endif()
 
+if (DAWN_WITH_DNRS)
+	add_subdirectory(libdnrs)
+endif()
 add_subdirectory(libdn)
 add_subdirectory(dnimaged)
 add_subdirectory(dnthumbd)
@@ -304,26 +315,6 @@ else()
 		"${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml" @ONLY)
 	install(FILES "${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml"
 		DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
-
-	# Only meaningful once dn is in place, hence here rather than in dn/,
-	# which is processed before the rules above.  A staged install cannot run
-	# the binary it just staged, so packages ship the updater to run later.
-	string(CONFIGURE [[
-	if (NOT "$ENV{DESTDIR}" STREQUAL "")
-		message(STATUS "Staged install: run dn-update-desktop-files on target")
-	else()
-		message(STATUS "Updating desktop file media types")
-		execute_process(
-			COMMAND "@DN_DESKTOP_UPDATER@"
-			RESULT_VARIABLE dn_desktop_result)
-		if (NOT dn_desktop_result EQUAL 0)
-			message(WARNING "dn-update-desktop-files: ${dn_desktop_result}")
-		endif()
-	endif()
-	]] dn_desktop_hook @ONLY)
-	if (DN_DESKTOP_UPDATER AND NOT CMAKE_CROSSCOMPILING)
-		install(CODE "${dn_desktop_hook}")
-	endif()
 endif()
 
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")

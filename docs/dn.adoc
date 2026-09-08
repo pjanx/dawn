@@ -36,9 +36,8 @@ Options
 	no longer be found.
 
 *--list-supported-media-types*::
-	Output supported media types and exit.  This is used by a script to update
-	the list of MIME types within *dn*'s desktop file when the list
-	of GdkPixbuf loaders changes.
+*--list-supported-extensions*::
+	Output supported media types or file extensions and exit.
 
 *-V*, *--version*::
 	Output version information and exit.

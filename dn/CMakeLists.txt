@@ -146,9 +146,9 @@ if (APPLE)
 		# The abstract type the vendor formats conform to.
 		list(APPEND utis public.camera-raw-image)
 	endif()
-	if (DAWN_WITH_GDKPIXBUF)
+	if (DAWN_WITH_DNRS)
+		# The rest of what it adds, ImageIO knows about as well.
 		list(APPEND utis
-			com.apple.quicktime-image
 			com.microsoft.ico
 			public.xbitmap-image
 		)
@@ -230,28 +230,29 @@ else()
 			RENAME "${DAWN_NAMESPACE}.svg")
 		install(DIRECTORY "${DN_ICON_BASE}"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}")
-		install(FILES
-			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.desktop"
+
+		# MimeType= follows the loader table compiled into dn, so ask it.
+		# A cross build can only ask through an emulator; without one,
+		# the checked-in list is installed as it is.
+		set(desktop "${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.desktop")
+		if (NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
+			set(generated
+				"${CMAKE_CURRENT_BINARY_DIR}/${DAWN_NAMESPACE}.desktop")
+			add_custom_command(OUTPUT "${generated}"
+				COMMAND ${CMAKE_COMMAND}
+					"-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
+					-DDN=$<TARGET_FILE:dn>
+					"-DINPUT=${desktop}" "-DOUTPUT=${generated}"
+					-P "${PROJECT_SOURCE_DIR}/cmake/desktop-media-types.cmake"
+				DEPENDS dn "${desktop}"
+				COMMENT "Filling in desktop file media types"
+				VERBATIM)
+			add_custom_target(desktop-media-types ALL DEPENDS "${generated}")
+			set(desktop "${generated}")
+		endif()
+		install(FILES "${desktop}"
 			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Browse.desktop"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
-
-		# The desktop file's MimeType= cannot be filled in at build time:
-		# it depends on gdk-pixbuf loaders installed on the target.
-		# The parent list runs this after dn itself is installed.
-		set(DN_DESKTOP_UPDATER
-			"${CMAKE_CURRENT_BINARY_DIR}/dn-update-desktop-files")
-
-		# The parent list runs this script directly, so it needs to be
-		# executable, which configure_file() does not make it.
-		configure_file(dn-update-desktop-files.in
-			"${DN_DESKTOP_UPDATER}" @ONLY
-			FILE_PERMISSIONS
-				OWNER_READ OWNER_WRITE OWNER_EXECUTE
-				GROUP_READ GROUP_EXECUTE
-				WORLD_READ WORLD_EXECUTE)
-		install(PROGRAMS "${DN_DESKTOP_UPDATER}"
-			DESTINATION "${CMAKE_INSTALL_BINDIR}")
-		set(DN_DESKTOP_UPDATER "${DN_DESKTOP_UPDATER}" PARENT_SCOPE)
 	endif()
 endif()
 

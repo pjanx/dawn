@@ -71,6 +71,12 @@ set_tests_properties(channels PROPERTIES
 	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+if (DAWN_WITH_DNRS)
+	add_executable(test-dnrs test-dnrs.cpp)
+	target_link_libraries(test-dnrs PRIVATE dawn::libdn)
+	add_test(NAME dnrs COMMAND test-dnrs)
+endif()
+
 if (APPLE AND DAWN_WITH_IMAGEIO)
 	add_executable(test-imageio test-imageio.cpp)
 	target_link_libraries(test-imageio PRIVATE dawn::libdn)
@@ -136,7 +142,7 @@ add_executable(test-shm test-shm.cpp)
 target_link_libraries(test-shm PRIVATE dawn::libdn)
 add_test(NAME shm COMMAND test-shm)
 
-# The main desktop file is rewritten by dn-update-desktop-files on install.
+# The main desktop file has its MimeType= rewritten during the build.
 find_program(DAWN_DESKTOP_FILE_VALIDATE desktop-file-validate)
 if(DAWN_DESKTOP_FILE_VALIDATE)
 	foreach(desktop

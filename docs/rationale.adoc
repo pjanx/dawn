@@ -254,11 +254,18 @@ compatible formats (I own a Nikon DSLR).
 
 I don't especially care about niche formats.  If it ever becomes desirable,
 there is an obscure project called https://snisurset.net/code/abydos/about.html[
-Abydos] which gets quite exhaustive in that regard.  The current general
-fallbacks are Glycin, the older GdkPixbuf, and on macOS the system ImageIO.
-Windows Imaging Component was so ugly that I rather added JPEG XR explicitly
-instead as the only thing no other loader could do (the Raw Image Extension
-on Microsoft Store uses LibRaw).
+Abydos] which gets quite exhaustive in that regard.
+
+The general fallback in my previous viewer used to be GdkPixbuf.  Today, that
+would mostly defer to Glycin, which in turn rather trivially encapsulates
+Rust _image-rs_, plus a few effectively duplicate libraries.  Given that Glycin
+also does its own sandboxing, and came with API problems, I've regretfully
+introduced a minimal Rust library directly into the project.  You wouldn't
+believe how much fluff this thin layer necessitates.  Disgusting.
+
+Similarly, Windows Imaging Component was so ugly that I rather added JPEG XR
+explicitly instead as the only thing no other loader could do (the Raw Image
+Extension on Microsoft Store uses LibRaw).
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 

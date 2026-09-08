@@ -2,6 +2,8 @@ app-id: name.janouch.Dawn
 runtime: org.freedesktop.Platform
 runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 base: name.janouch.Dawn.BaseApp
 base-version: stable
 command: dn
@@ -32,8 +34,7 @@ finish-args:
 cleanup-commands:
   - find /app/bin -mindepth 1 ! -name 'dn' ! -name 'dn-*'
       -exec rm -rf {} +
-  - find /app/libexec -mindepth 1 -maxdepth 1 ! -name glycin-loaders
-      -exec rm -rf {} +
+  - rm -rf /app/libexec
 
   - rm -f /app/lib/libcolorhug.so* /app/lib/libgusb.so* /app/lib/libraw_r.so*
   - rm -rf /app/plugins/generic /app/plugins/imageformats
@@ -55,12 +56,15 @@ modules:
     buildsystem: cmake-ninja
     builddir: true
     build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
       env:
+        CARGO_HOME: /run/build/dawn/cargo
         QT_QPA_PLATFORM: offscreen
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_TESTING=OFF
-      - -DDAWN_WITH_GDKPIXBUF=OFF
       - -DFETCHCONTENT_SOURCE_DIR_LCMS2=/run/build/dawn/lcms2
       - -DFETCHCONTENT_SOURCE_DIR_JPEGQS=/run/build/dawn/jpegqs
     sources:

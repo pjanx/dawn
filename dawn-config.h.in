@@ -22,6 +22,7 @@
 #cmakedefine01 DAWN_WITH_LCMS2_THREADED
 #cmakedefine01 DAWN_WITH_JPEG_QS
 #cmakedefine01 DAWN_WITH_LIBRAW
+#cmakedefine01 DAWN_WITH_LIBWMF
 #cmakedefine01 DAWN_WITH_LIBRSVG
 #cmakedefine01 DAWN_WITH_XCURSOR
 #cmakedefine01 DAWN_WITH_LIBHEIF
@@ -29,8 +30,7 @@
 #cmakedefine01 DAWN_WITH_OPENJPEG
 #cmakedefine01 DAWN_WITH_LIBTIFF
 #cmakedefine01 DAWN_WITH_JXRLIB
-#cmakedefine01 DAWN_WITH_GLYCIN
-#cmakedefine01 DAWN_WITH_GDKPIXBUF
+#cmakedefine01 DAWN_WITH_DNRS
 #cmakedefine01 DAWN_WITH_IMAGEIO
 #cmakedefine01 DAWN_WITH_CGPDF
 

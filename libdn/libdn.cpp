@@ -1671,16 +1671,20 @@ constexpr Loader kLoaders[] = {
 #endif
 		"JPEG XR", {"image/jxr", "image/vnd.ms-photo"}, {}},
 
-	{"Glycin",
-#if DAWN_WITH_GLYCIN
-		&detail::load_glycin, {}, {}, &detail::glycin_media_types},
+	{"libwmf",
+#if DAWN_WITH_LIBWMF
+		&detail::load_libwmf,
 #else
-		{}, {}, {}, {}},
+		{},
 #endif
+		"WMF", {"image/wmf", "image/x-wmf"}, {}},
 
-	{"GdkPixbuf",
-#if DAWN_WITH_GDKPIXBUF
-		&detail::load_gdkpixbuf, {}, {}, &detail::gdkpixbuf_media_types},
+	{"Rust",
+#if DAWN_WITH_DNRS
+		&detail::load_dnrs,
+		"BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, "
+		"Radiance HDR, TARGA, TIFF, WebP, XBM, XPM, ...",
+		{}, &detail::dnrs_media_types},
 #else
 		{}, {}, {}, {}},
 #endif

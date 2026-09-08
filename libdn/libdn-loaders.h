@@ -43,6 +43,7 @@ LoadFn load_jpeg;
 LoadFn load_webp;
 LoadFn load_tiff_ep;
 LoadFn load_libraw;
+LoadFn load_libwmf;
 LoadFn load_resvg;
 LoadFn load_librsvg;
 LoadFn load_xcursor;
@@ -51,16 +52,12 @@ LoadFn load_jxl;
 LoadFn load_openjpeg;
 LoadFn load_tiff;
 LoadFn load_jxr;
-LoadFn load_glycin;
-LoadFn load_gdkpixbuf;
+LoadFn load_dnrs;
 LoadFn load_imageio;
 LoadFn load_cgpdf;
 
-/// MIME types provided by the installed gdk-pixbuf loaders (if built).
-std::vector<std::string> gdkpixbuf_media_types();
-
-/// MIME types glycin can load, per its installed loader config (if built).
-std::vector<std::string> glycin_media_types();
+/// MIME types compiled into the in-tree Rust decoder.
+std::vector<std::string> dnrs_media_types();
 
 /// MIME types the system ImageIO can load (if its loader is built).
 std::vector<std::string> imageio_media_types();

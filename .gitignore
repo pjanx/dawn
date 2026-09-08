@@ -2,5 +2,6 @@
 /.flatpak/
 /build/
 /build-*/
+/libdnrs/Cargo.lock
 compile_commands.json
 .cache/

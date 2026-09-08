@@ -285,7 +285,7 @@ public:
 		double gamma, double whitepoint[2], double primaries[6]);
 
 	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
-	/// AVIF/HEIF nclx, and by glycin). Null for code points we do not model,
+	/// AVIF/HEIF nclx). Null for code points we do not model,
 	/// including PQ (16) and HLG (18): both are HDR curves with no ICC v2
 	/// parametric equivalent, and approximating them would shift tone badly.
 	/// `matrix_coefficients` and range are deliberately not taken -- they
@@ -356,8 +356,7 @@ struct Loader {
 /// The loader table, in the default order it is tried in.
 std::span<const Loader> loaders();
 
-/// MIME types this build can load: base codecs, optional libraries, and
-/// whatever gdk-pixbuf modules are installed. Order is stable.
+/// shared-mime-info types this build can load.  The order is stable.
 std::vector<std::string> supported_media_types();
 
 void orientation_dimensions(

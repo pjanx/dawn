@@ -1,0 +1,34 @@
+[package]
+name = "dnrs"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+[features]
+default = ["jpeg2000", "raw"]
+jpeg2000 = ["dep:hayro-jpeg2000"]
+raw = ["dep:libopenraw"]
+
+[dependencies]
+hayro-jpeg2000 = { version = "=0.3.4", features = ["image"], optional = true }
+image = { version = "=0.25.10", default-features = false, features = [
+    "bmp", "dds", "exr", "ff", "gif", "hdr", "ico", "jpeg", "png", "pnm",
+    "qoi", "tga", "tiff", "webp",
+] }
+image-extras = { version = "=0.1.1", default-features = false, features = [
+    "xbm", "xpm",
+] }
+libopenraw = { version = "=0.4.0-alpha.12", default-features = false,
+    optional = true }
+png = { version = "=0.18.1", default-features = false }
+tiff = { version = "=0.11.3", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "debuginfo"
