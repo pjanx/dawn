@@ -95,28 +95,6 @@ pack_gray(Image &image, const dnrs_frame &frame, bool alpha, bool wide)
 	}
 }
 
-static void
-pack_rgb16(Image &image, const dnrs_frame &frame, bool alpha)
-{
-	for (uint32_t y = 0; y < image.height; y++) {
-		const uint8_t *src = frame.data + size_t(y) * frame.stride;
-		uint16_t *dst = assume_aligned<uint16_t>(row_bytes(image, y));
-		for (uint32_t x = 0; x < image.width; x++) {
-			const uint16_t r = uint16_t(src[0] | uint16_t(src[1]) << 8);
-			const uint16_t g = uint16_t(src[2] | uint16_t(src[3]) << 8);
-			const uint16_t b = uint16_t(src[4] | uint16_t(src[5]) << 8);
-			const uint16_t a =
-				alpha ? uint16_t(src[6] | uint16_t(src[7]) << 8) : 65535;
-			dst[0] = b;
-			dst[1] = g;
-			dst[2] = r;
-			dst[3] = a;
-			src += alpha ? 8 : 6;
-			dst += 4;
-		}
-	}
-}
-
 static ImagePtr
 load_frame(const dnrs_frame &frame, Error *error)
 {
@@ -179,11 +157,15 @@ load_frame(const dnrs_frame &frame, Error *error)
 	case DNRS_PIXEL_GRAY_ALPHA16LE:
 		pack_gray(*image, frame, true, true);
 		break;
+	// Rust hands out plain byte buffers, but its allocator takes them from
+	// malloc, and every 16-bit stride here is even, so rows are word-aligned.
 	case DNRS_PIXEL_RGB16LE:
-		pack_rgb16(*image, frame, false);
+		pack_rgb16le_to_bgra16(*image,
+			assume_aligned<const uint16_t>(frame.data), frame.stride, 16);
 		break;
 	case DNRS_PIXEL_RGBA16LE:
-		pack_rgb16(*image, frame, true);
+		pack_rgba16le_to_bgra16(*image,
+			assume_aligned<const uint16_t>(frame.data), frame.stride, 16);
 		break;
 	}
 	image->frame_duration =

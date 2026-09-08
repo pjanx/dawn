@@ -376,6 +376,21 @@ pack_rgba16le_to_bgra16(
 		auto *d = row_u16(dst, y);
 		const uint16_t *s = assume_aligned<const uint16_t>(
 			(const uint8_t *) src + y * src_stride_bytes);
+
+		// Full-range samples pass through.  Deciding that once per row
+		// rather than per sample is what lets the copy vectorise, and it
+		// is worth several times the run time of the general case.
+		if (bits >= 16) {
+			for (uint32_t x = 0; x < dst.width; x++) {
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				d[3] = s[3];
+				d += 4;
+				s += 4;
+			}
+			continue;
+		}
 		for (uint32_t x = 0; x < dst.width; x++) {
 			d[0] = scale_nbit_to_u16(s[2], bits);
 			d[1] = scale_nbit_to_u16(s[1], bits);
@@ -395,6 +410,19 @@ pack_rgb16le_to_bgra16(
 		auto *d = row_u16(dst, y);
 		const uint16_t *s = assume_aligned<const uint16_t>(
 			(const uint8_t *) src + y * src_stride_bytes);
+
+		// As above.
+		if (bits >= 16) {
+			for (uint32_t x = 0; x < dst.width; x++) {
+				d[0] = s[2];
+				d[1] = s[1];
+				d[2] = s[0];
+				d[3] = 65535;
+				d += 4;
+				s += 3;
+			}
+			continue;
+		}
 		for (uint32_t x = 0; x < dst.width; x++) {
 			d[0] = scale_nbit_to_u16(s[2], bits);
 			d[1] = scale_nbit_to_u16(s[1], bits);
