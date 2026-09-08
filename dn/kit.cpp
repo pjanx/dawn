@@ -2266,39 +2266,21 @@ Popup::Popup()
 void
 Popup::open(Kit &kit, Button *anchor)
 {
-	kit.close_popups();
-	this->parent_popup = nullptr;
-	this->opener = anchor;
-	if (this->opener) {
-		this->opener->active = true;
-		this->at = this->opener->r;
-	}
-	this->visible = true;
-	kit.open_popup(this);
+	kit.open_popup(*this, nullptr, anchor, {});
 	place(kit);
 }
 
 void
 Popup::open_at(Kit &kit, Rect anchor)
 {
-	kit.close_popups();
-	this->parent_popup = nullptr;
-	this->opener = nullptr;
-	this->at = anchor;
-	this->visible = true;
-	kit.open_popup(this);
+	kit.open_popup(*this, nullptr, nullptr, anchor);
 	place(kit);
 }
 
 void
 Popup::open_sub(Kit &kit, Popup &owner, Button &anchor)
 {
-	kit.close_above(&owner);
-	this->parent_popup = &owner;
-	this->opener = &anchor;
-	this->visible = true;
-	this->opener->active = true;
-	kit.open_popup(this);
+	kit.open_popup(*this, &owner, &anchor, {});
 	place_sub(kit);
 }
 
@@ -2314,20 +2296,7 @@ Popup::paint(Kit &kit) const
 void
 Popup::close(Kit &kit)
 {
-	if (!this->visible)
-		return;
-	kit.close_above(this);
-	this->visible = false;
-	this->parent_popup = nullptr;
-	if (this->opener) {
-		this->opener->active = false;
-		this->opener = nullptr;
-	}
-	auto &ps = kit.popups_;
-	ps.erase(remove(ps.begin(), ps.end(), this), ps.end());
-	if (ps.empty() && kit.scrim_)
-		kit.scrim_->visible = false;
-	kit.sync_focus();
+	kit.close_popup(this, false);
 }
 
 void
@@ -2390,10 +2359,7 @@ Popup::key(Kit &kit, const Key &ev)
 		return false;
 	if (ev.key != Qt::Key_Escape)
 		return false;
-	Button *op = this->opener;
-	close(kit);
-	if (op)
-		kit.set_focus(op, true);
+	kit.close_popup(this, true);
 	return true;
 }
 
@@ -2451,11 +2417,10 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 }
 
 void
-Dialog::close(Kit &kit)
+Dialog::after_close(Kit &)
 {
 	if (this->frame)
 		this->frame->visible = false;
-	Popup::close(kit);
 }
 
 void
@@ -2687,12 +2652,8 @@ MenuPopup::key(Kit &kit, const Key &ev)
 			return true;
 		return false;
 	case Qt::Key_Left:
-		if (this->parent_popup) {
-			Button *op = this->opener;
-			close(kit);
-			if (op)
-				kit.set_focus(op, true);
-		}
+		if (this->parent_popup)
+			kit.close_popup(this, true);
 		return true;
 	}
 	return false;
@@ -2756,13 +2717,11 @@ Overflow::~Overflow()
 }
 
 void
-Overflow::close(Kit &kit)
+Overflow::after_close(Kit &)
 {
-	// The items go home before the popup stops being a place to be: closing
-	// drops the focus, and sync_focus() must see where they have landed.
+	// Focus is settled after this hook, against the items' new parents.
 	if (this->lender)
 		this->lender->reclaim();
-	Popup::close(kit);
 }
 
 void
@@ -3228,19 +3187,6 @@ ComboPopup::ComboPopup()
 	this->hittable = true;
 	this->visible = false;
 	add_child(std::move(c), size_t(-1));
-}
-
-// Picking is no reason to lose your place: the list hands focus back to the
-// button, the way Escape does.  Without this it is dropped, and a dialog
-// re-seats it on whatever happens to come first.
-void
-ComboPopup::close(Kit &kit)
-{
-	Button *op = this->opener;
-	const bool ring = kit.focus_visible_;
-	Popup::close(kit);
-	if (op && op->focusable())
-		kit.set_focus(op, ring);
 }
 
 // Drops so that the current item lands on the button it came out of, which
@@ -4709,7 +4655,7 @@ void
 Kit::destroy()
 {
 	this->inited_ = false;
-	this->popups_.clear();
+	close_popups();
 	this->scrim_.reset();
 	this->atlas_epoch_++;
 	this->icons_.clear();
@@ -4972,73 +4918,91 @@ Kit::wake_ms() const
 }
 
 static void
-ensure_scrim(Kit &kit)
+sync_scrim(Kit &kit)
 {
-	if (kit.scrim_)
-		return;
-	auto s = make_unique<Scrim>();
-	s->hittable = true;
-	s->visible = false;
-	s->fill = Fill::None;
-	kit.scrim_ = std::move(s);
+	if (!kit.scrim_ && !kit.popups_.empty()) {
+		auto s = make_unique<Scrim>();
+		s->hittable = true;
+		s->fill = Fill::None;
+		kit.scrim_ = std::move(s);
+	}
+	if (kit.scrim_) {
+		kit.scrim_->visible = !kit.popups_.empty();
+		kit.scrim_->r = {0, 0, kit.host_w_, kit.host_h_};
+	}
 }
 
 void
-Kit::open_popup(Popup *p)
+Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 {
-	if (!p)
-		return;
+	close_above(owner);
+	p.parent_popup = owner;
+	p.opener = opener;
+	p.at = opener ? opener->r : anchor;
+	if (opener)
+		opener->active = true;
+	p.visible = true;
 
-	ensure_scrim(*this);
-	for (Popup *q : this->popups_) {
-		if (q == p)
-			return;
-	}
-
-	// When the gesture began: a run of menus opened from one another is a
-	// single one, so only the first of them starts the clock.  A dialog is
-	// not part of any gesture -- it is what the gesture happens inside --
-	// so a list dropped over one starts its own, or every press within it
-	// would already read as a hold.
+	// A submenu continues the gesture; a list over a dialog starts one.
 	bool gesture_open = false;
 	for (const Popup *q : this->popups_) {
-		if (q && q->transient())
+		if (q->transient())
 			gesture_open = true;
 	}
 	if (!gesture_open)
 		this->popup_at_ = chrono::steady_clock::now();
 
-	this->popups_.push_back(p);
-	this->scrim_->visible = true;
-	this->scrim_->r = {0, 0, this->host_w_, this->host_h_};
+	this->popups_.push_back(&p);
+	sync_scrim(*this);
 	hide_tooltip();
+}
+
+static void
+close_popup_tail(Kit &kit, size_t keep, bool keyboard)
+{
+	while (kit.popups_.size() > keep) {
+		Popup *p = kit.popups_.back();
+		Button *opener = p->opener;
+		const bool ring = kit.focus_visible_;
+		kit.popups_.pop_back();
+		const bool keyboard_close = keyboard && kit.popups_.size() == keep;
+		p->visible = false;
+		p->parent_popup = nullptr;
+		p->opener = nullptr;
+		if (opener)
+			opener->active = false;
+		p->after_close(kit);
+		sync_scrim(kit);
+		kit.sync_focus();
+		// Escape/Left return keyboard focus. A combo also returns it after
+		// picking or dismissing, preserving how the user was navigating.
+		if (opener && opener->focusable() &&
+			(keyboard_close || p->restores_focus()))
+			kit.set_focus(opener, keyboard_close || ring);
+	}
+}
+
+void
+Kit::close_popup(Popup *p, bool keyboard)
+{
+	const auto it = find(this->popups_.begin(), this->popups_.end(), p);
+	if (it != this->popups_.end())
+		close_popup_tail(*this, size_t(it - this->popups_.begin()), keyboard);
 }
 
 void
 Kit::close_popups()
 {
-	while (!this->popups_.empty()) {
-		Popup *p = this->popups_.back();
-		if (!p) {
-			this->popups_.pop_back();
-			continue;
-		}
-		p->close(*this);
-		if (!this->popups_.empty() && this->popups_.back() == p)
-			this->popups_.pop_back();
-	}
-	if (this->scrim_)
-		this->scrim_->visible = false;
+	close_popup_tail(*this, 0, false);
 	sync_focus();
 }
 
-// Dialogs sit at the bottom of the stack, so this normally closes everything
-// or nothing; a menu opened over one through open_sub() would go, and it stay.
+// A dialog stays when dismissing menus, combo lists, or hints above it.
 void
 Kit::close_transient_popups()
 {
 	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
-		if (*it && !(*it)->transient()) {
+		if (!(*it)->transient()) {
 			close_above(*it);
 			return;
 		}
@@ -5053,16 +5017,10 @@ Kit::close_above(const Popup *p)
 		close_popups();
 		return;
 	}
-	while (!this->popups_.empty() && this->popups_.back() != p) {
-		Popup *top = this->popups_.back();
-		if (!top) {
-			this->popups_.pop_back();
-			continue;
-		}
-		top->close(*this);
-		if (!this->popups_.empty() && this->popups_.back() == top)
-			this->popups_.pop_back();
-	}
+	const auto it = find(this->popups_.begin(), this->popups_.end(), p);
+	const size_t keep =
+		it == this->popups_.end() ? 0 : size_t(it - this->popups_.begin()) + 1;
+	close_popup_tail(*this, keep, false);
 }
 
 bool
@@ -5186,7 +5144,7 @@ Kit::sync_cursor()
 void
 Kit::relayout_popups()
 {
-	ensure_scrim(*this);
+	sync_scrim(*this);
 	vector<Popup *> stale;
 	for (Popup *p : this->popups_) {
 		if (!p)
@@ -5195,7 +5153,7 @@ Kit::relayout_popups()
 			stale.push_back(p);
 			continue;
 		}
-		if (p->parent_popup)
+		if (p->parent_popup && p->opener)
 			p->place_sub(*this);
 		else
 			p->place(*this);
@@ -5212,11 +5170,6 @@ Kit::relayout_popups()
 	}
 	for (Popup *p : stale)
 		p->close(*this);
-	if (this->scrim_) {
-		this->scrim_->visible = !this->popups_.empty();
-		if (this->scrim_->visible)
-			this->scrim_->r = {0, 0, this->host_w_, this->host_h_};
-	}
 }
 
 void

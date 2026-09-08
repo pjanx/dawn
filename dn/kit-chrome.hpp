@@ -96,7 +96,7 @@ struct Hint : Popup {
 
 	Hint();
 	void open(Kit &kit);
-	void close(Kit &kit) override;
+	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;

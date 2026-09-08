@@ -679,25 +679,22 @@ Hint::open(Kit &kit)
 	kit.close_transient_popups();
 	Widget *scope = kit.focus_scope();
 
-	this->visible = true;
-	kit.open_popup(this);
+	kit.open_popup(*this, kit.top_popup(), nullptr, {});
 	collect(scope);
 	assign_labels();
 	place(kit);
 }
 
 void
-Hint::close(Kit &kit)
+Hint::after_close(Kit &)
 {
 	this->typed_.clear();
 	this->targets_.clear();
-	Popup::close(kit);
 }
 
 void
 Hint::place(Kit &kit)
 {
-	this->visible = true;
 	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	refresh_rects();
 	layout_chips(kit);

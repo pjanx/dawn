@@ -504,7 +504,11 @@ struct Popup : Panel {
 	void open(Kit &kit, Button *anchor);
 	void open_at(Kit &kit, Rect anchor);
 	void open_sub(Kit &kit, Popup &owner, Button &anchor);
-	virtual void close(Kit &kit);
+	void close(Kit &kit);
+	// Content cleanup after removal from the stack, before settling focus.
+	// This hook must not open or close popups.
+	virtual void after_close(Kit &kit) {}
+	virtual bool restores_focus() const { return false; }
 	virtual void place(Kit &kit);
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
@@ -529,7 +533,7 @@ struct Dialog : Popup {
 	Dialog();
 	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w,
 		std::unique_ptr<Widget> actions);
-	void close(Kit &kit) override;
+	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -563,7 +567,7 @@ struct Overflow : MenuPopup {
 
 	Overflow();
 	~Overflow() override;
-	void close(Kit &kit) override;
+	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
 	bool motion(Kit &kit, float x, float y) override;
@@ -627,7 +631,7 @@ struct ComboPopup : MenuPopup {
 	Combo *combo = nullptr;
 
 	ComboPopup();
-	void close(Kit &kit) override;
+	bool restores_focus() const override { return true; }
 	void place(Kit &kit) override;
 	void place_sub(Kit &kit) override;
 };
@@ -814,7 +818,8 @@ struct Kit {
 	void destroy();
 	void forget_tree(Widget *tree);
 	void sync_focus();
-	void open_popup(Popup *p);
+	void open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor);
+	void close_popup(Popup *p, bool keyboard);
 	void close_popups();
 	void close_transient_popups();
 	void close_above(const Popup *p);

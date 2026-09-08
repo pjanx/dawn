@@ -284,7 +284,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 void
 Window::drop_frames()
 {
-	this->kit_.popups_.clear();
+	this->kit_.close_popups();
 	this->kit_.root_ = nullptr;
 	this->kit_.pressed_ = nullptr;
 	this->kit_.hot_ = nullptr;
