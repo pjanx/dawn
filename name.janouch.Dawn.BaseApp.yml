@@ -119,6 +119,7 @@ modules:
         sha256: de86b035655accff8d4010f1a221fdf50d353cb7b1422ba26f14a0db92612cfa
 
   # Only the library and its GD image device are retained by the application.
+  # The tag tarball is the bare git tree: no configure, and no autogen.sh.
   - name: libwmf
     config-opts:
       - --disable-static
@@ -126,6 +127,9 @@ modules:
       - type: archive
         url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.15.tar.gz
         sha256: 379ae041dd53ab35f55c9b73a78a31f1ce530e925023c31607b05f2199d867e6
+      - type: shell
+        commands:
+          - autoreconf -fi
 
   # Dawn looks for Debian's flat include/jxrlib, upstream nests by component.
   - name: jxrlib
