@@ -47,7 +47,7 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 	ctx.first_frame_only = true;
 	ctx.uri = path;
 	if (cms) {
-		auto srgb = cmm->get_profile_sRGB(false);
+		auto srgb = cmm->get_profile_sRGB();
 		if (!srgb) {
 			fprintf(stderr, "%s: get_profile_sRGB failed\n", path);
 			return 1;

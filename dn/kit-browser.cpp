@@ -319,7 +319,7 @@ profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
-	return cmm.get_profile_sRGB(false);
+	return cmm.get_profile_sRGB();
 }
 
 static int
@@ -590,7 +590,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	if (job.pending) {
 		if (const ThumbnailTierPixels *pixels = job.pending->find(tier)) {
 			result.ram = *pixels->pixels;
-			shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3(false);
+			shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
 			if (p3 && screen && !result.ram.empty() &&
 				cmm->transform_bgra16(
 					reinterpret_cast<uint8_t *>(result.ram.data()),
@@ -639,8 +639,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	dawn::OpenContext ctx;
 	ctx.uri = job.path;
 	ctx.cmm = cmm;
-	ctx.screen_profile =
-		job.cacheable ? cmm->get_profile_display_p3(false) : screen;
+	ctx.screen_profile = job.cacheable ? cmm->get_profile_display_p3() : screen;
 	ctx.first_frame_only = true;
 	ctx.screen_dpi = 96;
 
@@ -699,6 +698,11 @@ static shared_ptr<dawn::Cmm>
 worker_cmm()
 {
 	thread_local auto cmm = make_shared<dawn::Cmm>();
+
+	// Cmm memoizes these only for as long as somebody holds one, and
+	// every cache read and every display transform asks for them again.
+	thread_local auto srgb = cmm->get_profile_sRGB();
+	thread_local auto display_p3 = cmm->get_profile_display_p3();
 	return cmm;
 }
 
@@ -728,7 +732,7 @@ display_thumb(Browser *browser, FinishJob job)
 	update.ram_tier = job.tier;
 
 	auto cmm = worker_cmm();
-	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3(false);
+	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
 	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
 	if (p3 && screen && !display.empty() &&

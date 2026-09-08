@@ -64,7 +64,7 @@ decode_job(const Job &job)
 	context.cmm = cmm;
 	context.first_frame_only = job.first_frame_only;
 	context.screen_profile = job.target_icc.empty()
-		? cmm->get_profile_sRGB(false)
+		? cmm->get_profile_sRGB()
 		: cmm->get_profile(span<const uint8_t>(
 			  reinterpret_cast<const uint8_t *>(job.target_icc.data()),
 			  job.target_icc.size()));

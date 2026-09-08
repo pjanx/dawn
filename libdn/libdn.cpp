@@ -515,8 +515,7 @@ ensure_working_premul(
 		if (owned)
 			image.effective_profile = owned;
 		else if (!source) {
-			image.effective_profile =
-				cmm_or_default(ctx)->get_profile_sRGB(false);
+			image.effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
 			image.profile_assumed = true;
 		}
 	}
@@ -544,8 +543,7 @@ ensure_working_premul_pages(
 		if (owned)
 			page.effective_profile = owned;
 		else if (!source) {
-			page.effective_profile =
-				cmm_or_default(ctx)->get_profile_sRGB(false);
+			page.effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
 			page.profile_assumed = true;
 		}
 	}
@@ -649,7 +647,18 @@ profiles_equal(const Profile *a, const Profile *b)
 		return true;
 	if (!a || !b)
 		return false;
-	return a->to_bytes() == b->to_bytes();
+
+	// ICC.1 lays the header out identically in every version: 128 bytes,
+	// with the creation dateTimeNumber at 24.  It says when the profile
+	// was made, never what it does.
+	constexpr size_t header = 128, created = 24, created_size = 12;
+	vector<uint8_t> x = a->to_bytes(), y = b->to_bytes();
+	if (x.size() != y.size() || x.size() < header)
+		return x == y;
+
+	memset(x.data() + created, 0, created_size);
+	memset(y.data() + created, 0, created_size);
+	return x == y;
 }
 
 float
@@ -907,28 +916,27 @@ Cmm::get_profile(span<const uint8_t> bytes)
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_sRGB(bool cache)
+Cmm::get_profile_sRGB()
 {
 	// We may use these a lot, no need to recreate each time.
-	if (this->cached_sRGB)
-		return this->cached_sRGB;
+	if (auto cached = this->cached_sRGB.lock())
+		return cached;
 
 	cmsHPROFILE p = cmsCreate_sRGBProfileTHR(cmsContext(context_));
 	if (!p)
 		return nullptr;
 
 	shared_ptr<Profile> result(new Profile(shared_from_this(), p));
-	if (cache)
-		this->cached_sRGB = result;
+	this->cached_sRGB = result;
 	return result;
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_display_p3(bool cache)
+Cmm::get_profile_display_p3()
 {
 	// We may use these a lot, no need to recreate each time.
-	if (this->cached_display_p3)
-		return this->cached_display_p3;
+	if (auto cached = this->cached_display_p3.lock())
+		return cached;
 
 	constexpr size_t samples = 4096;
 	vector<cmsUInt16Number> transfer(samples);
@@ -958,8 +966,7 @@ Cmm::get_profile_display_p3(bool cache)
 	cmsSetProfileVersion(p, 4.3);
 
 	shared_ptr<Profile> result(new Profile(shared_from_this(), p));
-	if (cache)
-		this->cached_display_p3 = result;
+	this->cached_display_p3 = result;
 	return result;
 }
 
@@ -1121,7 +1128,7 @@ Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 {
 	shared_ptr<Profile> src_fallback;
 	if (target && !source) {
-		src_fallback = get_profile_sRGB(false);
+		src_fallback = get_profile_sRGB();
 		source = src_fallback.get();
 	}
 	if (!source || !target)
@@ -1142,7 +1149,7 @@ Cmm::transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst, uint32_t width,
 {
 	shared_ptr<Profile> src_fallback;
 	if (target && !source) {
-		src_fallback = get_profile_sRGB(false);
+		src_fallback = get_profile_sRGB();
 		source = src_fallback.get();
 	}
 	if (!src || !dst || !source || !target)
@@ -1218,7 +1225,7 @@ Cmm::finish_page(Image &page, Profile *target)
 		if (source)
 			page.effective_profile = source;
 		else {
-			page.effective_profile = get_profile_sRGB(false);
+			page.effective_profile = get_profile_sRGB();
 			page.profile_assumed = true;
 		}
 	}

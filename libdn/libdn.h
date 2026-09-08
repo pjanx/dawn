@@ -254,6 +254,7 @@ public:
 };
 
 /// Serialized ICC equality. Null equals null; lcms has no compare API.
+/// The header's creation date/time is excluded.
 bool profiles_equal(const Profile *a, const Profile *b);
 
 class Cmm : public std::enable_shared_from_this<Cmm>
@@ -262,8 +263,10 @@ class Cmm : public std::enable_shared_from_this<Cmm>
 	void *context_ = nullptr;  ///< cmsContext
 	bool broken_premul_ = false;
 
-	std::shared_ptr<Profile> cached_sRGB;
-	std::shared_ptr<Profile> cached_display_p3;
+	// Weak, because a Profile owns its Cmm: we don't want a cycle.
+	// Deduplicating profiles for as long as somebody else wants them.
+	std::weak_ptr<Profile> cached_sRGB;
+	std::weak_ptr<Profile> cached_display_p3;
 
 public:
 	Cmm();
@@ -275,8 +278,8 @@ public:
 
 	std::shared_ptr<Profile> get_profile_data(const void *data, size_t len);
 	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
-	std::shared_ptr<Profile> get_profile_sRGB(bool cache);
-	std::shared_ptr<Profile> get_profile_display_p3(bool cache);
+	std::shared_ptr<Profile> get_profile_sRGB();
+	std::shared_ptr<Profile> get_profile_display_p3();
 	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
 	std::shared_ptr<Profile> get_profile_parametric(
 		double gamma, double whitepoint[2], double primaries[6]);

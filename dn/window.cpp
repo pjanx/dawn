@@ -697,7 +697,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		}
 	}
 	if (!next)
-		next = this->cmm_->get_profile_sRGB(false);
+		next = this->cmm_->get_profile_sRGB();
 	this->screen_profile_fallback_ = source == "srgb";
 
 	const bool changed =

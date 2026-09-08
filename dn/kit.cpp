@@ -72,7 +72,7 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 		return colour;
 	uint16_t pixel[4] = {
 		uint16_t(b * 257), uint16_t(g * 257), uint16_t(r * 257), 65535};
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	if (!srgb)
 		return colour;
 	if (!cmm->transform_bgra16(

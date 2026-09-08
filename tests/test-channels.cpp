@@ -194,7 +194,7 @@ static void
 test_jpeg_cms_8_to_16()
 {
 	auto cmm = dawn::Cmm::get_default();
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
 	const uint8_t src[4] = {0, 0, 255, 255};
@@ -254,7 +254,7 @@ static void
 test_cmyk_cms_opaque()
 {
 	auto cmm = dawn::Cmm::get_default();
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
 	const fs::path icc = fs::path(DAWN_TEST_FIXTURES_DIR) / "cmyk-lab.icc";
@@ -281,7 +281,7 @@ static void
 test_cms_tiled()
 {
 	auto cmm = dawn::Cmm::get_default();
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
 	// Above the serial threshold so row bands run on more than one worker.
@@ -451,7 +451,7 @@ test_chromaticities()
 		dawn::ColorModel::Unknown);
 
 	auto cmm = dawn::Cmm::get_default();
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 	dawn::Chromaticities s = dawn::profile_chromaticities(srgb.get());
 	CHECK(s.model == dawn::ColorModel::Rgb);
@@ -463,7 +463,7 @@ test_chromaticities()
 	CHECK(s.have_white);
 	near_xy("sRGB W", s.wx, s.wy, 0.3127, 0.3290, 0.002);
 
-	auto display_p3 = cmm->get_profile_display_p3(false);
+	auto display_p3 = cmm->get_profile_display_p3();
 	CHECK(display_p3 != nullptr);
 	CHECK(dawn::profile_transfer(display_p3.get()) == dawn::Transfer::Srgb);
 	dawn::Chromaticities d = dawn::profile_chromaticities(display_p3.get());
@@ -547,7 +547,7 @@ test_profile_transfer()
 	CHECK(dawn::profile_transfer(nullptr) == dawn::Transfer::Srgb);
 
 	auto cmm = dawn::Cmm::get_default();
-	auto srgb = cmm->get_profile_sRGB(false);
+	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 	CHECK(dawn::profile_transfer(srgb.get()) == dawn::Transfer::Srgb);
 

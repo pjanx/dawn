@@ -204,7 +204,7 @@ parse_exif_profile(Cmm &cmm, span<const uint8_t> exif)
 
 	// If sRGB is claimed, assume all parameters are standard.
 	if (params.colorspace == Exif_ColorSpace_sRGB)
-		return cmm.get_profile_sRGB(false);
+		return cmm.get_profile_sRGB();
 
 	// AdobeRGB Nikon JPEGs provide all of these.
 	if (params.colorspace != Exif_ColorSpace_Uncalibrated ||
@@ -555,7 +555,7 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 	if (source)
 		image->effective_profile = source;
 	else if (!cmyk) {
-		image->effective_profile = cmm->get_profile_sRGB(false);
+		image->effective_profile = cmm->get_profile_sRGB();
 		image->profile_assumed = true;
 	}
 

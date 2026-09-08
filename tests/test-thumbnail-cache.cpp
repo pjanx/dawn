@@ -112,7 +112,7 @@ test_cache_entries(const QTemporaryDir &inputs)
 		fprintf(stderr, "%s\n", qUtf8Printable(error));
 
 	auto cmm = make_shared<dawn::Cmm>();
-	auto p3 = cmm->get_profile_display_p3(false);
+	auto p3 = cmm->get_profile_display_p3();
 	dn::ThumbnailHit hit = dn::thumbnail_cache_lookup(source, 0, cmm, p3.get());
 	CHECK(!hit.pixels.empty());
 	CHECK(hit.width == 2 && hit.height == 1);

@@ -175,7 +175,7 @@ main()
 	const auto *pixels = reinterpret_cast<const uint8_t *>(bytes.data());
 
 	auto cmm = make_shared<dawn::Cmm>();
-	auto icc = cmm->get_profile_sRGB(false)->to_bytes();
+	auto icc = cmm->get_profile_sRGB()->to_bytes();
 	string error;
 	if (!write_png16(stdout, pixmap.width, pixmap.height, pixmap.stride, pixels,
 			icc, pixmap.orientation, &error)) {

@@ -88,7 +88,7 @@ main(int argc, char **argv)
 	auto cmm = make_shared<dawn::Cmm>();
 	dawn::OpenContext context;
 	context.cmm = cmm;
-	context.screen_profile = cmm->get_profile_sRGB(false);
+	context.screen_profile = cmm->get_profile_sRGB();
 	context.first_frame_only = true;
 	dawn::Error open_error;
 	auto image = dawn::open_from_data(input, context, &open_error);

@@ -376,7 +376,7 @@ profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
 		if (auto profile = cmm.get_profile(*icc))
 			return profile;
 	}
-	return cmm.get_profile_sRGB(false);
+	return cmm.get_profile_sRGB();
 }
 
 static bool apply_action(Viewer &v, Action action);
@@ -797,7 +797,7 @@ sync_ui(Viewer &v, Page &ui)
 			shared_ptr<dawn::Profile> srgb;
 			if (!img.have_primaries) {
 				auto cmm = v.cmm_ ? v.cmm_ : dawn::Cmm::get_default();
-				srgb = cmm->get_profile_sRGB(false);
+				srgb = cmm->get_profile_sRGB();
 				img = profile_chromaticities(srgb.get());
 				image_dashed = true;
 			}

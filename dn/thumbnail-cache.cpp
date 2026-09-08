@@ -194,7 +194,7 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	const string *tag = value(meta, kColorSpace);
 	const bool p3 = tag && *tag == "Display P3";
 	shared_ptr<dawn::Profile> src =
-		p3 ? cmm->get_profile_display_p3(true) : cmm->get_profile_sRGB(true);
+		p3 ? cmm->get_profile_display_p3() : cmm->get_profile_sRGB();
 	dawn::ImagePtr image = decode_webp(bytes, *cmm, src.get(), screen);
 	if (!image)
 		return hit;
@@ -237,7 +237,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	if (!valid_metadata(meta, source))
 		return {};
 
-	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB(false);
+	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB();
 	if (!cmm->transform_bgra16(image->data.data(), image->width, image->height,
 			srgb.get(), screen, true, true))
 		return {};
