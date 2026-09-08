@@ -5,10 +5,15 @@
 #
 # Usage: env LC_ALL=C awk -f lxdrgen.awk -f lxdrgen-cpp.awk \
 #  -v PrefixCamel=Instance -v Namespace=dawn::ipc::instance \
-#  common.lxdr instance.lxdr
+#  -v Extern=ipc/common.lxdr common.lxdr instance.lxdr
 #
 # PrefixCamel is accepted for consistency with other backends and is not
 # applied to C++ type names.  IDL names are emitted as-is.
+#
+# Extern names .lxdr files, by their include stem, that are read only to
+# learn their types: nothing is emitted for them, and the header includes
+# <stem>.hpp instead.  They have to come first, and their namespace has to
+# enclose Namespace, so that the types resolve unqualified.
 
 function define_internal(name, ctype, view) {
 	Types[name] = "internal"
@@ -126,6 +131,11 @@ function emit_preamble(    i, src) {
 	print "#include <string_view>"
 	print "#include <variant>"
 	print "#include <vector>"
+	for (i = 1; i <= ExternCount; i++) {
+		if (i == 1)
+			print ""
+		print "#include \"" ExternList[i] ".hpp\""
+	}
 	print ""
 	print "namespace dawn::ipc {"
 	print "class Encoder;"
@@ -138,6 +148,17 @@ function emit_preamble(    i, src) {
 BEGIN {
 	if (Namespace == "")
 		Namespace = "dawn::ipc"
+	ExternCount = split(Extern, ExternList, " ")
+	for (ExternIndex = 1; ExternIndex <= ExternCount; ExternIndex++)
+		ExternFiles[basename(ExternList[ExternIndex])] = 1
+}
+
+# Extern files are read first, so the switch is one-way: the first file
+# that is not one of them turns emission on for the rest of the input.
+function emitting() {
+	if (!Emitting && !(basename(FILENAME) in ExternFiles))
+		Emitting = 1
+	return Emitting
 }
 
 function codegen_begin() {
@@ -169,6 +190,9 @@ function codegen_begin() {
 }
 
 function codegen_constant(name, value) {
+	if (!emitting())
+		return
+
 	print ""
 	print "inline constexpr int32_t k" snaketocamel(name) " = " value ";"
 }
@@ -180,7 +204,7 @@ function codegen_enum_value(name, subname, value, cg) {
 		"\tcase " name "::" snaketocamel(subname) ":\n")
 }
 
-function codegen_enum(name, cg,    fields) {
+function emit_enum(name, cg,    fields) {
 	fields = cg["fields"]
 	sub(/,\n$/, "\n", fields)
 
@@ -211,6 +235,11 @@ function codegen_enum(name, cg,    fields) {
 	print "\t\treturn false;"
 	print "\t}"
 	print "}"
+}
+
+function codegen_enum(name, cg,    i) {
+	if (emitting())
+		emit_enum(name, cg)
 
 	CodegenSerialize[name] = "\tencode(%s, encoder);\n"
 	CodegenDeserialize[name] = \
@@ -281,7 +310,7 @@ function emit_codec(own, view, ser, des) {
 	}
 }
 
-function codegen_struct(name, cg,    view) {
+function emit_struct(name, cg,    view) {
 	view = name "View"
 
 	print ""
@@ -295,13 +324,18 @@ function codegen_struct(name, cg,    view) {
 	print "};"
 
 	emit_codec(name, view, cg["serialize"], cg["deserialize"])
+}
+
+function codegen_struct(name, cg,    i) {
+	if (emitting())
+		emit_struct(name, cg)
 
 	CodegenSerialize[name] = "\tencode(%s, encoder);\n"
 	CodegenDeserialize[name] = \
 		"\tif (!decode(decoder, %s))\n" \
 		"\t\treturn false;\n"
 	CodegenCType[name] = name
-	CodegenViewType[name] = view
+	CodegenViewType[name] = name "View"
 	for (i in cg)
 		delete cg[i]
 }
@@ -322,7 +356,7 @@ function codegen_union_struct(name, casename, cg, scg,    n, arm) {
 	cg["case", n] = snaketocamel(casename)
 }
 
-function codegen_union(name, cg,    view, n, i, own_list, view_list, tag) {
+function emit_union(name, cg,    view, n, i, own_list, view_list, tag) {
 	view = name "View"
 	n = cg["n"] + 0
 	tag = cg["tagtype"]
@@ -383,13 +417,18 @@ function codegen_union(name, cg,    view, n, i, own_list, view_list, tag) {
 	print "\t\treturn false;"
 	print "\t}"
 	print "}"
+}
+
+function codegen_union(name, cg,    i) {
+	if (emitting())
+		emit_union(name, cg)
 
 	CodegenSerialize[name] = "\tencode(%s, encoder);\n"
 	CodegenDeserialize[name] = \
 		"\tif (!decode(decoder, %s))\n" \
 		"\t\treturn false;\n"
 	CodegenCType[name] = name
-	CodegenViewType[name] = view
+	CodegenViewType[name] = name "View"
 	for (i in cg)
 		delete cg[i]
 }

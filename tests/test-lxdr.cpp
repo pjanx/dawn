@@ -28,7 +28,7 @@ namespace thumbd = dawn::ipc::thumbd;
 
 template <typename T>
 static vector<byte>
-encoded(const T &value)
+wire(const T &value)
 {
 	vector<byte> buf;
 	dawn::ipc::Encoder enc(buf);
@@ -66,40 +66,41 @@ static void
 test_round_trip_hello_reply()
 {
 	{
-		inst::HelloReply own;
-		own.value = inst::HelloReplyAccepted{inst::Limits{0x00100000u}};
-		const vector<byte> buf = encoded(own);
+		dawn::ipc::HelloReply own;
+		own.value =
+			dawn::ipc::HelloReplyAccepted{dawn::ipc::Limits{0x00100000u}};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
-		inst::HelloReplyView view{};
+		dawn::ipc::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
-		CHECK(holds_alternative<inst::HelloReplyAcceptedView>(view.value));
-		CHECK(get<inst::HelloReplyAcceptedView>(view.value)
+		CHECK(holds_alternative<dawn::ipc::HelloReplyAcceptedView>(view.value));
+		CHECK(get<dawn::ipc::HelloReplyAcceptedView>(view.value)
 				  .limits.max_payload_size == 0x00100000u);
 	}
 	{
-		inst::HelloReply own;
-		own.value = inst::HelloReplyVersionMismatch{2};
-		const vector<byte> buf = encoded(own);
+		dawn::ipc::HelloReply own;
+		own.value = dawn::ipc::HelloReplyVersionMismatch{2};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
-		inst::HelloReplyView view{};
+		dawn::ipc::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
-		CHECK(
-			holds_alternative<inst::HelloReplyVersionMismatchView>(view.value));
-		CHECK(get<inst::HelloReplyVersionMismatchView>(view.value)
+		CHECK(holds_alternative<dawn::ipc::HelloReplyVersionMismatchView>(
+			view.value));
+		CHECK(get<dawn::ipc::HelloReplyVersionMismatchView>(view.value)
 				  .server_protocol_version == 2);
 	}
 	{
-		inst::HelloReply own;
-		own.value = inst::HelloReplySessionMismatch{};
-		const vector<byte> buf = encoded(own);
+		dawn::ipc::HelloReply own;
+		own.value = dawn::ipc::HelloReplySessionMismatch{};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
-		inst::HelloReplyView view{};
+		dawn::ipc::HelloReplyView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
-		CHECK(
-			holds_alternative<inst::HelloReplySessionMismatchView>(view.value));
+		CHECK(holds_alternative<dawn::ipc::HelloReplySessionMismatchView>(
+			view.value));
 	}
 }
 
@@ -109,7 +110,7 @@ test_round_trip_result()
 	{
 		inst::Result own;
 		own.value = inst::ResultDone{};
-		const vector<byte> buf = encoded(own);
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::ResultView view{};
 		CHECK(decode(dec, view));
@@ -118,16 +119,16 @@ test_round_trip_result()
 	}
 	{
 		inst::Result own;
-		own.value =
-			inst::ResultError{inst::Error{inst::ErrorCode::Busy, "nope"}};
-		const vector<byte> buf = encoded(own);
+		own.value = inst::ResultError{
+			dawn::ipc::Error{dawn::ipc::ErrorCode::Busy, "nope"}};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::ResultView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
 		CHECK(holds_alternative<inst::ResultErrorView>(view.value));
 		const auto &err = get<inst::ResultErrorView>(view.value).error;
-		CHECK(err.code == inst::ErrorCode::Busy);
+		CHECK(err.code == dawn::ipc::ErrorCode::Busy);
 		CHECK(err.message == "nope");
 	}
 }
@@ -136,10 +137,10 @@ static void
 test_round_trip_frames()
 {
 	{
-		inst::Hello hello{1, "sess"};
-		const vector<byte> buf = encoded(hello);
+		dawn::ipc::Hello hello{1, "sess"};
+		const vector<byte> buf = wire(hello);
 		dawn::ipc::Decoder dec(buf);
-		inst::HelloView view{};
+		dawn::ipc::HelloView view{};
 		CHECK(decode(dec, view));
 		CHECK(dec.remaining() == 0);
 		CHECK(view.protocol_version == 1);
@@ -150,7 +151,7 @@ test_round_trip_frames()
 		open.urls = {"/one", "/two"};
 		open.activation_token = "tok";
 		open.browse = true;
-		const vector<byte> buf = encoded(open);
+		const vector<byte> buf = wire(open);
 		dawn::ipc::Decoder dec(buf);
 		inst::OpenRequestView view{};
 		CHECK(decode(dec, view));
@@ -164,8 +165,8 @@ test_round_trip_frames()
 
 	{
 		inst::Frame own;
-		own.payload.value = inst::PayloadHello{inst::Hello{1, "b"}};
-		const vector<byte> buf = encoded(own);
+		own.payload.value = inst::PayloadHello{dawn::ipc::Hello{1, "b"}};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
@@ -176,11 +177,11 @@ test_round_trip_frames()
 		CHECK(h.session == "b");
 	}
 	{
-		inst::HelloReply reply;
-		reply.value = inst::HelloReplyAccepted{inst::Limits{4096}};
+		dawn::ipc::HelloReply reply;
+		reply.value = dawn::ipc::HelloReplyAccepted{dawn::ipc::Limits{4096}};
 		inst::Frame own;
 		own.payload.value = inst::PayloadHelloReply{reply};
-		const vector<byte> buf = encoded(own);
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
@@ -189,8 +190,8 @@ test_round_trip_frames()
 			holds_alternative<inst::PayloadHelloReplyView>(view.payload.value));
 		const auto &hr =
 			get<inst::PayloadHelloReplyView>(view.payload.value).hello_reply;
-		CHECK(holds_alternative<inst::HelloReplyAcceptedView>(hr.value));
-		CHECK(get<inst::HelloReplyAcceptedView>(hr.value)
+		CHECK(holds_alternative<dawn::ipc::HelloReplyAcceptedView>(hr.value));
+		CHECK(get<dawn::ipc::HelloReplyAcceptedView>(hr.value)
 				  .limits.max_payload_size == 4096);
 	}
 	{
@@ -202,7 +203,7 @@ test_round_trip_frames()
 		req.body.value = inst::RequestBodyOpen{open};
 		inst::Frame own;
 		own.payload.value = inst::PayloadRequest{req};
-		const vector<byte> buf = encoded(own);
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
@@ -224,7 +225,7 @@ test_round_trip_frames()
 		resp.result.value = inst::ResultDone{};
 		inst::Frame own;
 		own.payload.value = inst::PayloadResponse{resp};
-		const vector<byte> buf = encoded(own);
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
@@ -237,8 +238,9 @@ test_round_trip_frames()
 	}
 	{
 		inst::Frame own;
-		own.payload.value = inst::PayloadCancel{inst::Cancel{0x100000002ull}};
-		const vector<byte> buf = encoded(own);
+		own.payload.value =
+			inst::PayloadCancel{dawn::ipc::Cancel{0x100000002ull}};
+		const vector<byte> buf = wire(own);
 		dawn::ipc::Decoder dec(buf);
 		inst::FrameView view{};
 		CHECK(decode(dec, view));
@@ -264,14 +266,14 @@ test_goldens()
 		0x01,  // session length
 		0x62,  // 'b'
 	};
-	check_golden("Hello{1,\"b\"}", encoded(inst::Hello{1, "b"}), kHello);
+	check_golden("Hello{1,\"b\"}", wire(dawn::ipc::Hello{1, "b"}), kHello);
 
 	// HelloReply SessionMismatch: tag i8 = 3, no payload
 	static constexpr uint8_t kSessionMismatch[] = {0x03};
-	inst::HelloReply mismatch;
-	mismatch.value = inst::HelloReplySessionMismatch{};
+	dawn::ipc::HelloReply mismatch;
+	mismatch.value = dawn::ipc::HelloReplySessionMismatch{};
 	check_golden(
-		"HelloReply SessionMismatch", encoded(mismatch), kSessionMismatch);
+		"HelloReply SessionMismatch", wire(mismatch), kSessionMismatch);
 
 	// Error{NotFound, "x"}: i8 code = 3, u32be len+"x"
 	static constexpr uint8_t kError[] = {
@@ -283,23 +285,23 @@ test_goldens()
 		0x78,  // 'x'
 	};
 	check_golden("Error{NotFound,\"x\"}",
-		encoded(inst::Error{inst::ErrorCode::NotFound, "x"}), kError);
+		wire(dawn::ipc::Error{dawn::ipc::ErrorCode::NotFound, "x"}), kError);
 }
 
 static void
 test_truncation()
 {
-	const vector<byte> full = encoded(inst::Hello{1, "b"});
+	const vector<byte> full = wire(dawn::ipc::Hello{1, "b"});
 	CHECK(!full.empty());
 	for (size_t n = 0; n < full.size(); n++) {
 		dawn::ipc::Decoder dec(span<const byte>(full.data(), n));
-		inst::HelloView view{};
+		dawn::ipc::HelloView view{};
 		const bool ok = decode(dec, view);
 		CHECK(!ok);
 		CHECK(dec.error() == dawn::ipc::DecodeError::Truncated);
 	}
 	dawn::ipc::Decoder dec(full);
-	inst::HelloView view{};
+	dawn::ipc::HelloView view{};
 	CHECK(decode(dec, view));
 	CHECK(dec.remaining() == 0);
 	CHECK(dec.error() == dawn::ipc::DecodeError::Ok);
@@ -310,10 +312,10 @@ test_truncation()
 static void
 test_trailing_bytes()
 {
-	vector<byte> buf = encoded(inst::Hello{1, "b"});
+	vector<byte> buf = wire(dawn::ipc::Hello{1, "b"});
 	buf.push_back(byte{0x00});
 	dawn::ipc::Decoder dec(buf);
-	inst::HelloView view{};
+	dawn::ipc::HelloView view{};
 	const bool ok = decode(dec, view);
 	// Generated Hello decode succeeds and leaves the extra byte.
 	// Connection/Server require exact consumption.
@@ -347,7 +349,7 @@ test_zero_and_unknown_enum()
 	for (byte tag : {byte{0}, byte{99}}) {
 		const byte raw[] = {tag};
 		dawn::ipc::Decoder dec(raw);
-		inst::HelloResult value{};
+		dawn::ipc::HelloResult value{};
 		CHECK(!decode(dec, value));
 	}
 }
@@ -357,7 +359,7 @@ test_unknown_union_tag()
 {
 	const byte raw[] = {byte{99}};
 	dawn::ipc::Decoder dec(raw);
-	inst::HelloReplyView view{};
+	dawn::ipc::HelloReplyView view{};
 	CHECK(!decode(dec, view));
 }
 
@@ -394,89 +396,92 @@ test_huge_array_count()
 static void
 test_daemon_schemas()
 {
-	imaged::DaemonHelloReply hello;
-	hello.value = imaged::DaemonHelloReplyAccepted{
-		imaged::DaemonLimits{4096, imaged::kImagedMaxBlobSize}};
-	auto bytes = encoded(hello);
+	dawn::ipc::DaemonHelloReply hello;
+	hello.value = dawn::ipc::DaemonHelloReplyAccepted{
+		dawn::ipc::DaemonLimits{4096, imaged::kImagedMaxBlobSize}};
+	auto bytes = wire(hello);
 	dawn::ipc::Decoder hello_decoder(bytes);
-	imaged::DaemonHelloReplyView hello_view;
+	dawn::ipc::DaemonHelloReplyView hello_view;
 	CHECK(decode(hello_decoder, hello_view));
 	const auto *accepted =
-		get_if<imaged::DaemonHelloReplyAcceptedView>(&hello_view.value);
+		get_if<dawn::ipc::DaemonHelloReplyAcceptedView>(&hello_view.value);
 	CHECK(accepted != nullptr);
 	if (accepted)
 		CHECK(accepted->limits.max_blob_size == imaged::kImagedMaxBlobSize);
 
-	imaged::Pixmap pixmap;
+	dawn::ipc::Pixmap pixmap;
 	pixmap.width = 2;
 	pixmap.height = 3;
 	pixmap.stride = 16;
 	pixmap.orientation = 6;
-	pixmap.pixels.value = imaged::BlobShared{48};
+	pixmap.pixels.value = dawn::ipc::BlobShared{48};
 	imaged::DecodeResponse response{pixmap, "wuffs", {}, true};
-	bytes = encoded(response);
+	bytes = wire(response);
 	dawn::ipc::Decoder decoder(bytes);
 	imaged::DecodeResponseView view;
 	CHECK(decode(decoder, view));
-	CHECK(holds_alternative<imaged::BlobSharedView>(view.pixmap.pixels.value));
-	CHECK(get<imaged::BlobSharedView>(view.pixmap.pixels.value).size == 48);
+	CHECK(
+		holds_alternative<dawn::ipc::BlobSharedView>(view.pixmap.pixels.value));
+	CHECK(get<dawn::ipc::BlobSharedView>(view.pixmap.pixels.value).size == 48);
 
 	thumbd::ScaleResponse scaled;
 	scaled.width = 1;
 	scaled.height = 1;
 	scaled.rgba8.value =
-		thumbd::BlobInline{{byte{1}, byte{2}, byte{3}, byte{4}}};
-	bytes = encoded(scaled);
+		dawn::ipc::BlobInline{{byte{1}, byte{2}, byte{3}, byte{4}}};
+	bytes = wire(scaled);
 	dawn::ipc::Decoder decoder2(bytes);
 	thumbd::ScaleResponseView scaled_view;
 	CHECK(decode(decoder2, scaled_view));
-	CHECK(holds_alternative<thumbd::BlobInlineView>(scaled_view.rgba8.value));
 	CHECK(
-		get<thumbd::BlobInlineView>(scaled_view.rgba8.value).bytes.size() == 4);
+		holds_alternative<dawn::ipc::BlobInlineView>(scaled_view.rgba8.value));
+	CHECK(
+		get<dawn::ipc::BlobInlineView>(scaled_view.rgba8.value).bytes.size() ==
+		4);
 }
 
 static void
 test_blob_envelope_sizes()
 {
 	imaged::DecodeRequest decode;
-	decode.data.value = imaged::BlobInline{};
+	decode.data.value = dawn::ipc::BlobInline{};
 	imaged::Frame request;
 	request.payload.value = imaged::PayloadRequest{imaged::Request{1, decode}};
-	const size_t imaged_overhead = encoded(request).size();
+	const size_t imaged_overhead = wire(request).size();
 	get<imaged::PayloadRequest>(request.payload.value)
 		.request.decode.data.value =
-		imaged::BlobInline{vector<byte>(123, byte{1})};
-	CHECK(encoded(request).size() == imaged_overhead + 123);
+		dawn::ipc::BlobInline{vector<byte>(123, byte{1})};
+	CHECK(wire(request).size() == imaged_overhead + 123);
 	imaged::DecodeResponse decoded;
 	decoded.pixmap.width = 2;
 	decoded.pixmap.height = 2;
 	decoded.pixmap.stride = 16;
-	decoded.pixmap.pixels.value = imaged::BlobInline{};
+	decoded.pixmap.pixels.value = dawn::ipc::BlobInline{};
 	decoded.loader = "variable-loader";
 	decoded.icc = vector<byte>(31, byte{2});
 	imaged::Frame decoded_frame;
 	decoded_frame.payload.value = imaged::PayloadResponse{
 		imaged::Response{2, imaged::Result{imaged::ResultDecoded{decoded}}}};
-	const size_t decoded_overhead = encoded(decoded_frame).size();
+	const size_t decoded_overhead = wire(decoded_frame).size();
 	get<imaged::ResultDecoded>(
 		get<imaged::PayloadResponse>(decoded_frame.payload.value)
 			.response.result.value)
 		.decoded.pixmap.pixels.value =
-		imaged::BlobInline{vector<byte>(89, byte{3})};
-	CHECK(encoded(decoded_frame).size() == decoded_overhead + 89);
+		dawn::ipc::BlobInline{vector<byte>(89, byte{3})};
+	CHECK(wire(decoded_frame).size() == decoded_overhead + 89);
 
 	thumbd::ScaleResponse scale;
 	scale.width = 1;
 	scale.height = 1;
-	scale.rgba8.value = thumbd::BlobInline{};
+	scale.rgba8.value = dawn::ipc::BlobInline{};
 	thumbd::Frame response;
 	response.payload.value = thumbd::PayloadResponse{
 		thumbd::Response{1, thumbd::Result{thumbd::ResultScaled{scale}}}};
-	const size_t thumbd_overhead = encoded(response).size();
+	const size_t thumbd_overhead = wire(response).size();
 	get<thumbd::PayloadResponse>(response.payload.value).response.result.value =
 		thumbd::ResultScaled{thumbd::ScaleResponse{
-			1, 1, thumbd::Blob{thumbd::BlobInline{vector<byte>(77)}}}};
-	CHECK(encoded(response).size() == thumbd_overhead + 77);
+			1, 1, dawn::ipc::Blob{dawn::ipc::BlobInline{vector<byte>(77)}}}};
+	CHECK(wire(response).size() == thumbd_overhead + 77);
 }
 
 int

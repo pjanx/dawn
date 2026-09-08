@@ -664,7 +664,7 @@ frame_bytes(const inst::Frame &frame)
 static inst::Frame
 hello_frame(uint32_t version, string_view session)
 {
-	inst::Hello hello;
+	dawn::ipc::Hello hello;
 	hello.protocol_version = version;
 	hello.session = string(session);
 	inst::Frame frame;
@@ -689,7 +689,7 @@ static inst::Frame
 cancel_frame(uint64_t id)
 {
 	inst::Frame frame;
-	frame.payload.value = inst::PayloadCancel{inst::Cancel{id}};
+	frame.payload.value = inst::PayloadCancel{dawn::ipc::Cancel{id}};
 	return frame;
 }
 
@@ -827,7 +827,7 @@ handshake(Fixture &f, uint32_t &limit)
 	if (!reply)
 		return false;
 	const auto *accepted =
-		get_if<inst::HelloReplyAcceptedView>(&reply->hello_reply.value);
+		get_if<dawn::ipc::HelloReplyAcceptedView>(&reply->hello_reply.value);
 	if (!accepted)
 		return false;
 	limit = accepted->limits.max_payload_size;
@@ -876,8 +876,8 @@ test_instance_version_mismatch()
 	CHECK(reply != nullptr);
 	if (!reply)
 		return;
-	const auto *mismatch =
-		get_if<inst::HelloReplyVersionMismatchView>(&reply->hello_reply.value);
+	const auto *mismatch = get_if<dawn::ipc::HelloReplyVersionMismatchView>(
+		&reply->hello_reply.value);
 	CHECK(mismatch != nullptr);
 	if (mismatch) {
 		CHECK(mismatch->server_protocol_version ==
@@ -903,7 +903,7 @@ test_instance_session_mismatch()
 		get_if<inst::PayloadHelloReplyView>(&view.payload.value);
 	CHECK(reply != nullptr);
 	if (reply) {
-		CHECK(holds_alternative<inst::HelloReplySessionMismatchView>(
+		CHECK(holds_alternative<dawn::ipc::HelloReplySessionMismatchView>(
 			reply->hello_reply.value));
 	}
 	CHECK(f.closed());
@@ -988,7 +988,7 @@ test_instance_out_of_order()
 
 	// Answered back to front; each response still carries its own ID.
 	held[1].done();
-	held[0].fail(inst::ErrorCode::NotFound, "gone");
+	held[0].fail(dawn::ipc::ErrorCode::NotFound, "gone");
 
 	inst::FrameView view{};
 	vector<byte> storage;
@@ -1014,7 +1014,7 @@ test_instance_out_of_order()
 		get_if<inst::ResultErrorView>(&second->response.result.value);
 	CHECK(err != nullptr);
 	if (err) {
-		CHECK(err->error.code == inst::ErrorCode::NotFound);
+		CHECK(err->error.code == dawn::ipc::ErrorCode::NotFound);
 		CHECK(err->error.message == "gone");
 	}
 }
@@ -1050,7 +1050,7 @@ test_instance_cancel()
 	CHECK(held[0].cancelled());
 
 	// Cancellation is not itself an answer; the service still sends one.
-	held[0].fail(inst::ErrorCode::Cancelled, {});
+	held[0].fail(dawn::ipc::ErrorCode::Cancelled, {});
 	inst::FrameView view{};
 	vector<byte> storage;
 	CHECK(f.recv(view, storage));
@@ -1063,7 +1063,7 @@ test_instance_cancel()
 		get_if<inst::ResultErrorView>(&resp->response.result.value);
 	CHECK(err != nullptr);
 	if (err)
-		CHECK(err->error.code == inst::ErrorCode::Cancelled);
+		CHECK(err->error.code == dawn::ipc::ErrorCode::Cancelled);
 }
 
 static void
@@ -1109,7 +1109,7 @@ test_instance_dropped_call()
 		get_if<inst::ResultErrorView>(&resp->response.result.value);
 	CHECK(err != nullptr);
 	if (err)
-		CHECK(err->error.code == inst::ErrorCode::Internal);
+		CHECK(err->error.code == dawn::ipc::ErrorCode::Internal);
 }
 
 static void

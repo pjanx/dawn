@@ -89,6 +89,18 @@ template <typename TView> struct Received {
 	TView view;
 };
 
+// Any service's frame, on the wire.  What encodes it is found by ADL,
+// beside the frame's own type.
+template <typename T>
+std::vector<std::byte>
+encoded(const T &frame)
+{
+	std::vector<std::byte> out;
+	Encoder encoder(out);
+	encode(frame, encoder);
+	return out;
+}
+
 // A file descriptor on POSIX, a HANDLE on Windows. Both compare equal to
 // -1 when invalid.
 using Handle = std::intptr_t;

@@ -52,21 +52,21 @@ make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 }
 #endif
 
-static dawn::ipc::instance::ErrorCode
+static dawn::ipc::ErrorCode
 map_open_error(OpenResult r)
 {
 	switch (r) {
 	case OpenResult::NotFound:
-		return dawn::ipc::instance::ErrorCode::NotFound;
+		return dawn::ipc::ErrorCode::NotFound;
 	case OpenResult::PermissionDenied:
-		return dawn::ipc::instance::ErrorCode::PermissionDenied;
+		return dawn::ipc::ErrorCode::PermissionDenied;
 	case OpenResult::InvalidArgument:
-		return dawn::ipc::instance::ErrorCode::InvalidArgument;
+		return dawn::ipc::ErrorCode::InvalidArgument;
 	case OpenResult::Ok:
 	case OpenResult::Internal:
 		break;
 	}
-	return dawn::ipc::instance::ErrorCode::Internal;
+	return dawn::ipc::ErrorCode::Internal;
 }
 
 struct InstanceHost::Impl {
@@ -163,7 +163,7 @@ InstanceHost::Impl::on_request(
 	const auto *open_body =
 		get_if<dawn::ipc::instance::RequestBodyOpenView>(&req.body.value);
 	if (!open_body) {
-		call.fail(dawn::ipc::instance::ErrorCode::InvalidArgument, {});
+		call.fail(dawn::ipc::ErrorCode::InvalidArgument, {});
 		return;
 	}
 

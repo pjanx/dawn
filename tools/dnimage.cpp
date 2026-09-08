@@ -25,14 +25,6 @@ namespace proto = dawn::ipc::imaged;
 
 // --- IPC ---------------------------------------------------------------------
 
-static vector<byte>
-encoded(const proto::Frame &frame)
-{
-	vector<byte> out;
-	dawn::ipc::Encoder encoder(out);
-	encode(frame, encoder);
-	return out;
-}
 static bool
 receive(dawn::ipc::Channel &channel, proto::FrameView &view,
 	vector<byte> &storage, vector<dawn::ipc::Handle> &handles,
@@ -76,9 +68,9 @@ main()
 	}
 
 	proto::Frame hello;
-	hello.payload.value =
-		proto::PayloadHello{proto::Hello{proto::kImagedProtocolVersion, ""}};
-	if (!channel.send(encoded(hello), budget, {})) {
+	hello.payload.value = proto::PayloadHello{
+		dawn::ipc::Hello{proto::kImagedProtocolVersion, ""}};
+	if (!channel.send(dawn::ipc::encoded(hello), budget, {})) {
 		fprintf(stderr, "dnimage: handshake failed\n");
 		return 1;
 	}
@@ -93,7 +85,7 @@ main()
 		return 1;
 	}
 
-	const auto *accepted = get_if<proto::DaemonHelloReplyAcceptedView>(
+	const auto *accepted = get_if<dawn::ipc::DaemonHelloReplyAcceptedView>(
 		&get<proto::PayloadHelloReplyView>(reply.payload.value)
 			.hello_reply.value);
 	if (!accepted || !accepted->limits.max_payload_size ||
@@ -113,35 +105,25 @@ main()
 	}
 
 	proto::DecodeRequest decode;
-	dawn::ipc::SharedMemory request_memory;
-	dawn::ipc::Handle request_handle;
-	span<const dawn::ipc::Handle> request_handles;
 	decode.first_frame_only = true;
-	decode.data.value = proto::BlobInline{};
-	proto::Frame request;
-	request.payload.value = proto::PayloadRequest{proto::Request{1, decode}};
-	const size_t inline_overhead = encoded(request).size();
+	const auto encode_request = [&] {
+		proto::Frame request;
+		request.payload.value =
+			proto::PayloadRequest{proto::Request{1, decode}};
+		return dawn::ipc::encoded(request);
+	};
 	vector<byte> request_wire;
-	if (inline_overhead <= max_payload &&
-		input.size() <= max_payload - inline_overhead) {
-		decode.data.value = proto::BlobInline{std::move(input)};
-		request.payload.value =
-			proto::PayloadRequest{proto::Request{1, std::move(decode)}};
-		request_wire = encoded(request);
-	} else {
-		request_memory =
-			dawn::ipc::SharedMemory::copy(input.data(), input.size());
-		if (!request_memory.ok())
-			return 1;
-		decode.data.value = proto::BlobShared{input.size()};
-		request_handle = request_memory.handle();
-		request_handles = span(&request_handle, 1);
-		request.payload.value =
-			proto::PayloadRequest{proto::Request{1, std::move(decode)}};
-		request_wire = encoded(request);
+	dawn::ipc::SharedMemory request_memory;
+	if (dawn::ipc::place_blob(decode.data, input, max_payload, encode_request,
+			request_wire, request_memory)) {
+		fprintf(stderr, "dnimage: request failed\n");
+		return 1;
 	}
-	if (request_wire.size() > max_payload ||
-		!channel.send(request_wire, budget, request_handles)) {
+
+	const dawn::ipc::Handle request_handle = request_memory.handle();
+	if (!channel.send(request_wire, budget,
+			request_memory.ok() ? span(&request_handle, 1)
+								: span<const dawn::ipc::Handle>())) {
 		fprintf(stderr, "dnimage: request failed\n");
 		return 1;
 	}
@@ -184,25 +166,13 @@ main()
 		return 1;
 	}
 
-	const uint8_t *pixels = nullptr;
+	span<const byte> bytes;
 	dawn::ipc::SharedMemory response_memory;
-	if (auto in = get_if<proto::BlobInlineView>(&pixmap.pixels.value)) {
-		if (!owned_handles.empty() || in->bytes.size() > max_blob ||
-			uint64_t(pixmap.stride) * pixmap.height > in->bytes.size())
-			return 1;
-		pixels = reinterpret_cast<const uint8_t *>(in->bytes.data());
-	} else {
-		auto shared = get<proto::BlobSharedView>(pixmap.pixels.value);
-		if (owned_handles.size() != 1 || !shared.size ||
-			shared.size > max_blob ||
-			uint64_t(pixmap.stride) * pixmap.height > shared.size)
-			return 1;
-		response_memory =
-			dawn::ipc::SharedMemory::map(owned_handles.take(0), shared.size);
-		if (!response_memory.ok())
-			return 1;
-		pixels = response_memory.data();
-	}
+	if (dawn::ipc::take_blob(
+			pixmap.pixels, owned_handles, max_blob, bytes, response_memory) ||
+		uint64_t(pixmap.stride) * pixmap.height > bytes.size())
+		return 1;
+	const auto *pixels = reinterpret_cast<const uint8_t *>(bytes.data());
 
 	auto cmm = make_shared<dawn::Cmm>();
 	auto icc = cmm->get_profile_sRGB(false)->to_bytes();

@@ -133,33 +133,41 @@ elseif (NOT APPLE)
 	)
 endif()
 
-# Generated LXDR header; ipc-instance.cpp binds it to the RPC core, and
-# tests/test-lxdr.cpp checks it against Encoder/Decoder.
+# Generated LXDR headers; ipc-instance.cpp binds instance to the RPC core,
+# and tests/test-lxdr.cpp checks them against Encoder/Decoder.  The types
+# every service shares are generated once, into the enclosing namespace.
+lxdr_generate(
+	${PROJECT_BINARY_DIR}/generated/ipc/common.lxdr.hpp
+	dawn::ipc
+	Common
+	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
+)
 lxdr_generate(
 	${PROJECT_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
 	dawn::ipc::instance
 	Instance
-	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 	${PROJECT_SOURCE_DIR}/ipc/instance.lxdr
+	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 )
 lxdr_generate(
 	${PROJECT_BINARY_DIR}/generated/ipc/imaged.lxdr.hpp
 	dawn::ipc::imaged
 	Imaged
-	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 	${PROJECT_SOURCE_DIR}/ipc/imaged.lxdr
+	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 )
 lxdr_generate(
 	${PROJECT_BINARY_DIR}/generated/ipc/thumbd.lxdr.hpp
 	dawn::ipc::thumbd
 	Thumbd
-	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 	${PROJECT_SOURCE_DIR}/ipc/thumbd.lxdr
+	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 )
 add_custom_target(dn-tiff-tables
 	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tiff-tables.h)
 add_dependencies(libdn
 	dn-tiff-tables
+	lxdr-common_lxdr_hpp
 	lxdr-imaged_lxdr_hpp
 	lxdr-instance_lxdr_hpp
 	lxdr-thumbd_lxdr_hpp

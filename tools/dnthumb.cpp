@@ -27,14 +27,6 @@ namespace proto = dawn::ipc::thumbd;
 
 // --- Helpers -----------------------------------------------------------------
 
-static vector<byte>
-encoded(const proto::Frame &frame)
-{
-	vector<byte> out;
-	dawn::ipc::Encoder encoder(out);
-	encode(frame, encoder);
-	return out;
-}
 static bool
 parse_size(string_view value, uint32_t &w, uint32_t &h)
 {
@@ -137,9 +129,9 @@ main(int argc, char **argv)
 	}
 
 	proto::Frame hello;
-	hello.payload.value =
-		proto::PayloadHello{proto::Hello{proto::kThumbdProtocolVersion, ""}};
-	if (!channel.send(encoded(hello), budget, {}))
+	hello.payload.value = proto::PayloadHello{
+		dawn::ipc::Hello{proto::kThumbdProtocolVersion, ""}};
+	if (!channel.send(dawn::ipc::encoded(hello), budget, {}))
 		return 1;
 	vector<byte> wire;
 	vector<dawn::ipc::Handle> reply_handles;
@@ -152,7 +144,7 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	const auto *accepted = get_if<proto::DaemonHelloReplyAcceptedView>(
+	const auto *accepted = get_if<dawn::ipc::DaemonHelloReplyAcceptedView>(
 		&get<proto::PayloadHelloReplyView>(reply.payload.value)
 			.hello_reply.value);
 	if (!accepted || !accepted->limits.max_payload_size ||
@@ -175,45 +167,28 @@ main(int argc, char **argv)
 	scale_request.source.orientation = orientation;
 	scale_request.out_width = out_w;
 	scale_request.out_height = out_h;
-	dawn::ipc::SharedMemory request_memory;
-	dawn::ipc::Handle request_handle;
-	span<const dawn::ipc::Handle> request_handles;
 	if (image->data.empty() || image->data.size() > max_blob) {
 		fprintf(stderr, "dnthumb: image is too large\n");
 		return 1;
 	}
-	scale_request.source.pixels.value = proto::BlobInline{};
-	proto::Frame request;
-	request.payload.value =
-		proto::PayloadRequest{proto::Request{1, scale_request}};
-	const size_t inline_overhead = encoded(request).size();
+
+	const auto encode_request = [&] {
+		proto::Frame request;
+		request.payload.value =
+			proto::PayloadRequest{proto::Request{1, scale_request}};
+		return dawn::ipc::encoded(request);
+	};
 	vector<byte> request_wire;
-	if (inline_overhead <= max_payload &&
-		image->data.size() <= max_payload - inline_overhead) {
-		proto::BlobInline inline_blob;
-		inline_blob.bytes.assign(
-			reinterpret_cast<const byte *>(image->data.data()),
-			reinterpret_cast<const byte *>(
-				image->data.data() + image->data.size()));
-		scale_request.source.pixels.value = std::move(inline_blob);
-		request.payload.value =
-			proto::PayloadRequest{proto::Request{1, std::move(scale_request)}};
-		request_wire = encoded(request);
-	} else {
-		request_memory = dawn::ipc::SharedMemory::copy(
-			image->data.data(), image->data.size());
-		if (!request_memory.ok())
-			return 1;
-		scale_request.source.pixels.value =
-			proto::BlobShared{image->data.size()};
-		request_handle = request_memory.handle();
-		request_handles = span(&request_handle, 1);
-		request.payload.value =
-			proto::PayloadRequest{proto::Request{1, std::move(scale_request)}};
-		request_wire = encoded(request);
-	}
-	if (request_wire.size() > max_payload ||
-		!channel.send(request_wire, budget, request_handles))
+	dawn::ipc::SharedMemory request_memory;
+	if (dawn::ipc::place_blob(scale_request.source.pixels,
+			as_bytes(span(image->data)), max_payload, encode_request,
+			request_wire, request_memory))
+		return 1;
+
+	const dawn::ipc::Handle request_handle = request_memory.handle();
+	if (!channel.send(request_wire, budget,
+			request_memory.ok() ? span(&request_handle, 1)
+								: span<const dawn::ipc::Handle>()))
 		return 1;
 
 	vector<dawn::ipc::Handle> handles;
@@ -253,25 +228,14 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	span<const uint8_t> rgba;
+	span<const byte> bytes;
 	dawn::ipc::SharedMemory response_memory;
-	if (auto in = get_if<proto::BlobInlineView>(&scaled->scaled.rgba8.value)) {
-		if (!owned_handles.empty() || in->bytes.size() != rgba_size ||
-			in->bytes.size() > max_blob)
-			return 1;
-		rgba = {reinterpret_cast<const uint8_t *>(in->bytes.data()),
-			in->bytes.size()};
-	} else {
-		auto shared = get<proto::BlobSharedView>(scaled->scaled.rgba8.value);
-		if (owned_handles.size() != 1 || shared.size != rgba_size ||
-			shared.size > max_blob)
-			return 1;
-		response_memory =
-			dawn::ipc::SharedMemory::map(owned_handles.take(0), shared.size);
-		if (!response_memory.ok())
-			return 1;
-		rgba = {response_memory.data(), response_memory.size()};
-	}
+	if (dawn::ipc::take_blob(scaled->scaled.rgba8, owned_handles, max_blob,
+			bytes, response_memory) ||
+		bytes.size() != rgba_size)
+		return 1;
+	const span<const uint8_t> rgba(
+		reinterpret_cast<const uint8_t *>(bytes.data()), bytes.size());
 
 	vector<uint8_t> icc = image->effective_profile
 		? image->effective_profile->to_bytes()

@@ -9,7 +9,9 @@
 
 #include <climits>
 
+#include <thread>
 #include <utility>
+#include <variant>
 
 using namespace std;
 
@@ -312,6 +314,182 @@ ServerCore::drop(uint64_t id)
 		cfg_.unwatch(id);
 	if (cfg_.on_closed)
 		cfg_.on_closed(id);
+}
+
+// --- Daemons -----------------------------------------------------------------
+
+const char *
+place_blob(Blob &blob, span<const byte> bytes, uint32_t limit,
+	const function<vector<byte>()> &encode, vector<byte> &out,
+	SharedMemory &attachment)
+{
+	blob.value = BlobInline{};
+	const size_t overhead = encode().size();
+	if (overhead <= limit && bytes.size() <= limit - overhead) {
+		blob.value = BlobInline{vector<byte>(bytes.begin(), bytes.end())};
+		out = encode();
+		return nullptr;
+	}
+
+	attachment = SharedMemory::copy(bytes.data(), bytes.size());
+	if (!attachment.ok())
+		return "shared memory creation failed";
+
+	blob.value = BlobShared{bytes.size()};
+	out = encode();
+	if (out.size() <= limit)
+		return nullptr;
+
+	attachment.close();
+	return "frame metadata is too large";
+}
+
+const char *
+take_blob(const BlobView &blob, OwnedHandles &handles, uint64_t limit,
+	span<const byte> &bytes, SharedMemory &memory)
+{
+	if (auto in = get_if<BlobInlineView>(&blob.value)) {
+		if (!handles.empty())
+			return "inline blob has attachments";
+		if (in->bytes.empty() || in->bytes.size() > limit)
+			return "invalid inline blob size";
+
+		bytes = in->bytes;
+		return nullptr;
+	}
+
+	const auto shared = get<BlobSharedView>(blob.value);
+	if (handles.size() != 1 || !shared.size || shared.size > limit)
+		return "invalid shared blob";
+
+	memory = SharedMemory::map(handles.take(0), shared.size);
+	if (!memory.ok())
+		return "cannot map shared blob";
+
+	bytes = {reinterpret_cast<const byte *>(memory.data()), memory.size()};
+	return nullptr;
+}
+
+DaemonHelloReply
+daemon_hello(const HelloView &hello, uint32_t version, uint64_t max_blob_size)
+{
+	DaemonHelloReply reply;
+	if (hello.protocol_version != version)
+		reply.value = DaemonHelloReplyVersionMismatch{version};
+	else if (!hello.session.empty())
+		reply.value = DaemonHelloReplySessionMismatch{};
+	else
+		reply.value = DaemonHelloReplyAccepted{
+			DaemonLimits{Connection::kMaxPayload, max_blob_size}};
+	return reply;
+}
+
+DaemonHost::DaemonHost(
+	Listener listener, ServerCore::Config cfg, unsigned workers)
+	: workers_(workers)
+{
+	cfg.watch_read = [this](uint64_t id, Waitable w) {
+		return loop_.watch_read(id, w);
+	};
+	cfg.unwatch = [this](uint64_t id) { loop_.unwatch(id); };
+	cfg.watch_write = [this](uint64_t id, Waitable w, bool enable) {
+		loop_.watch_write(id, w, enable);
+	};
+	core_ = make_unique<ServerCore>(std::move(listener), std::move(cfg));
+
+	loop_.on_read = [this](uint64_t id) {
+		if (id == Loop::kListener)
+			core_->poll_listen();
+		else
+			core_->poll_read(id);
+	};
+	loop_.on_write = [this](uint64_t id) { core_->poll_write(id); };
+	loop_.on_wake = [this] { this->flush_done(); };
+}
+
+bool
+DaemonHost::submit(uint64_t id, size_t bytes, Work work)
+{
+	{
+		lock_guard lock(mutex_);
+		if (admitted_.size() >= kMaxJobs ||
+			admitted_.count(id) >= kMaxJobsPerConnection ||
+			bytes > kMaxRetainedBytes ||
+			retained_bytes_ > kMaxRetainedBytes - bytes)
+			return false;
+
+		admitted_.insert(id);
+		retained_bytes_ += bytes;
+		jobs_.push_back(Job{id, bytes, std::move(work)});
+	}
+	cv_.notify_one();
+	return true;
+}
+
+void
+DaemonHost::work()
+{
+	while (true) {
+		Job job;
+		{
+			unique_lock lock(mutex_);
+			cv_.wait(lock, [&] { return stop_ || !jobs_.empty(); });
+			if (stop_ && jobs_.empty())
+				return;
+			job = std::move(jobs_.front());
+			jobs_.pop_front();
+		}
+
+		Reply reply = job.work();
+
+		// Dropped before the accounting, because whatever input the work
+		// was holding on to goes with it.
+		const uint64_t id = job.connection;
+		const size_t bytes = job.bytes;
+		job = {};
+		{
+			lock_guard lock(mutex_);
+			retained_bytes_ -= bytes;
+			admitted_.erase(admitted_.find(id));
+			done_.emplace_back(id, std::move(reply));
+		}
+		loop_.wake();
+	}
+}
+
+void
+DaemonHost::flush_done()
+{
+	deque<pair<uint64_t, Reply>> done;
+	{
+		lock_guard lock(mutex_);
+		swap(done, done_);
+	}
+	for (auto &[id, reply] : done) {
+		const Handle handle = reply.attachment.handle();
+		core_->send(id, reply.payload,
+			reply.attachment.ok() ? span(&handle, 1) : span<const Handle>());
+	}
+}
+
+bool
+DaemonHost::run()
+{
+	if (!loop_.watch_read(Loop::kListener, core_->listen_waitable()))
+		return false;
+
+	vector<thread> workers;
+	for (unsigned i = 0; i < workers_; i++)
+		workers.emplace_back([this] { this->work(); });
+	loop_.run();
+	{
+		lock_guard lock(mutex_);
+		stop_ = true;
+	}
+	cv_.notify_all();
+	for (auto &worker : workers)
+		worker.join();
+	return true;
 }
 
 }  // namespace ipc

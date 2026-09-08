@@ -63,9 +63,9 @@ instance_session()
 }
 
 static const char *
-error_fallback(dawn::ipc::instance::ErrorCode code)
+error_fallback(dawn::ipc::ErrorCode code)
 {
-	using dawn::ipc::instance::ErrorCode;
+	using dawn::ipc::ErrorCode;
 	switch (code) {
 	case ErrorCode::NotFound:
 		return "not found";
@@ -96,7 +96,7 @@ handoff_open(
 	if (const uint32_t pid = client.server_pid())
 		AllowSetForegroundWindow(DWORD(pid));
 #endif
-	dawn::ipc::instance::Error error;
+	dawn::ipc::Error error;
 	if (client.open(encoded, token, browse, &error, dawn::ipc::kRequestTimeout))
 		return true;
 	if (!error.message.empty())
