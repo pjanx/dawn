@@ -136,6 +136,7 @@ fn set_decoder_limits(decoder: &mut impl ImageDecoder) -> Result<(), String> {
 		.map_err(|error| error.to_string())
 }
 
+// This list matches against shared-mime-info, non-aliased.
 static MIME_TYPES: &[&CStr] = &[
 	c"image/bmp",
 	c"image/gif",
@@ -144,9 +145,9 @@ static MIME_TYPES: &[&CStr] = &[
 	c"image/qoi",
 	c"image/tiff",
 	c"image/vnd.microsoft.icon",
+	c"image/vnd.ms-dds",
 	c"image/vnd.radiance",
 	c"image/webp",
-	c"image/x-dds",
 	c"image/x-exr",
 	c"image/x-farbfeld",
 	c"image/x-portable-anymap",
