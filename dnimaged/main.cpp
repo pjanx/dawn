@@ -1,5 +1,5 @@
 //
-// main.cpp: out-of-process Vulkan scaler probe
+// main.cpp: out-of-process image decoder probe
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -8,10 +8,10 @@
 #include "ipc-loop.hpp"
 #include "ipc-rpc.hpp"
 #include "ipc-shm.hpp"
-#include "ipc/thumbd.lxdr.hpp"
+#include "ipc/imaged.lxdr.hpp"
 #include "libdn.h"
-#include "libdnvk.h"
 
+#include <algorithm>
 #include <condition_variable>
 #include <cstdio>
 #include <deque>
@@ -19,18 +19,20 @@
 #include <thread>
 #include <unordered_set>
 #include <variant>
+#include <vector>
 
 using namespace std;
-namespace proto = dawn::ipc::thumbd;
+namespace proto = dawn::ipc::imaged;
 
 // --- Jobs --------------------------------------------------------------------
 
+static constexpr char kService[] = "imaged";
 static constexpr uint64_t kMaxBlob = 1024ull * 1024 * 1024;
-// One scaler worker is intentionally fed from a short queue. Two jobs per
-// client prevent one connection monopolizing the retained-input cap. The byte
-// cap admits one advertised maximum-size request, never several of them.
+// Four decoder workers share a bounded retained-input pool. Per-client
+// admission keeps one connection from occupying the whole queue.
 static constexpr size_t kMaxJobs = 8, kMaxJobsPerConnection = 2;
-static constexpr size_t kMaxRetainedBytes = 1024ull * 1024 * 1024;
+static constexpr size_t kMaxRetainedBytes =
+	1024ull * 1024 * 1024 + dawn::ipc::Connection::kMaxPayload;
 
 static vector<byte>
 encode_frame(const proto::Frame &frame)
@@ -41,32 +43,21 @@ encode_frame(const proto::Frame &frame)
 	return out;
 }
 
-static proto::Frame
-error_frame(uint64_t id, string message, proto::ErrorCode code)
-{
-	proto::Frame frame;
-	frame.payload.value = proto::PayloadResponse{proto::Response{id,
-		proto::Result{
-			proto::ResultError{proto::Error{code, std::move(message)}}}}};
-	return frame;
-}
-
 namespace
 {
 
 struct Job {
 	uint64_t connection = 0, request = 0;
 	size_t retained_bytes = 0;
-	uint32_t width = 0, height = 0, stride = 0, out_width = 0, out_height = 0;
-	int32_t orientation = 0;
-	vector<byte> inline_pixels;
+	vector<byte> data, target_icc;
 	dawn::ipc::SharedMemory shared;
+	bool first_frame_only = false;
 };
 
 struct Done {
 	uint64_t connection = 0;
 	proto::Frame frame;
-	dawn::ipc::SharedMemory shared;
+	dawn::ipc::SharedMemory memory;
 };
 
 struct State {
@@ -108,60 +99,93 @@ release(State &state, uint64_t connection, size_t bytes)
 	state.admitted.erase(state.admitted.find(connection));
 }
 
+static proto::Frame
+error_frame(uint64_t id, string message, proto::ErrorCode code)
+{
+	proto::Frame frame;
+	frame.payload.value = proto::PayloadResponse{proto::Response{id,
+		proto::Result{
+			proto::ResultError{proto::Error{code, std::move(message)}}}}};
+	return frame;
+}
+
 static Done
-scale_job(Job &job, dawn::ScaleScaler *scaler)
+decode_job(Job &job, const shared_ptr<dawn::Cmm> &cmm)
 {
 	Done done;
 	done.connection = job.connection;
-	dawn::ScaleOutput output;
-	string error;
-	const uint8_t *pixels = job.shared.ok()
-		? job.shared.data()
-		: reinterpret_cast<const uint8_t *>(job.inline_pixels.data());
-	if (!scaler->scale(job.width, job.height, pixels, job.stride, job.out_width,
-			job.out_height,
-			dawn::orientation_or_0(dawn::Orientation(job.orientation)), &output,
-			&error)) {
-		done.frame =
-			error_frame(job.request, error.empty() ? "scale failed" : error,
-				proto::ErrorCode::InvalidArgument);
+	dawn::OpenContext context;
+	context.cmm = cmm;
+	context.first_frame_only = job.first_frame_only;
+	context.screen_profile = job.target_icc.empty()
+		? cmm->get_profile_sRGB(false)
+		: cmm->get_profile(span<const uint8_t>(
+			  reinterpret_cast<const uint8_t *>(job.target_icc.data()),
+			  job.target_icc.size()));
+	if (!context.screen_profile) {
+		done.frame = error_frame(job.request, "invalid target ICC profile",
+			proto::ErrorCode::InvalidArgument);
 		return done;
 	}
 
-	proto::ScaleResponse response;
-	response.width = output.width;
-	response.height = output.height;
-	response.rgba8.value = proto::BlobInline{};
+	dawn::Error error;
+	const uint8_t *data = job.shared.ok()
+		? job.shared.data()
+		: reinterpret_cast<const uint8_t *>(job.data.data());
+	const size_t size = job.shared.ok() ? job.shared.size() : job.data.size();
+	auto image = dawn::open_from_data(span(data, size), context, &error);
+	if (!image) {
+		done.frame = error_frame(job.request,
+			error.message.empty() ? "decode failed" : error.message,
+			proto::ErrorCode::InvalidArgument);
+		return done;
+	}
+	if (image->data.empty() || image->data.size() > kMaxBlob) {
+		done.frame = error_frame(job.request, "decoded pixmap is too large",
+			proto::ErrorCode::InvalidArgument);
+		return done;
+	}
+
+	proto::DecodeResponse response;
+	response.pixmap.width = image->width;
+	response.pixmap.height = image->height;
+	response.pixmap.stride = image->stride;
+	response.pixmap.orientation = int32_t(image->orientation);
+	response.loader = image->loader ? image->loader : "";
+	response.icc.assign(reinterpret_cast<const byte *>(image->icc.data()),
+		reinterpret_cast<const byte *>(image->icc.data() + image->icc.size()));
+	response.profile_assumed = image->profile_assumed;
+	response.pixmap.pixels.value = proto::BlobInline{};
 
 	proto::Frame measurement;
 	measurement.payload.value = proto::PayloadResponse{proto::Response{
-		job.request, proto::Result{proto::ResultScaled{response}}}};
+		job.request, proto::Result{proto::ResultDecoded{response}}}};
 
 	const size_t inline_overhead = encode_frame(measurement).size();
 	if (inline_overhead <= dawn::ipc::Connection::kMaxPayload &&
-		output.rgba8.size() <=
+		image->data.size() <=
 			dawn::ipc::Connection::kMaxPayload - inline_overhead) {
-		proto::BlobInline blob;
-		blob.bytes.assign(reinterpret_cast<const byte *>(output.rgba8.data()),
+		proto::BlobInline pixels;
+		pixels.bytes.assign(reinterpret_cast<const byte *>(image->data.data()),
 			reinterpret_cast<const byte *>(
-				output.rgba8.data() + output.rgba8.size()));
-		response.rgba8.value = std::move(blob);
+				image->data.data() + image->data.size()));
+		response.pixmap.pixels.value = std::move(pixels);
 	} else {
-		done.shared = dawn::ipc::SharedMemory::copy(
-			output.rgba8.data(), output.rgba8.size());
-		if (!done.shared.ok()) {
+		done.memory = dawn::ipc::SharedMemory::copy(
+			image->data.data(), image->data.size());
+		if (!done.memory.ok()) {
 			done.frame =
 				error_frame(job.request, "shared memory creation failed",
 					proto::ErrorCode::InvalidArgument);
 			return done;
 		}
-		response.rgba8.value = proto::BlobShared{output.rgba8.size()};
+		response.pixmap.pixels.value = proto::BlobShared{image->data.size()};
 	}
 	done.frame.payload.value = proto::PayloadResponse{proto::Response{
-		job.request, proto::Result{proto::ResultScaled{std::move(response)}}}};
-	if (done.shared.ok() &&
+		job.request, proto::Result{proto::ResultDecoded{std::move(response)}}}};
+	if (done.memory.ok() &&
 		encode_frame(done.frame).size() > dawn::ipc::Connection::kMaxPayload) {
-		done.shared.close();
+		done.memory.close();
 		done.frame = error_frame(job.request, "response metadata is too large",
 			proto::ErrorCode::Internal);
 	}
@@ -169,8 +193,9 @@ scale_job(Job &job, dawn::ScaleScaler *scaler)
 }
 
 static void
-worker(State *state, dawn::ScaleScaler *scaler)
+worker(State *state)
 {
+	auto cmm = make_shared<dawn::Cmm>();
 	while (true) {
 		Job job;
 		{
@@ -183,7 +208,7 @@ worker(State *state, dawn::ScaleScaler *scaler)
 			state->jobs.pop_front();
 		}
 
-		Done done = scale_job(job, scaler);
+		Done done = decode_job(job, cmm);
 		const uint64_t connection = job.connection;
 		const size_t retained_bytes = job.retained_bytes;
 		job = {};
@@ -213,14 +238,14 @@ handle_payload(State &state, uint64_t connection, span<const byte> payload,
 			return false;
 
 		proto::DaemonHelloReply reply;
-		if (hello->hello.protocol_version != proto::kThumbdProtocolVersion)
+		if (hello->hello.protocol_version != proto::kImagedProtocolVersion)
 			reply.value = proto::DaemonHelloReplyVersionMismatch{
-				proto::kThumbdProtocolVersion};
+				proto::kImagedProtocolVersion};
 		else if (!hello->hello.session.empty())
 			reply.value = proto::DaemonHelloReplySessionMismatch{};
 		else {
 			reply.value = proto::DaemonHelloReplyAccepted{proto::DaemonLimits{
-				dawn::ipc::Connection::kMaxPayload, proto::kThumbdMaxBlobSize}};
+				dawn::ipc::Connection::kMaxPayload, proto::kImagedMaxBlobSize}};
 			state.greeted.insert(connection);
 		}
 
@@ -244,56 +269,44 @@ handle_payload(State &state, uint64_t connection, span<const byte> payload,
 	const auto busy = [&] {
 		return state.server->send(connection,
 			encode_frame(error_frame(request->request.id,
-				"thumbnail service is busy", proto::ErrorCode::Busy)),
+				"image service is busy", proto::ErrorCode::Busy)),
 			{});
 	};
 
-	const auto &scale = request->request.scale;
 	Job job;
 	job.connection = connection;
 	job.request = request->request.id;
-	job.width = scale.source.width;
-	job.height = scale.source.height;
-	job.stride = scale.source.stride;
-	job.orientation = scale.source.orientation;
-	job.out_width = scale.out_width;
-	job.out_height = scale.out_height;
-	const uint64_t row = uint64_t(job.width) * dawn::kBytesPerPixel;
-	if (job.orientation < 0 || job.orientation > 8)
-		return invalid("invalid image orientation");
-	if (!job.width || !job.height || job.width > dawn::kMaxDimension ||
-		job.height > dawn::kMaxDimension || !job.out_width || !job.out_height ||
-		job.out_width > dawn::kMaxDimension ||
-		job.out_height > dawn::kMaxDimension || job.stride < row ||
-		uint64_t(job.out_width) * job.out_height * 4 > kMaxBlob)
-		return invalid("invalid image geometry");
-	auto in = get_if<proto::BlobInlineView>(&scale.source.pixels.value);
+	const size_t icc_size = request->request.decode.target_icc.size();
+	auto in =
+		get_if<proto::BlobInlineView>(&request->request.decode.data.value);
 	uint64_t input_size;
 	if (in) {
-		if (!owned.empty() ||
-			uint64_t(job.stride) * job.height > in->bytes.size())
-			return invalid("invalid inline pixel blob");
-		if (in->bytes.size() > kMaxBlob)
-			return invalid("pixel blob is too large");
+		if (!owned.empty())
+			return invalid("inline blob has attachments");
+		if (in->bytes.empty() || in->bytes.size() > kMaxBlob)
+			return invalid("invalid input blob size");
 		input_size = in->bytes.size();
 	} else {
-		auto shared = get<proto::BlobSharedView>(scale.source.pixels.value);
-		if (owned.size() != 1 || !shared.size || shared.size > kMaxBlob ||
-			uint64_t(job.stride) * job.height > shared.size)
-			return invalid("invalid shared pixel blob");
+		auto shared =
+			get<proto::BlobSharedView>(request->request.decode.data.value);
+		if (owned.size() != 1 || !shared.size || shared.size > kMaxBlob)
+			return invalid("invalid shared input blob");
 		input_size = shared.size;
 	}
-	if (!admit(state, job, input_size))
+	if (!admit(state, job, input_size + icc_size))
 		return busy();
 	if (in)
-		job.inline_pixels.assign(in->bytes.begin(), in->bytes.end());
+		job.data.assign(in->bytes.begin(), in->bytes.end());
 	else {
 		job.shared = dawn::ipc::SharedMemory::map(owned.take(0), input_size);
 		if (!job.shared.ok()) {
 			release(state, job.connection, job.retained_bytes);
-			return invalid("cannot map shared pixel blob");
+			return invalid("cannot map shared input blob");
 		}
 	}
+	job.target_icc.assign(request->request.decode.target_icc.begin(),
+		request->request.decode.target_icc.end());
+	job.first_frame_only = request->request.decode.first_frame_only;
 	{
 		lock_guard lock(state.mu);
 		state.jobs.push_back(std::move(job));
@@ -321,9 +334,9 @@ handle_wake(State &state)
 	}
 	for (auto &item : done) {
 		auto bytes = encode_frame(item.frame);
-		dawn::ipc::Handle handle = item.shared.handle();
+		dawn::ipc::Handle handle = item.memory.handle();
 		state.server->send(item.connection, bytes,
-			item.shared.ok() ? span(&handle, 1)
+			item.memory.ok() ? span(&handle, 1)
 							 : span<const dawn::ipc::Handle>());
 	}
 }
@@ -331,19 +344,12 @@ handle_wake(State &state)
 int
 main()
 {
-	auto endpoint = dawn::ipc::Endpoint::listen("thumbd");
+	auto endpoint = dawn::ipc::Endpoint::listen(kService);
 	if (endpoint.status != dawn::ipc::Endpoint::ListenStatus::Ok) {
-		fprintf(stderr, "dnthumbd: %s\n",
+		fprintf(stderr, "dnimaged: %s\n",
 			endpoint.status == dawn::ipc::Endpoint::ListenStatus::InUse
 				? "already running"
 				: "cannot listen");
-		return 1;
-	}
-
-	dawn::ScaleScaler scaler;
-	string init_error;
-	if (!scaler.init(&init_error)) {
-		fprintf(stderr, "dnthumbd: %s\n", init_error.c_str());
 		return 1;
 	}
 
@@ -373,12 +379,18 @@ main()
 			dawn::ipc::Loop::kListener, server.listen_waitable()))
 		return 1;
 
-	thread thread(worker, &state, &scaler);
+	const unsigned worker_count =
+		min(4u, max(1u, thread::hardware_concurrency()));
+	vector<thread> workers(worker_count);
+	for (auto &worker_thread : workers)
+		worker_thread = thread(worker, &state);
 	state.loop.run();
+
 	{
 		lock_guard lock(state.mu);
 		state.stop = true;
 	}
 	state.cv.notify_all();
-	thread.join();
+	for (auto &worker_thread : workers)
+		worker_thread.join();
 }

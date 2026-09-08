@@ -72,7 +72,7 @@ map_open_error(OpenResult r)
 struct InstanceHost::Impl {
 	Impl(dawn::ipc::Listener listener, App &app, const QString &session,
 		InstanceHost *host);
-	void watch_read(uint64_t id, dawn::ipc::Waitable w);
+	bool watch_read(uint64_t id, dawn::ipc::Waitable w);
 	void watch_write(uint64_t id, dawn::ipc::Waitable w, bool enable);
 	void unwatch(uint64_t id);
 	void on_request(dawn::ipc::instance::Call call,
@@ -96,7 +96,7 @@ InstanceHost::Impl::Impl(dawn::ipc::Listener listener, App &app,
 		on_request(std::move(call), req);
 	};
 	cfg.watch_read = [this](uint64_t id, dawn::ipc::Waitable w) {
-		watch_read(id, w);
+		return watch_read(id, w);
 	};
 	cfg.unwatch = [this](uint64_t id) { unwatch(id); };
 	cfg.watch_write = [this](uint64_t id, dawn::ipc::Waitable w, bool enable) {
@@ -110,15 +110,16 @@ InstanceHost::Impl::Impl(dawn::ipc::Listener listener, App &app,
 		[this] { this->server_->poll_listen(); });
 }
 
-void
+bool
 InstanceHost::Impl::watch_read(uint64_t id, dawn::ipc::Waitable w)
 {
 	if (this->reads_.contains(id))
-		return;
+		return true;
 	auto *n = make_watch(w, false, this->host_);
 	QObject::connect(n, &Watch::activated, this->host_,
 		[this, id] { this->server_->poll_read(id); });
 	this->reads_[id] = n;
+	return true;
 }
 
 void

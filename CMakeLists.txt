@@ -92,6 +92,7 @@ pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 pkg_check_modules(WEBPDEMUX REQUIRED IMPORTED_TARGET libwebpdemux)
 pkg_check_modules(WEBPMUX REQUIRED IMPORTED_TARGET libwebpmux)
 pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
+pkg_check_modules(LIBPNG IMPORTED_TARGET libpng)
 # Qt6 SVG cannot render our icons correctly, so we hard depend on resvg.
 pkg_check_modules(RESVG REQUIRED IMPORTED_TARGET resvg)
 
@@ -244,7 +245,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_subdirectory(libdn)
+add_subdirectory(dnimaged)
 add_subdirectory(dnthumbd)
+if (LIBPNG_FOUND)
+	add_subdirectory(tools)
+endif()
 add_subdirectory(dn)
 
 if (BUILD_TESTING)

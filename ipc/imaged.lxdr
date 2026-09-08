@@ -1,0 +1,58 @@
+//
+// imaged.lxdr: image decoder daemon protocol
+//
+// Copyright The Dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+const IMAGED_PROTOCOL_VERSION = 1;
+const IMAGED_MAX_BLOB_SIZE = 1073741824;
+
+struct DecodeRequest {
+	Blob data;
+	u8 target_icc<>; // empty means sRGB
+	bool first_frame_only;
+};
+
+struct DecodeResponse {
+	Pixmap pixmap;
+	string loader;
+	u8 icc<>; // the file's own profile blob, if any
+	bool profile_assumed;
+};
+
+struct Request {
+	u64 id;
+	DecodeRequest decode;
+};
+
+struct Response {
+	u64 id;
+	union Result switch (enum ResponseKind {
+		DECODED,
+		ERROR,
+	} kind) {
+	case DECODED:
+		DecodeResponse decoded;
+	case ERROR:
+		Error error;
+	} result;
+};
+
+struct Frame {
+	union Payload switch (enum FrameKind {
+		HELLO,
+		HELLO_REPLY,
+		REQUEST,
+		RESPONSE,
+	} kind) {
+	case HELLO:
+		Hello hello;
+	case HELLO_REPLY:
+		DaemonHelloReply hello_reply;
+	case REQUEST:
+		Request request;
+	case RESPONSE:
+		Response response;
+	} payload;
+};

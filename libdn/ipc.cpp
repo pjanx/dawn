@@ -6,6 +6,7 @@
 //
 
 #include "ipc.hpp"
+#include "ipc-shm.hpp"
 
 #include <cstdarg>
 #include <cstdio>
@@ -19,6 +20,51 @@ namespace dawn
 namespace ipc
 {
 
+// --- Ownership ---------------------------------------------------------------
+
+OwnedHandles::OwnedHandles(vector<Handle> handles)
+	: handles_(std::move(handles))
+{
+}
+
+OwnedHandles::~OwnedHandles()
+{
+	for (Handle handle : handles_)
+		close_handle(handle);
+}
+
+Handle
+OwnedHandles::take(size_t index)
+{
+	if (index >= handles_.size())
+		return kInvalidHandle;
+	return exchange(handles_[index], kInvalidHandle);
+}
+
+SharedMemory::~SharedMemory()
+{
+	close();
+}
+
+SharedMemory::SharedMemory(SharedMemory &&other) noexcept
+{
+	*this = std::move(other);
+}
+
+SharedMemory &
+SharedMemory::operator=(SharedMemory &&other) noexcept
+{
+	if (this != &other) {
+		close();
+		handle_ = exchange(other.handle_, kInvalidHandle);
+		data_ = exchange(other.data_, nullptr);
+		size_ = exchange(other.size_, 0);
+	}
+	return *this;
+}
+
+// --- Codec -------------------------------------------------------------------
+
 Encoder::Encoder(vector<byte> &buf) : buf_(buf)
 {
 }
@@ -28,7 +74,7 @@ Encoder::put_be(uint64_t v, size_t width)
 {
 	if (!ok_)
 		return;
-	for (size_t i = width; i > 0; --i)
+	for (size_t i = width; i > 0; i--)
 		buf_.push_back(byte((v >> ((i - 1) * 8)) & 0xff));
 }
 
@@ -377,12 +423,16 @@ FrameReader::advance(size_t n)
 	if (state_ == State::Length) {
 		if (got_ < 4)
 			return Status::NeedMore;
-		const uint32_t size = (uint32_t(length_[0]) << 24) |
+		const uint32_t packed = (uint32_t(length_[0]) << 24) |
 			(uint32_t(length_[1]) << 16) | (uint32_t(length_[2]) << 8) |
 			uint32_t(length_[3]);
+		if (packed & 0x80000000u)
+			return Status::Error;
+		const uint32_t size = packed & 0x01ffffffu;
+		attachment_count_ = uint8_t((packed >> 25) & 0x3f);
 		if (size == 0 || size > limit_)
 			return Status::Error;
-		payload_.resize(size);
+		payload_.resize(size + (inline_handles_ ? 8 * attachment_count_ : 0));
 		got_ = 0;
 		state_ = State::Payload;
 		return Status::NeedMore;
@@ -403,14 +453,54 @@ FrameReader::set_limit(uint32_t limit)
 }
 
 bool
-FrameReader::take_payload(vector<byte> &out)
+FrameReader::take_plain_payload(vector<byte> &out)
+{
+	vector<Handle> ignored;
+	return take_payload(out, ignored);
+}
+
+bool
+FrameReader::take_payload(vector<byte> &out, vector<Handle> &handles)
 {
 	if (!have_frame_)
 		return false;
-	out = std::move(payload_);
+	handles.clear();
+	const size_t prefix = inline_handles_ ? 8 * attachment_count_ : 0;
+	if (prefix) {
+		handles.reserve(attachment_count_);
+		for (size_t i = 0; i < attachment_count_; i++) {
+			uint64_t v = 0;
+			for (size_t j = 0; j < 8; j++)
+				v = (v << 8) | uint8_t(payload_[i * 8 + j]);
+			handles.push_back(Handle(v));
+		}
+		out.assign(payload_.begin() + ptrdiff_t(prefix), payload_.end());
+	} else {
+		out = std::move(payload_);
+	}
 	payload_.clear();
 	have_frame_ = false;
+	attachment_count_ = 0;
 	return true;
+}
+
+void
+FrameReader::discard()
+{
+	const size_t available = have_frame_ ? payload_.size() : got_;
+	const size_t count =
+		inline_handles_ ? min<size_t>(attachment_count_, available / 8) : 0;
+	for (size_t i = 0; i < count; i++) {
+		uint64_t value = 0;
+		for (size_t j = 0; j < 8; j++)
+			value = (value << 8) | uint8_t(payload_[i * 8 + j]);
+		close_handle(Handle(value));
+	}
+	payload_.clear();
+	state_ = State::Length;
+	have_frame_ = false;
+	got_ = 0;
+	attachment_count_ = 0;
 }
 
 bool
@@ -424,7 +514,13 @@ FrameWriter::pending() const
 {
 	if (empty())
 		return {};
-	return {q_.data() + off_, q_.size() - off_};
+	size_t end = q_.size();
+	for (const auto &a : attachments_)
+		if (a.offset > off_) {
+			end = a.offset;
+			break;
+		}
+	return {q_.data() + off_, end - off_};
 }
 
 void
@@ -436,25 +532,61 @@ FrameWriter::set_limit(uint32_t limit)
 }
 
 bool
-FrameWriter::push(span<const byte> payload)
+FrameWriter::push(span<const byte> payload, span<const Handle> attachments)
 {
-	if (payload.empty() || payload.size() > limit_)
+	if (payload.empty() || payload.size() > limit_ || attachments.size() > 63)
 		return false;
 	if (off_ > 0) {
 		q_.erase(q_.begin(), q_.begin() + ptrdiff_t(off_));
+		for (auto &a : attachments_)
+			a.offset -= off_;
 		off_ = 0;
 	}
-	const size_t add = 4 + payload.size();
+	const size_t handles_size = inline_handles_ ? attachments.size() * 8 : 0;
+	const size_t add = 4 + handles_size + payload.size();
 	if (add > kMaxQueue || q_.size() > kMaxQueue - add)
 		return false;
 
-	const uint32_t n = uint32_t(payload.size());
+	const uint32_t n =
+		uint32_t(payload.size()) | (uint32_t(attachments.size()) << 25);
+	if (!attachments.empty() && !inline_handles_)
+		attachments_.push_back(
+			{q_.size(), {attachments.begin(), attachments.end()}});
 	q_.push_back(byte((n >> 24) & 0xff));
 	q_.push_back(byte((n >> 16) & 0xff));
 	q_.push_back(byte((n >> 8) & 0xff));
 	q_.push_back(byte(n & 0xff));
+	if (inline_handles_)
+		for (Handle h : attachments)
+			for (size_t i = 8; i > 0; i--)
+				q_.push_back(byte((uint64_t(h) >> ((i - 1) * 8)) & 0xff));
 	q_.insert(q_.end(), payload.begin(), payload.end());
 	return true;
+}
+
+span<const Handle>
+FrameWriter::pending_attachments() const
+{
+	if (!attachments_.empty() && attachments_.front().offset == off_)
+		return attachments_.front().handles;
+	return {};
+}
+
+void
+FrameWriter::attachments_sent()
+{
+	if (!attachments_.empty() && attachments_.front().offset == off_)
+		attachments_.erase(attachments_.begin());
+}
+
+vector<Handle>
+FrameWriter::take_all_attachments()
+{
+	vector<Handle> out;
+	for (auto &point : attachments_)
+		out.insert(out.end(), point.handles.begin(), point.handles.end());
+	attachments_.clear();
+	return out;
 }
 
 void
@@ -465,6 +597,7 @@ FrameWriter::consume(size_t n)
 		return;
 	q_.clear();
 	off_ = 0;
+	attachments_.clear();
 }
 
 void
@@ -472,6 +605,7 @@ FrameWriter::clear()
 {
 	q_.clear();
 	off_ = 0;
+	attachments_.clear();
 }
 
 }  // namespace ipc

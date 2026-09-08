@@ -7,7 +7,9 @@
 
 #include "libdn/ipc.hpp"
 
+#include "ipc/imaged.lxdr.hpp"
 #include "ipc/instance.lxdr.hpp"
+#include "ipc/thumbd.lxdr.hpp"
 #include "test.hpp"
 
 #include <cstddef>
@@ -21,6 +23,8 @@
 
 using namespace std;
 namespace inst = dawn::ipc::instance;
+namespace imaged = dawn::ipc::imaged;
+namespace thumbd = dawn::ipc::thumbd;
 
 template <typename T>
 static vector<byte>
@@ -387,6 +391,94 @@ test_huge_array_count()
 	}
 }
 
+static void
+test_daemon_schemas()
+{
+	imaged::DaemonHelloReply hello;
+	hello.value = imaged::DaemonHelloReplyAccepted{
+		imaged::DaemonLimits{4096, imaged::kImagedMaxBlobSize}};
+	auto bytes = encoded(hello);
+	dawn::ipc::Decoder hello_decoder(bytes);
+	imaged::DaemonHelloReplyView hello_view;
+	CHECK(decode(hello_decoder, hello_view));
+	const auto *accepted =
+		get_if<imaged::DaemonHelloReplyAcceptedView>(&hello_view.value);
+	CHECK(accepted != nullptr);
+	if (accepted)
+		CHECK(accepted->limits.max_blob_size == imaged::kImagedMaxBlobSize);
+
+	imaged::Pixmap pixmap;
+	pixmap.width = 2;
+	pixmap.height = 3;
+	pixmap.stride = 16;
+	pixmap.orientation = 6;
+	pixmap.pixels.value = imaged::BlobShared{48};
+	imaged::DecodeResponse response{pixmap, "wuffs", {}, true};
+	bytes = encoded(response);
+	dawn::ipc::Decoder decoder(bytes);
+	imaged::DecodeResponseView view;
+	CHECK(decode(decoder, view));
+	CHECK(holds_alternative<imaged::BlobSharedView>(view.pixmap.pixels.value));
+	CHECK(get<imaged::BlobSharedView>(view.pixmap.pixels.value).size == 48);
+
+	thumbd::ScaleResponse scaled;
+	scaled.width = 1;
+	scaled.height = 1;
+	scaled.rgba8.value =
+		thumbd::BlobInline{{byte{1}, byte{2}, byte{3}, byte{4}}};
+	bytes = encoded(scaled);
+	dawn::ipc::Decoder decoder2(bytes);
+	thumbd::ScaleResponseView scaled_view;
+	CHECK(decode(decoder2, scaled_view));
+	CHECK(holds_alternative<thumbd::BlobInlineView>(scaled_view.rgba8.value));
+	CHECK(
+		get<thumbd::BlobInlineView>(scaled_view.rgba8.value).bytes.size() == 4);
+}
+
+static void
+test_blob_envelope_sizes()
+{
+	imaged::DecodeRequest decode;
+	decode.data.value = imaged::BlobInline{};
+	imaged::Frame request;
+	request.payload.value = imaged::PayloadRequest{imaged::Request{1, decode}};
+	const size_t imaged_overhead = encoded(request).size();
+	get<imaged::PayloadRequest>(request.payload.value)
+		.request.decode.data.value =
+		imaged::BlobInline{vector<byte>(123, byte{1})};
+	CHECK(encoded(request).size() == imaged_overhead + 123);
+	imaged::DecodeResponse decoded;
+	decoded.pixmap.width = 2;
+	decoded.pixmap.height = 2;
+	decoded.pixmap.stride = 16;
+	decoded.pixmap.pixels.value = imaged::BlobInline{};
+	decoded.loader = "variable-loader";
+	decoded.icc = vector<byte>(31, byte{2});
+	imaged::Frame decoded_frame;
+	decoded_frame.payload.value = imaged::PayloadResponse{
+		imaged::Response{2, imaged::Result{imaged::ResultDecoded{decoded}}}};
+	const size_t decoded_overhead = encoded(decoded_frame).size();
+	get<imaged::ResultDecoded>(
+		get<imaged::PayloadResponse>(decoded_frame.payload.value)
+			.response.result.value)
+		.decoded.pixmap.pixels.value =
+		imaged::BlobInline{vector<byte>(89, byte{3})};
+	CHECK(encoded(decoded_frame).size() == decoded_overhead + 89);
+
+	thumbd::ScaleResponse scale;
+	scale.width = 1;
+	scale.height = 1;
+	scale.rgba8.value = thumbd::BlobInline{};
+	thumbd::Frame response;
+	response.payload.value = thumbd::PayloadResponse{
+		thumbd::Response{1, thumbd::Result{thumbd::ResultScaled{scale}}}};
+	const size_t thumbd_overhead = encoded(response).size();
+	get<thumbd::PayloadResponse>(response.payload.value).response.result.value =
+		thumbd::ResultScaled{thumbd::ScaleResponse{
+			1, 1, thumbd::Blob{thumbd::BlobInline{vector<byte>(77)}}}};
+	CHECK(encoded(response).size() == thumbd_overhead + 77);
+}
+
 int
 main()
 {
@@ -401,5 +493,7 @@ main()
 		{"invalid enum", test_zero_and_unknown_enum},
 		{"unknown union tag", test_unknown_union_tag},
 		{"size limits", test_huge_array_count},
+		{"daemon schemas", test_daemon_schemas},
+		{"blob envelope sizes", test_blob_envelope_sizes},
 	});
 }

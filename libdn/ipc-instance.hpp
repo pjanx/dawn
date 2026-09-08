@@ -88,7 +88,7 @@ public:
 		// and is only valid until this returns; call is not.
 		std::function<void(Call call, const RequestView &req)> on_request;
 		// Event-loop hooks, passed straight through to ServerCore.
-		std::function<void(uint64_t id, Waitable w)> watch_read;
+		std::function<bool(uint64_t id, Waitable w)> watch_read;
 		std::function<void(uint64_t id)> unwatch;
 		std::function<void(uint64_t id, Waitable w, bool enable)> watch_write;
 	};

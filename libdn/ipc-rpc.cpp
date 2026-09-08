@@ -103,20 +103,24 @@ Channel::flush(chrono::milliseconds &budget)
 }
 
 bool
-Channel::send(span<const byte> payload, chrono::milliseconds &budget)
+Channel::send(span<const byte> payload, chrono::milliseconds &budget,
+	span<const Handle> attachments)
 {
-	if (!conn_.write_payload(payload))
+	if (!conn_.write_payload(payload, attachments))
 		return false;
 	return this->flush(budget);
 }
 
 bool
-Channel::recv(vector<byte> &payload, chrono::milliseconds &budget)
+Channel::recv(vector<byte> &payload, chrono::milliseconds &budget,
+	vector<Handle> *attachments)
 {
 	while (true) {
 		switch (conn_.read()) {
 		case Connection::Status::Frame:
-			return conn_.take_payload(payload);
+			if (attachments)
+				return conn_.take_payload(payload, *attachments);
+			return conn_.take_plain_payload(payload);
 		case Connection::Status::NeedMore:
 			if (!this->wait(Connection::Direction::Read, budget))
 				return false;
@@ -174,8 +178,12 @@ ServerCore::poll_listen()
 			return;
 		trace("accepted %llu from pid %lu", (unsigned long long) id,
 			(unsigned long) it->second.conn.peer_pid());
-		if (cfg_.watch_read)
-			cfg_.watch_read(id, it->second.conn.read_waitable());
+		if (cfg_.watch_read &&
+			!cfg_.watch_read(id, it->second.conn.read_waitable())) {
+			trace("refused connection %llu: event loop is full",
+				(unsigned long long) id);
+			this->drop(id);
+		}
 	}
 }
 
@@ -203,18 +211,27 @@ ServerCore::poll_read(uint64_t id)
 		}
 
 		vector<byte> payload;
-		if (!c.conn.take_payload(payload)) {
+		vector<Handle> attachments;
+		if (!c.conn.take_payload(payload, attachments)) {
 			this->drop(id);
 			return;
 		}
-		if (cfg_.on_payload && !cfg_.on_payload(id, payload)) {
-			this->drop(id);
-			return;
+		if (cfg_.on_payload) {
+			if (!cfg_.on_payload(id, payload, std::move(attachments))) {
+				this->drop(id);
+				return;
+			}
+		} else {
+			OwnedHandles owned(std::move(attachments));
+			(void) owned;
 		}
 
 		const auto after = conns_.find(id);
 		if (after == conns_.end())
 			return;
+		if (cfg_.watch_write)
+			cfg_.watch_write(id, after->second.conn.write_waitable(),
+				after->second.conn.wants_write());
 		if (after->second.closing) {
 			if (!after->second.conn.wants_write())
 				this->drop(id);
@@ -247,14 +264,15 @@ ServerCore::poll_write(uint64_t id)
 }
 
 bool
-ServerCore::send(uint64_t id, span<const byte> payload)
+ServerCore::send(
+	uint64_t id, span<const byte> payload, span<const Handle> attachments)
 {
 	const auto it = conns_.find(id);
 	if (it == conns_.end())
 		return false;
 
 	Conn &c = it->second;
-	if (!c.conn.write_payload(payload)) {
+	if (!c.conn.write_payload(payload, attachments)) {
 		this->drop(id);
 		return false;
 	}

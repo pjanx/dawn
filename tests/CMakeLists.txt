@@ -4,7 +4,6 @@ target_link_libraries(gen-fixtures PRIVATE
 	${DAWN_LCMS2_TARGET}
 )
 
-pkg_check_modules(LIBPNG IMPORTED_TARGET libpng)
 if (LIBPNG_FOUND)
 	add_executable(gen-sample gen-sample.c)
 	target_link_libraries(gen-sample PRIVATE
@@ -129,11 +128,13 @@ add_executable(test-lxdr test-lxdr.cpp)
 target_link_libraries(test-lxdr PRIVATE dawn::libdn)
 add_test(NAME lxdr COMMAND test-lxdr)
 
-if(NOT APPLE)
-	add_executable(test-ipc test-ipc.cpp)
-	target_link_libraries(test-ipc PRIVATE dawn::libdn)
-	add_test(NAME ipc COMMAND test-ipc)
-endif()
+add_executable(test-ipc test-ipc.cpp)
+target_link_libraries(test-ipc PRIVATE dawn::libdn)
+add_test(NAME ipc COMMAND test-ipc)
+
+add_executable(test-shm test-shm.cpp)
+target_link_libraries(test-shm PRIVATE dawn::libdn)
+add_test(NAME shm COMMAND test-shm)
 
 # The main desktop file is rewritten by dn-update-desktop-files on install.
 find_program(DAWN_DESKTOP_FILE_VALIDATE desktop-file-validate)

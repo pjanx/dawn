@@ -87,12 +87,25 @@ add_library(dawn::libdn ALIAS libdn)
 
 if (WIN32)
 	target_sources(libdn PRIVATE
-		config-windows.cpp ipc-windows.cpp ipc-rpc.cpp ipc-instance.cpp)
+		config-windows.cpp
+		ipc-instance.cpp
+		ipc-loop-windows.cpp
+		ipc-rpc.cpp
+		ipc-shm-windows.cpp
+		ipc-windows.cpp
+	)
 	target_link_libraries(libdn PRIVATE advapi32)
 elseif (APPLE)
 	enable_language(OBJCXX)
 	find_library(DAWN_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
-	target_sources(libdn PRIVATE config-macos.mm)
+	target_sources(libdn PRIVATE
+		config-macos.mm
+		ipc-instance.cpp
+		ipc-loop-unix.cpp
+		ipc-rpc.cpp
+		ipc-shm-unix.cpp
+		ipc-unix.cpp
+	)
 	target_link_libraries(libdn PRIVATE "${DAWN_COREFOUNDATION_FRAMEWORK}")
 
 	if (DAWN_WITH_IMAGEIO OR DAWN_WITH_CGPDF)
@@ -111,7 +124,13 @@ elseif (APPLE)
 	endif()
 elseif (NOT APPLE)
 	target_sources(libdn PRIVATE
-		config-unix.cpp ipc-unix.cpp ipc-rpc.cpp ipc-instance.cpp)
+		config-unix.cpp
+		ipc-instance.cpp
+		ipc-loop-unix.cpp
+		ipc-rpc.cpp
+		ipc-shm-unix.cpp
+		ipc-unix.cpp
+	)
 endif()
 
 # Generated LXDR header; ipc-instance.cpp binds it to the RPC core, and
@@ -123,9 +142,28 @@ lxdr_generate(
 	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 	${PROJECT_SOURCE_DIR}/ipc/instance.lxdr
 )
+lxdr_generate(
+	${PROJECT_BINARY_DIR}/generated/ipc/imaged.lxdr.hpp
+	dawn::ipc::imaged
+	Imaged
+	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
+	${PROJECT_SOURCE_DIR}/ipc/imaged.lxdr
+)
+lxdr_generate(
+	${PROJECT_BINARY_DIR}/generated/ipc/thumbd.lxdr.hpp
+	dawn::ipc::thumbd
+	Thumbd
+	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
+	${PROJECT_SOURCE_DIR}/ipc/thumbd.lxdr
+)
 add_custom_target(dn-tiff-tables
 	DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/tiff-tables.h)
-add_dependencies(libdn dn-tiff-tables lxdr-instance_lxdr_hpp)
+add_dependencies(libdn
+	dn-tiff-tables
+	lxdr-imaged_lxdr_hpp
+	lxdr-instance_lxdr_hpp
+	lxdr-thumbd_lxdr_hpp
+)
 
 target_include_directories(libdn
 	PUBLIC

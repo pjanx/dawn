@@ -117,7 +117,7 @@ Call::complete(Result result)
 	frame.payload.value = PayloadResponse{std::move(response)};
 	vector<byte> buf;
 	if (encode_frame(frame, buf))
-		(void) s->core->send(s->conn, buf);
+		(void) s->core->send(s->conn, buf, {});
 	s->owner->retire(s->conn, s->id);
 }
 
@@ -127,7 +127,10 @@ Server::Server(Listener listener, Config cfg) : cfg_(std::move(cfg))
 {
 	ServerCore::Config core;
 	core.max_payload_size = this->cfg_.max_payload_size;
-	core.on_payload = [this](uint64_t id, span<const byte> payload) {
+	core.on_payload = [this](uint64_t id, span<const byte> payload,
+						  vector<Handle> attachments) {
+		for (Handle h : attachments)
+			close_handle(h);
 		return this->on_payload(id, payload);
 	};
 	core.on_closed = [this](uint64_t id) { this->on_closed(id); };
@@ -172,7 +175,7 @@ bool
 Server::send_frame(uint64_t id, const Frame &frame)
 {
 	vector<byte> buf;
-	return encode_frame(frame, buf) && this->core_->send(id, buf);
+	return encode_frame(frame, buf) && this->core_->send(id, buf, {});
 }
 
 void
@@ -333,9 +336,9 @@ Client::connect(
 	Frame frame;
 	frame.payload.value = PayloadHello{std::move(hello)};
 	vector<byte> buf;
-	if (!encode_frame(frame, buf) || !chan.send(buf, left))
+	if (!encode_frame(frame, buf) || !chan.send(buf, left, {}))
 		return fail(HelloStatus::Unavailable, "send");
-	if (!chan.recv(buf, left))
+	if (!chan.recv(buf, left, nullptr))
 		return fail(HelloStatus::Unavailable, "no reply");
 
 	Decoder dec(buf);
@@ -378,7 +381,7 @@ Client::cancel(uint64_t id)
 	frame.payload.value = PayloadCancel{Cancel{id}};
 	vector<byte> buf;
 	if (encode_frame(frame, buf))
-		(void) this->chan_.send(buf, left);
+		(void) this->chan_.send(buf, left, {});
 }
 
 bool
@@ -394,11 +397,11 @@ Client::call(const Request &req, Received<ResponseView> &out, Error *error,
 	Frame frame;
 	frame.payload.value = PayloadRequest{req};
 	vector<byte> buf;
-	if (!encode_frame(frame, buf) || !this->chan_.send(buf, left)) {
+	if (!encode_frame(frame, buf) || !this->chan_.send(buf, left, {})) {
 		set_internal(error);
 		return false;
 	}
-	if (!this->chan_.recv(buf, left)) {
+	if (!this->chan_.recv(buf, left, nullptr)) {
 		this->cancel(req.id);
 		set_internal(error);
 		return false;
@@ -445,7 +448,7 @@ Client::open(const vector<string> &urls, string_view activation_token,
 	open_req.browse = browse;
 
 	Request req;
-	req.id = ++this->last_id_;
+	req.id = this->last_id_ += 1;
 	req.body.value = RequestBodyOpen{std::move(open_req)};
 
 	Received<ResponseView> response;

@@ -44,3 +44,40 @@ struct Error {
 struct Cancel {
 	u64 id;
 };
+
+// Where a large payload lives. Inline stays within the negotiated maximum
+// payload; shared means the Nth attachment on the frame carrying it.
+union Blob switch (enum BlobKind {
+	INLINE,
+	SHARED,
+} kind) {
+case INLINE:
+	u8 bytes<>;
+case SHARED:
+	u64 size;
+};
+
+union DaemonHelloReply switch (enum DaemonHelloResult {
+	ACCEPTED,
+	VERSION_MISMATCH,
+	SESSION_MISMATCH,
+} result) {
+case ACCEPTED:
+	struct DaemonLimits {
+		u32 max_payload_size;
+		u64 max_blob_size;
+	} limits;
+case VERSION_MISMATCH:
+	u32 server_protocol_version;
+case SESSION_MISMATCH:
+	void;
+};
+
+// Working format: BGRA_PREMUL_4X16LE, stride in bytes.
+struct Pixmap {
+	u32 width;
+	u32 height;
+	u32 stride;
+	i32 orientation; // Exif, 0 = unknown; carried, not applied
+	Blob pixels;
+};

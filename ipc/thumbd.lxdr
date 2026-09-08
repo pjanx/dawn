@@ -1,0 +1,57 @@
+//
+// thumbd.lxdr: thumbnail scaler daemon protocol
+//
+// Copyright The Dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+const THUMBD_PROTOCOL_VERSION = 1;
+const THUMBD_MAX_BLOB_SIZE = 1073741824;
+
+struct ScaleRequest {
+	Pixmap source;
+	u32 out_width;
+	u32 out_height;
+};
+
+struct ScaleResponse {
+	u32 width;
+	u32 height;
+	Blob rgba8; // straight, non-premultiplied, stride = width * 4
+};
+
+struct Request {
+	u64 id;
+	ScaleRequest scale;
+};
+
+struct Response {
+	u64 id;
+	union Result switch (enum ResponseKind {
+		SCALED,
+		ERROR,
+	} kind) {
+	case SCALED:
+		ScaleResponse scaled;
+	case ERROR:
+		Error error;
+	} result;
+};
+
+struct Frame {
+	union Payload switch (enum FrameKind {
+		HELLO,
+		HELLO_REPLY,
+		REQUEST,
+		RESPONSE,
+	} kind) {
+	case HELLO:
+		Hello hello;
+	case HELLO_REPLY:
+		DaemonHelloReply hello_reply;
+	case REQUEST:
+		Request request;
+	case RESPONSE:
+		Response response;
+	} payload;
+};

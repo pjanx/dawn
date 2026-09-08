@@ -6,9 +6,12 @@
 //
 
 #include "libdn/ipc-instance.hpp"
+#include "libdn/ipc-loop.hpp"
+#include "libdn/ipc-shm.hpp"
 #include "libdn/ipc.hpp"
 #include "test.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
@@ -24,8 +27,12 @@
 #include <vector>
 
 #ifndef _WIN32
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#else
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 using namespace std;
@@ -58,7 +65,7 @@ struct SocketPair {
 static bool
 write_all(int fd, const void *p, size_t n)
 {
-	const auto *b = static_cast<const uint8_t *>(p);
+	const auto *b = (const uint8_t *) p;
 	size_t off = 0;
 	while (off < n) {
 		const ssize_t w = ::write(fd, b + off, n - off);
@@ -72,6 +79,24 @@ write_all(int fd, const void *p, size_t n)
 		off += size_t(w);
 	}
 	return true;
+}
+
+static bool
+send_fd_with_bytes(int socket, int fd, span<const uint8_t> bytes)
+{
+	iovec iov{const_cast<uint8_t *>(bytes.data()), bytes.size()};
+	alignas(cmsghdr) char control[CMSG_SPACE(sizeof fd)]{};
+	msghdr message{};
+	message.msg_iov = &iov;
+	message.msg_iovlen = 1;
+	message.msg_control = control;
+	message.msg_controllen = sizeof control;
+	cmsghdr *header = CMSG_FIRSTHDR(&message);
+	header->cmsg_level = SOL_SOCKET;
+	header->cmsg_type = SCM_RIGHTS;
+	header->cmsg_len = CMSG_LEN(sizeof fd);
+	memcpy(CMSG_DATA(header), &fd, sizeof fd);
+	return sendmsg(socket, &message, 0) == ssize_t(bytes.size());
 }
 
 static void
@@ -123,7 +148,7 @@ test_fragmented()
 	}
 
 	vector<byte> got;
-	CHECK(conn.take_payload(got));
+	CHECK(conn.take_plain_payload(got));
 	CHECK(payload_eq(got, kPayload));
 }
 
@@ -148,12 +173,12 @@ test_two_frames_one_write()
 
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> first;
-	CHECK(conn.take_payload(first));
+	CHECK(conn.take_plain_payload(first));
 	CHECK(payload_eq(first, kA));
 
 	CHECK(conn.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> second;
-	CHECK(conn.take_payload(second));
+	CHECK(conn.take_plain_payload(second));
 	CHECK(payload_eq(second, kB));
 }
 
@@ -202,12 +227,238 @@ test_write_read_pair()
 
 	static constexpr uint8_t kPayload[] = {1, 2, 3, 4, 5};
 	const auto payload = as_bytes(span(kPayload));
-	CHECK(a.write_payload(payload));
+	CHECK(a.write_payload(payload, {}));
 	CHECK(a.flush());
 	CHECK(b.read() == dawn::ipc::Connection::Status::Frame);
 	vector<byte> got;
-	CHECK(b.take_payload(got));
+	CHECK(b.take_plain_payload(got));
 	CHECK(payload_eq(got, kPayload));
+}
+
+static void
+test_attachment_pair()
+{
+	SocketPair pair;
+	dawn::ipc::Connection a(pair.take(0)), b(pair.take(1));
+	static constexpr char kShared[] = "dawn";
+	auto memory = dawn::ipc::SharedMemory::copy(kShared, 4);
+	CHECK(memory.ok());
+	static constexpr byte payload[]{byte{42}};
+	const dawn::ipc::Handle handle = memory.handle();
+	CHECK(a.write_payload(payload, span(&handle, 1)));
+	CHECK(a.flush());
+	CHECK(b.read() == dawn::ipc::Connection::Status::Frame);
+	vector<byte> got;
+	vector<dawn::ipc::Handle> handles;
+	CHECK(b.take_payload(got, handles));
+	CHECK(got.size() == 1 && got[0] == byte{42});
+	CHECK(handles.size() == 1);
+	if (handles.size() == 1) {
+		auto mapped = dawn::ipc::SharedMemory::map(handles[0], 4);
+		CHECK(mapped.ok() && memcmp(mapped.data(), "dawn", 4) == 0);
+	}
+}
+
+static vector<int>
+open_fds()
+{
+	vector<int> out;
+	for (int fd = 0; fd < 256; fd++)
+		if (fcntl(fd, F_GETFD) >= 0)
+			out.push_back(fd);
+	return out;
+}
+
+static void
+test_close_discards_attachments()
+{
+	SocketPair pair;
+	dawn::ipc::Connection a(pair.take(0)), b(pair.take(1));
+	const byte data[4]{};
+	auto memory = dawn::ipc::SharedMemory::copy(data, sizeof data);
+	const dawn::ipc::Handle handle = memory.handle();
+	static constexpr byte payload[]{byte{1}};
+	CHECK(a.write_payload(payload, span(&handle, 1)));
+	CHECK(a.flush());
+	const vector<int> before = open_fds();
+	CHECK(b.read() == dawn::ipc::Connection::Status::Frame);
+	const vector<int> after = open_fds();
+	vector<int> received;
+	for (int fd : after)
+		if (find(before.begin(), before.end(), fd) == before.end())
+			received.push_back(fd);
+	CHECK(received.size() == 1);
+	b.close();
+	if (received.size() == 1)
+		CHECK(fcntl(received[0], F_GETFD) < 0 && errno == EBADF);
+}
+
+static void
+test_rejects_undeclared_attachment()
+{
+	SocketPair pair;
+	dawn::ipc::Connection receiver(pair.take(0));
+	const byte data[4]{};
+	auto memory = dawn::ipc::SharedMemory::copy(data, sizeof data);
+	const uint8_t wire[]{0, 0, 0, 1, 42};
+	CHECK(send_fd_with_bytes(pair.fds[1], int(memory.handle()), wire));
+	CHECK(receiver.read() == dawn::ipc::Connection::Status::Frame);
+	vector<byte> payload;
+	vector<dawn::ipc::Handle> handles;
+	CHECK(!receiver.take_payload(payload, handles));
+	CHECK(!receiver.ok());
+	CHECK(handles.empty());
+}
+#endif
+
+static void
+test_attachment_length_prefix()
+{
+	dawn::ipc::FrameWriter writer;
+	static constexpr byte payload[]{byte{1}, byte{2}};
+	CHECK(writer.push(payload, {}));
+	auto plain = writer.pending();
+	CHECK(plain.size() == 6);
+	CHECK(plain[0] == byte{0} && plain[1] == byte{0} && plain[2] == byte{0} &&
+		plain[3] == byte{2});
+	writer.clear();
+	const dawn::ipc::Handle handles[]{3, 4};
+	CHECK(writer.push(payload, handles));
+	auto attached = writer.pending();
+	CHECK(attached.size() == 6);
+	CHECK(attached[0] == byte{4} && attached[3] == byte{2});
+}
+
+static void
+test_attachment_reader()
+{
+	dawn::ipc::FrameReader reader;
+	uint8_t wire[] = {6, 0, 0, 2, 9, 8};
+	memcpy(reader.buffer().data(), wire, 4);
+	CHECK(reader.advance(4) == dawn::ipc::FrameReader::Status::NeedMore);
+	CHECK(reader.attachment_count() == 3);
+	memcpy(reader.buffer().data(), wire + 4, 2);
+	CHECK(reader.advance(2) == dawn::ipc::FrameReader::Status::Frame);
+	vector<byte> payload;
+	vector<dawn::ipc::Handle> handles{99};
+	CHECK(reader.take_payload(payload, handles));
+	CHECK(handles.empty());
+	CHECK(payload.size() == 2);
+}
+
+static void
+test_attachment_boundaries()
+{
+	dawn::ipc::FrameWriter writer;
+	static constexpr byte payload[]{byte{1}};
+	const dawn::ipc::Handle first[]{10};
+	const dawn::ipc::Handle second[]{20, 21};
+	CHECK(writer.push(payload, first));
+	CHECK(writer.push(payload, {}));
+	CHECK(writer.push(payload, second));
+	CHECK(writer.pending_attachments().size() == 1);
+	CHECK(writer.pending().size() == 10);
+	writer.attachments_sent();
+	writer.consume(10);
+	CHECK(writer.pending_attachments().size() == 2);
+	CHECK(writer.pending().size() == 5);
+	(void) writer.take_all_attachments();
+}
+
+static void
+test_clear_discards_attachment_points()
+{
+	dawn::ipc::FrameWriter writer;
+	static constexpr byte attached[]{byte{9}};
+	const dawn::ipc::Handle handle[]{10};
+	CHECK(writer.push(attached, handle));
+	CHECK(writer.pending_attachments().size() == 1);
+	writer.clear();
+	static constexpr byte plain[]{byte{1}, byte{2}};
+	CHECK(writer.push(plain, {}));
+	CHECK(writer.pending_attachments().empty());
+	const auto pending = writer.pending();
+	CHECK(pending.size() == 6 && pending[0] == byte{0} &&
+		pending[1] == byte{0} && pending[2] == byte{0} &&
+		pending[3] == byte{2} && pending[4] == byte{1} &&
+		pending[5] == byte{2});
+}
+
+static void
+test_inline_attachment_encoding()
+{
+	dawn::ipc::FrameWriter writer;
+	writer.set_inline_handles(true);
+	const byte payload[]{byte{7}, byte{8}};
+	const dawn::ipc::Handle sent[]{0x01020304};
+	CHECK(writer.push(payload, sent));
+	const auto application = writer.pending();
+	CHECK(application.size() == 14 && application[0] == byte{2} &&
+		application[1] == byte{0} && application[2] == byte{0} &&
+		application[3] == byte{2} && application[12] == byte{7} &&
+		application[13] == byte{8});
+
+	dawn::ipc::FrameReader reader;
+	reader.set_inline_handles(true);
+	memcpy(reader.buffer().data(), application.data(), 4);
+	CHECK(reader.advance(4) == dawn::ipc::FrameReader::Status::NeedMore);
+	memcpy(reader.buffer().data(), application.data() + 4, 10);
+	CHECK(reader.advance(10) == dawn::ipc::FrameReader::Status::Frame);
+	vector<byte> received;
+	vector<dawn::ipc::Handle> handles;
+	CHECK(reader.take_payload(received, handles));
+	CHECK(received.size() == 2 && received[0] == byte{7} &&
+		received[1] == byte{8});
+	CHECK(handles.size() == 1 && handles[0] == sent[0]);
+}
+
+static void
+test_reader_rejects_reserved_bit()
+{
+	dawn::ipc::FrameReader reader;
+	const byte reserved[]{byte{0x80}, byte{0}, byte{0}, byte{0}};
+	memcpy(reader.buffer().data(), reserved, sizeof reserved);
+	CHECK(reader.advance(sizeof reserved) ==
+		dawn::ipc::FrameReader::Status::Error);
+}
+
+#ifdef _WIN32
+static void
+test_inline_attachment_discard()
+{
+	HANDLE handle = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	CHECK(handle != nullptr);
+	if (!handle)
+		return;
+
+	dawn::ipc::FrameWriter writer;
+	writer.set_inline_handles(true);
+	const dawn::ipc::Handle sent[]{(dawn::ipc::Handle) handle};
+	const byte payload[]{byte{1}, byte{2}};
+	CHECK(writer.push(payload, sent));
+	const auto frame = writer.pending();
+
+	dawn::ipc::FrameReader reader;
+	reader.set_inline_handles(true);
+	memcpy(reader.buffer().data(), frame.data(), 4);
+	CHECK(reader.advance(4) == dawn::ipc::FrameReader::Status::NeedMore);
+	memcpy(reader.buffer().data(), frame.data() + 4, 9);
+	CHECK(reader.advance(9) == dawn::ipc::FrameReader::Status::NeedMore);
+	reader.discard();
+
+	DWORD flags = 0;
+	CHECK(!::GetHandleInformation(handle, &flags));
+	CHECK(::GetLastError() == ERROR_INVALID_HANDLE);
+}
+
+static void
+test_loop_refuses_excess_connections()
+{
+	dawn::ipc::Loop loop;
+	CHECK(loop.watch_read(dawn::ipc::Loop::kListener, 1));
+	for (uint64_t id = 1; id <= 31; id++)
+		CHECK(loop.watch_read(id, dawn::ipc::Waitable(id + 1)));
+	CHECK(!loop.watch_read(32, 33));
 }
 #endif
 
@@ -255,7 +506,7 @@ test_endpoint_roundtrip()
 
 	static constexpr uint8_t kPayload[] = {9, 8, 7};
 	const auto payload = as_bytes(span(kPayload));
-	CHECK(connect.conn.write_payload(payload));
+	CHECK(connect.conn.write_payload(payload, {}));
 	CHECK(connect.conn.flush());
 
 	while (server.read() == dawn::ipc::Connection::Status::NeedMore) {
@@ -264,13 +515,127 @@ test_endpoint_roundtrip()
 			break;
 	}
 	vector<byte> got;
-	CHECK(server.take_payload(got));
+	CHECK(server.take_plain_payload(got));
 	CHECK(payload_eq(got, kPayload));
 
 	// The peer identity is what stands in for a same-user check.
 	CHECK(server.peer_pid() != 0);
 	CHECK(connect.conn.peer_pid() != 0);
 }
+
+#ifdef _WIN32
+static dawn::ipc::Connection
+accept_connection(dawn::ipc::Listener &listener)
+{
+	for (int i = 0; i < 100; i++) {
+		auto connection = listener.accept();
+		if (connection.ok())
+			return connection;
+		::WaitForSingleObject((HANDLE) listener.waitable(), 20);
+	}
+	return {};
+}
+
+static bool
+flush_connection(dawn::ipc::Connection &connection)
+{
+	for (int i = 0; i < 100; i++) {
+		if (connection.flush())
+			return true;
+		if (!connection.ok() ||
+			connection.wait(dawn::ipc::Connection::Direction::Write, 2000) !=
+				dawn::ipc::Connection::Ready::Ok)
+			return false;
+	}
+	return false;
+}
+
+static bool
+read_frame(dawn::ipc::Connection &connection)
+{
+	for (int i = 0; i < 100; i++) {
+		const auto status = connection.read();
+		if (status == dawn::ipc::Connection::Status::Frame)
+			return true;
+		if (status != dawn::ipc::Connection::Status::NeedMore ||
+			connection.wait(dawn::ipc::Connection::Direction::Read, 2000) !=
+				dawn::ipc::Connection::Ready::Ok)
+			return false;
+	}
+	return false;
+}
+
+static void
+test_windows_attachment_protocol()
+{
+	auto endpoint = dawn::ipc::Endpoint::listen("test-windows-attachments");
+	CHECK(endpoint.status == dawn::ipc::Endpoint::ListenStatus::Ok);
+	if (endpoint.status != dawn::ipc::Endpoint::ListenStatus::Ok)
+		return;
+	auto client = dawn::ipc::Endpoint::connect("test-windows-attachments");
+	CHECK(client.status == dawn::ipc::Endpoint::ConnectStatus::Ok);
+	auto server = accept_connection(endpoint.listener);
+	CHECK(client.conn.ok() && server.ok());
+	if (!client.conn.ok() || !server.ok())
+		return;
+
+	const uint8_t first_value = 17, second_value = 29;
+	auto first = dawn::ipc::SharedMemory::copy(&first_value, 1);
+	auto second = dawn::ipc::SharedMemory::copy(&second_value, 1);
+	CHECK(first.ok() && second.ok());
+	const dawn::ipc::Handle first_handle[]{first.handle()};
+	const dawn::ipc::Handle second_handle[]{second.handle()};
+	const byte first_payload[]{byte{1}};
+	const byte second_payload[]{byte{2}};
+	CHECK(client.conn.write_payload(first_payload, first_handle));
+	CHECK(client.conn.write_payload(second_payload, second_handle));
+	first.close();
+	second.close();
+	CHECK(flush_connection(client.conn));
+
+	for (uint8_t expected : {uint8_t(17), uint8_t(29)}) {
+		CHECK(read_frame(server));
+		vector<byte> payload;
+		vector<dawn::ipc::Handle> handles;
+		CHECK(server.take_payload(payload, handles));
+		CHECK(handles.size() == 1);
+		if (handles.size() == 1) {
+			auto memory = dawn::ipc::SharedMemory::map(handles[0], 1);
+			handles.clear();
+			CHECK(memory.ok() && memory.data()[0] == expected);
+		}
+	}
+}
+
+static void
+test_windows_attachment_teardown()
+{
+	auto endpoint = dawn::ipc::Endpoint::listen("test-windows-handle-close");
+	CHECK(endpoint.status == dawn::ipc::Endpoint::ListenStatus::Ok);
+	if (endpoint.status != dawn::ipc::Endpoint::ListenStatus::Ok)
+		return;
+	auto client = dawn::ipc::Endpoint::connect("test-windows-handle-close");
+	auto server = accept_connection(endpoint.listener);
+	CHECK(client.conn.ok() && server.ok());
+	const byte value{};
+	auto memory = dawn::ipc::SharedMemory::copy(&value, 1);
+	const dawn::ipc::Handle handle[]{memory.handle()};
+	const byte payload[]{byte{1}};
+	CHECK(client.conn.write_payload(payload, handle));
+	CHECK(flush_connection(client.conn));
+	client.conn.close();
+	CHECK(read_frame(server));
+	vector<byte> received;
+	vector<dawn::ipc::Handle> handles;
+	CHECK(server.take_payload(received, handles));
+	CHECK(handles.size() == 1);
+	if (handles.size() == 1) {
+		auto mapped = dawn::ipc::SharedMemory::map(handles[0], 1);
+		handles.clear();
+		CHECK(mapped.ok());
+	}
+}
+#endif
 
 // --- Instance service --------------------------------------------------------
 
@@ -375,6 +740,7 @@ Fixture::start()
 	cfg.max_payload_size = kMaxPayload;
 	cfg.watch_read = [this](uint64_t id, dawn::ipc::Waitable) {
 		this->conn_id = id;
+		return true;
 	};
 	cfg.on_request = [this](inst::Call call, const inst::RequestView &req) {
 		this->requests++;
@@ -402,7 +768,7 @@ bool
 Fixture::send(const inst::Frame &frame)
 {
 	const vector<byte> buf = frame_bytes(frame);
-	return this->peer.write_payload(buf) && this->peer.flush();
+	return this->peer.write_payload(buf, {}) && this->peer.flush();
 }
 
 bool
@@ -412,7 +778,7 @@ Fixture::recv(inst::FrameView &view, vector<byte> &storage)
 		this->poll();
 		const auto st = this->peer.read();
 		if (st == dawn::ipc::Connection::Status::Frame) {
-			if (!this->peer.take_payload(storage))
+			if (!this->peer.take_plain_payload(storage))
 				return false;
 			dawn::ipc::Decoder dec(storage);
 			return decode(dec, view) && dec.remaining() == 0;
@@ -436,7 +802,7 @@ Fixture::closed()
 			return true;
 		if (st == dawn::ipc::Connection::Status::Frame) {
 			vector<byte> drop;
-			(void) this->peer.take_payload(drop);
+			(void) this->peer.take_plain_payload(drop);
 			continue;
 		}
 		this->peer.wait(dawn::ipc::Connection::Direction::Read, 5);
@@ -768,7 +1134,7 @@ test_instance_oversize()
 
 	const vector<byte> buf = frame_bytes(frame);
 	CHECK(buf.size() > kMaxPayload);
-	CHECK(f.peer.write_payload(buf));
+	CHECK(f.peer.write_payload(buf, {}));
 	(void) f.peer.flush();
 	CHECK(f.closed());
 	CHECK(f.requests == 0);
@@ -784,6 +1150,21 @@ main()
 		{"empty payload", test_empty_payload},
 		{"oversize payload", test_oversize_length},
 		{"connection pair", test_write_read_pair},
+		{"attachment pair", test_attachment_pair},
+		{"close discards attachments", test_close_discards_attachments},
+		{"reject undeclared attachment", test_rejects_undeclared_attachment},
+#endif
+		{"attachment length prefix", test_attachment_length_prefix},
+		{"attachment reader", test_attachment_reader},
+		{"attachment boundaries", test_attachment_boundaries},
+		{"clear attachment points", test_clear_discards_attachment_points},
+		{"inline attachment encoding", test_inline_attachment_encoding},
+		{"reserved bit rejection", test_reader_rejects_reserved_bit},
+#ifdef _WIN32
+		{"inline attachment discard", test_inline_attachment_discard},
+		{"loop capacity refusal", test_loop_refuses_excess_connections},
+		{"Windows attachment protocol", test_windows_attachment_protocol},
+		{"Windows attachment teardown", test_windows_attachment_teardown},
 #endif
 		{"listener arbitration", test_listen_arbitrates},
 		{"endpoint round trip", test_endpoint_roundtrip},

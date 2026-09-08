@@ -60,10 +60,10 @@ public:
 	void set_max_payload(uint32_t limit);
 
 	// Both consume budget as time passes, and fail once it runs out.
-	bool send(
-		std::span<const std::byte> payload, std::chrono::milliseconds &budget);
-	bool recv(
-		std::vector<std::byte> &payload, std::chrono::milliseconds &budget);
+	bool send(std::span<const std::byte> payload,
+		std::chrono::milliseconds &budget, std::span<const Handle> attachments);
+	bool recv(std::vector<std::byte> &payload,
+		std::chrono::milliseconds &budget, std::vector<Handle> *attachments);
 
 private:
 	Connection conn_;
@@ -83,12 +83,14 @@ public:
 		uint32_t max_payload_size = Connection::kMaxPayload;
 		// One whole payload arrived. Returning false is a protocol
 		// error and drops the connection.
-		std::function<bool(uint64_t id, std::span<const std::byte>)> on_payload;
+		std::function<bool(
+			uint64_t id, std::span<const std::byte>, std::vector<Handle>)>
+			on_payload;
 		// The connection is gone; nothing can be sent on it any more.
 		std::function<void(uint64_t id)> on_closed;
 		// Event-loop hooks. Connections are named by an opaque id;
 		// the Waitable is what the loop has to watch for it.
-		std::function<void(uint64_t id, Waitable w)> watch_read;
+		std::function<bool(uint64_t id, Waitable w)> watch_read;
 		std::function<void(uint64_t id)> unwatch;
 		std::function<void(uint64_t id, Waitable w, bool enable)> watch_write;
 	};
@@ -109,7 +111,8 @@ public:
 
 	// Queue one payload. False means the connection is gone or refused
 	// it, in which case it has already been dropped.
-	bool send(uint64_t id, std::span<const std::byte> payload);
+	bool send(uint64_t id, std::span<const std::byte> payload,
+		std::span<const Handle> attachments);
 	// Write out what is queued, then drop. No further payload is read.
 	void close_after_flush(uint64_t id);
 	void drop(uint64_t id);

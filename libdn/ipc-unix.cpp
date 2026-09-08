@@ -9,6 +9,7 @@
 
 #include <cerrno>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <poll.h>
@@ -19,6 +20,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace std;
 
@@ -27,12 +29,34 @@ namespace dawn
 namespace ipc
 {
 
+#ifdef __APPLE__
+constexpr int kRecvFlags = 0;
+constexpr int kSendFlags = 0;
+#else
+constexpr int kRecvFlags = MSG_CMSG_CLOEXEC;
+constexpr int kSendFlags = MSG_NOSIGNAL;
+#endif
+
+void
+close_handle(Handle handle)
+{
+	if (handle >= 0)
+		::close(int(handle));
+}
+
 // Abstract name: "\0dawn-<uid>-<service>".
 static string
 endpoint_name(string_view service)
 {
 	string n;
+#ifdef __APPLE__
+	const char *tmp = getenv("TMPDIR");
+	n = tmp && *tmp ? tmp : "/tmp/";
+	if (n.back() != '/')
+		n.push_back('/');
+#else
 	n.push_back('\0');
+#endif
 	n += "dawn-";
 	n += to_string(::getuid());
 	n += '-';
@@ -44,12 +68,17 @@ static bool
 fill_addr(string_view service, sockaddr_un &addr, socklen_t &len)
 {
 	const string n = endpoint_name(service);
-	if (n.empty() || n.size() > sizeof addr.sun_path)
+	if (n.empty() || n.size() > sizeof addr.sun_path ||
+		(n.front() != '\0' && n.size() == sizeof addr.sun_path))
 		return false;
 	addr = {};
 	addr.sun_family = AF_UNIX;
 	memcpy(addr.sun_path, n.data(), n.size());
+	if (n.front() != '\0')
+		addr.sun_path[n.size()] = '\0';
 	len = socklen_t(offsetof(sockaddr_un, sun_path) + n.size());
+	if (n.front() != '\0')
+		len++;
 	return true;
 }
 
@@ -75,6 +104,13 @@ unix_socket(int extra_fl)
 		::close(fd);
 		return -1;
 	}
+#ifdef __APPLE__
+	const int one = 1;
+	if (::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one) != 0) {
+		::close(fd);
+		return -1;
+	}
+#endif
 	return fd;
 }
 
@@ -82,6 +118,18 @@ unix_socket(int extra_fl)
 static bool
 peer_ok(int fd, uint32_t &pid)
 {
+#ifdef __APPLE__
+	xucred cred{};
+	socklen_t n = sizeof cred;
+	if (::getsockopt(fd, SOL_LOCAL, LOCAL_PEERCRED, &cred, &n) != 0 ||
+		n != sizeof cred || cred.cr_uid != ::getuid())
+		return false;
+	pid_t peer = 0;
+	n = sizeof peer;
+	if (::getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &peer, &n) != 0)
+		return false;
+	pid = uint32_t(peer);
+#else
 	struct {
 		pid_t pid;
 		uid_t uid;
@@ -92,6 +140,7 @@ peer_ok(int fd, uint32_t &pid)
 		n != sizeof cred || cred.uid != ::getuid())
 		return false;
 	pid = uint32_t(cred.pid);
+#endif
 	return true;
 }
 
@@ -104,12 +153,17 @@ struct Connection::Impl {
 	uint32_t peer_pid = 0;
 	FrameReader reader;
 	FrameWriter writer;
+	vector<Handle> received;
 
 	~Impl();
 };
 
 Connection::Impl::~Impl()
 {
+	for (Handle h : received)
+		::close(int(h));
+	for (Handle h : writer.take_all_attachments())
+		::close(int(h));
 	if (fd >= 0)
 		::close(fd);
 }
@@ -181,6 +235,11 @@ Connection::close()
 		impl_->fd = -1;
 	}
 	impl_->ok = false;
+	for (Handle h : impl_->received)
+		::close(int(h));
+	impl_->received.clear();
+	for (Handle h : impl_->writer.take_all_attachments())
+		::close(int(h));
 	impl_->writer.clear();
 }
 
@@ -195,7 +254,14 @@ Connection::read()
 
 	while (true) {
 		const span<byte> buf = m.reader.buffer();
-		const ssize_t n = ::read(m.fd, buf.data(), buf.size());
+		iovec iov{buf.data(), buf.size()};
+		alignas(cmsghdr) char control[CMSG_SPACE(sizeof(int) * 63)]{};
+		msghdr msg{};
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = control;
+		msg.msg_controllen = sizeof control;
+		const ssize_t n = ::recvmsg(m.fd, &msg, kRecvFlags);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -210,6 +276,26 @@ Connection::read()
 			close();
 			return clean ? Status::Eof : Status::Error;
 		}
+		const bool truncated = msg.msg_flags & MSG_CTRUNC;
+		for (cmsghdr *c = CMSG_FIRSTHDR(&msg); c; c = CMSG_NXTHDR(&msg, c)) {
+			if (c->cmsg_level != SOL_SOCKET || c->cmsg_type != SCM_RIGHTS ||
+				c->cmsg_len < CMSG_LEN(0))
+				continue;
+			const size_t count = (c->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+			const auto *fds = reinterpret_cast<const int *>(CMSG_DATA(c));
+			for (size_t i = 0; i < count; i++) {
+				if (truncated)
+					::close(fds[i]);
+				else {
+					(void) set_flags(fds[i], 0);
+					m.received.push_back(fds[i]);
+				}
+			}
+		}
+		if (truncated) {
+			close();
+			return Status::Error;
+		}
 		switch (m.reader.advance(size_t(n))) {
 		case FrameReader::Status::NeedMore:
 			break;
@@ -223,19 +309,54 @@ Connection::read()
 }
 
 bool
-Connection::take_payload(vector<byte> &out)
+Connection::take_plain_payload(vector<byte> &out)
 {
-	return impl_->reader.take_payload(out);
+	vector<Handle> attachments;
+	if (!take_payload(out, attachments))
+		return false;
+	for (Handle h : attachments)
+		::close(int(h));
+	return true;
 }
 
 bool
-Connection::write_payload(span<const byte> payload)
+Connection::take_payload(vector<byte> &out, vector<Handle> &attachments)
+{
+	Impl &m = *impl_;
+	const size_t count = m.reader.attachment_count();
+	if (m.received.size() != count) {
+		close();
+		return false;
+	}
+	if (!m.reader.take_plain_payload(out))
+		return false;
+	attachments.assign(
+		m.received.begin(), m.received.begin() + ptrdiff_t(count));
+	m.received.erase(m.received.begin(), m.received.begin() + ptrdiff_t(count));
+	return true;
+}
+
+bool
+Connection::write_payload(
+	span<const byte> payload, span<const Handle> attachments)
 {
 	Impl &m = *impl_;
 	if (!m.ok)
 		return false;
-	if (m.writer.push(payload))
+	vector<Handle> owned;
+	for (Handle handle : attachments) {
+		const int copy = fcntl(int(handle), F_DUPFD_CLOEXEC, 0);
+		if (copy < 0) {
+			for (Handle h : owned)
+				::close(int(h));
+			return false;
+		}
+		owned.push_back(copy);
+	}
+	if (m.writer.push(payload, owned))
 		return true;
+	for (Handle h : owned)
+		::close(int(h));
 	close();
 	return false;
 }
@@ -249,7 +370,24 @@ Connection::flush()
 
 	while (!m.writer.empty()) {
 		const span<const byte> p = m.writer.pending();
-		const ssize_t n = ::write(m.fd, p.data(), p.size());
+		const span<const Handle> attachments = m.writer.pending_attachments();
+		iovec iov{const_cast<byte *>(p.data()), p.size()};
+		alignas(cmsghdr) char control[CMSG_SPACE(sizeof(int) * 63)]{};
+		msghdr msg{};
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		if (!attachments.empty()) {
+			msg.msg_control = control;
+			msg.msg_controllen = CMSG_SPACE(sizeof(int) * attachments.size());
+			cmsghdr *c = CMSG_FIRSTHDR(&msg);
+			c->cmsg_level = SOL_SOCKET;
+			c->cmsg_type = SCM_RIGHTS;
+			c->cmsg_len = CMSG_LEN(sizeof(int) * attachments.size());
+			auto *fds = reinterpret_cast<int *>(CMSG_DATA(c));
+			for (size_t i = 0; i < attachments.size(); i++)
+				fds[i] = int(attachments[i]);
+		}
+		const ssize_t n = ::sendmsg(m.fd, &msg, kSendFlags);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -261,6 +399,11 @@ Connection::flush()
 		if (n == 0) {
 			close();
 			return false;
+		}
+		if (!attachments.empty()) {
+			for (Handle h : attachments)
+				::close(int(h));
+			m.writer.attachments_sent();
 		}
 		m.writer.consume(size_t(n));
 	}
@@ -302,6 +445,7 @@ Connection::wait(Direction dir, int timeout_ms)
 
 struct Listener::Impl {
 	int fd = -1;
+	string path;
 
 	~Impl();
 };
@@ -310,6 +454,8 @@ Listener::Impl::~Impl()
 {
 	if (fd >= 0)
 		::close(fd);
+	if (!path.empty())
+		::unlink(path.c_str());
 }
 
 Listener::Listener() : impl_(make_unique<Impl>())
@@ -340,6 +486,10 @@ Listener::close()
 		::close(impl_->fd);
 		impl_->fd = -1;
 	}
+	if (!impl_->path.empty()) {
+		::unlink(impl_->path.c_str());
+		impl_->path.clear();
+	}
 }
 
 Connection
@@ -361,6 +511,13 @@ Listener::accept()
 			::close(fd);
 			continue;
 		}
+#ifdef __APPLE__
+		const int one = 1;
+		if (::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one) != 0) {
+			::close(fd);
+			continue;
+		}
+#endif
 
 		Connection conn(fd);
 		conn.impl_->peer_pid = pid;
@@ -389,6 +546,21 @@ Endpoint::listen(string_view service)
 		if (errno == EINTR)
 			continue;
 		const int e = errno;
+		trace("bind failed: %s", strerror(e));
+#ifdef __APPLE__
+		if (e == EADDRINUSE) {
+			const int probe = unix_socket(0);
+			const int result =
+				probe < 0 ? -1 : ::connect(probe, (sockaddr *) &addr, len);
+			const int connect_error = errno;
+			if (probe >= 0)
+				::close(probe);
+			if (result != 0 && connect_error == ECONNREFUSED) {
+				::unlink(addr.sun_path);
+				continue;
+			}
+		}
+#endif
 		::close(fd);
 		if (e == EADDRINUSE)
 			out.status = ListenStatus::InUse;
@@ -405,6 +577,9 @@ Endpoint::listen(string_view service)
 	}
 
 	out.listener.impl_->fd = fd;
+#ifdef __APPLE__
+	out.listener.impl_->path = addr.sun_path;
+#endif
 	out.status = ListenStatus::Ok;
 	return out;
 }

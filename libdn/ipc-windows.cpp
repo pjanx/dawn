@@ -25,6 +25,13 @@ namespace dawn
 namespace ipc
 {
 
+void
+close_handle(Handle handle)
+{
+	if ((HANDLE) handle && (HANDLE) handle != INVALID_HANDLE_VALUE)
+		::CloseHandle((HANDLE) handle);
+}
+
 // Overlapped writes pin their buffer until completion; keep that bounded
 // rather than hand the kernel a whole output queue.
 constexpr size_t kWriteChunk = 256 * 1024;
@@ -36,23 +43,28 @@ struct LocalFreeDeleter {
 	void operator()(void *p) const { ::LocalFree((HLOCAL) p); }
 };
 
+struct RemoteHandles {
+	size_t remaining;
+	vector<Handle> handles;
+};
+
+// Without an acknowledgement, a peer that closes after reading only part of
+// an eight-byte handle value cannot name and close it. The handle then lasts
+// until that peer exits; complete values are closed by FrameReader::discard().
+
 }  // namespace
 
 // The token user of a process, as an owned SID copy.
 static vector<std::byte>
-process_sid(DWORD pid)
+process_sid(HANDLE process)
 {
 	vector<std::byte> out;
-	const HANDLE proc =
-		::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-	if (!proc)
+	if (!process)
 		return out;
 
 	HANDLE token = nullptr;
-	if (!::OpenProcessToken(proc, TOKEN_QUERY, &token)) {
-		::CloseHandle(proc);
+	if (!::OpenProcessToken(process, TOKEN_QUERY, &token))
 		return out;
-	}
 
 	DWORD need = 0;
 	::GetTokenInformation(token, TokenUser, nullptr, 0, &need);
@@ -66,14 +78,26 @@ process_sid(DWORD pid)
 			out.clear();
 	}
 	::CloseHandle(token);
-	::CloseHandle(proc);
 	return out;
+}
+
+static vector<std::byte>
+process_sid_for_pid(DWORD pid)
+{
+	const HANDLE process =
+		::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (!process)
+		return {};
+	auto sid = process_sid(process);
+	::CloseHandle(process);
+	return sid;
 }
 
 static const vector<std::byte> &
 own_sid()
 {
-	static const vector<std::byte> sid = process_sid(::GetCurrentProcessId());
+	static const vector<std::byte> sid =
+		process_sid_for_pid(::GetCurrentProcessId());
 	return sid;
 }
 
@@ -185,8 +209,21 @@ client_is_own_user(HANDLE pipe)
 
 // --- Connection --------------------------------------------------------------
 
+static void
+close_peer_handles(HANDLE process, span<const Handle> handles)
+{
+	for (Handle handle : handles) {
+		HANDLE local = nullptr;
+		if (::DuplicateHandle(process, (HANDLE) handle, ::GetCurrentProcess(),
+				&local, 0, FALSE,
+				DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS))
+			::CloseHandle(local);
+	}
+}
+
 struct Connection::Impl {
 	HANDLE pipe = INVALID_HANDLE_VALUE;
+	HANDLE peer_process = nullptr;
 	bool ok = false;
 	bool eof = false;
 	uint32_t peer_pid = 0;
@@ -199,11 +236,37 @@ struct Connection::Impl {
 	bool write_pending = false;
 	vector<std::byte> inflight;
 	FrameWriter writer;
+	size_t queued_bytes = 0;
+	vector<RemoteHandles> remote_handles;
 
 	~Impl();
 	void shutdown();
+	bool set_peer_process(uint32_t pid);
+	void complete_write(size_t size);
 	bool post_read();
 };
+
+bool
+Connection::Impl::set_peer_process(uint32_t pid)
+{
+	peer_process = ::OpenProcess(
+		PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (!peer_process)
+		return false;
+	peer_pid = pid;
+	return true;
+}
+
+void
+Connection::Impl::complete_write(size_t size)
+{
+	queued_bytes -= min(size, queued_bytes);
+	for (auto &pending : remote_handles)
+		pending.remaining =
+			pending.remaining > size ? pending.remaining - size : 0;
+	while (!remote_handles.empty() && remote_handles.front().remaining == 0)
+		remote_handles.erase(remote_handles.begin());
+}
 
 void
 Connection::Impl::shutdown()
@@ -213,13 +276,22 @@ Connection::Impl::shutdown()
 		// cancellation completes, so wait for it before anything goes away.
 		::CancelIoEx(pipe, nullptr);
 		DWORD n = 0;
-		if (read_pending)
-			::GetOverlappedResult(pipe, &rov, &n, TRUE);
-		if (write_pending)
-			::GetOverlappedResult(pipe, &wov, &n, TRUE);
+		if (read_pending && ::GetOverlappedResult(pipe, &rov, &n, TRUE) && n)
+			(void) reader.advance(n);
+		read_pending = false;
+		if (write_pending && ::GetOverlappedResult(pipe, &wov, &n, TRUE))
+			complete_write(n);
 		::CloseHandle(pipe);
 		pipe = INVALID_HANDLE_VALUE;
 	}
+	reader.discard();
+	for (const auto &pending : remote_handles)
+		close_peer_handles(peer_process, pending.handles);
+	remote_handles.clear();
+	queued_bytes = 0;
+	if (peer_process)
+		::CloseHandle(peer_process);
+	peer_process = nullptr;
 	read_pending = false;
 	write_pending = false;
 	if (rov.hEvent)
@@ -262,6 +334,8 @@ Connection::Connection(Handle h) : impl_(make_unique<Impl>())
 		return;
 
 	impl_->pipe = pipe;
+	impl_->reader.set_inline_handles(true);
+	impl_->writer.set_inline_handles(true);
 	impl_->rov.hEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
 	impl_->wov.hEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
 	if (!impl_->rov.hEvent || !impl_->wov.hEvent) {
@@ -380,19 +454,47 @@ Connection::read()
 }
 
 bool
-Connection::take_payload(vector<std::byte> &out)
+Connection::take_plain_payload(vector<std::byte> &out)
 {
-	return impl_->reader.take_payload(out);
+	vector<Handle> attachments;
+	if (!take_payload(out, attachments))
+		return false;
+	for (Handle h : attachments)
+		close_handle(h);
+	return true;
 }
 
 bool
-Connection::write_payload(span<const std::byte> payload)
+Connection::take_payload(vector<std::byte> &out, vector<Handle> &attachments)
+{
+	return impl_->reader.take_payload(out, attachments);
+}
+
+bool
+Connection::write_payload(
+	span<const std::byte> payload, span<const Handle> attachments)
 {
 	Impl &m = *impl_;
 	if (!m.ok)
 		return false;
-	if (m.writer.push(payload))
+	vector<Handle> duplicated;
+	duplicated.reserve(attachments.size());
+	for (Handle h : attachments) {
+		HANDLE copy = nullptr;
+		if (!::DuplicateHandle(::GetCurrentProcess(), (HANDLE) h,
+				m.peer_process, &copy, FILE_MAP_READ, FALSE, 0)) {
+			close_peer_handles(m.peer_process, duplicated);
+			return false;
+		}
+		duplicated.push_back((Handle) copy);
+	}
+	if (m.writer.push(payload, duplicated)) {
+		m.queued_bytes += 4 + duplicated.size() * 8 + payload.size();
+		if (!duplicated.empty())
+			m.remote_handles.push_back({m.queued_bytes, std::move(duplicated)});
 		return true;
+	}
+	close_peer_handles(m.peer_process, duplicated);
 	close();
 	return false;
 }
@@ -418,6 +520,7 @@ Connection::flush()
 				close();
 				return false;
 			}
+			m.complete_write(n);
 			m.inflight.erase(m.inflight.begin(),
 				m.inflight.begin() + min(size_t(n), m.inflight.size()));
 		}
@@ -609,11 +712,19 @@ Listener::accept()
 	}
 
 	ULONG client_pid = 0;
-	::GetNamedPipeClientProcessId(pipe, &client_pid);
+	if (!::GetNamedPipeClientProcessId(pipe, &client_pid)) {
+		trace("cannot identify client: %lu", ::GetLastError());
+		::DisconnectNamedPipe(pipe);
+		::CloseHandle(pipe);
+		return {};
+	}
 
 	Connection conn((Handle) pipe);
-	if (conn.ok())
-		conn.impl_->peer_pid = uint32_t(client_pid);
+	if (conn.ok() && !conn.impl_->set_peer_process(uint32_t(client_pid))) {
+		trace("cannot retain client process %lu: %lu", client_pid,
+			::GetLastError());
+		conn.close();
+	}
 	return conn;
 }
 
@@ -678,8 +789,7 @@ Endpoint::connect(string_view service)
 	}
 
 	ULONG server_pid = 0;
-	if (!::GetNamedPipeServerProcessId(pipe, &server_pid) ||
-		!sid_is_own(process_sid(server_pid))) {
+	if (!::GetNamedPipeServerProcessId(pipe, &server_pid)) {
 		trace("rejected server pid %lu: %lu", server_pid, ::GetLastError());
 		::CloseHandle(pipe);
 		return out;
@@ -688,7 +798,17 @@ Endpoint::connect(string_view service)
 	out.conn = Connection((Handle) pipe);
 	if (!out.conn.ok())
 		return out;
-	out.conn.impl_->peer_pid = uint32_t(server_pid);
+	if (!out.conn.impl_->set_peer_process(uint32_t(server_pid))) {
+		trace("cannot retain server process %lu: %lu", server_pid,
+			::GetLastError());
+		out.conn.close();
+		return out;
+	}
+	if (!sid_is_own(process_sid(out.conn.impl_->peer_process))) {
+		trace("rejected server identity %lu", server_pid);
+		out.conn.close();
+		return out;
+	}
 	out.status = ConnectStatus::Ok;
 	return out;
 }

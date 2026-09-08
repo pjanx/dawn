@@ -89,6 +89,30 @@ template <typename TView> struct Received {
 	TView view;
 };
 
+// A file descriptor on POSIX, a HANDLE on Windows. Both compare equal to
+// -1 when invalid.
+using Handle = std::intptr_t;
+inline constexpr Handle kInvalidHandle = -1;
+
+// What an event loop waits on: the connection itself on POSIX, an
+// overlapped completion event on Windows.
+using Waitable = Handle;
+void close_handle(Handle handle);
+
+class OwnedHandles
+{
+	std::vector<Handle> handles_;
+
+public:
+	explicit OwnedHandles(std::vector<Handle> handles);
+	~OwnedHandles();
+	OwnedHandles(const OwnedHandles &) = delete;
+	OwnedHandles &operator=(const OwnedHandles &) = delete;
+	[[nodiscard]] size_t size() const { return handles_.size(); }
+	[[nodiscard]] bool empty() const { return handles_.empty(); }
+	Handle take(size_t index);
+};
+
 // --- Framing -----------------------------------------------------------------
 
 // Two-state frame codec: a big-endian u32 length prefix, then exactly that
@@ -104,6 +128,8 @@ class FrameReader
 	std::byte length_[4]{};
 	size_t got_ = 0;
 	uint32_t limit_ = kMaxPayload;
+	uint8_t attachment_count_ = 0;
+	bool inline_handles_ = false;
 	std::vector<std::byte> payload_;
 
 public:
@@ -120,7 +146,13 @@ public:
 	[[nodiscard]] bool ready() const;
 	// True at a frame boundary, the only place a peer may close cleanly.
 	[[nodiscard]] bool idle() const;
-	bool take_payload(std::vector<std::byte> &out);
+	bool take_plain_payload(std::vector<std::byte> &out);
+	bool take_payload(
+		std::vector<std::byte> &out, std::vector<Handle> &handles);
+	// Close complete inline handles and reset even an incomplete frame.
+	void discard();
+	[[nodiscard]] uint8_t attachment_count() const { return attachment_count_; }
+	void set_inline_handles(bool enable) { inline_handles_ = enable; }
 	// Lower the accepted frame size; values above kMaxPayload are clamped.
 	// A length prefix is believed before the payload arrives, so this is
 	// what bounds the allocation an unauthenticated peer can ask for.
@@ -132,38 +164,39 @@ public:
 // of whatever it hands to the operating system.
 class FrameWriter
 {
+	struct AttachmentPoint {
+		size_t offset;
+		std::vector<Handle> handles;
+	};
 	std::vector<std::byte> q_;
 	size_t off_ = 0;
 	uint32_t limit_ = FrameReader::kMaxPayload;
+	std::vector<AttachmentPoint> attachments_;
+	bool inline_handles_ = false;
 
 public:
 	static constexpr size_t kMaxQueue = 64 * 1024 * 1024;
 
 	// Prefix payload with its length and enqueue it.
-	bool push(std::span<const std::byte> payload);
+	bool push(std::span<const std::byte> payload,
+		std::span<const Handle> attachments);
 	[[nodiscard]] bool empty() const;
 	[[nodiscard]] std::span<const std::byte> pending() const;
 	void consume(size_t n);
+	[[nodiscard]] std::span<const Handle> pending_attachments() const;
+	void attachments_sent();
+	std::vector<Handle> take_all_attachments();
 	void clear();
 	// Refuse to enqueue frames the peer would refuse to read.
 	void set_limit(uint32_t limit);
+	void set_inline_handles(bool enable) { inline_handles_ = enable; }
 };
 
 // --- Transport ---------------------------------------------------------------
 
 // Set DN_IPC_DEBUG to have the transport explain itself on stderr.
 // Everything here fails by quietly running a second dn instead.
-DAWN_FORMAT(1, 2)
-void trace(const char *fmt, ...);
-
-// A file descriptor on POSIX, a HANDLE on Windows. Both compare equal to
-// -1 when invalid.
-using Handle = std::intptr_t;
-inline constexpr Handle kInvalidHandle = -1;
-
-// What an event loop waits on: the connection itself on POSIX, an
-// overlapped completion event on Windows.
-using Waitable = Handle;
+DAWN_FORMAT(1, 2) void trace(const char *fmt, ...);
 
 // A framed full-duplex byte stream. POSIX drives it from readiness on a
 // nonblocking Unix socket, Windows from completion of overlapped named
@@ -203,13 +236,16 @@ public:
 	// Diagnostics and window activation only; never authentication.
 	[[nodiscard]] uint32_t peer_pid() const;
 
-	// Harvest input. Frame means take_payload() will succeed.
+	// Harvest input. Frame means one of the take methods will succeed.
 	Status read();
-	bool take_payload(std::vector<std::byte> &out);
+	bool take_plain_payload(std::vector<std::byte> &out);
+	bool take_payload(
+		std::vector<std::byte> &out, std::vector<Handle> &attachments);
 
 	// Queue one payload; it is written by flush(), which returns true
 	// once the queue has drained.
-	bool write_payload(std::span<const std::byte> payload);
+	bool write_payload(std::span<const std::byte> payload,
+		std::span<const Handle> attachments);
 	bool flush();
 
 	// Block until the direction can make progress. For BlockingClient;
