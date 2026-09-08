@@ -871,11 +871,28 @@ Button::key(Kit &kit, const Key &ev)
 }
 
 bool
+Button::sync_action()
+{
+	if (!this->actor || this->action == Action::None)
+		return false;
+	this->enabled_ =
+		!this->actor->enabled || this->actor->enabled(this->action);
+	return this->actor->checked && this->actor->checked(this->action);
+}
+
+bool
 Button::activate(Kit &kit)
 {
-	if (!this->enabled_ || !this->on_click)
-		return false;
-	this->on_click(kit);
+	if (this->actor && this->action != Action::None) {
+		sync_action();
+		if (!this->enabled_ || !this->actor->apply)
+			return false;
+		this->actor->apply(this->action);
+	} else {
+		if (!this->enabled_ || !this->on_click)
+			return false;
+		this->on_click(kit);
+	}
 	// Only as far as the nearest popup that stays put: a menu is done once
 	// it has been picked from, but a checkbox in a dialog is not a reason
 	// to dismiss the dialog under it.
@@ -2931,7 +2948,6 @@ Menu::clear(Kit &kit)
 void
 Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 {
-	this->actor = a;
 	clear(kit);
 	if (!this->col)
 		return;
@@ -2940,7 +2956,7 @@ Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 	for (const MenuNode &node : nodes) {
 		if (!node.items.empty()) {
 			auto child = make_unique<Menu>();
-			child->build(kit, node.items, this->actor);
+			child->build(kit, node.items, a);
 			auto *item = add_item_with_mnemonic(node.title);
 			item->sub = child.get();
 			this->subs_.push_back(std::move(child));
@@ -2951,16 +2967,11 @@ Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 			continue;
 		}
 		const Action action = node.action;
-		const ActionDef &def = action_def(action);
-		auto *item = add_item_with_mnemonic(action_label(def, false));
+		auto *item = add_item(QString());
 		item->action = action;
-		item->accel = accel_label(def);
-		item->checkable = (def.flags & ActionToggle) && !def.label[1];
-		item->on_click = [this, action](Kit &) {
-			if (this->actor.apply)
-				this->actor.apply(action);
-		};
+		item->actor = &a;
 	}
+	sync();
 }
 
 void
@@ -2973,9 +2984,7 @@ Menu::sync()
 				continue;
 
 			const Action action = item->action;
-			item->enabled_ =
-				!this->actor.enabled || this->actor.enabled(action);
-			item->checked = this->actor.checked && this->actor.checked(action);
+			item->checked = item->sync_action();
 			const ActionDef &def = action_def(action);
 			item->text =
 				menu_label(action_label(def, item->checked), &item->mnemonic);
@@ -3683,16 +3692,14 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 void
 Toolbar::sync_buttons()
 {
-	auto apply = [this](Widget *w) {
+	auto apply = [](Widget *w) {
 		auto *btn = dynamic_cast<Button *>(w);
 		if (!btn)
 			return;
 		if (btn->action == Action::None)
 			return;
 		const ActionDef &d = action_def(btn->action);
-		const bool on = this->actor.checked && this->actor.checked(btn->action);
-		btn->enabled_ =
-			!this->actor.enabled || this->actor.enabled(btn->action);
+		const bool on = btn->sync_action();
 		btn->active = on && btn->action != Action::SortDir;
 		btn->icon = action_icon(d, on);
 		btn->tip_text = action_tip(d, on);
@@ -3834,7 +3841,7 @@ Toolbar::slot_for_more(const Button *more) const
 constexpr float kDragPts = 4.f;
 
 static unique_ptr<Button>
-make_title_button(Titlebar *bar, Action action, const char *icon)
+make_title_button(Action action, const char *icon)
 {
 	auto btn = make_unique<Button>();
 	btn->flat = true;
@@ -3843,10 +3850,6 @@ make_title_button(Titlebar *bar, Action action, const char *icon)
 	const ActionDef &d = action_def(action);
 	btn->tip_text = action_tip(d, false);
 	btn->tip_accel = action_accel(d);
-	btn->on_click = [bar, action](Kit &) {
-		if (bar->actor.apply)
-			bar->actor.apply(action);
-	};
 	return btn;
 }
 
@@ -3864,13 +3867,13 @@ Titlebar::Titlebar()
 	this->title = label.get();
 	add_child(std::move(label), size_t(-1));
 
-	auto min = make_title_button(this, Action::Minimize, "window-minimize");
+	auto min = make_title_button(Action::Minimize, "window-minimize");
 	this->minimize = min.get();
 	add_child(std::move(min), size_t(-1));
-	auto max = make_title_button(this, Action::Maximize, "window-maximize");
+	auto max = make_title_button(Action::Maximize, "window-maximize");
 	this->maximize = max.get();
 	add_child(std::move(max), size_t(-1));
-	auto cls = make_title_button(this, Action::CloseWindow, "window-close");
+	auto cls = make_title_button(Action::CloseWindow, "window-close");
 	this->close = cls.get();
 	add_child(std::move(cls), size_t(-1));
 }
@@ -3887,15 +3890,10 @@ Titlebar::sync(Kit &kit)
 		this->maximize->tip_text = action_tip(d, on);
 		this->maximize->active = on;
 	}
-	auto apply = [this](Button *btn) {
-		if (!btn || btn->action == Action::None)
-			return;
-		btn->enabled_ =
-			!this->actor.enabled || this->actor.enabled(btn->action);
-	};
-	apply(this->minimize);
-	apply(this->maximize);
-	apply(this->close);
+	for (Button *btn : {this->minimize, this->maximize, this->close}) {
+		if (btn)
+			btn->sync_action();
+	}
 }
 
 // Only the client draws its own decorations, and never over a fullscreen
@@ -4025,8 +4023,8 @@ Titlebar::double_click(
 		return false;
 	if (dynamic_cast<Button *>(kit.hit(x, y)))
 		return false;
-	if (this->actor.apply)
-		this->actor.apply(Action::Maximize);
+	if (this->maximize)
+		this->maximize->activate(kit);
 	return true;
 }
 

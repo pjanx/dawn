@@ -226,18 +226,7 @@ make_item(Viewer &v, const Spec &spec)
 	n->flat = true;
 	n->focus_on_press = false;
 	const Action action = spec.action;
-	const ActionDef &d = action_def(action);
-	const bool on = spec_active(v, action);
 	n->action = action;
-	n->icon = action_icon(d, on);
-	n->enabled_ = spec_enabled(v, action);
-	n->active = on;
-	n->tip_text = action_tip(d, on);
-	n->tip_accel = action_accel(d);
-	n->on_click = [&v, action](Kit &) {
-		if (v.page_ && v.page_->actor.apply)
-			v.page_->actor.apply(action);
-	};
 	return n;
 }
 
@@ -1971,13 +1960,8 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	page->menu_tree = viewer_menu();
 	page->keys = viewer_keys();
 	page->actor = make_actor(*v, host);
-	if (page->titlebar)
-		page->titlebar->actor = page->actor;
-	if (page->toolbar)
-		page->toolbar->actor = page->actor;
-	if (page->app_menu)
-		page->app_menu->build(kit, page->menu_tree, page->actor);
 	v->page_ = page.get();
+	page->bind_actions(kit);
 	if (out)
 		*out = v;
 	return page;

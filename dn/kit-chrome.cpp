@@ -1014,6 +1014,28 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	}
 }
 
+static void
+bind_tree_actions(Widget &w, const Actor &actor)
+{
+	if (auto *button = dynamic_cast<Button *>(&w);
+		button && button->action != Action::None)
+		button->actor = &actor;
+	for (size_t i = 0; i < w.child_count(); i++) {
+		if (Widget *child = w.child(i))
+			bind_tree_actions(*child, actor);
+	}
+}
+
+void
+Page::bind_actions(Kit &kit)
+{
+	bind_tree_actions(*this, this->actor);
+	if (this->toolbar)
+		this->toolbar->sync_buttons();
+	if (this->app_menu)
+		this->app_menu->build(kit, this->menu_tree, this->actor);
+}
+
 void
 Page::open_app_menu(Kit &kit, bool kbd)
 {

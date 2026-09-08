@@ -2320,23 +2320,12 @@ make_item(Browser &b, const Spec &spec)
 	n->flat = true;
 	n->focus_on_press = false;
 	const Action action = spec.action;
-	const ActionDef &d = action_def(action);
-	const bool on = spec_active(b, action);
 	n->action = action;
 	if (spec.kind == Kind::Text) {
 		n->pad_x = 2.f;
 		n->text = action == Action::SortTime ? QStringLiteral("Time")
 											 : QStringLiteral("Name");
 	}
-	n->icon = spec.kind == Kind::Text ? nullptr : action_icon(d, on);
-	n->enabled_ = spec_enabled(b, action);
-	n->active = on;
-	n->tip_text = action_tip(d, on);
-	n->tip_accel = action_accel(d);
-	n->on_click = [&b, action](Kit &) {
-		if (b.page_ && b.page_->actor.apply)
-			b.page_->actor.apply(action);
-	};
 	return n;
 }
 
@@ -2805,14 +2794,9 @@ make_browser_page(
 	page->menu_tree = browser_menu();
 	page->keys = browser_keys();
 	page->actor = make_actor(*b, host);
-	if (page->titlebar)
-		page->titlebar->actor = page->actor;
-	if (page->toolbar)
-		page->toolbar->actor = page->actor;
-	if (page->app_menu)
-		page->app_menu->build(kit, page->menu_tree, page->actor);
 	b->places_dirty_ = true;
 	b->page_ = page.get();
+	page->bind_actions(kit);
 	if (out)
 		*out = b;
 	return page;

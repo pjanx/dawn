@@ -213,6 +213,8 @@ struct Composite : Widget {
 
 struct Button : Widget {
 	Action action = Action::None;
+	// The page owns the action context and outlives its bound controls.
+	const Actor *actor = nullptr;
 	const char *icon = nullptr;
 	// An index into text, underlined when drawn; -1 for none.
 	int mnemonic = -1;
@@ -229,6 +231,8 @@ struct Button : Widget {
 	std::function<void(Kit &)> on_click;
 
 	Button() { this->hittable = true; }
+	// Refresh enabled state and return the action's checked state.
+	bool sync_action();
 	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -575,7 +579,6 @@ private:
 
 struct Menu : MenuPopup {
 	Column *col = nullptr;
-	Actor actor;
 	std::vector<std::unique_ptr<Menu>> subs_;
 
 	Menu();
@@ -689,7 +692,6 @@ private:
 };
 
 struct Toolbar : Panel {
-	Actor actor;
 	ToolbarSlot *left = nullptr;
 	ToolbarSlot *mid = nullptr;
 	ToolbarSlot *right = nullptr;
@@ -715,7 +717,6 @@ struct Titlebar : Panel {
 	Button *minimize = nullptr;
 	Button *maximize = nullptr;
 	Button *close = nullptr;
-	Actor actor;
 	QString text;
 	float drag_x_ = 0.f;
 	float drag_y_ = 0.f;
