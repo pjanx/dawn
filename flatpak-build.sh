@@ -41,9 +41,12 @@ fi
 
 flatpak --user install -y --reinstall "$baseapp"
 
+# We can't use --install-deps-from=flathub here because it would try to update
+# the BaseApp from Flathub.
 runtime_version=$(sed -n "s/^runtime-version: '\(.*\)'$/\1/p" "$src/$appid.yml")
 flatpak --user install --or-update -y flathub \
-	"org.freedesktop.Sdk//$runtime_version"
+	"org.freedesktop.Sdk//$runtime_version" \
+	"org.freedesktop.Sdk.Extension.rust-stable//$runtime_version"
 
 flatpak-builder --user --force-clean \
 	--default-branch=stable --state-dir="$dst/state" \
