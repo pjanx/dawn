@@ -227,7 +227,7 @@ same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 	return true;
 }
 
-void
+Size
 CieDiagram::measure(Kit &kit, int max_w, int max_h)
 {
 	const int cap = caption_h(kit);
@@ -235,8 +235,7 @@ CieDiagram::measure(Kit &kit, int max_w, int max_h)
 	const Rect fit = plot_rect({0, 0, max_w, plot_h});
 	const int labs = kit.text_width(kSourceLab, false) + kit.px(8.f) +
 		kit.text_width(kTargetLab, false);
-	this->r.w = max(fit.w, labs);
-	this->r.h = fit.h + cap;
+	return {max(fit.w, labs), fit.h + cap};
 }
 
 void

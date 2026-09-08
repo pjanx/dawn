@@ -34,6 +34,11 @@ namespace dn
 
 class Renderer;
 
+struct [[nodiscard]] Size {
+	int w = 0;
+	int h = 0;
+};
+
 // Widget geometry, in device pixels.  Integral by construction: layout
 // arithmetic composes exactly, and there is nothing left to snap.  Floats
 // belong to drawing, and to whatever is genuinely continuous -- a pointer
@@ -137,9 +142,8 @@ struct Widget {
 
 	virtual ~Widget() = default;
 	// At least as of now, we don't seem to need baseline measurements.
-	// TODO(p): This should not override the internal rectangle.
-	// This is wired pretty deeply.
-	virtual void measure(Kit &kit, int max_w, int max_h) = 0;
+	// Returns the requested size without changing arranged geometry.
+	virtual Size measure(Kit &kit, int max_w, int max_h) = 0;
 	virtual void arrange(Kit &kit, Rect alloc) = 0;
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
@@ -225,7 +229,7 @@ struct Button : Widget {
 	std::function<void(Kit &)> on_click;
 
 	Button() { this->hittable = true; }
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -242,7 +246,7 @@ struct Button : Widget {
 struct Checkbox : Button {
 	bool checked = false;
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -265,7 +269,7 @@ struct Label : Widget {
 	QString tip_text;
 	QString tip_accel;
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -305,7 +309,7 @@ struct Entry : Widget {
 	bool caret_on_ = false;
 
 	Entry() { this->hittable = true; }
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -331,7 +335,7 @@ struct Entry : Widget {
 };
 
 struct Sep : Widget {
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 };
@@ -340,7 +344,7 @@ struct Splitter : Widget {
 	float min_w = 8.f;
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
@@ -356,7 +360,7 @@ struct Container : Composite {
 	bool grow = false;
 	bool grows() const override { return this->grow; }
 
-	void measure_pack(Kit &kit, int max_w, int max_h, bool hz);
+	Size measure_pack(Kit &kit, int max_w, int max_h, bool hz);
 	void arrange_pack(Kit &kit, Rect alloc, bool hz, Align align);
 };
 
@@ -377,12 +381,12 @@ context_key(int key, unsigned mods)
 struct Row : Container {
 	Align align = Align::Start;
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 };
 
 struct Column : Container {
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 };
 
@@ -390,7 +394,7 @@ struct Column : Container {
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
 struct Flow : Container {
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
@@ -406,7 +410,8 @@ private:
 	// Measures the children and breaks them into lines for an inner width,
 	// answering the width of the widest one produced.  Both passes need the
 	// measuring and the widths; only arrange() needs the lines themselves.
-	int wrap(Kit &kit, int inner_w, int *total_h, std::vector<Line> *lines);
+	int wrap(Kit &kit, int inner_w, int *total_h, std::vector<Line> *lines,
+		std::vector<Size> *sizes = nullptr);
 };
 
 struct Scroll {
@@ -477,7 +482,7 @@ struct Panel : Composite {
 	bool busy = false;
 	bool grow = false;
 	bool clip = false;
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	bool grows() const override { return this->grow; }
@@ -499,7 +504,7 @@ struct Popup : Panel {
 	virtual void place(Kit &kit);
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
-	void place_below(Kit &kit, int x);
+	void place_below(Kit &kit, int x, Size size);
 	virtual void place_sub(Kit &kit);
 	bool traps_focus() const override { return true; }
 	virtual bool captures_keys() const { return false; }
@@ -580,7 +585,7 @@ struct Menu : MenuPopup {
 	MenuItem *add_item_with_mnemonic(const QString &text);
 	void add_sep();
 	void clear(Kit &kit);
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -592,7 +597,7 @@ struct MenuItem : Button {
 	int label_col = 0;
 	int accel_col = 0;
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -607,7 +612,7 @@ struct Combo;
 // which item is current is said by where the list was placed, and by the
 // focus, exactly as the item under the pointer is said in a menu.
 struct ComboItem : Button {
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 };
@@ -637,7 +642,7 @@ struct Combo : Button {
 	std::unique_ptr<ComboPopup> popup_;
 
 	Combo();
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -663,7 +668,7 @@ struct ToolbarSlot : Row {
 	// Moves everything past the split into the popup, or brings it back.
 	void lend_to(Overflow &overflow);
 	void reclaim();
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
@@ -695,7 +700,7 @@ struct Toolbar : Panel {
 		std::unique_ptr<ToolbarSlot> right_row);
 	void sync_buttons();
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 
 private:
@@ -719,7 +724,7 @@ struct Titlebar : Panel {
 	Titlebar();
 	void sync(Kit &kit);
 
-	void measure(Kit &kit, int max_w, int max_h) override;
+	Size measure(Kit &kit, int max_w, int max_h) override;
 	void arrange(Kit &kit, Rect alloc) override;
 	void prepare(Kit &kit) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;

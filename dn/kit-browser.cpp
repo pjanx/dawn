@@ -499,17 +499,18 @@ struct SideRow : Button {
 		this->focus_on_press = false;
 	}
 
-	void measure(Kit &, int max_w, int) override;
+	Size measure(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
-void
+Size
 SideRow::measure(Kit &kit, int max_w, int max_h)
 {
-	Button::measure(kit, max_w, max_h);
-	this->r.w = max_w;
+	Size size = Button::measure(kit, max_w, max_h);
+	size.w = max_w;
+	return size;
 }
 
 bool
@@ -2607,10 +2608,10 @@ Browser::init()
 		this->thumb_gen_, [this] { request_render(*this); });
 }
 
-void
+Size
 Browser::measure(Kit &, int max_w, int max_h)
 {
-	this->r = {0, 0, max_w, max_h};
+	return {max_w, max_h};
 }
 
 void

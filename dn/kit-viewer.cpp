@@ -1918,10 +1918,10 @@ Viewer::init()
 	start_worker(*this);
 }
 
-void
+Size
 Viewer::measure(Kit &, int max_w, int max_h)
 {
-	this->r = {0, 0, max_w, max_h};
+	return {max_w, max_h};
 }
 
 void

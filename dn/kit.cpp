@@ -748,7 +748,7 @@ checkbox_shown(const Kit &kit, const Checkbox &c)
 	return kit.elide_lines(c.text, max(1, c.r.w - used), 1, false);
 }
 
-void
+Size
 Button::measure(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
@@ -765,7 +765,7 @@ Button::measure(Kit &kit, int, int)
 		cw += kit.text_width(this->text, false);
 		ch = max(ch, kit.text_height(this->text, 0, false));
 	}
-	this->r = {0, 0, px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
+	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
@@ -890,7 +890,7 @@ Button::activate(Kit &kit)
 
 // --- Checkbox ---------------------------------------------------------------
 
-void
+Size
 Checkbox::measure(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
@@ -901,7 +901,7 @@ Checkbox::measure(Kit &kit, int, int)
 		cw += kit.px(4.f) + kit.text_width(this->text, false);
 		ch = max(ch, kit.text_height(this->text, 0, false));
 	}
-	this->r = {0, 0, px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
+	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
@@ -970,7 +970,7 @@ Checkbox::activate(Kit &kit)
 
 // --- Label -------------------------------------------------------------------
 
-void
+Size
 Label::measure(Kit &kit, int max_w, int)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
@@ -978,9 +978,9 @@ Label::measure(Kit &kit, int max_w, int)
 	int w = max(kit.text_width(this->text, this->bold), kit.px(this->min_w));
 	if (this->wrap)
 		w = max(1, iw < kUnlim ? iw : w);
-	this->r.w = w + pad_x * 2;
-	this->r.h =
-		kit.text_height(this->text, this->wrap ? w : 0, this->bold) + pad_y * 2;
+	return {w + pad_x * 2,
+		kit.text_height(this->text, this->wrap ? w : 0, this->bold) +
+			pad_y * 2};
 }
 
 void
@@ -1167,13 +1167,13 @@ Entry::set_text(Kit &kit, const QString &next)
 		kit.input_method_changed();
 }
 
-void
+Size
 Entry::measure(Kit &kit, int, int)
 {
 	// This is the width the field asks for, never the one it settles for:
 	// growing is the container's business, and it arranges what it gives.
 	const int h = kit.text_height(QStringLiteral("Ag"), 0, false);
-	this->r = {0, 0, max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
+	return {max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
 		h + kit.px(kEntryPadY) * 2};
 }
 
@@ -1428,13 +1428,12 @@ Entry::wake_ms() const
 
 // --- Sep ---------------------------------------------------------------------
 
-void
+Size
 Sep::measure(Kit &kit, int max_w, int max_h)
 {
 	if (max_w > max_h)
-		this->r = {0, 0, kit.px(kSepW), 0};
-	else
-		this->r = {0, 0, 0, kit.px(kSepH)};
+		return {kit.px(kSepW), 0};
+	return {0, kit.px(kSepH)};
 }
 
 void
@@ -1466,10 +1465,10 @@ Sep::paint(Kit &kit) const
 
 // --- Splitter ----------------------------------------------------------------
 
-void
+Size
 Splitter::measure(Kit &kit, int, int max_h)
 {
-	this->r = {0, 0, kit.px(this->min_w), max_h};
+	return {kit.px(this->min_w), max_h};
 }
 
 void
@@ -1570,7 +1569,7 @@ share_slack(int slack, int growers, int i)
 	return slack / growers + (i < slack % growers ? 1 : 0);
 }
 
-void
+Size
 Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
@@ -1587,9 +1586,9 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 			vis++;
 			continue;
 		}
-		k->measure(kit, hz ? kUnlim : iw, hz ? ih : kUnlim);
-		used += hz ? k->r.w : k->r.h;
-		cross = max(cross, hz ? k->r.h : k->r.w);
+		const Size size = k->measure(kit, hz ? kUnlim : iw, hz ? ih : kUnlim);
+		used += hz ? size.w : size.h;
+		cross = max(cross, hz ? size.h : size.w);
 		vis++;
 	}
 	const int gaps = kit.px(this->gap) * max(0, vis - 1);
@@ -1606,16 +1605,14 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 			if (!k || !k->shown() || !k->grows())
 				continue;
 			const int got = share_slack(slack, growers, i++);
-			k->measure(kit, hz ? got : iw, hz ? ih : got);
-			used += hz ? k->r.w : k->r.h;
-			cross = max(cross, hz ? k->r.h : k->r.w);
+			const Size size = k->measure(kit, hz ? got : iw, hz ? ih : got);
+			used += hz ? size.w : size.h;
+			cross = max(cross, hz ? size.h : size.w);
 		}
 	}
 	used += gaps;
-	this->r.w = pad_x * 2 + (hz ? used : cross);
-	this->r.h = pad_y * 2 + (hz ? cross : used);
-	if (this->grow)
-		this->r.w = max_w;
+	return {this->grow ? max_w : pad_x * 2 + (hz ? used : cross),
+		pad_y * 2 + (hz ? cross : used)};
 }
 
 void
@@ -1629,10 +1626,11 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 	const int gap = kit.px(this->gap), pad_y = kit.px(this->pad_y);
 	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
 	const int imain = hz ? in.w : in.h;
+	vector<Size> sizes(this->kids.size());
 	int growers = 0, vis = 0;
 	int used = 0;
-	for (const auto &child : this->kids) {
-		Widget *k = child.get();
+	for (size_t i = 0; i < this->kids.size(); i++) {
+		Widget *k = this->kids[i].get();
 		if (!k || !k->shown())
 			continue;
 		vis++;
@@ -1640,32 +1638,33 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 			growers++;
 			continue;
 		}
-		k->measure(kit, hz ? kUnlim : in.w, hz ? in.h : kUnlim);
-		used += hz ? k->r.w : k->r.h;
+		sizes[i] = k->measure(kit, hz ? kUnlim : in.w, hz ? in.h : kUnlim);
+		used += hz ? sizes[i].w : sizes[i].h;
 	}
 	if (growers) {
 		const int slack = max(0, imain - used - gap * max(0, vis - 1));
-		int i = 0;
-		for (const auto &child : this->kids) {
-			Widget *k = child.get();
+		int grower = 0;
+		for (size_t i = 0; i < this->kids.size(); i++) {
+			Widget *k = this->kids[i].get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			const int got = share_slack(slack, growers, i++);
-			k->measure(kit, hz ? got : in.w, hz ? in.h : got);
+			const int got = share_slack(slack, growers, grower++);
+			sizes[i] = k->measure(kit, hz ? got : in.w, hz ? in.h : got);
 			if (hz)
-				k->r.w = got;
+				sizes[i].w = got;
 			else {
-				k->r.h = got;
-				k->r.w = in.w;
+				sizes[i].h = got;
+				sizes[i].w = in.w;
 			}
 		}
 	}
 	int packed = 0;
 	int nv = 0;
-	for (const auto &k : this->kids) {
+	for (size_t i = 0; i < this->kids.size(); i++) {
+		const auto &k = this->kids[i];
 		if (!k || !k->shown())
 			continue;
-		packed += (hz ? k->r.w : k->r.h) + gap;
+		packed += (hz ? sizes[i].w : sizes[i].h) + gap;
 		nv++;
 	}
 	if (nv)
@@ -1675,16 +1674,17 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 		p += max(0, (imain - packed) / 2);
 	else if (align == Align::End)
 		p += max(0, imain - packed);
-	for (auto &k : this->kids) {
+	for (size_t i = 0; i < this->kids.size(); i++) {
+		auto &k = this->kids[i];
 		if (!k || !k->shown()) {
 			if (k)
 				k->r = {};
 			continue;
 		}
 		if (hz)
-			k->arrange(kit, {p, in.y, k->r.w, in.h});
+			k->arrange(kit, {p, in.y, sizes[i].w, in.h});
 		else
-			k->arrange(kit, {in.x, p, in.w, k->r.h});
+			k->arrange(kit, {in.x, p, in.w, sizes[i].h});
 		p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + gap;
 	}
 	if (this->grow)
@@ -1699,10 +1699,10 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 
 // --- Row ---------------------------------------------------------------------
 
-void
+Size
 Row::measure(Kit &kit, int max_w, int max_h)
 {
-	measure_pack(kit, max_w, max_h, true);
+	return measure_pack(kit, max_w, max_h, true);
 }
 
 void
@@ -1713,10 +1713,10 @@ Row::arrange(Kit &kit, Rect alloc)
 
 // --- Column ------------------------------------------------------------------
 
-void
+Size
 Column::measure(Kit &kit, int max_w, int max_h)
 {
-	measure_pack(kit, max_w, max_h, false);
+	return measure_pack(kit, max_w, max_h, false);
 }
 
 void
@@ -1728,11 +1728,14 @@ Column::arrange(Kit &kit, Rect alloc)
 // --- Flow --------------------------------------------------------------------
 
 int
-Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
+Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines,
+	vector<Size> *sizes)
 {
 	const int gap = kit.px(this->gap);
 	if (lines)
 		lines->clear();
+	if (sizes)
+		sizes->assign(this->kids.size(), {});
 
 	int widest = 0, y = 0;
 	size_t first = 0;
@@ -1751,26 +1754,25 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
 	const size_t n = this->kids.size();
 	for (size_t i = 0; i < n; i++) {
 		Widget *k = this->kids[i].get();
-		// A hidden child keeps whatever rect it had: clearing it here would
-		// be measuring as a side effect, and a width is what focusable()
-		// asks for -- a question that may come before any layout has run.
 		if (!k || !k->shown())
 			continue;
 		// A separator infers its orientation from the offer, and here it
 		// stands upright between items, exactly as it does in the bar.
-		k->measure(kit, kUnlim, is_sep(k) ? 0 : kUnlim);
+		Size size = k->measure(kit, kUnlim, is_sep(k) ? 0 : kUnlim);
 		// What a child asks for is not what the line can spare: a field asks
 		// for its minimum width regardless of the offer, and a popup narrower
 		// than that would have it hanging out of the frame.
-		if (inner_w < kUnlim && k->r.w > inner_w)
-			k->r.w = inner_w;
-		const int need = k->r.w + (kept ? gap : 0);
+		if (inner_w < kUnlim && size.w > inner_w)
+			size.w = inner_w;
+		if (sizes)
+			(*sizes)[i] = size;
+		const int need = size.w + (kept ? gap : 0);
 		// A child too wide for the line still gets one, rather than
 		// vanishing into a break that can never be satisfied.
 		if (kept && line_w + need > inner_w)
 			flush(i);
-		line_w += kept ? need : k->r.w;
-		line_h = max(line_h, k->r.h);
+		line_w += kept ? need : size.w;
+		line_h = max(line_h, size.h);
 		kept++;
 	}
 	flush(n);
@@ -1781,7 +1783,7 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines)
 	return widest;
 }
 
-void
+Size
 Flow::measure(Kit &kit, int max_w, int)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
@@ -1790,14 +1792,11 @@ Flow::measure(Kit &kit, int max_w, int)
 	// Only as wide as the wrap actually came out: this popup is anchored by
 	// its right edge, so claiming the whole offer would shove it off-screen.
 	const int used_w = wrap(kit, iw, &used_h, nullptr);
-	this->r.w = pad_x * 2 + used_w;
-	this->r.h = pad_y * 2 + used_h;
-	if (this->grow)
-		this->r.w = max_w;
 	// The height offered is not a limit to honour: Panel::arrange re-measures
 	// its child against its own inner height, which is itself derived from
 	// this answer.  Clamping here would cut the lower lines out of r, and
 	// hit_at rejects a whole subtree whose parent does not contain the point.
+	return {this->grow ? max_w : pad_x * 2 + used_w, pad_y * 2 + used_h};
 }
 
 void
@@ -1811,7 +1810,8 @@ Flow::arrange(Kit &kit, Rect alloc)
 	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	const int gap = kit.px(this->gap);
 	vector<Line> lines;
-	wrap(kit, in.w, nullptr, &lines);
+	vector<Size> sizes;
+	wrap(kit, in.w, nullptr, &lines, &sizes);
 	for (const Line &line : lines) {
 		// What the line does not spend, the growers on it share -- a search
 		// field then fills its line the way it fills the bar, instead of
@@ -1821,7 +1821,7 @@ Flow::arrange(Kit &kit, Rect alloc)
 			Widget *k = this->kids[i].get();
 			if (!k || !k->shown())
 				continue;
-			used += k->r.w;
+			used += sizes[i].w;
 			vis++;
 			if (k->grows())
 				growers++;
@@ -1833,12 +1833,12 @@ Flow::arrange(Kit &kit, Rect alloc)
 			Widget *k = this->kids[i].get();
 			if (!k || !k->shown())
 				continue;
-			int w = k->r.w;
+			int w = sizes[i].w;
 			if (k->grows())
 				w += share_slack(slack, growers, got++);
 			// Items of a line differ in height -- an Entry is taller than an
 			// icon button -- so they ride its middle rather than its top.
-			const int h = is_sep(k) ? line.h : k->r.h;
+			const int h = is_sep(k) ? line.h : sizes[i].h;
 			k->arrange(kit, {x, in.y + line.y + (line.h - h) / 2, w, h});
 			x = k->r.right() + gap;
 		}
@@ -2143,9 +2143,10 @@ ScrollColumn::wake_ms() const
 
 // --- Panel -------------------------------------------------------------------
 
-void
+Size
 Panel::measure(Kit &kit, int avail_w, int avail_h)
 {
+	Size size;
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int min_w = kit.px(this->min_w), min_h = kit.px(this->min_h);
 	const int max_h = kit.px(this->max_h);
@@ -2155,20 +2156,21 @@ Panel::measure(Kit &kit, int avail_w, int avail_h)
 	for (auto &k : this->kids) {
 		if (!k || !k->shown())
 			continue;
-		k->measure(kit, iw, ih);
-		w = max(w, k->r.w);
-		h += k->r.h;
+		const Size child_size = k->measure(kit, iw, ih);
+		w = max(w, child_size.w);
+		h += child_size.h;
 	}
-	this->r.w = this->grow ? avail_w : pad_x * 2 + w;
-	this->r.h = pad_y * 2 + h;
+	size.w = this->grow ? avail_w : pad_x * 2 + w;
+	size.h = pad_y * 2 + h;
 	if (min_h > 0)
-		this->r.h = max(this->r.h, min_h);
+		size.h = max(size.h, min_h);
 	if (max_h > 0)
-		this->r.h = min(this->r.h, max_h);
+		size.h = min(size.h, max_h);
 	if (min_w > 0)
-		this->r.w = max(this->r.w, min_w);
-	this->r.h = min(this->r.h, avail_h);
-	this->r.w = min(this->r.w, avail_w);
+		size.w = max(size.w, min_w);
+	size.h = min(size.h, avail_h);
+	size.w = min(size.w, avail_w);
+	return size;
 }
 
 void
@@ -2189,8 +2191,8 @@ Panel::arrange(Kit &kit, Rect alloc)
 	for (auto &k : this->kids) {
 		if (!k || !k->shown())
 			continue;
-		k->measure(kit, in.w, in.h);
-		k->arrange(kit, {in.x, y, in.w, k->grows() ? in.h : k->r.h});
+		const Size size = k->measure(kit, in.w, in.h);
+		k->arrange(kit, {in.x, y, in.w, k->grows() ? in.h : size.h});
 		y += k->r.h;
 	}
 }
@@ -2312,17 +2314,17 @@ Popup::close(Kit &kit)
 }
 
 void
-Popup::place_below(Kit &kit, int x)
+Popup::place_below(Kit &kit, int x, Size size)
 {
 	const int glow = kit.px(kGlowPts);
 	int y = this->at.y + this->at.h;
-	if (y + this->r.h + glow > kit.host_h_)
-		y = max(0, this->at.y - this->r.h - glow);
-	if (y + this->r.h > kit.host_h_)
-		y = max(0, kit.host_h_ - this->r.h);
+	if (y + size.h + glow > kit.host_h_)
+		y = max(0, this->at.y - size.h - glow);
+	if (y + size.h > kit.host_h_)
+		y = max(0, kit.host_h_ - size.h);
 	if (y < 0)
 		y = 0;
-	arrange(kit, {x, y, this->r.w, this->r.h});
+	arrange(kit, {x, y, size.w, size.h});
 }
 
 void
@@ -2333,32 +2335,32 @@ Popup::place(Kit &kit)
 
 	const int glow = kit.px(kGlowPts);
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
-	measure(kit, cap, kUnlim);
+	const Size size = measure(kit, cap, kUnlim);
 
 	int x = this->at.x;
-	if (x + this->r.w + glow > kit.host_w_)
-		x = max(0, kit.host_w_ - this->r.w - glow);
-	place_below(kit, max(0, x));
+	if (x + size.w + glow > kit.host_w_)
+		x = max(0, kit.host_w_ - size.w - glow);
+	place_below(kit, max(0, x), size);
 }
 
 void
 Popup::place_sub(Kit &kit)
 {
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
-	measure(kit, cap, kUnlim);
+	const Size size = measure(kit, cap, kUnlim);
 	const Popup *owner = this->parent_popup;
 	const Widget *anchor = this->opener;
 	int x = owner ? owner->r.x + owner->r.w : 0;
-	if (x + this->r.w > kit.host_w_)
-		x = owner ? owner->r.x - this->r.w : 0;
+	if (x + size.w > kit.host_w_)
+		x = owner ? owner->r.x - size.w : 0;
 	if (x < 0)
 		x = 0;
 	int y = anchor ? anchor->r.y : 0;
-	if (y + this->r.h > kit.host_h_)
-		y = max(0, kit.host_h_ - this->r.h);
+	if (y + size.h > kit.host_h_)
+		y = max(0, kit.host_h_ - size.h);
 	if (y < 0)
 		y = 0;
-	arrange(kit, {x, y, this->r.w, this->r.h});
+	arrange(kit, {x, y, size.w, size.h});
 }
 
 // Alt has already been offered to the mnemonics by the time anything gets
@@ -2453,12 +2455,12 @@ Dialog::place(Kit &kit)
 	const int margin = kit.px(kGlowPts * 2.f);
 	const int max_w = max(1, min(kit.px(560.f), kit.host_w_ - margin * 2));
 	const int avail_h = max(1, kit.host_h_ - margin * 2);
-	this->frame->measure(kit, max_w, avail_h);
+	const Size size = this->frame->measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
-	const int h = min(this->frame->r.h, avail_h);
-	const int x = max(0, (kit.host_w_ - this->frame->r.w) / 2);
+	const int h = min(size.h, avail_h);
+	const int x = max(0, (kit.host_w_ - size.w) / 2);
 	const int y = margin + max(0, (avail_h - h) / 2);
-	this->frame->arrange(kit, {x, y, this->frame->r.w, h});
+	this->frame->arrange(kit, {x, y, size.w, h});
 
 	// Button::focusable() wants a laid-out rect, so this cannot happen any
 	// earlier; without it Return and Space reach nothing and are eaten.
@@ -2762,8 +2764,8 @@ Overflow::place(Kit &kit)
 	if (kit.host_w_ > 0)
 		edge = min(edge, kit.host_w_ - glow);
 
-	measure(kit, max(0, edge - glow), kUnlim);
-	place_below(kit, max(glow, edge - this->r.w));
+	const Size size = measure(kit, max(0, edge - glow), kUnlim);
+	place_below(kit, max(glow, edge - size.w), size);
 }
 
 bool
@@ -2987,7 +2989,7 @@ Menu::sync()
 	}
 }
 
-void
+Size
 Menu::measure(Kit &kit, int max_w, int max_h)
 {
 	if (this->col) {
@@ -3007,7 +3009,7 @@ Menu::measure(Kit &kit, int max_w, int max_h)
 			}
 		}
 	}
-	Panel::measure(kit, max_w, max_h);
+	return Panel::measure(kit, max_w, max_h);
 }
 
 bool
@@ -3023,7 +3025,7 @@ Menu::key(Kit &kit, const Key &ev)
 	return kit.activate_mnemonic(this, ev.key);
 }
 
-void
+Size
 MenuItem::measure(Kit &kit, int, int)
 {
 	const int lw = this->label_col > 0 ? this->label_col : label_width(kit);
@@ -3040,7 +3042,7 @@ MenuItem::measure(Kit &kit, int, int)
 		ch = max(ch, kit.text_height(this->text, 0, false));
 	if (!this->accel.isEmpty())
 		ch = max(ch, kit.text_height(this->accel, 0, false));
-	this->r = {0, 0, width, kit.px(kFramePadY) * 2 + ch};
+	return {width, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
@@ -3169,13 +3171,13 @@ fill_combo_popup(Kit &kit, Combo &combo)
 	popup.min_w = kit.pts(combo.r.w);
 }
 
-void
+Size
 ComboItem::measure(Kit &kit, int, int)
 {
 	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
 	if (!this->text.isEmpty())
 		ch = max(ch, kit.text_height(this->text, 0, false));
-	this->r = {0, 0, kit.px(kFramePadX) * 2 + kit.text_width(this->text, false),
+	return {kit.px(kFramePadX) * 2 + kit.text_width(this->text, false),
 		kit.px(kFramePadY) * 2 + ch};
 }
 
@@ -3243,20 +3245,20 @@ ComboPopup::place(Kit &kit)
 
 	const int glow = kit.px(kGlowPts);
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
-	measure(kit, cap, kUnlim);
+	const Size size = measure(kit, cap, kUnlim);
 
 	// Backed off by the list's own padding, so that the current item's text
 	// lands on the button's text rather than beside it: the list has to read
 	// as the button opening up.
 	int x = this->at.x - kit.px(kMenuPad);
-	if (x + this->r.w + glow > kit.host_w_)
-		x = max(0, kit.host_w_ - this->r.w - glow);
+	if (x + size.w + glow > kit.host_w_)
+		x = max(0, kit.host_w_ - size.w - glow);
 	x = max(0, x);
 
 	// Where the current row sits within the list is only knowable once the
 	// column has been laid out, so this arranges twice: once to read the
 	// offset off it, once to land on it.
-	arrange(kit, {x, this->at.y, this->r.w, this->r.h});
+	arrange(kit, {x, this->at.y, size.w, size.h});
 	int y = this->at.y;
 	const Widget *item = this->combo && this->col
 		? this->col->child(size_t(max(0, this->combo->current)))
@@ -3290,7 +3292,7 @@ Combo::Combo()
 
 // To the widest item rather than the current one: picking must not resize
 // the row it sits in.
-void
+Size
 Combo::measure(Kit &kit, int, int)
 {
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
@@ -3299,8 +3301,7 @@ Combo::measure(Kit &kit, int, int)
 	for (const QString &item : this->items)
 		cw = max(cw, kit.text_width(item, false));
 	int ch = max(kit.text_height(QStringLiteral("Ag"), 0, false), icon);
-	this->r = {
-		0, 0, pad_x * 2 + cw + kit.px(4.f) + icon, kit.px(kFramePadY) * 2 + ch};
+	return {pad_x * 2 + cw + kit.px(4.f) + icon, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
@@ -3545,11 +3546,11 @@ ToolbarSlot::reclaim()
 // The natural width of everything this slot has, wherever it is living: the
 // bar tiles its three slots against these, and measuring only the children
 // would make a slot shrink the moment the popup took some of them away.
-void
+Size
 ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
 {
 	this->more->visible = false;
-	Row::measure(kit, max_w, max_h);
+	Size size = Row::measure(kit, max_w, max_h);
 
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int ih = max(0, max_h - pad_y * 2);
@@ -3558,15 +3559,13 @@ ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
 	for (Widget *item : this->items_) {
 		if (!item->visible)
 			continue;
-		// Whatever is packed in the bar right now, Row::measure has just
-		// done; only the overflowed rest still has to be asked.
-		if (item->parent_ != this || !item->layout_visible)
-			item->measure(kit, kUnlim, ih);
-		used += item->r.w + (shown++ ? gap : 0);
-		cross = max(cross, item->r.h);
+		const Size item_size = item->measure(kit, kUnlim, ih);
+		used += item_size.w + (shown++ ? gap : 0);
+		cross = max(cross, item_size.h);
 	}
-	this->r.w = max(this->r.w, pad_x * 2 + used);
-	this->r.h = max(this->r.h, pad_y * 2 + cross);
+	size.w = max(size.w, pad_x * 2 + used);
+	size.h = max(size.h, pad_y * 2 + cross);
+	return size;
 }
 
 void
@@ -3588,20 +3587,21 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 	// decide nothing overflows, and close the popup that is holding them.
 	int total = 0;
 	int shown = 0;
+	vector<Size> sizes(end);
 	for (size_t i = 0; i < end; i++) {
 		Widget *item = this->items_[i];
 		if (!item->visible)
 			continue;
-		item->measure(kit, kUnlim, in.h);
-		total += item->r.w + (shown++ ? gap : 0);
+		sizes[i] = item->measure(kit, kUnlim, in.h);
+		total += sizes[i].w + (shown++ ? gap : 0);
 	}
 
 	this->split_ = end;
 	this->more->visible = false;
 	if (total > in.w) {
 		this->more->visible = true;
-		this->more->measure(kit, kUnlim, in.h);
-		const int budget = max(0, in.w - this->more->r.w - gap);
+		const Size more_size = this->more->measure(kit, kUnlim, in.h);
+		const int budget = max(0, in.w - more_size.w - gap);
 		int used = 0;
 		int kept = 0;
 		bool full = false;
@@ -3613,7 +3613,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 					this->split_ = i + 1;
 				continue;
 			}
-			const int need = item->r.w + (kept ? gap : 0);
+			const int need = sizes[i].w + (kept ? gap : 0);
 			if (full || used + need > budget) {
 				full = true;
 				continue;
@@ -3715,25 +3715,26 @@ Toolbar::sync_buttons()
 	}
 }
 
-void
+Size
 Toolbar::measure(Kit &kit, int avail_w, int avail_h)
 {
+	Size size;
 	const int pad_y = kit.px(this->pad_y);
 	const int ih = max(0, avail_h - pad_y * 2);
 	int h = 0;
 	auto slot = [&](Widget *w) {
 		if (!w)
 			return;
-		w->measure(kit, kUnlim, ih);
-		h = max(h, w->r.h);
+		h = max(h, w->measure(kit, kUnlim, ih).h);
 	};
 	slot(this->left);
 	slot(this->mid);
 	slot(this->right);
-	this->r.w = avail_w;
-	this->r.h = pad_y * 2 + h;
+	size.w = avail_w;
+	size.h = pad_y * 2 + h;
 	if (avail_h > 0)
-		this->r.h = min(this->r.h, avail_h);
+		size.h = min(size.h, avail_h);
+	return size;
 }
 
 void
@@ -3762,16 +3763,14 @@ Toolbar::place_slots(Kit &kit)
 	auto nat = [&](Widget *w) -> int {
 		if (!w)
 			return 0;
-		w->measure(kit, kUnlim, h);
-		return w->r.w;
+		return w->measure(kit, kUnlim, h).w;
 	};
 	const int lw = nat(this->left);
 	const int mw = nat(this->mid);
 	const int rw = nat(this->right);
 	int mmin = 0;
 	if (mw > 0 && this->mid && this->mid->more) {
-		this->mid->more->measure(kit, kUnlim, h);
-		mmin = min(mw, this->mid->more->r.w);
+		mmin = min(mw, this->mid->more->measure(kit, kUnlim, h).w);
 	}
 	auto stretches = [](const ToolbarSlot *slot) {
 		if (!slot)
@@ -3901,26 +3900,22 @@ Titlebar::sync(Kit &kit)
 
 // Only the client draws its own decorations, and never over a fullscreen
 // window: this is the one widget that decides for itself whether it is there.
-void
+Size
 Titlebar::measure(Kit &kit, int avail_w, int)
 {
 	this->visible = kit.csd_ && !kit.fullscreen_;
-	if (!this->visible) {
-		this->r = {};
-		return;
-	}
+	if (!this->visible)
+		return {};
 	int ih = 0;
 	auto slot = [&](Button *b) {
 		if (!b)
 			return;
-		b->measure(kit, kUnlim, kUnlim);
-		ih = max(ih, b->r.h);
+		ih = max(ih, b->measure(kit, kUnlim, kUnlim).h);
 	};
 	slot(this->minimize);
 	slot(this->maximize);
 	slot(this->close);
-	this->r.w = avail_w;
-	this->r.h = kit.px(this->pad_y) * 2 + ih;
+	return {avail_w, kit.px(this->pad_y) * 2 + ih};
 }
 
 void
@@ -3936,9 +3931,9 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 	auto place = [&](Button *b) {
 		if (!b)
 			return;
-		b->measure(kit, kUnlim, bar.h);
-		x -= b->r.w;
-		b->arrange(kit, {x, bar.y, b->r.w, bar.h});
+		const Size size = b->measure(kit, kUnlim, bar.h);
+		x -= size.w;
+		b->arrange(kit, {x, bar.y, size.w, bar.h});
 	};
 	place(this->close);
 	place(this->maximize);
@@ -3949,8 +3944,7 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 		const int avail = max(0, right - left);
 		this->title->text =
 			kit.elide_lines(this->text, avail, 1, this->title->bold);
-		this->title->measure(kit, avail, bar.h);
-		const int tw = min(this->title->r.w, avail);
+		const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
 		int tx = this->r.x + (this->r.w - tw) / 2;
 		if (tx < left)
 			tx = left;
@@ -4905,8 +4899,8 @@ paint_tooltip(Kit &kit)
 	tipn.add_child(std::move(row), size_t(-1));
 	// Ask the panel how big it wants to be rather than adding the same
 	// paddings up a second time by hand.
-	tipn.measure(kit, kUnlim, kUnlim);
-	const int tw = tipn.r.w, th = tipn.r.h;
+	const Size size = tipn.measure(kit, kUnlim, kUnlim);
+	const int tw = size.w, th = size.h;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
 
 	int tx = int(kit.mouse_x_) + kit.px(16.f);

@@ -1056,10 +1056,10 @@ Page::set_banner(unique_ptr<Widget> w)
 	this->banner_owned_ = std::move(w);
 }
 
-void
+Size
 Page::measure(Kit &, int max_w, int max_h)
 {
-	this->r = {0, 0, max_w, max_h};
+	return {max_w, max_h};
 }
 
 void
@@ -1076,22 +1076,21 @@ Page::arrange(Kit &kit, Rect alloc)
 	const Rect frame = kit.frame();
 	int y = frame.y;
 	if (this->titlebar) {
-		this->titlebar->measure(kit, frame.w, frame.h);
+		const Size size = this->titlebar->measure(kit, frame.w, frame.h);
 		if (this->titlebar->visible) {
-			this->titlebar->arrange(
-				kit, {frame.x, y, frame.w, this->titlebar->r.h});
+			this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});
 			y += this->titlebar->r.h;
 		}
 	}
 	if (this->toolbar && this->toolbar->visible) {
-		this->toolbar->measure(kit, frame.w, frame.h);
-		this->toolbar->arrange(kit, {frame.x, y, frame.w, this->toolbar->r.h});
+		const Size size = this->toolbar->measure(kit, frame.w, frame.h);
+		this->toolbar->arrange(kit, {frame.x, y, frame.w, size.h});
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
 		const int rest = max(0, frame.bottom() - y);
-		this->banner->measure(kit, frame.w, rest);
-		this->banner->arrange(kit, {frame.x, y, frame.w, this->banner->r.h});
+		const Size size = this->banner->measure(kit, frame.w, rest);
+		this->banner->arrange(kit, {frame.x, y, frame.w, size.h});
 		y += this->banner->r.h;
 	}
 	const int body_y = y;
