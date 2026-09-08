@@ -17,6 +17,9 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <sys/ucred.h>
+#endif
 
 #include <string>
 #include <utility>
@@ -378,11 +381,12 @@ Connection::flush()
 		msg.msg_iovlen = 1;
 		if (!attachments.empty()) {
 			msg.msg_control = control;
-			msg.msg_controllen = CMSG_SPACE(sizeof(int) * attachments.size());
+			msg.msg_controllen =
+				socklen_t(CMSG_SPACE(sizeof(int) * attachments.size()));
 			cmsghdr *c = CMSG_FIRSTHDR(&msg);
 			c->cmsg_level = SOL_SOCKET;
 			c->cmsg_type = SCM_RIGHTS;
-			c->cmsg_len = CMSG_LEN(sizeof(int) * attachments.size());
+			c->cmsg_len = socklen_t(CMSG_LEN(sizeof(int) * attachments.size()));
 			auto *fds = reinterpret_cast<int *>(CMSG_DATA(c));
 			for (size_t i = 0; i < attachments.size(); i++)
 				fds[i] = int(attachments[i]);

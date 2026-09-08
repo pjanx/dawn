@@ -95,7 +95,7 @@ Loop::run()
 			fds.push_back({watch.fd, events, 0});
 			ids.push_back(id);
 		}
-		const int n = poll(fds.data(), fds.size(), -1);
+		const int n = poll(fds.data(), nfds_t(fds.size()), -1);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
