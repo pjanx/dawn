@@ -124,7 +124,6 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 void
 ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 {
-	kit.forget_tree(this);
 	fill_items(kit, url);
 	bool any = false;
 	if (this->col) {

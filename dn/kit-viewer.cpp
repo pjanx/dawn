@@ -296,7 +296,7 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 	v.info_text_src_ = im;
 	list.scroll_.offset = 0;
 	if (int(list.kids.size()) > kInfoFixedKids)
-		list.erase_children(size_t(kInfoFixedKids));
+		list.erase_children(v.kit_, size_t(kInfoFixedKids));
 	if (!im || im->text.empty())
 		return;
 

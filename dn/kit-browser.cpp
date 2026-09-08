@@ -2382,7 +2382,7 @@ fill_places(Browser &b)
 	if (!list)
 		return;
 
-	// Rebuilding the sidebar is not a focus change: forget_tree drops the
+	// Rebuilding the sidebar is not a focus change: erase_children drops the
 	// pointer into the dying rows, and this puts it back on their successor,
 	// leaving whatever decided the ring in the first place alone.
 	string restore_path;
@@ -2392,9 +2392,8 @@ fill_places(Browser &b)
 			break;
 		}
 	}
-	b.kit_.forget_tree(list);
 	b.place_items_.clear();
-	list->erase_children(0);
+	list->erase_children(b.kit_, 0);
 	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
 		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
 		if (d.path.empty()) {

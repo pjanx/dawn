@@ -197,7 +197,9 @@ struct Composite : Widget {
 	Widget *add_child(std::unique_ptr<Widget> child, std::size_t at);
 	// The inverse: detaches one child and hands its ownership back.
 	std::unique_ptr<Widget> take_child(std::size_t at);
-	void erase_children(std::size_t from);
+	// Forgets toolkit state pointing into the removed subtrees before
+	// releasing their ownership.
+	void erase_children(Kit &kit, std::size_t from);
 	std::size_t child_count() const override { return this->kids.size(); }
 	Widget *child(std::size_t i) const override
 	{

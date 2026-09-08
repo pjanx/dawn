@@ -1544,12 +1544,14 @@ Composite::take_child(size_t at)
 }
 
 void
-Composite::erase_children(size_t from)
+Composite::erase_children(Kit &kit, size_t from)
 {
 	from = min(from, this->kids.size());
 	for (size_t i = from; i < this->kids.size(); i++) {
-		if (this->kids[i])
+		if (this->kids[i]) {
+			kit.forget_tree(this->kids[i].get());
 			this->kids[i]->parent_ = nullptr;
+		}
 	}
 	this->kids.erase(this->kids.begin() + ptrdiff_t(from), this->kids.end());
 }
@@ -2420,11 +2422,9 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	if (!this->body || !this->footer || !this->frame)
 		return;
 
-	kit.forget_tree(this->body);
-	this->body->erase_children(0);
+	this->body->erase_children(kit, 0);
 	this->body->add_child(std::move(content), size_t(-1));
-	kit.forget_tree(this->footer);
-	this->footer->erase_children(0);
+	this->footer->erase_children(kit, 0);
 	this->footer->add_child(std::move(actions), size_t(-1));
 	this->frame->min_w = min_w;
 	Popup::open(kit, nullptr);
@@ -2923,7 +2923,7 @@ Menu::clear(Kit &kit)
 	}
 	this->subs_.clear();
 	if (this->col)
-		this->col->erase_children(0);
+		this->col->erase_children(kit, 0);
 }
 
 void
@@ -3157,8 +3157,7 @@ static void
 fill_combo_popup(Kit &kit, Combo &combo)
 {
 	ComboPopup &popup = *combo.popup_;
-	kit.forget_tree(popup.col);
-	popup.col->erase_children(0);
+	popup.col->erase_children(kit, 0);
 	for (int i = 0; i < int(combo.items.size()); i++) {
 		auto item = make_unique<ComboItem>();
 		item->text = combo.items[size_t(i)];
