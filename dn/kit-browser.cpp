@@ -499,16 +499,16 @@ struct SideRow : Button {
 		this->focus_on_press = false;
 	}
 
-	Size measure(Kit &, int max_w, int) override;
+	Size measure_content(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
 Size
-SideRow::measure(Kit &kit, int max_w, int max_h)
+SideRow::measure_content(Kit &kit, int max_w, int max_h)
 {
-	Size size = Button::measure(kit, max_w, max_h);
+	Size size = Button::measure_content(kit, max_w, max_h);
 	size.w = max_w;
 	return size;
 }
@@ -2598,13 +2598,13 @@ Browser::init()
 }
 
 Size
-Browser::measure(Kit &, int max_w, int max_h)
+Browser::measure_content(Kit &, int max_w, int max_h)
 {
 	return {max_w, max_h};
 }
 
 void
-Browser::arrange(Kit &kit, Rect alloc)
+Browser::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
 	layout_grid(*this, this->r);
@@ -2681,21 +2681,21 @@ void
 Browser::prepare(Kit &kit)
 {
 	pack_standin_icons(*this);
-	if (!this->show_names_)
-		return;
-
-	for (const File &f : this->files_) {
-		// Exactly the band paint() draws, asked the same way, so that the cache
-		// is warm for what is about to be drawn and for nothing else.
-		if (!thumb_in_band(*this, f, 0.f) || f.cap.h <= 0)
+	for (File &f : this->files_) {
+		if (!this->show_names_ || !thumb_in_band(*this, f, 0.f) ||
+			f.cap.h <= 0) {
+			f.caption.reset();
 			continue;
-
-		Label lab;
-		lab.text = f.cap_text;
-		lab.wrap = true;
-		lab.pad_y = kCapPad * 0.5f;
-		lab.r = f.cap;
-		lab.prepare(kit);
+		}
+		if (!f.caption) {
+			f.caption = make_unique<Label>();
+			f.caption->align = Align::Center;
+			f.caption->wrap = true;
+			f.caption->pad_y = kCapPad * 0.5f;
+		}
+		f.caption->set_text(f.cap_text);
+		f.caption->r = f.cap;
+		f.caption->prepare(kit);
 	}
 }
 
@@ -2751,15 +2751,9 @@ Browser::paint(Kit &kit) const
 			kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
 				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
 		}
-		if (this->show_names_ && f.cap.h > 0) {
+		if (f.caption) {
 			kit.clip_to(f.cap);
-			Label lab;
-			lab.text = f.cap_text;
-			lab.align = Align::Center;
-			lab.wrap = true;
-			lab.pad_y = kCapPad * 0.5f;
-			lab.r = f.cap;
-			lab.paint(kit);
+			f.caption->paint(kit);
 			kit.clip_pop();
 		}
 	}
@@ -2920,6 +2914,7 @@ Browser::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
 void
 Browser::present(Page &ui)
 {
+	invalidate_arrange();
 	if (!this->kit_.inited_)
 		return;
 	sync_ui(*this, ui);

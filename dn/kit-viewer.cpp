@@ -202,8 +202,12 @@ sync_scale_label(Viewer &v)
 	const float scale_slot =
 		float(max(v.kit_.text_width(QStringLiteral("100%"), false),
 			v.kit_.text_width(v.scale_text_, false)));
-	v.scale_label_->min_w = scale_slot / v.kit_.dpr_;
-	v.scale_label_->text = v.scale_text_;
+	const float min_w = scale_slot / v.kit_.dpr_;
+	if (v.scale_label_->min_w != min_w) {
+		v.scale_label_->min_w = min_w;
+		v.scale_label_->invalidate_measure();
+	}
+	v.scale_label_->set_text(v.scale_text_);
 }
 
 static unique_ptr<Widget>
@@ -284,6 +288,7 @@ fill_info_texts(Viewer &v, const dawn::Image *im)
 	auto &list = *v.info_;
 	v.info_text_src_ = im;
 	list.scroll_.offset = 0;
+	list.invalidate_arrange();
 	if (int(list.kids.size()) > kInfoFixedKids)
 		list.erase_children(v.kit_, size_t(kInfoFixedKids));
 	if (!im || im->text.empty())
@@ -748,11 +753,15 @@ sync_ui(Viewer &v, Page &ui)
 		ui.toolbar->sync_buttons();
 	ui.sync_app_menu();
 	if (v.error_) {
-		v.error_->visible = !v.message_.empty() && !v.message_dismissed_;
-		v.error_->max_h = float(v.kit_.host_h_) * 0.4f;
+		v.error_->set_visible(!v.message_.empty() && !v.message_dismissed_);
+		const float max_h = float(v.kit_.host_h_) * 0.4f;
+		if (v.error_->max_h != max_h) {
+			v.error_->max_h = max_h;
+			v.error_->invalidate_measure();
+		}
 		if (v.error_->visible && v.error_label_)
-			v.error_label_->text =
-				QStringLiteral("Error: ") + QString::fromStdString(v.message_);
+			v.error_label_->set_text(
+				QStringLiteral("Error: ") + QString::fromStdString(v.message_));
 	}
 	if (v.info_)
 		fill_info_texts(v, v.current_ ? v.current_.get() : v.image_.get());
@@ -768,12 +777,12 @@ sync_ui(Viewer &v, Page &ui)
 		const QString name = (basename && basename[0])
 			? QString::fromUtf8(basename)
 			: QStringLiteral("-");
-		v.name_label_->text = name;
-		v.loader_label_->text = v.image_->loader
-			? QString::fromUtf8(v.image_->loader)
-			: QStringLiteral("-");
-		v.width_label_->text = dim_text(v.image_width_);
-		v.height_label_->text = dim_text(v.image_height_);
+		v.name_label_->set_text(name);
+		v.loader_label_->set_text(v.image_->loader
+				? QString::fromUtf8(v.image_->loader)
+				: QStringLiteral("-"));
+		v.width_label_->set_text(dim_text(v.image_width_));
+		v.height_label_->set_text(dim_text(v.image_height_));
 		if (v.cie_) {
 			const dawn::Image *im =
 				v.current_ ? v.current_.get() : v.image_.get();
@@ -1908,13 +1917,13 @@ Viewer::init()
 }
 
 Size
-Viewer::measure(Kit &, int max_w, int max_h)
+Viewer::measure_content(Kit &, int max_w, int max_h)
 {
 	return {max_w, max_h};
 }
 
 void
-Viewer::arrange(Kit &kit, Rect alloc)
+Viewer::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
 	if (this->scale_to_fit_)
@@ -2117,6 +2126,7 @@ Viewer::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
 void
 Viewer::present(Page &ui)
 {
+	invalidate_arrange();
 	animate(*this);
 	if (!this->kit_.inited_)
 		return;

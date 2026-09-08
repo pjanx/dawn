@@ -131,8 +131,8 @@ struct Viewer : Widget {
 	explicit Viewer(Kit &kit);
 	~Viewer() override;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	[[nodiscard]] bool focusable() const override;

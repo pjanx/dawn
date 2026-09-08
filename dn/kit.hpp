@@ -16,6 +16,7 @@
 #include <QImage>
 #include <QRawFont>
 #include <QString>
+#include <QTextLayout>
 #include <Qt>
 
 #include <chrono>
@@ -23,9 +24,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <span>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -63,6 +66,7 @@ struct Rect {
 	}
 	[[nodiscard]] bool empty() const { return this->w <= 0 || this->h <= 0; }
 	[[nodiscard]] Rect inset(int px, int py) const;
+	bool operator==(const Rect &) const = default;
 };
 
 enum class Align : uint8_t { Start, Center, End };
@@ -132,6 +136,30 @@ struct TextTarget {
 
 // --- Kit ---------------------------------------------------------------------
 
+// Shaping belongs to the text's owner, independently of its allocation or
+// glyph atlas. Keep the variants used by the current and preceding frames.
+struct TextCache {
+	struct Text {
+		std::unique_ptr<QTextLayout> layout;
+		int width = 0;
+		int height = 0;
+		uint64_t used = 0;
+		std::map<int, QString> elided;
+	};
+	std::map<std::tuple<QString, int, bool, bool>, Text> texts;
+	uint64_t frame = 0;
+	uint64_t epoch = 0;
+
+	Text &get(
+		const Kit &kit, const QString &text, int wrap, bool bold, bool center);
+	int text_width(const Kit &kit, const QString &text, bool bold);
+	int text_height(const Kit &kit, const QString &text, int wrap, bool bold);
+	int caret_x(const Kit &kit, const QString &text, int index, bool bold);
+	int index_at(const Kit &kit, const QString &text, float x, bool bold);
+	QString elide_lines(
+		const Kit &kit, const QString &text, int wrap, int lines, bool bold);
+};
+
 struct Widget {
 	Rect r;
 	bool visible = true;
@@ -139,12 +167,34 @@ struct Widget {
 	bool hittable = false;
 
 	Widget *parent_ = nullptr;
+	// A toolbar also measures items temporarily parented to its overflow.
+	Widget *measure_owner_ = nullptr;
+	struct Measurement {
+		int max_w = 0, max_h = 0;
+		Size size;
+	};
+	std::vector<Measurement> measurements_;
+	uint64_t measure_epoch_ = 0;
+	mutable TextCache text_cache_;
+	bool arrange_dirty_ = true;
+	uint64_t arrange_epoch_ = 0;
+	Rect allocation_{};
+	Rect arranged_{};
+
+	// After changing public sizing fields, invalidate the widget. Construction
+	// needs no invalidation; adding/removing children does it automatically.
+	void invalidate_measure();
+	// For placement alone, such as scrolling or changing alignment.
+	void invalidate_arrange();
+	void arrange(Kit &kit, Rect alloc);
+	void set_visible(bool value);
+	Size measure(Kit &kit, int max_w, int max_h);
 
 	virtual ~Widget() = default;
 	// At least as of now, we don't seem to need baseline measurements.
 	// Returns the requested size without changing arranged geometry.
-	virtual Size measure(Kit &kit, int max_w, int max_h) = 0;
-	virtual void arrange(Kit &kit, Rect alloc) = 0;
+	virtual Size measure_content(Kit &kit, int max_w, int max_h) = 0;
+	virtual void arrange_content(Kit &kit, Rect alloc) = 0;
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
 	virtual bool grows() const { return false; }
@@ -233,8 +283,9 @@ struct Button : Widget {
 	Button() { this->hittable = true; }
 	// Refresh enabled state and return the action's checked state.
 	bool sync_action();
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	void set_text(const QString &value);
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	QString tip() const override { return this->tip_text; }
@@ -250,7 +301,7 @@ struct Button : Widget {
 struct Checkbox : Button {
 	bool checked = false;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -273,8 +324,9 @@ struct Label : Widget {
 	QString tip_text;
 	QString tip_accel;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	void set_text(const QString &value);
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool grows() const override { return this->grow; }
@@ -313,8 +365,8 @@ struct Entry : Widget {
 	bool caret_on_ = false;
 
 	Entry() { this->hittable = true; }
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool focusable() const override;
@@ -331,7 +383,7 @@ struct Entry : Widget {
 	void move_caret(Kit &kit, int to);
 	// Resets the blink, and re-scrolls to keep the caret in view.
 	void touch_caret(const Kit &kit);
-	// Just the scroll: layout runs every frame, and must not touch the blink.
+	// Just the scroll: arranging the field must not restart its blink.
 	void rescroll(const Kit &kit);
 	[[nodiscard]] int inner_w(const Kit &kit) const;
 	// The text as painted: the placeholder stands in when empty.
@@ -339,8 +391,8 @@ struct Entry : Widget {
 };
 
 struct Sep : Widget {
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 };
 
@@ -348,8 +400,8 @@ struct Splitter : Widget {
 	float min_w = 8.f;
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -385,21 +437,21 @@ context_key(int key, unsigned mods)
 struct Row : Container {
 	Align align = Align::Start;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
 struct Column : Container {
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
 // Packs sideways like a Row, but breaks onto a new line when the next child
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
 struct Flow : Container {
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 
 private:
 	// One wrapped line.  Indices are into kids, and the run may contain
@@ -461,7 +513,7 @@ struct ScrollColumn : Column {
 	ScrollColumn() { this->hittable = true; }
 	Scroll *scrollbar() override { return &this->scroll_; }
 	bool clips_children() const override { return true; }
-	void arrange(Kit &kit, Rect alloc) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	Widget *hit_at(float x, float y) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -486,8 +538,8 @@ struct Panel : Composite {
 	bool busy = false;
 	bool grow = false;
 	bool clip = false;
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	bool grows() const override { return this->grow; }
 	bool clips_children() const override { return this->clip; }
@@ -592,7 +644,7 @@ struct Menu : MenuPopup {
 	MenuItem *add_item_with_mnemonic(const QString &text);
 	void add_sep();
 	void clear(Kit &kit);
-	Size measure(Kit &kit, int max_w, int max_h) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -604,7 +656,7 @@ struct MenuItem : Button {
 	int label_col = 0;
 	int accel_col = 0;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -619,7 +671,7 @@ struct Combo;
 // which item is current is said by where the list was placed, and by the
 // focus, exactly as the item under the pointer is said in a menu.
 struct ComboItem : Button {
-	Size measure(Kit &kit, int max_w, int max_h) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 };
@@ -649,7 +701,7 @@ struct Combo : Button {
 	std::unique_ptr<ComboPopup> popup_;
 
 	Combo();
-	Size measure(Kit &kit, int max_w, int max_h) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
@@ -675,8 +727,8 @@ struct ToolbarSlot : Row {
 	// Moves everything past the split into the popup, or brings it back.
 	void lend_to(Overflow &overflow);
 	void reclaim();
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 
 private:
 	// On a toolbar item layout_visible means "I am in somebody's kids right
@@ -706,8 +758,8 @@ struct Toolbar : Panel {
 		std::unique_ptr<ToolbarSlot> right_row);
 	void sync_buttons();
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 
 private:
 	std::unique_ptr<Overflow> overflow_owned_;
@@ -729,8 +781,8 @@ struct Titlebar : Panel {
 	Titlebar();
 	void sync(Kit &kit);
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void prepare(Kit &kit) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -752,6 +804,9 @@ struct Kit {
 	bool inited_ = false;
 	Sheet atlas_;
 	uint32_t atlas_epoch_ = 0;
+	uint64_t font_epoch_ = 0;
+	uint64_t text_frame_ = 0;
+	mutable TextCache text_cache_;
 	Packed white_{};
 	Packed glow_{};
 	QFont font_;
@@ -803,6 +858,7 @@ struct Kit {
 	std::chrono::steady_clock::time_point popup_at_{};
 	float hover_x_ = 0;
 	float hover_y_ = 0;
+	std::unique_ptr<Panel> tooltip_panel_;
 	QString tooltip_text_;
 	QString tooltip_accel_;
 	bool tooltip_visible_ = false;

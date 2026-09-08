@@ -413,16 +413,111 @@ cache_ascii(Kit &kit, bool bold)
 	}
 }
 
-static void
-cache_text(Kit &kit, const QString &text, bool bold, int wrap)
+TextCache::Text &
+TextCache::get(
+	const Kit &kit, const QString &text, int wrap, bool bold, bool center)
 {
+	if (this->epoch != kit.font_epoch_) {
+		this->texts.clear();
+		this->epoch = kit.font_epoch_;
+	}
+	if (this->frame != kit.text_frame_) {
+		this->frame = kit.text_frame_;
+		// Sync may ask for text just before frame_ui advances the clock.
+		erase_if(this->texts, [&](const auto &entry) {
+			return entry.second.used + 2 < this->frame;
+		});
+	}
+
+	auto [it, fresh] = this->texts.try_emplace({text, wrap, bold, center});
+	Text &cached = it->second;
+	cached.used = this->frame;
+	if (!fresh)
+		return cached;
+
 	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
+	const QFontMetricsF metrics(font);
+	cached.width = int(ceil(metrics.horizontalAdvance(text)));
+	cached.layout = make_unique<QTextLayout>(text, font);
+	cached.layout->setCacheEnabled(true);
+	layout_text(cached.layout.get(), wrap, center);
+
+	const double height = cached.layout->boundingRect().height();
+	cached.height = int(ceil(height > 0 ? height : metrics.height()));
+	return cached;
+}
+
+int
+TextCache::text_width(const Kit &kit, const QString &text, bool bold)
+{
+	return get(kit, text, 0, bold, false).width;
+}
+
+int
+TextCache::text_height(const Kit &kit, const QString &text, int wrap, bool bold)
+{
+	return get(kit, text, wrap, bold, false).height;
+}
+
+int
+TextCache::caret_x(const Kit &kit, const QString &text, int index, bool bold)
+{
+	if (text.isEmpty())
+		return 0;
+
+	QTextLayout &layout = *get(kit, text, 0, bold, false).layout;
+	const int at = clamp(index, 0, int(text.size()));
+	const QTextLine line = layout.lineForTextPosition(at);
+	return line.isValid() ? int(lround(line.cursorToX(at))) : 0;
+}
+
+int
+TextCache::index_at(const Kit &kit, const QString &text, float x, bool bold)
+{
+	if (text.isEmpty())
+		return 0;
+
+	QTextLayout &layout = *get(kit, text, 0, bold, false).layout;
+	return layout.lineCount() ? layout.lineAt(0).xToCursor(qreal(x)) : 0;
+}
+
+QString
+TextCache::elide_lines(
+	const Kit &kit, const QString &text, int wrap, int lines, bool bold)
+{
+	if (text.isEmpty() || lines < 1)
+		return text;
+
+	Text &cached = get(kit, text, wrap, bold, false);
+	auto [it, fresh] = cached.elided.try_emplace(lines);
+	if (!fresh)
+		return it->second;
+
+	QString &result = it->second;
+	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
+	const QFontMetricsF metrics(font);
+	const qreal limit = wrap > 0 ? qreal(wrap) : 1.0e8;
+	result = text;
+	if (lines == 1) {
+		if (metrics.horizontalAdvance(text) > limit)
+			result = metrics.elidedText(text, Qt::ElideRight, limit);
+	} else if (cached.layout->lineCount() > lines) {
+		const QTextLine last = cached.layout->lineAt(lines - 1);
+		const int start = last.textStart();
+		result = text.left(start) +
+			metrics.elidedText(text.mid(start), Qt::ElideRight, limit);
+	}
+	return result;
+}
+
+static void
+cache_text(Kit &kit, TextCache &cache, const QString &text, bool bold, int wrap)
+{
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
 
-	QTextLayout layout(text, font);
-	layout_text(&layout, wrap);
+	QTextLayout &layout = *cache.get(kit, text, wrap, bold, false).layout;
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		for (quint32 gid : run.glyphIndexes()) {
 			for (int phase = 0; phase < kit.glyph_phases_; phase++)
@@ -435,6 +530,7 @@ static void
 rebuild_atlas(Kit &kit)
 {
 	kit.atlas_epoch_++;
+	kit.font_epoch_++;
 	kit.icons_.clear();
 	kit.glyphs_.clear();
 	kit.fonts_.clear();
@@ -507,16 +603,14 @@ rebuild_atlas(Kit &kit)
 
 // The mnemonic is an index into text, and gets underlined; -1 for none.
 static void
-emit_text(Kit &kit, float x, float y, const QString &text, Colour colour,
-	bool bold, int mnemonic, int wrap = 0, bool center = false)
+emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
+	Colour colour, bool bold, int mnemonic, int wrap = 0, bool center = false)
 {
-	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
 	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
 	if (!raw.isValid() || text.isEmpty())
 		return;
 
-	QTextLayout layout(text, font);
-	layout_text(&layout, wrap, center);
+	QTextLayout &layout = *cache.get(kit, text, wrap, bold, center).layout;
 	const int phases = kit.glyph_phases_;
 	for (const QGlyphRun &run : layout.glyphRuns()) {
 		const QList<quint32> gids = run.glyphIndexes();
@@ -609,6 +703,70 @@ Rect::inset(int px, int py) const
 // --- Widget ------------------------------------------------------------------
 
 void
+Widget::invalidate_measure()
+{
+	this->arrange_dirty_ = true;
+	this->measurements_.clear();
+	if (this->parent_)
+		this->parent_->invalidate_measure();
+	if (this->measure_owner_ && this->measure_owner_ != this->parent_)
+		this->measure_owner_->invalidate_measure();
+}
+
+void
+Widget::invalidate_arrange()
+{
+	this->arrange_dirty_ = true;
+	if (this->parent_)
+		this->parent_->invalidate_arrange();
+}
+
+void
+Widget::arrange(Kit &kit, Rect alloc)
+{
+	if (!this->arrange_dirty_ && this->arrange_epoch_ == kit.font_epoch_ &&
+		this->allocation_ == alloc && this->arranged_ == this->r)
+		return;
+
+	this->arrange_dirty_ = false;
+	this->arrange_epoch_ = kit.font_epoch_;
+	this->allocation_ = alloc;
+	arrange_content(kit, alloc);
+	this->arranged_ = this->r;
+}
+
+void
+Widget::set_visible(bool value)
+{
+	if (this->visible == value)
+		return;
+
+	this->visible = value;
+	invalidate_measure();
+}
+
+Size
+Widget::measure(Kit &kit, int max_w, int max_h)
+{
+	if (this->measure_epoch_ != kit.font_epoch_) {
+		this->measurements_.clear();
+		this->measure_epoch_ = kit.font_epoch_;
+	}
+	for (const Measurement &m : this->measurements_) {
+		if (m.max_w == max_w && m.max_h == max_h)
+			return m.size;
+	}
+
+	const Size size = measure_content(kit, max_w, max_h);
+	// Natural and allocated offers recur within one layout. Keep both,
+	// without accumulating every width encountered during a window resize.
+	if (this->measurements_.size() == 8)
+		this->measurements_.erase(this->measurements_.begin());
+	this->measurements_.push_back({max_w, max_h, size});
+	return size;
+}
+
+void
 Widget::paint_children(Kit &kit) const
 {
 	const size_t n = child_count();
@@ -621,9 +779,8 @@ Widget::paint_children(Kit &kit) const
 void
 Widget::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-	paint_children(kit);
+	if (shown())
+		paint_children(kit);
 }
 
 Widget *
@@ -631,6 +788,7 @@ Widget::hit_at(float x, float y)
 {
 	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
+
 	for (size_t i = child_count(); i > 0; --i) {
 		if (Widget *k = child(i - 1))
 			if (Widget *h = k->hit_at(x, y))
@@ -644,6 +802,7 @@ Widget::prepare(Kit &kit)
 {
 	if (!shown())
 		return;
+
 	const size_t n = child_count();
 	for (size_t i = 0; i < n; i++) {
 		if (Widget *k = child(i))
@@ -726,7 +885,8 @@ button_shown(const Kit &kit, const Button &b)
 {
 	if (b.text.isEmpty())
 		return b.text;
-	return kit.elide_lines(b.text, button_text_avail(kit, b), 1, false);
+	return b.text_cache_.elide_lines(
+		kit, b.text, button_text_avail(kit, b), 1, false);
 }
 
 // Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
@@ -745,16 +905,27 @@ checkbox_shown(const Kit &kit, const Checkbox &c)
 	const int px = kit.px(kFramePadX + c.pad_x);
 	const int box = kit.icon_px() + kit.hairline() * 2;
 	const int used = px * 2 + box + kit.px(4.f);
-	return kit.elide_lines(c.text, max(1, c.r.w - used), 1, false);
+	return c.text_cache_.elide_lines(
+		kit, c.text, max(1, c.r.w - used), 1, false);
+}
+
+void
+Button::set_text(const QString &value)
+{
+	if (this->text == value)
+		return;
+
+	this->text = value;
+	invalidate_measure();
 }
 
 Size
-Button::measure(Kit &kit, int, int)
+Button::measure_content(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	int cw = 0;
-	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
+	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	if (this->icon) {
 		cw = icon;
 		ch = max(ch, icon);
@@ -762,14 +933,14 @@ Button::measure(Kit &kit, int, int)
 	if (!this->text.isEmpty()) {
 		if (this->icon)
 			cw += kit.px(4.f);
-		cw += kit.text_width(this->text, false);
-		ch = max(ch, kit.text_height(this->text, 0, false));
+		cw += this->text_cache_.text_width(kit, this->text, false);
+		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
 	}
 	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
 
 void
-Button::arrange(Kit &kit, Rect alloc)
+Button::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = shown() ? alloc : Rect{};
 }
@@ -797,10 +968,11 @@ Button::paint(Kit &kit) const
 			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
-		const int th = kit.text_height(this->text, 0, false);
+		const int th = this->text_cache_.text_height(kit, this->text, 0, false);
 		const QString shown = button_shown(kit, *this);
-		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
-			shown, col(kit.colours_[ColourInk], ink_a), false,
+		emit_text(kit, this->text_cache_, float(tx),
+			float(this->r.y + (this->r.h - th) / 2), shown,
+			col(kit.colours_[ColourInk], ink_a), false,
 			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -811,7 +983,7 @@ void
 Button::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, button_shown(kit, *this), false, 0);
+		cache_text(kit, this->text_cache_, button_shown(kit, *this), false, 0);
 }
 
 bool
@@ -908,15 +1080,16 @@ Button::activate(Kit &kit)
 // --- Checkbox ---------------------------------------------------------------
 
 Size
-Checkbox::measure(Kit &kit, int, int)
+Checkbox::measure_content(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int box = kit.icon_px() + kit.hairline() * 2;
 	int cw = box;
 	int ch = box;
 	if (!this->text.isEmpty()) {
-		cw += kit.px(4.f) + kit.text_width(this->text, false);
-		ch = max(ch, kit.text_height(this->text, 0, false));
+		cw +=
+			kit.px(4.f) + this->text_cache_.text_width(kit, this->text, false);
+		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
 	}
 	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
@@ -953,10 +1126,11 @@ Checkbox::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
-		const int th = kit.text_height(this->text, 0, false);
+		const int th = this->text_cache_.text_height(kit, this->text, 0, false);
 		const QString shown = checkbox_shown(kit, *this);
-		emit_text(kit, float(tx), float(this->r.y + (this->r.h - th) / 2),
-			shown, col(kit.colours_[ColourInk], ink_a), false,
+		emit_text(kit, this->text_cache_, float(tx),
+			float(this->r.y + (this->r.h - th) / 2), shown,
+			col(kit.colours_[ColourInk], ink_a), false,
 			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -971,7 +1145,8 @@ Checkbox::prepare(Kit &kit)
 
 	kit.pack_icon("object-select-symbolic", kit.icon_px());
 	if (!this->text.isEmpty())
-		cache_text(kit, checkbox_shown(kit, *this), false, 0);
+		cache_text(
+			kit, this->text_cache_, checkbox_shown(kit, *this), false, 0);
 }
 
 bool
@@ -987,28 +1162,41 @@ Checkbox::activate(Kit &kit)
 
 // --- Label -------------------------------------------------------------------
 
+void
+Label::set_text(const QString &value)
+{
+	if (this->text == value)
+		return;
+
+	this->text = value;
+	invalidate_measure();
+}
+
 Size
-Label::measure(Kit &kit, int max_w, int)
+Label::measure_content(Kit &kit, int max_w, int)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int iw = max(0, max_w - pad_x * 2);
-	int w = max(kit.text_width(this->text, this->bold), kit.px(this->min_w));
+	int w = max(this->text_cache_.text_width(kit, this->text, this->bold),
+		kit.px(this->min_w));
 	if (this->wrap)
 		w = max(1, iw < kUnlim ? iw : w);
 	return {w + pad_x * 2,
-		kit.text_height(this->text, this->wrap ? w : 0, this->bold) +
+		this->text_cache_.text_height(
+			kit, this->text, this->wrap ? w : 0, this->bold) +
 			pad_y * 2};
 }
 
 void
-Label::arrange(Kit &kit, Rect alloc)
+Label::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = shown() ? alloc : Rect{};
 	if (!shown() || !this->wrap)
 		return;
 	const int w = max(1, this->r.w - kit.px(this->pad_x) * 2);
 	this->r.h = max(this->r.h,
-		kit.text_height(this->text, w, this->bold) + kit.px(this->pad_y) * 2);
+		this->text_cache_.text_height(kit, this->text, w, this->bold) +
+			kit.px(this->pad_y) * 2);
 }
 
 void
@@ -1020,7 +1208,8 @@ Label::paint(Kit &kit) const
 	int tx = this->r.x + pad_x;
 	const bool wrap_center = this->wrap && this->align == Align::Center;
 	if (!this->wrap && this->align != Align::Start) {
-		const int tw = kit.text_width(this->text, this->bold);
+		const int tw =
+			this->text_cache_.text_width(kit, this->text, this->bold);
 		// Centring ignores the padding, as it always has; ending against
 		// the far edge cannot, or the text would sit outside it.
 		tx = this->align == Align::Center
@@ -1028,13 +1217,14 @@ Label::paint(Kit &kit) const
 			: this->r.x + max(pad_x, this->r.w - pad_x - tw);
 	}
 	const int wrap_w = this->wrap ? max(1, this->r.w - pad_x * 2) : 0;
-	const int th = kit.text_height(this->text, wrap_w, this->bold);
+	const int th =
+		this->text_cache_.text_height(kit, this->text, wrap_w, this->bold);
 	int ty = this->r.y + pad_y;
 	if (this->valign == Align::Center)
 		ty = this->r.y + (this->r.h - th) / 2;
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - pad_y - th;
-	emit_text(kit, float(tx), float(ty), this->text,
+	emit_text(kit, this->text_cache_, float(tx), float(ty), this->text,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
 		this->bold, this->mnemonic, wrap_w, wrap_center);
@@ -1044,7 +1234,7 @@ void
 Label::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, this->text, this->bold,
+		cache_text(kit, this->text_cache_, this->text, this->bold,
 			this->wrap ? max(1, this->r.w - kit.px(this->pad_x) * 2) : 0);
 }
 
@@ -1148,8 +1338,9 @@ Entry::rescroll(const Kit &kit)
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const float caret_x = float(kit.caret_x(full, at, false));
-	const float text_w = float(kit.text_width(full, false));
+	const float caret_x =
+		float(this->text_cache_.caret_x(kit, full, at, false));
+	const float text_w = float(this->text_cache_.text_width(kit, full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
 		this->scroll_ = 0.f;
@@ -1185,17 +1376,18 @@ Entry::set_text(Kit &kit, const QString &next)
 }
 
 Size
-Entry::measure(Kit &kit, int, int)
+Entry::measure_content(Kit &kit, int, int)
 {
 	// This is the width the field asks for, never the one it settles for:
 	// growing is the container's business, and it arranges what it gives.
-	const int h = kit.text_height(QStringLiteral("Ag"), 0, false);
+	const int h =
+		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	return {max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
 		h + kit.px(kEntryPadY) * 2};
 }
 
 void
-Entry::arrange(Kit &kit, Rect alloc)
+Entry::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = this->Widget::shown() ? alloc : Rect{};
 	// Only the scroll: resetting the blink here would restart it every
@@ -1223,26 +1415,28 @@ Entry::paint(Kit &kit) const
 	kit.clip_to(in);
 
 	const QString full = painted();
-	const int th = kit.text_height(QStringLiteral("Ag"), 0, false);
+	const int th =
+		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	const float tx = float(in.x) - this->scroll_;
 	if (full.isEmpty()) {
 		if (!this->placeholder.isEmpty())
-			emit_text(kit, tx, float(ty), this->placeholder,
+			emit_text(kit, this->text_cache_, tx, float(ty), this->placeholder,
 				col(kit.colours_[ColourInk], 0.4f * kit.ink_alpha()), false,
 				-1);
 	} else {
-		emit_text(kit, tx, float(ty), full,
+		emit_text(kit, this->text_cache_, tx, float(ty), full,
 			col(kit.colours_[ColourInk], kit.ink_alpha()), false, -1);
 	}
 
 	// The preedit is underlined for its whole length, the way every other
 	// toolkit marks text the input method still owns.
 	if (!this->preedit.isEmpty()) {
-		const float x0 = tx + float(kit.caret_x(full, this->caret, false));
+		const float x0 = tx +
+			float(this->text_cache_.caret_x(kit, full, this->caret, false));
 		const float x1 = tx +
-			float(kit.caret_x(
-				full, this->caret + int(this->preedit.size()), false));
+			float(this->text_cache_.caret_x(
+				kit, full, this->caret + int(this->preedit.size()), false));
 		const int uy = ty + th - hair;
 		kit.list_.add_rect_filled(
 			{int(lround(min(x0, x1))), uy, int(lround(max(x0, x1))), uy + hair},
@@ -1252,7 +1446,8 @@ Entry::paint(Kit &kit) const
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-		const int cx = int(lround(tx + float(kit.caret_x(full, at, false))));
+		const int cx = int(lround(
+			tx + float(this->text_cache_.caret_x(kit, full, at, false))));
 		kit.list_.add_rect_filled({cx, ty, cx + hair, ty + th},
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
@@ -1282,9 +1477,9 @@ Entry::prepare(Kit &kit)
 
 	const QString full = painted();
 	if (full.isEmpty())
-		cache_text(kit, this->placeholder, false, 0);
+		cache_text(kit, this->text_cache_, this->placeholder, false, 0);
 	else
-		cache_text(kit, full, false, 0);
+		cache_text(kit, this->text_cache_, full, false, 0);
 }
 
 bool
@@ -1311,7 +1506,8 @@ Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
 	if (this->preedit.isEmpty()) {
 		const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 		move_caret(kit,
-			kit.index_at(this->text, x - float(in.x) + this->scroll_, false));
+			this->text_cache_.index_at(
+				kit, this->text, x - float(in.x) + this->scroll_, false));
 	}
 	return true;
 }
@@ -1426,7 +1622,8 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
 	const int cx = this->r.x + kit.px(this->pad_x) +
-		int(lround(-this->scroll_ + float(kit.caret_x(full, at, false))));
+		int(lround(-this->scroll_ +
+			float(this->text_cache_.caret_x(kit, full, at, false))));
 	out.caret_rect = {cx, this->r.y, 1, this->r.h};
 	return true;
 }
@@ -1446,7 +1643,7 @@ Entry::wake_ms() const
 // --- Sep ---------------------------------------------------------------------
 
 Size
-Sep::measure(Kit &kit, int max_w, int max_h)
+Sep::measure_content(Kit &kit, int max_w, int max_h)
 {
 	if (max_w > max_h)
 		return {kit.px(kSepW), 0};
@@ -1454,7 +1651,7 @@ Sep::measure(Kit &kit, int max_w, int max_h)
 }
 
 void
-Sep::arrange(Kit &kit, Rect alloc)
+Sep::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = shown() ? alloc : Rect{};
 }
@@ -1483,13 +1680,13 @@ Sep::paint(Kit &kit) const
 // --- Splitter ----------------------------------------------------------------
 
 Size
-Splitter::measure(Kit &kit, int, int max_h)
+Splitter::measure_content(Kit &kit, int, int max_h)
 {
 	return {kit.px(this->min_w), max_h};
 }
 
 void
-Splitter::arrange(Kit &kit, Rect alloc)
+Splitter::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = shown() ? alloc : Rect{};
 }
@@ -1541,6 +1738,8 @@ Composite::add_child(unique_ptr<Widget> child, size_t at)
 	Widget *raw = child.get();
 	if (!raw)
 		return nullptr;
+
+	invalidate_measure();
 	raw->parent_ = this;
 	at = min(at, this->kids.size());
 	this->kids.insert(this->kids.begin() + ptrdiff_t(at), std::move(child));
@@ -1552,6 +1751,8 @@ Composite::take_child(size_t at)
 {
 	if (at >= this->kids.size())
 		return nullptr;
+
+	invalidate_measure();
 	unique_ptr<Widget> child = std::move(this->kids[at]);
 	this->kids.erase(this->kids.begin() + ptrdiff_t(at));
 	if (child)
@@ -1562,6 +1763,7 @@ Composite::take_child(size_t at)
 void
 Composite::erase_children(Kit &kit, size_t from)
 {
+	invalidate_measure();
 	from = min(from, this->kids.size());
 	for (size_t i = from; i < this->kids.size(); i++) {
 		if (this->kids[i]) {
@@ -1717,13 +1919,13 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 // --- Row ---------------------------------------------------------------------
 
 Size
-Row::measure(Kit &kit, int max_w, int max_h)
+Row::measure_content(Kit &kit, int max_w, int max_h)
 {
 	return measure_pack(kit, max_w, max_h, true);
 }
 
 void
-Row::arrange(Kit &kit, Rect alloc)
+Row::arrange_content(Kit &kit, Rect alloc)
 {
 	arrange_pack(kit, alloc, true, this->align);
 }
@@ -1731,13 +1933,13 @@ Row::arrange(Kit &kit, Rect alloc)
 // --- Column ------------------------------------------------------------------
 
 Size
-Column::measure(Kit &kit, int max_w, int max_h)
+Column::measure_content(Kit &kit, int max_w, int max_h)
 {
 	return measure_pack(kit, max_w, max_h, false);
 }
 
 void
-Column::arrange(Kit &kit, Rect alloc)
+Column::arrange_content(Kit &kit, Rect alloc)
 {
 	arrange_pack(kit, alloc, false, Align::Start);
 }
@@ -1801,7 +2003,7 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines,
 }
 
 Size
-Flow::measure(Kit &kit, int max_w, int)
+Flow::measure_content(Kit &kit, int max_w, int)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
@@ -1817,7 +2019,7 @@ Flow::measure(Kit &kit, int max_w, int)
 }
 
 void
-Flow::arrange(Kit &kit, Rect alloc)
+Flow::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!shown()) {
 		this->r = {};
@@ -2045,9 +2247,9 @@ Scroll::paint(Kit &kit, Rect viewport) const
 }
 
 void
-ScrollColumn::arrange(Kit &kit, Rect alloc)
+ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 {
-	Column::arrange(kit, alloc);
+	Column::arrange_content(kit, alloc);
 	int bottom = alloc.y;
 	for (const auto &k : this->kids) {
 		if (k && k->shown())
@@ -2110,6 +2312,8 @@ ScrollColumn::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (!this->scroll_.press(x, y, button, this->r))
 		return false;
+
+	invalidate_arrange();
 	kit.pressed_ = this;
 	return true;
 }
@@ -2123,26 +2327,31 @@ ScrollColumn::release(Kit &, float, float, Qt::MouseButton button)
 bool
 ScrollColumn::motion(Kit &, float, float y)
 {
-	if (this->scroll_.dragging)
-		return this->scroll_.motion(y, this->r);
-	return false;
+	if (!this->scroll_.dragging)
+		return false;
+
+	invalidate_arrange();
+	return this->scroll_.motion(y, this->r);
 }
 
 bool
 ScrollColumn::scroll(Kit &, float, float, int delta)
 {
+	invalidate_arrange();
 	return this->scroll_.wheel(delta, float(this->scroll_.step * 3));
 }
 
 bool
 ScrollColumn::pan(Kit &, float, float, float, float dy)
 {
+	invalidate_arrange();
 	return this->scroll_.pan(dy);
 }
 
 bool
 ScrollColumn::key(Kit &, const Key &ev)
 {
+	invalidate_arrange();
 	if (ev.mods)
 		return false;
 	if (ev.key == Qt::Key_PageUp)
@@ -2161,7 +2370,7 @@ ScrollColumn::wake_ms() const
 // --- Panel -------------------------------------------------------------------
 
 Size
-Panel::measure(Kit &kit, int avail_w, int avail_h)
+Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 {
 	Size size;
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
@@ -2191,7 +2400,7 @@ Panel::measure(Kit &kit, int avail_w, int avail_h)
 }
 
 void
-Panel::arrange(Kit &kit, Rect alloc)
+Panel::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!shown()) {
 		this->r = {};
@@ -2413,14 +2622,14 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	this->footer->add_child(std::move(actions), size_t(-1));
 	this->frame->min_w = min_w;
 	Popup::open(kit, nullptr);
-	this->frame->visible = true;
+	this->frame->set_visible(true);
 }
 
 void
 Dialog::after_close(Kit &)
 {
 	if (this->frame)
-		this->frame->visible = false;
+		this->frame->set_visible(false);
 }
 
 void
@@ -2430,7 +2639,7 @@ Dialog::place(Kit &kit)
 		this->r = {};
 		return;
 	}
-	this->frame->visible = true;
+	this->frame->set_visible(true);
 	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
@@ -2538,7 +2747,8 @@ menu_shown(const Kit &kit, const MenuItem &m)
 {
 	if (m.text.isEmpty())
 		return m.text;
-	return kit.elide_lines(m.text, menu_cols(kit, m).avail, 1, false);
+	return m.text_cache_.elide_lines(
+		kit, m.text, menu_cols(kit, m).avail, 1, false);
 }
 
 static void
@@ -2945,9 +3155,13 @@ Menu::sync()
 			const Action action = item->action;
 			item->checked = item->sync_action();
 			const ActionDef &def = action_def(action);
-			item->text =
-				menu_label(action_label(def, item->checked), &item->mnemonic);
-			item->accel = accel_label(def);
+			item->set_text(
+				menu_label(action_label(def, item->checked), &item->mnemonic));
+			const QString accel = accel_label(def);
+			if (item->accel != accel) {
+				item->accel = accel;
+				item->invalidate_measure();
+			}
 			item->checkable = (def.flags & ActionToggle) && !def.label[1];
 		}
 	}
@@ -2958,8 +3172,10 @@ Menu::sync()
 }
 
 Size
-Menu::measure(Kit &kit, int max_w, int max_h)
+Menu::measure_content(Kit &kit, int max_w, int max_h)
 {
+	// Shared columns are retained measurement output. When they change,
+	// discard the item sizes that were computed against the old columns.
 	if (this->col) {
 		int lw = 0;
 		int aw = 0;
@@ -2972,12 +3188,15 @@ Menu::measure(Kit &kit, int max_w, int max_h)
 		}
 		for (auto &k : this->col->kids) {
 			if (auto *item = dynamic_cast<MenuItem *>(k.get())) {
+				if (item->label_col == lw && item->accel_col == aw)
+					continue;
 				item->label_col = lw;
 				item->accel_col = aw;
+				item->invalidate_measure();
 			}
 		}
 	}
-	return Panel::measure(kit, max_w, max_h);
+	return Panel::measure_content(kit, max_w, max_h);
 }
 
 bool
@@ -2994,7 +3213,7 @@ Menu::key(Kit &kit, const Key &ev)
 }
 
 Size
-MenuItem::measure(Kit &kit, int, int)
+MenuItem::measure_content(Kit &kit, int, int)
 {
 	const int lw = this->label_col > 0 ? this->label_col : label_width(kit);
 	const int aw = this->accel_col > 0 ? this->accel_col : accel_width(kit);
@@ -3004,12 +3223,12 @@ MenuItem::measure(Kit &kit, int, int)
 	int width = kit.px(kIconPts + kFramePadX * 5.f) + lw + aw;
 	if (this->sub)
 		width += icon;
-	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
+	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	ch = max(ch, icon);
 	if (!this->text.isEmpty())
-		ch = max(ch, kit.text_height(this->text, 0, false));
+		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
 	if (!this->accel.isEmpty())
-		ch = max(ch, kit.text_height(this->accel, 0, false));
+		ch = max(ch, this->text_cache_.text_height(kit, this->accel, 0, false));
 	return {width, kit.px(kFramePadY) * 2 + ch};
 }
 
@@ -3029,8 +3248,9 @@ MenuItem::paint(Kit &kit) const
 	const int lead_x = this->r.x + pad_x;
 	const int label_x = this->r.x + cols.label_x;
 	const int accel_x = this->r.x + cols.accel_x;
-	const int th =
-		this->text.isEmpty() ? 0 : kit.text_height(this->text, 0, false);
+	const int th = this->text.isEmpty()
+		? 0
+		: this->text_cache_.text_height(kit, this->text, 0, false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
@@ -3040,13 +3260,14 @@ MenuItem::paint(Kit &kit) const
 		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
 		const QString shown = menu_shown(kit, *this);
-		emit_text(kit, float(label_x), float(ty), shown, label_c, false,
-			shown_mnemonic(this->text, this->mnemonic, shown));
+		emit_text(kit, this->text_cache_, float(label_x), float(ty), shown,
+			label_c, false, shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (!this->accel.isEmpty()) {
-		const int tw = kit.text_width(this->accel, false);
-		const int ath = kit.text_height(this->accel, 0, false);
-		emit_text(kit, float(accel_x + cols.accel_w - tw),
+		const int tw = this->text_cache_.text_width(kit, this->accel, false);
+		const int ath =
+			this->text_cache_.text_height(kit, this->accel, 0, false);
+		emit_text(kit, this->text_cache_, float(accel_x + cols.accel_w - tw),
 			float(this->r.y + (this->r.h - ath) / 2), this->accel,
 			col(kit.colours_[ColourInk], 0.5f), false, -1);
 	}
@@ -3066,9 +3287,9 @@ MenuItem::prepare(Kit &kit)
 		kit.pack_icon("object-select-symbolic", kit.icon_px());
 	if (this->text.isEmpty())
 		return;
-	cache_text(kit, menu_shown(kit, *this), false, 0);
+	cache_text(kit, this->text_cache_, menu_shown(kit, *this), false, 0);
 	if (!this->accel.isEmpty())
-		cache_text(kit, this->accel, false, 0);
+		cache_text(kit, this->text_cache_, this->accel, false, 0);
 }
 
 bool
@@ -3093,13 +3314,13 @@ MenuItem::activate(Kit &kit)
 int
 MenuItem::label_width(const Kit &kit) const
 {
-	return kit.text_width(this->text, false);
+	return this->text_cache_.text_width(kit, this->text, false);
 }
 
 int
 MenuItem::accel_width(const Kit &kit) const
 {
-	return kit.text_width(this->accel, false);
+	return this->text_cache_.text_width(kit, this->accel, false);
 }
 
 // --- Combo -------------------------------------------------------------------
@@ -3110,7 +3331,8 @@ static QString
 combo_item_shown(const Kit &kit, const ComboItem &c)
 {
 	const int pad_x = kit.px(kFramePadX);
-	return kit.elide_lines(c.text, max(1, c.r.w - pad_x * 2), 1, false);
+	return c.text_cache_.elide_lines(
+		kit, c.text, max(1, c.r.w - pad_x * 2), 1, false);
 }
 
 static QString
@@ -3118,7 +3340,8 @@ combo_shown(const Kit &kit, const Combo &c)
 {
 	const int pad_x = kit.px(kFramePadX + c.pad_x);
 	const int used = pad_x * 2 + kit.px(4.f) + kit.icon_px();
-	return kit.elide_lines(c.current_text(), max(1, c.r.w - used), 1, false);
+	return c.text_cache_.elide_lines(
+		kit, c.current_text(), max(1, c.r.w - used), 1, false);
 }
 
 // Rebuilt on every open: the item list is the caller's to change, and it
@@ -3140,12 +3363,13 @@ fill_combo_popup(Kit &kit, Combo &combo)
 }
 
 Size
-ComboItem::measure(Kit &kit, int, int)
+ComboItem::measure_content(Kit &kit, int, int)
 {
-	int ch = kit.text_height(QStringLiteral("Ag"), 0, false);
+	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	if (!this->text.isEmpty())
-		ch = max(ch, kit.text_height(this->text, 0, false));
-	return {kit.px(kFramePadX) * 2 + kit.text_width(this->text, false),
+		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
+	return {kit.px(kFramePadX) * 2 +
+			this->text_cache_.text_width(kit, this->text, false),
 		kit.px(kFramePadY) * 2 + ch};
 }
 
@@ -3163,8 +3387,8 @@ ComboItem::paint(Kit &kit) const
 		return;
 
 	const QString shown = combo_item_shown(kit, *this);
-	const int th = kit.text_height(shown, 0, false);
-	emit_text(kit, float(this->r.x + kit.px(kFramePadX)),
+	const int th = this->text_cache_.text_height(kit, shown, 0, false);
+	emit_text(kit, this->text_cache_, float(this->r.x + kit.px(kFramePadX)),
 		float(this->r.y + (this->r.h - th) / 2), shown,
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), false, -1);
 }
@@ -3173,7 +3397,8 @@ void
 ComboItem::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, combo_item_shown(kit, *this), false, 0);
+		cache_text(
+			kit, this->text_cache_, combo_item_shown(kit, *this), false, 0);
 }
 
 ComboPopup::ComboPopup()
@@ -3248,14 +3473,16 @@ Combo::Combo()
 // To the widest item rather than the current one: picking must not resize
 // the row it sits in.
 Size
-Combo::measure(Kit &kit, int, int)
+Combo::measure_content(Kit &kit, int, int)
 {
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	int cw = 0;
 	for (const QString &item : this->items)
-		cw = max(cw, kit.text_width(item, false));
-	int ch = max(kit.text_height(QStringLiteral("Ag"), 0, false), icon);
+		cw = max(cw, this->text_cache_.text_width(kit, item, false));
+	int ch =
+		max(this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false),
+			icon);
 	return {pad_x * 2 + cw + kit.px(4.f) + icon, kit.px(kFramePadY) * 2 + ch};
 }
 
@@ -3286,8 +3513,8 @@ Combo::paint(Kit &kit) const
 
 	const QString shown_text = combo_shown(kit, *this);
 	if (!shown_text.isEmpty()) {
-		const int th = kit.text_height(shown_text, 0, false);
-		emit_text(kit, float(this->r.x + pad_x),
+		const int th = this->text_cache_.text_height(kit, shown_text, 0, false);
+		emit_text(kit, this->text_cache_, float(this->r.x + pad_x),
 			float(this->r.y + (this->r.h - th) / 2), shown_text,
 			col(kit.colours_[ColourInk], ink_a), false, -1);
 	}
@@ -3302,7 +3529,7 @@ Combo::prepare(Kit &kit)
 		return;
 
 	kit.pack_icon(kComboIcon, kit.icon_px());
-	cache_text(kit, combo_shown(kit, *this), false, 0);
+	cache_text(kit, this->text_cache_, combo_shown(kit, *this), false, 0);
 }
 
 QString
@@ -3416,6 +3643,7 @@ ToolbarSlot::add_item(unique_ptr<Widget> item, size_t at)
 	// Nothing is lent now, so kids is items_ in order, then more.
 	Composite::add_child(std::move(item), at);
 	this->items_.insert(this->items_.begin() + ptrdiff_t(at), raw);
+	raw->measure_owner_ = this;
 	if (at < this->split_)
 		this->split_++;
 	return raw;
@@ -3427,9 +3655,13 @@ ToolbarSlot::sync_layout_visible()
 	for (size_t i = 0; i < this->items_.size(); i++) {
 		// Only ever one of the two: what is lent starts at the split, so an
 		// item is either shown in the popup's Flow or kept here by the bar.
-		this->items_[i]->layout_visible =
-			(i >= this->lent_first_ && i < this->lent_last_) ||
+		Widget *item = this->items_[i];
+		const bool visible = (i >= this->lent_first_ && i < this->lent_last_) ||
 			i < this->split_;
+		if (item->layout_visible != visible) {
+			item->layout_visible = visible;
+			item->invalidate_measure();
+		}
 	}
 }
 
@@ -3440,10 +3672,6 @@ ToolbarSlot::lend_to(Overflow &overflow)
 		return;
 	if (overflow.lender && overflow.lender != this)
 		overflow.lender->reclaim();
-	// Everything comes home first: the split moves as the window resizes,
-	// and this is what re-splits the popup rather than stranding items.
-	reclaim();
-
 	// Separators are what a run happens to start or end with, never worth a
 	// line of their own: the popup shows what they divide, not the dividers.
 	const size_t end = this->items_.size();
@@ -3452,6 +3680,10 @@ ToolbarSlot::lend_to(Overflow &overflow)
 		a++;
 	while (b > a && is_sep(this->items_[b - 1]))
 		--b;
+	if (this->borrower_ == &overflow && this->lent_first_ == a &&
+		this->lent_last_ == b)
+		return;
+	reclaim();
 	for (size_t i = a; i < b; i++) {
 		Widget *item = this->items_[i];
 		// Ownership follows the widget: whoever lays it out holds it.
@@ -3502,11 +3734,8 @@ ToolbarSlot::reclaim()
 // bar tiles its three slots against these, and measuring only the children
 // would make a slot shrink the moment the popup took some of them away.
 Size
-ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
+ToolbarSlot::measure_content(Kit &kit, int max_w, int max_h)
 {
-	this->more->visible = false;
-	Size size = Row::measure(kit, max_w, max_h);
-
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int ih = max(0, max_h - pad_y * 2);
 	const int gap = kit.px(this->gap);
@@ -3518,13 +3747,15 @@ ToolbarSlot::measure(Kit &kit, int max_w, int max_h)
 		used += item_size.w + (shown++ ? gap : 0);
 		cross = max(cross, item_size.h);
 	}
-	size.w = max(size.w, pad_x * 2 + used);
-	size.h = max(size.h, pad_y * 2 + cross);
+
+	Size size;
+	size.w = this->grow ? max_w : pad_x * 2 + used;
+	size.h = pad_y * 2 + cross;
 	return size;
 }
 
 void
-ToolbarSlot::arrange(Kit &kit, Rect alloc)
+ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!this->visible) {
 		this->r = {};
@@ -3552,9 +3783,7 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 	}
 
 	this->split_ = end;
-	this->more->visible = false;
 	if (total > in.w) {
-		this->more->visible = true;
 		const Size more_size = this->more->measure(kit, kUnlim, in.h);
 		const int budget = max(0, in.w - more_size.w - gap);
 		int used = 0;
@@ -3579,10 +3808,10 @@ ToolbarSlot::arrange(Kit &kit, Rect alloc)
 		}
 		while (this->split_ > 0 && is_sep(this->items_[this->split_ - 1]))
 			--this->split_;
-		this->more->visible = this->split_ < end;
 	}
+	this->more->set_visible(this->split_ < end);
 	sync_layout_visible();
-	Row::arrange(kit, alloc);
+	Row::arrange_content(kit, alloc);
 }
 
 // --- Toolbar ---------------------------------------------------------------
@@ -3647,7 +3876,10 @@ Toolbar::sync_buttons()
 		const ActionDef &d = action_def(btn->action);
 		const bool on = btn->sync_action();
 		btn->active = on && btn->action != Action::SortDir;
-		btn->icon = action_icon(d, on);
+		const char *icon = action_icon(d, on);
+		if (bool(btn->icon) != bool(icon))
+			btn->invalidate_measure();
+		btn->icon = icon;
 		btn->tip_text = action_tip(d, on);
 		btn->tip_accel = action_accel(d);
 	};
@@ -3669,7 +3901,7 @@ Toolbar::sync_buttons()
 }
 
 Size
-Toolbar::measure(Kit &kit, int avail_w, int avail_h)
+Toolbar::measure_content(Kit &kit, int avail_w, int avail_h)
 {
 	Size size;
 	const int pad_y = kit.px(this->pad_y);
@@ -3691,7 +3923,7 @@ Toolbar::measure(Kit &kit, int avail_w, int avail_h)
 }
 
 void
-Toolbar::arrange(Kit &kit, Rect alloc)
+Toolbar::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!this->visible) {
 		this->r = {};
@@ -3762,7 +3994,10 @@ Toolbar::place_slots(Kit &kit)
 	if (this->left)
 		this->left->arrange(kit, {x0, y0, left_w, h});
 	if (this->mid) {
-		this->mid->align = Align::Start;
+		if (this->mid->align != Align::Start) {
+			this->mid->align = Align::Start;
+			this->mid->invalidate_arrange();
+		}
 		this->mid->arrange(kit, {mid_x, y0, mid_w, h});
 	}
 	if (this->right)
@@ -3827,8 +4062,7 @@ Titlebar::Titlebar()
 void
 Titlebar::sync(Kit &kit)
 {
-	if (this->title)
-		this->title->text = this->text;
+	set_visible(kit.csd_ && !kit.fullscreen_);
 	if (this->maximize) {
 		const ActionDef &d = action_def(Action::Maximize);
 		const bool on = kit.maximized_;
@@ -3845,9 +4079,8 @@ Titlebar::sync(Kit &kit)
 // Only the client draws its own decorations, and never over a fullscreen
 // window: this is the one widget that decides for itself whether it is there.
 Size
-Titlebar::measure(Kit &kit, int avail_w, int)
+Titlebar::measure_content(Kit &kit, int avail_w, int)
 {
-	this->visible = kit.csd_ && !kit.fullscreen_;
 	if (!this->visible)
 		return {};
 	int ih = 0;
@@ -3863,7 +4096,7 @@ Titlebar::measure(Kit &kit, int avail_w, int)
 }
 
 void
-Titlebar::arrange(Kit &kit, Rect alloc)
+Titlebar::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!this->visible) {
 		this->r = {};
@@ -3886,8 +4119,8 @@ Titlebar::arrange(Kit &kit, Rect alloc)
 		const int left = bar.x;
 		const int right = x;
 		const int avail = max(0, right - left);
-		this->title->text =
-			kit.elide_lines(this->text, avail, 1, this->title->bold);
+		this->title->set_text(this->text_cache_.elide_lines(
+			kit, this->text, avail, 1, this->title->bold));
 		const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
 		int tx = this->r.x + (this->r.w - tw) / 2;
 		if (tx < left)
@@ -3991,13 +4224,13 @@ Kit::pack_bitmap(const QImage &image)
 void
 Kit::cache_text(const QString &text, bool bold)
 {
-	::dn::cache_text(*this, text, bold, 0);
+	::dn::cache_text(*this, this->text_cache_, text, bold, 0);
 }
 
 void
 Kit::emit_text(float x, float y, const QString &text, Colour colour, bool bold)
 {
-	::dn::emit_text(*this, x, y, text, colour, bold, -1);
+	::dn::emit_text(*this, this->text_cache_, x, y, text, colour, bold, -1);
 }
 
 void
@@ -4130,80 +4363,32 @@ Kit::take_atlas_dirty()
 int
 Kit::text_width(const QString &text, bool bold) const
 {
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	return int(ceil(QFontMetricsF(font).horizontalAdvance(text)));
+	return this->text_cache_.text_width(*this, text, bold);
 }
 
 int
 Kit::caret_x(const QString &text, int index, bool bold) const
 {
-	if (text.isEmpty())
-		return 0;
-	const int at = clamp(index, 0, int(text.size()));
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	QTextLayout layout(text, font);
-	layout_text(&layout, 0);
-	const QTextLine line = layout.lineForTextPosition(at);
-	if (!line.isValid())
-		return 0;
-	return int(lround(line.cursorToX(at)));
+	return this->text_cache_.caret_x(*this, text, index, bold);
 }
 
 int
 Kit::index_at(const QString &text, float x, bool bold) const
 {
-	if (text.isEmpty())
-		return 0;
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	QTextLayout layout(text, font);
-	layout_text(&layout, 0);
-	if (layout.lineCount() < 1)
-		return 0;
-	const QTextLine line = layout.lineAt(0);
-	if (!line.isValid())
-		return 0;
-	return line.xToCursor(qreal(x));
+	return this->text_cache_.index_at(*this, text, x, bold);
 }
 
 QString
 Kit::elide_lines(
 	const QString &text, int wrap_px, int max_lines, bool bold) const
 {
-	if (text.isEmpty() || max_lines < 1)
-		return text;
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	const float limit = wrap_px > 0 ? float(wrap_px) : 1.0e8f;
-	QFontMetricsF fm(font);
-	if (max_lines == 1) {
-		if (fm.horizontalAdvance(text) <= qreal(limit))
-			return text;
-		return fm.elidedText(text, Qt::ElideRight, qreal(limit));
-	}
-	QTextLayout layout(text, font);
-	layout_text(&layout, wrap_px);
-	if (layout.lineCount() <= max_lines)
-		return text;
-	const QTextLine last = layout.lineAt(max_lines - 1);
-	if (!last.isValid())
-		return text;
-	const int start = last.textStart();
-	return text.left(start) +
-		fm.elidedText(text.mid(start), Qt::ElideRight, qreal(limit));
+	return this->text_cache_.elide_lines(*this, text, wrap_px, max_lines, bold);
 }
 
 int
 Kit::text_height(const QString &text, int wrap_px, bool bold) const
 {
-	const QFont &font = bold ? this->font_bold_px_ : this->font_px_;
-	const int fallback = int(ceil(QFontMetricsF(font).height()));
-	if (text.isEmpty())
-		return fallback;
-	QTextLayout layout(text, font);
-	layout_text(&layout, wrap_px);
-	const double h = layout.boundingRect().height();
-	if (h <= 0.0)
-		return fallback;
-	return int(ceil(h));
+	return this->text_cache_.text_height(*this, text, wrap_px, bold);
 }
 
 static bool
@@ -4299,6 +4484,13 @@ Kit::sync_focus()
 void
 Kit::set_focus(Widget *w, bool ring)
 {
+	if (this->focus_ != w) {
+		for (Widget *p = w; p; p = p->parent_) {
+			if (auto *column = dynamic_cast<ScrollColumn *>(p);
+				column && column->follow_focus)
+				column->invalidate_arrange();
+		}
+	}
 	this->focus_ = w;
 	this->focus_visible_ = ring;
 }
@@ -4657,6 +4849,8 @@ Kit::destroy()
 	this->inited_ = false;
 	close_popups();
 	this->scrim_.reset();
+	this->tooltip_panel_.reset();
+	this->text_cache_.texts.clear();
 	this->atlas_epoch_++;
 	this->icons_.clear();
 	this->glyphs_.clear();
@@ -4813,36 +5007,34 @@ Kit::tooltip(const Widget *hot)
 	}
 }
 
-// TODO(p): The only text emitted without a caching pass ahead of it, so this
-// is where a novel glyph -- Browser::tip() hands us filenames -- can grow the
-// atlas mid-frame and invalidate the UVs already in the draw list.  See the
-// note on Sheet::uv().
 static void
-paint_tooltip(Kit &kit)
+prepare_tooltip(Kit &kit)
 {
 	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty())
 		return;
 
-	const QString &accel = kit.tooltip_accel_;
-	Panel tipn;
-	tipn.pad_x = kTooltipPadX;
-	tipn.pad_y = kFramePadY;
-	tipn.fill = Fill::Tooltip;
-	tipn.stroke = Stroke::All;
-	auto row = make_unique<Row>();
-	row->gap = accel.isEmpty() ? 0.f : 8.f;
-	auto lab = make_unique<Label>();
-	lab->text = kit.tooltip_text_;
-	row->add_child(std::move(lab), size_t(-1));
-	if (!accel.isEmpty()) {
-		auto acc = make_unique<Label>();
-		acc->text = accel;
-		acc->dim = true;
-		row->add_child(std::move(acc), size_t(-1));
+	if (!kit.tooltip_panel_) {
+		auto panel = make_unique<Panel>();
+		panel->pad_x = kTooltipPadX;
+		panel->pad_y = kFramePadY;
+		panel->fill = Fill::Tooltip;
+		panel->stroke = Stroke::All;
+		auto row = make_unique<Row>();
+		row->gap = 8.f;
+		row->add_child(make_unique<Label>(), size_t(-1));
+		auto accel = make_unique<Label>();
+		accel->dim = true;
+		row->add_child(std::move(accel), size_t(-1));
+		panel->add_child(std::move(row), size_t(-1));
+		kit.tooltip_panel_ = std::move(panel);
 	}
-	tipn.add_child(std::move(row), size_t(-1));
-	// Ask the panel how big it wants to be rather than adding the same
-	// paddings up a second time by hand.
+	Panel &tipn = *kit.tooltip_panel_;
+	Widget *row = tipn.child(0);
+	auto *label = (Label *) row->child(0);
+	auto *accel = (Label *) row->child(1);
+	label->set_text(kit.tooltip_text_);
+	accel->set_text(kit.tooltip_accel_);
+	accel->set_visible(!kit.tooltip_accel_.isEmpty());
 	const Size size = tipn.measure(kit, kUnlim, kUnlim);
 	const int tw = size.w, th = size.h;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
@@ -4863,8 +5055,17 @@ paint_tooltip(Kit &kit)
 		tx = max(0, kit.host_w_ - tw - glow);
 
 	tipn.arrange(kit, {tx, ty, tw, th});
-	kit.draw_shadow(tipn.r);
-	tipn.paint(kit);
+	tipn.prepare(kit);
+}
+
+static void
+paint_tooltip(Kit &kit)
+{
+	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty() ||
+		!kit.tooltip_panel_)
+		return;
+	kit.draw_shadow(kit.tooltip_panel_->r);
+	kit.tooltip_panel_->paint(kit);
 }
 
 namespace
@@ -4941,7 +5142,7 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 	p.at = opener ? opener->r : anchor;
 	if (opener)
 		opener->active = true;
-	p.visible = true;
+	p.set_visible(true);
 
 	// A submenu continues the gesture; a list over a dialog starts one.
 	bool gesture_open = false;
@@ -4966,7 +5167,7 @@ close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 		const bool ring = kit.focus_visible_;
 		kit.popups_.pop_back();
 		const bool keyboard_close = keyboard && kit.popups_.size() == keep;
-		p->visible = false;
+		p->set_visible(false);
 		p->parent_popup = nullptr;
 		p->opener = nullptr;
 		if (opener)
@@ -5188,7 +5389,11 @@ Kit::frame_ui(Widget &ui, const function<void()> &placed)
 {
 	if (!this->inited_)
 		return;
+
+	this->text_frame_++;
 	this->root_ = &ui;
+	// The page settles window chrome and sidebar allocation each frame.
+	ui.invalidate_arrange();
 	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});
 	if (placed)
 		placed();
@@ -5198,6 +5403,7 @@ Kit::frame_ui(Widget &ui, const function<void()> &placed)
 	prepare_popups();
 	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
 	tooltip(this->hot_);
+	prepare_tooltip(*this);
 	paint();
 }
 

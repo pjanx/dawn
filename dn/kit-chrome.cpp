@@ -416,7 +416,7 @@ LoaderRows::sync() const
 	const size_t n = this->draft->loaders.size();
 	for (size_t i = 0; i < n; i++) {
 		const SettingsDraft::Loader &loader = this->draft->loaders[i];
-		this->checks[i]->text = loader_text(loader);
+		this->checks[i]->set_text(loader_text(loader));
 		this->checks[i]->checked = loader.enabled;
 		this->ups[i]->enabled_ = i > 0;
 		this->downs[i]->enabled_ = i + 1 < n;
@@ -1067,6 +1067,7 @@ Page::sync_app_menu()
 void
 Page::set_banner(unique_ptr<Widget> w)
 {
+	invalidate_measure();
 	if (this->banner)
 		this->banner->parent_ = nullptr;
 	this->banner = w.get();
@@ -1076,13 +1077,13 @@ Page::set_banner(unique_ptr<Widget> w)
 }
 
 Size
-Page::measure(Kit &, int max_w, int max_h)
+Page::measure_content(Kit &, int max_w, int max_h)
 {
 	return {max_w, max_h};
 }
 
 void
-Page::arrange(Kit &kit, Rect alloc)
+Page::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!this->visible) {
 		this->r = {};
@@ -1116,13 +1117,16 @@ Page::arrange(Kit &kit, Rect alloc)
 	const int body_h = max(0, frame.bottom() - body_y);
 	int side_w = 0;
 	if (this->sidebar) {
-		this->sidebar->visible = this->sidebar_open &&
-			this->sidebar_side != Side::None && body_h > 0;
+		this->sidebar->set_visible(this->sidebar_open &&
+			this->sidebar_side != Side::None && body_h > 0);
 		if (this->sidebar->visible) {
 			// sidebar_w is kept in points, so that dragging the window to a
 			// display of a different scale keeps its physical width.
 			side_w = max(0, kit.px(this->sidebar_w));
-			this->sidebar->min_w = this->sidebar_w;
+			if (this->sidebar->min_w != this->sidebar_w) {
+				this->sidebar->min_w = this->sidebar_w;
+				this->sidebar->invalidate_measure();
+			}
 			if (this->sidebar_side == Side::Left)
 				this->sidebar->arrange(kit, {frame.x, body_y, side_w, body_h});
 			else
@@ -1142,7 +1146,7 @@ Page::arrange(Kit &kit, Rect alloc)
 		this->content->arrange(kit, this->well_);
 	kit.default_focus_ = this->content;
 	if (this->splitter) {
-		this->splitter->visible = this->sidebar && this->sidebar->visible;
+		this->splitter->set_visible(this->sidebar && this->sidebar->visible);
 		if (this->splitter->visible) {
 			const int sw = kit.px(this->splitter->min_w);
 			// The grab strip straddles the boundary, half on each side.

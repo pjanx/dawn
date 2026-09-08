@@ -327,8 +327,8 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 // during a paint leaves every quad emitted earlier in that frame sampling at
 // the old scale.  Emitting texels and dividing in the shader (or at
 // OverlayList::end()) would make the normalisation happen once, after the
-// sheet has settled.  Reachable today through paint_tooltip(), which is the
-// one emitter with no caching pass ahead of it.
+// sheet has settled. All text, including tooltips, must currently prepare
+// its glyphs before painting begins.
 Uv
 Sheet::uv(const Packed &slot) const
 {

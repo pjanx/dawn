@@ -228,7 +228,7 @@ same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
 }
 
 Size
-CieDiagram::measure(Kit &kit, int max_w, int max_h)
+CieDiagram::measure_content(Kit &kit, int max_w, int max_h)
 {
 	const int cap = caption_h(kit);
 	const int plot_h = max(0, max_h - cap);
@@ -239,7 +239,7 @@ CieDiagram::measure(Kit &kit, int max_w, int max_h)
 }
 
 void
-CieDiagram::arrange(Kit &kit, Rect alloc)
+CieDiagram::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
 }

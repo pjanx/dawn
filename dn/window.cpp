@@ -613,8 +613,10 @@ Window::sync_title()
 	if (this != w && this->title() != title)
 		setTitle(title);
 	auto set_bar = [&](Page *ui) {
-		if (ui && ui->titlebar)
+		if (ui && ui->titlebar && ui->titlebar->text != title) {
 			ui->titlebar->text = title;
+			ui->titlebar->invalidate_arrange();
+		}
 	};
 	set_bar(this->browser_ui_.get());
 	set_bar(this->viewer_ui_.get());

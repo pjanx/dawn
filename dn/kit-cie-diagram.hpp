@@ -21,8 +21,8 @@ struct CieDiagram : Widget {
 	bool screen_dashed = false;
 	bool image_dashed = false;
 
-	Size measure(Kit &kit, int max_w, int max_h) override;
-	void arrange(Kit &kit, Rect alloc) override;
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;
 
