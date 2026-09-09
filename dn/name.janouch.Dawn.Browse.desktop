@@ -4,7 +4,7 @@ Name=dn
 GenericName=Image Browser
 X-GNOME-FullName=Dawn Colour-Managed Image Browser
 Icon=name.janouch.Dawn
-Exec=dn --browse -- %u
+Exec=dn --mode=browse -- %u
 NoDisplay=true
 Terminal=false
 StartupNotify=true

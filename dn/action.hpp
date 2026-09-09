@@ -13,13 +13,31 @@
 #include <cstdint>
 #include <functional>
 #include <initializer_list>
+#include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 class QMimeData;
 
 namespace dn
 {
+
+enum class Mode : uint8_t { View, Browse, CropJpeg, Commander, Count };
+
+constexpr bool
+viewer_mode(Mode mode)
+{
+	return mode == Mode::View || mode == Mode::Browse;
+}
+
+constexpr Mode
+application_mode(Mode mode)
+{
+	return viewer_mode(mode) ? Mode::View : mode;
+}
+
+std::optional<Mode> parse_mode(std::string_view name);
 
 enum class Action : uint8_t {
 	None,
@@ -126,6 +144,18 @@ struct MenuNode {
 		const char *title, std::initializer_list<MenuNode> items);
 };
 
+struct ModeDef {
+	// Stable spelling of the mode, on the command line and on the wire.
+	const char *name;
+	// The application half of the window title.
+	const char *title;
+	std::span<const MenuNode> menu;
+	std::span<const Action> keys;
+};
+
+std::span<const ModeDef> modes();
+const ModeDef &mode_def(Mode mode);
+
 struct Actor {
 	std::function<void(Action)> apply;
 	std::function<bool(Action)> enabled;
@@ -142,11 +172,7 @@ const char *action_icon(const ActionDef &, bool checked);
 QString action_tip(const ActionDef &, bool checked);
 QString action_accel(const ActionDef &);
 
-std::span<const MenuNode> browser_menu();
-std::span<const MenuNode> viewer_menu();
 std::span<const Action> window_keys();
-std::span<const Action> browser_keys();
-std::span<const Action> viewer_keys();
 
 void set_file_mime_data(QMimeData *mime, std::span<const QUrl> urls, bool cut);
 void copy_files(std::span<const QUrl> urls, bool cut);

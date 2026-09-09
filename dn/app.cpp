@@ -349,10 +349,23 @@ App::event(QEvent *event)
 		return true;
 	}
 	if (event->type() == QEvent::FileOpen) {
-		open(url_normalized(((QFileOpenEvent *) event)->url()), {}, {}, false);
+		const QUrl url = url_normalized(((QFileOpenEvent *) event)->url());
+		if (this->accepting_files)
+			open(url, {}, {}, this->startup_mode);
+		else
+			this->pending_files.push_back(url);
 		return true;
 	}
 	return QGuiApplication::event(event);
+}
+
+void
+App::accept_files()
+{
+	this->accepting_files = true;
+	auto pending = std::move(this->pending_files);
+	for (const QUrl &url : pending)
+		open(url, {}, {}, this->startup_mode);
 }
 
 bool
@@ -428,32 +441,51 @@ raise_window(Window *window)
 
 OpenResult
 App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
-	bool browse)
+	Mode mode)
 {
-	// Until there is a VFS, this is where anything but file:// stops.
-	const QString path = url_to_path(url);
-	if (path.isEmpty()) {
-		qWarning("%s: unsupported location",
-			qUtf8Printable(url.toString(QUrl::PrettyDecoded)));
+	if (size_t(mode) >= size_t(Mode::Count))
 		return OpenResult::InvalidArgument;
-	}
 
-	const QFileInfo info(path);
-	if (!info.exists()) {
-		qWarning("%s: not found", qUtf8Printable(path));
-		return OpenResult::NotFound;
-	}
-	if (!info.isReadable()) {
-		qWarning("%s: permission denied", qUtf8Printable(path));
-		return OpenResult::PermissionDenied;
-	}
+	QUrl resolved = url;
+	if (resolved.isEmpty() && mode != Mode::CropJpeg)
+		resolved = path_to_url(QDir::currentPath());
 
-	// Windows compare and store this, so hand them a canonical form.
-	const QUrl resolved = QUrl::fromLocalFile(info.absoluteFilePath());
+	if (!resolved.isEmpty()) {
+		const QString path = url_to_path(resolved);
+		if (path.isEmpty()) {
+			qWarning("%s: unsupported location",
+				qUtf8Printable(resolved.toString()));
+			return OpenResult::InvalidArgument;
+		}
+
+		QFileInfo info(path);
+		if (mode == Mode::CropJpeg) {
+			if (info.isDir())
+				return OpenResult::InvalidArgument;
+		} else {
+			if (mode == Mode::Commander && !info.isDir())
+				info = QFileInfo(info.absolutePath());
+			if (!info.exists()) {
+				qWarning("%s: not found", qUtf8Printable(info.filePath()));
+				return OpenResult::NotFound;
+			}
+			if (!info.isReadable()) {
+				qWarning(
+					"%s: permission denied", qUtf8Printable(info.filePath()));
+				return OpenResult::PermissionDenied;
+			}
+			if (mode == Mode::Commander && !info.isDir())
+				return OpenResult::InvalidArgument;
+		}
+		resolved = path_to_url(info.absoluteFilePath());
+	}
 	if (Window *target = this->default_window) {
-		this->default_window = nullptr;
-		if (target->current_url() == path_to_url(QDir::currentPath())) {
-			target->open_any(resolved, browse);
+		this->default_window.clear();
+		if (target->application() == application_mode(mode)) {
+			if (mode == Mode::Browse)
+				target->reveal_file(resolved);
+			else
+				target->open_any(resolved);
 			apply_activation_token(activation_token);
 			raise_window(target);
 			return OpenResult::Ok;
@@ -463,7 +495,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 #if DN_WITH_WAYLAND
 	if (QGuiApplication::platformName() == QStringLiteral("wayland")) {
 		auto window = make_unique<WaylandWindow>(this);
-		if (!window->initialize(resolved, setup, browse))
+		if (!window->initialize(resolved, setup, mode))
 			return OpenResult::Internal;
 		apply_activation_token(activation_token);
 		window->show();
@@ -473,7 +505,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 #endif
 
 	auto window = make_unique<Window>(this, nullptr);
-	if (!window->initialize(resolved, setup, browse))
+	if (!window->initialize(resolved, setup, mode))
 		return OpenResult::Internal;
 	apply_activation_token(activation_token);
 	window->show();

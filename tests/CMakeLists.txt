@@ -147,7 +147,10 @@ find_program(DAWN_DESKTOP_FILE_VALIDATE desktop-file-validate)
 if(DAWN_DESKTOP_FILE_VALIDATE)
 	foreach(desktop
 		name.janouch.Dawn.desktop
-		name.janouch.Dawn.Browse.desktop)
+		name.janouch.Dawn.Browse.desktop
+		name.janouch.Dawn.Commander.desktop
+		name.janouch.Dawn.CropJpeg.desktop
+	)
 		add_test(NAME ${desktop} COMMAND "${DAWN_DESKTOP_FILE_VALIDATE}"
 			"${PROJECT_SOURCE_DIR}/dn/${desktop}")
 	endforeach()

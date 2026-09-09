@@ -36,7 +36,12 @@ using namespace std;
 namespace dn
 {
 
-constexpr auto kSelfDesktop = QLatin1String(DAWN_NAMESPACE ".desktop");
+static bool
+self_desktop(const QString &id)
+{
+	return id == QLatin1String(DAWN_NAMESPACE ".desktop") ||
+		id == QLatin1String(DAWN_NAMESPACE ".Browse.desktop");
+}
 
 static string
 read_text_file(const QString &path)
@@ -469,7 +474,7 @@ desktop_by_id(const QString &id)
 static bool
 listable(const Desktop &d)
 {
-	if (d.id == kSelfDesktop)
+	if (self_desktop(d.id))
 		return false;
 	if (d.hidden || d.exec.isEmpty() || !shown_on_desktop(d))
 		return false;
@@ -522,7 +527,7 @@ merge_assoc(AssocSets &into, const AssocSets &from)
 static bool
 usable_id(const QString &id, const unordered_set<QString> &removed)
 {
-	if (id.isEmpty() || id == kSelfDesktop || removed.contains(id))
+	if (id.isEmpty() || self_desktop(id) || removed.contains(id))
 		return false;
 	const Desktop *d = desktop_by_id(id);
 	return d && listable(*d);
@@ -747,7 +752,7 @@ set_last_used(const Handler &app, const QString &path)
 		return;
 
 	const QString id = normalize_desktop_id(app.id);
-	if (id.isEmpty() || id == kSelfDesktop)
+	if (id.isEmpty() || self_desktop(id))
 		return;
 
 	const QString type = db().mimeTypeForFile(path).name();

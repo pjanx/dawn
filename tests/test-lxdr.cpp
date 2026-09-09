@@ -150,7 +150,7 @@ test_round_trip_frames()
 		inst::OpenRequest open;
 		open.urls = {"/one", "/two"};
 		open.activation_token = "tok";
-		open.browse = true;
+		open.mode = "browse";
 		const vector<byte> buf = wire(open);
 		dawn::ipc::Decoder dec(buf);
 		inst::OpenRequestView view{};
@@ -160,7 +160,7 @@ test_round_trip_frames()
 		CHECK(view.urls[0] == "/one");
 		CHECK(view.urls[1] == "/two");
 		CHECK(view.activation_token == "tok");
-		CHECK(view.browse);
+		CHECK(view.mode == "browse");
 	}
 
 	{
@@ -217,7 +217,7 @@ test_round_trip_frames()
 		CHECK(o.urls.size() == 2);
 		CHECK(o.urls[0] == "/p");
 		CHECK(o.urls[1] == "/q");
-		CHECK(!o.browse);
+		CHECK(o.mode.empty());
 	}
 	{
 		inst::Response resp;

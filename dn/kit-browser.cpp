@@ -115,7 +115,6 @@ namespace dn
 {
 
 constexpr float kWinPadX = 4.f;
-constexpr float kItemGap = 2.f;
 constexpr float kGridPad = 8.f;
 constexpr float kGlowAlpha = 0.375f;
 constexpr float kBorder = 2.f;
@@ -124,7 +123,6 @@ constexpr int kCapLines = 2;
 constexpr float kCapPad = 4.f;
 constexpr int kCheck = 40;
 constexpr float kPrefetchRows = 2.f;
-constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
 constexpr const char *kMissingIcon = "image-missing-symbolic";
 
@@ -133,51 +131,37 @@ constexpr int kThumbSizeN = size(kThumbSizes);
 constexpr int kThumbWide = 2;
 constexpr size_t kThumbRamBudget = 2ull << 30;
 
-enum class Slot : uint8_t { Left, Middle, Right };
-enum class Kind : uint8_t { Icon, Text, Sep, Search };
-
-namespace
-{
-
-struct Spec {
-	Kind kind;
-	Slot slot;
-	Action action;
-};
-
-}  // namespace
-
-constexpr Spec kItems[] = {
-	{Kind::Icon, Slot::Left, Action::Sidebar},
-	{Kind::Icon, Slot::Left, Action::Back},
-	{Kind::Icon, Slot::Left, Action::Forward},
-	{Kind::Icon, Slot::Left, Action::Reload},
-	{Kind::Sep, Slot::Left, Action::None},
-	{Kind::Icon, Slot::Left, Action::DirPrev},
-	{Kind::Icon, Slot::Left, Action::DirParent},
-	{Kind::Icon, Slot::Left, Action::DirNext},
-	{Kind::Sep, Slot::Left, Action::None},
+constexpr ToolbarSpec kItems[] = {
+	{Slot::Left, Action::Sidebar},
+	{Slot::Left, Action::Back},
+	{Slot::Left, Action::Forward},
+	{Slot::Left, Action::Reload},
+	{Slot::Left, Action::None},
+	{Slot::Left, Action::DirPrev},
+	{Slot::Left, Action::DirParent},
+	{Slot::Left, Action::DirNext},
+	{Slot::Left, Action::None},
 
 	// I don't know if these should be Slot::Middle.
-	{Kind::Icon, Slot::Left, Action::ThumbMinus},
-	{Kind::Icon, Slot::Left, Action::ThumbPlus},
-	{Kind::Sep, Slot::Left, Action::None},
-	{Kind::Icon, Slot::Left, Action::ViewTile},
-	{Kind::Icon, Slot::Left, Action::ViewGrid},
-	// TODO: {Kind::Icon, Slot::Left, Action::ViewList},
-	{Kind::Sep, Slot::Left, Action::None},
-	{Kind::Icon, Slot::Left, Action::Filenames},
-	{Kind::Icon, Slot::Left, Action::Filter},
-	{Kind::Sep, Slot::Left, Action::None},
-	{Kind::Icon, Slot::Left, Action::SortDir},
-	{Kind::Text, Slot::Left, Action::SortName},
-	{Kind::Text, Slot::Left, Action::SortTime},
-	{Kind::Sep, Slot::Left, Action::None},
-	{Kind::Search, Slot::Left, Action::Search},
+	{Slot::Left, Action::ThumbMinus},
+	{Slot::Left, Action::ThumbPlus},
+	{Slot::Left, Action::None},
+	{Slot::Left, Action::ViewTile},
+	{Slot::Left, Action::ViewGrid},
+	// TODO: {Slot::Left, Action::ViewList},
+	{Slot::Left, Action::None},
+	{Slot::Left, Action::Filenames},
+	{Slot::Left, Action::Filter},
+	{Slot::Left, Action::None},
+	{Slot::Left, Action::SortDir},
+	{Slot::Left, Action::SortName},
+	{Slot::Left, Action::SortTime},
+	{Slot::Left, Action::None},
+	{Slot::Left, Action::Search},
 
-	{Kind::Sep, Slot::Right, Action::None},
-	{Kind::Icon, Slot::Right, Action::DarkMode},
-	{Kind::Icon, Slot::Right, Action::Fullscreen},
+	{Slot::Right, Action::None},
+	{Slot::Right, Action::DarkMode},
+	{Slot::Right, Action::Fullscreen},
 };
 
 namespace
@@ -310,16 +294,6 @@ is_image_filename(const QString &name)
 			return true;
 	}
 	return false;
-}
-
-static shared_ptr<dawn::Profile>
-profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
-{
-	if (icc && !icc->empty()) {
-		if (auto profile = cmm.get_profile(*icc))
-			return profile;
-	}
-	return cmm.get_profile_sRGB();
 }
 
 static int
@@ -2189,47 +2163,17 @@ pack_standin_icons(Browser &b)
 	b.kit_.pack_icon(kMissingIcon, px);
 }
 
-static void
-pack_toolbar_icons(Browser &b)
+void
+Browser::rescale(Kit &)
 {
-	const int px = b.kit_.icon_px();
-	for (const Spec &spec : kItems) {
-		const ActionDef &d = action_def(spec.action);
-		b.kit_.pack_icon(action_icon(d, false), px);
-		if (d.icon[1])
-			b.kit_.pack_icon(d.icon[1], px);
-	}
-	b.kit_.pack_icon(kMoreIcon, px);
-	b.kit_.pack_icon("go-up-symbolic", px);
-	b.kit_.pack_icon("go-down-symbolic", px);
-	b.kit_.pack_icon("dot-large-symbolic", px);
-	b.kit_.pack_icon("computer-symbolic", px);
-	b.kit_.pack_icon("drive-optical-symbolic", px);
-	b.kit_.pack_icon("drive-removable-media-symbolic", px);
-	b.kit_.pack_icon("network-server-symbolic", px);
-	b.kit_.pack_icon("drive-ssd-symbolic", px);
-	b.kit_.pack_icon("drive-harddisk-symbolic", px);
-	b.kit_.pack_icon("go-home-symbolic", px);
-	b.kit_.pack_icon("image-symbolic", px);
-	b.kit_.pack_icon("folder-symbolic", px);
-	b.kit_.pack_icon("open-menu-symbolic", px);
-}
-
-static bool
-set_dpr(Browser &b, float dpr)
-{
-	if (!b.kit_.set_dpr(dpr))
-		return false;
-	pack_toolbar_icons(b);
-	if (!b.files_.empty()) {
-		invalidate_thumbs(b);
-		enqueue_thumbs(b);
-		for (Browser::File &f : b.files_) {
+	if (!this->files_.empty()) {
+		invalidate_thumbs(*this);
+		enqueue_thumbs(*this);
+		for (File &f : this->files_) {
 			f.cap = {};
 			f.cap_text.clear();
 		}
 	}
-	return true;
 }
 
 static bool
@@ -2291,11 +2235,9 @@ spec_active(const Browser &b, Action action)
 }
 
 static unique_ptr<Widget>
-make_item(Browser &b, const Spec &spec)
+make_item(Browser &b, const ToolbarSpec &spec)
 {
-	if (spec.kind == Kind::Sep)
-		return make_unique<Sep>();
-	if (spec.kind == Kind::Search) {
+	if (spec.action == Action::Search) {
 		auto e = make_unique<Entry>();
 		b.search_ = e.get();
 		e->flat = true;
@@ -2316,40 +2258,16 @@ make_item(Browser &b, const Spec &spec)
 		};
 		return e;
 	}
+	if (spec.action != Action::SortTime && spec.action != Action::SortName)
+		return {};
 	auto n = make_unique<Button>();
 	n->flat = true;
 	n->focus_on_press = false;
-	const Action action = spec.action;
-	n->action = action;
-	if (spec.kind == Kind::Text) {
-		n->pad_x = 2.f;
-		n->text = action == Action::SortTime ? QStringLiteral("Time")
-											 : QStringLiteral("Name");
-	}
+	n->action = spec.action;
+	n->pad_x = 2.f;
+	n->text = spec.action == Action::SortTime ? QStringLiteral("Time")
+											  : QStringLiteral("Name");
 	return n;
-}
-
-static unique_ptr<ToolbarSlot>
-make_slot_row(Browser &b, Slot slot)
-{
-	auto row = make_unique<ToolbarSlot>();
-	row->gap = kItemGap;
-	for (const Spec &spec : kItems) {
-		if (spec.slot == slot)
-			row->add_item(make_item(b, spec), size_t(-1));
-	}
-	return row;
-}
-
-static unique_ptr<Toolbar>
-make_toolbar(Browser &b)
-{
-	auto left = make_slot_row(b, Slot::Left);
-	auto mid = make_slot_row(b, Slot::Middle);
-	auto right = make_slot_row(b, Slot::Right);
-	right->align = Align::End;
-	return make_unique<Toolbar>(
-		std::move(left), std::move(mid), std::move(right));
 }
 
 static unique_ptr<Sidebar>
@@ -2567,15 +2485,6 @@ apply_action(Browser &b, Action action)
 	}
 }
 
-static Actor
-make_actor(Browser &b, const HostActions &host)
-{
-	return chain_actor(
-		host, [&b](Action a) { return apply_action(b, a); },
-		[&b](Action a) { return spec_enabled(b, a); },
-		[&b](Action a) { return spec_active(b, a); });
-}
-
 // --- Browser -----------------------------------------------------------------
 
 Browser::Browser(Kit &kit, Thumbnailer &thumbnailer)
@@ -2592,7 +2501,6 @@ Browser::~Browser()
 void
 Browser::init()
 {
-	pack_toolbar_icons(*this);
 	this->thumbnail_client_ = this->thumbnailer_.add_client(
 		this->thumb_gen_, [this] { request_render(*this); });
 }
@@ -2771,26 +2679,23 @@ unique_ptr<Page>
 make_browser_page(
 	Kit &kit, const HostActions &host, Thumbnailer &thumbnailer, Browser **out)
 {
-	auto browser = make_unique<Browser>(kit, thumbnailer);
-	Browser *b = browser.get();
+	auto content = make_unique<Browser>(kit, thumbnailer);
+	Browser *b = content.get();
 	b->init();
-	auto toolbar = make_toolbar(*b);
-	auto sidebar = make_sidebar(*b);
-	auto page = make_unique<Page>(std::move(toolbar), std::move(sidebar),
-		Page::Side::Left, std::move(browser));
-	page->host = &host;
-	if (page->context) {
-		page->context->on_new_window = host.new_window;
-		page->context->on_trash = host.trash;
-		page->context->on_bookmarked = host.bookmarked;
-		page->context->on_toggle_bookmark = host.toggle_bookmark;
-	}
-	page->menu_tree = browser_menu();
-	page->keys = browser_keys();
-	page->actor = make_actor(*b, host);
 	b->places_dirty_ = true;
-	b->page_ = page.get();
-	page->bind_actions(kit);
+	PageSetup setup;
+	setup.mode = Mode::Browse;
+	setup.toolbar = make_toolbar(
+		kItems, [b](const ToolbarSpec &spec) { return make_item(*b, spec); });
+	setup.sidebar = make_sidebar(*b);
+	setup.side = Page::Side::Left;
+	setup.actor = chain_actor(
+		host, [b](Action a) { return apply_action(*b, a); },
+		[b](Action a) { return spec_enabled(*b, a); },
+		[b](Action a) { return spec_active(*b, a); });
+	setup.content = std::move(content);
+	auto page = make_page(kit, host, std::move(setup));
+
 	if (out)
 		*out = b;
 	return page;
@@ -2810,17 +2715,6 @@ Browser::destroy()
 	this->places_ = nullptr;
 	this->place_items_.clear();
 	this->page_ = nullptr;
-}
-
-void
-Browser::set_host(float width_pts, float height_pts, float dpr)
-{
-	// The platform speaks logical points; everything past here is pixels,
-	// so the scale has to be current before the conversion.
-	if (!set_dpr(*this, dpr))
-		pack_toolbar_icons(*this);
-	this->kit_.host_w_ = this->kit_.px(width_pts);
-	this->kit_.host_h_ = this->kit_.px(height_pts);
 }
 
 void
@@ -2887,32 +2781,23 @@ Browser::hist_can_forward() const
 }
 
 void
-Browser::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
-	shared_ptr<dawn::Profile> profile, bool force_reload)
+Browser::screen_changed(
+	const ScreenState &state, bool changed, bool force_reload)
 {
-	auto screen_icc = profile
-		? make_shared<const vector<uint8_t>>(profile->to_bytes())
-		: nullptr;
-	const bool reload_thumbs = force_reload ||
-		bool(this->screen_icc_) != bool(screen_icc) ||
-		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
-	this->cmm_ = std::move(cmm);
-	this->screen_icc_ = std::move(screen_icc);
-	this->screen_profile_ = std::move(profile);
-	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	if (this->kit_.renderer_)
-		this->kit_.renderer_->set_transfer(
-			profile_transfer(this->screen_profile_.get()));
-	if (reload_thumbs) {
+	const bool reload = force_reload || changed;
+	this->cmm_ = state.cmm;
+	this->screen_profile_ = state.profile;
+	this->screen_icc_ = state.icc;
+
+	if (reload) {
 		invalidate_thumbs(*this);
 		enqueue_thumbs(*this);
 	}
-	if (this->kit_.request_render)
-		this->kit_.request_render();
+	request_render(*this);
 }
 
 void
-Browser::present(Page &ui)
+Browser::present(Kit &, Page &ui)
 {
 	invalidate_arrange();
 	if (!this->kit_.inited_)

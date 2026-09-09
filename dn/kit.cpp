@@ -6,6 +6,7 @@
 //
 
 #include "kit.hpp"
+#include "kit-chrome.hpp"
 #include "renderer.hpp"
 
 #include <QFile>
@@ -982,6 +983,8 @@ Button::paint(Kit &kit) const
 void
 Button::prepare(Kit &kit)
 {
+	if (shown())
+		kit.pack_icon(this->icon, kit.icon_px());
 	if (shown() && !this->text.isEmpty())
 		cache_text(kit, this->text_cache_, button_shown(kit, *this), false, 0);
 }
@@ -5382,6 +5385,24 @@ Kit::prepare_popups()
 		if (p)
 			p->prepare(*this);
 	}
+}
+
+void
+Widget::present(Kit &kit, Page &page)
+{
+	if (page.toolbar)
+		page.toolbar->sync_buttons();
+	page.sync_app_menu();
+	kit.frame_ui(page, {});
+}
+
+bool
+Kit::set_host(float width_pts, float height_pts, float dpr)
+{
+	const bool changed = set_dpr(dpr);
+	this->host_w_ = px(width_pts);
+	this->host_h_ = px(height_pts);
+	return changed;
 }
 
 void

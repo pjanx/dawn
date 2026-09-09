@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Dawn Commander
+GenericName=File Manager
+X-GNOME-FullName=Dawn Commander
+Icon=name.janouch.Dawn
+Exec=dn --mode=commander -- %U
+Terminal=false
+StartupNotify=true
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;

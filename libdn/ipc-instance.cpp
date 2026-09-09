@@ -440,15 +440,15 @@ Client::call(const Request &req, Received<ResponseView> &out, Error *error,
 
 bool
 Client::open(const vector<string> &urls, string_view activation_token,
-	bool browse, Error *error, chrono::milliseconds timeout)
+	string_view mode, Error *error, chrono::milliseconds timeout)
 {
 	OpenRequest open_req;
 	open_req.urls = urls;
 	open_req.activation_token = string(activation_token);
-	open_req.browse = browse;
+	open_req.mode = string(mode);
 
 	Request req;
-	req.id = this->last_id_ += 1;
+	req.id = ++this->last_id_;
 	req.body.value = RequestBodyOpen{std::move(open_req)};
 
 	Received<ResponseView> response;

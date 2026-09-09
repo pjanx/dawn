@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>dn-launcher</string>
+	<key>CFBundleIdentifier</key>
+	<string>@DAWN_NAMESPACE@.@DN_LAUNCH_ID@</string>
+	<key>CFBundleName</key>
+	<string>@DN_LAUNCH_NAME@</string>
+	<key>CFBundleDisplayName</key>
+	<string>@DN_LAUNCH_NAME@</string>
+	<key>CFBundleIconFile</key>
+	<string>dn.icns</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@PROJECT_VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@PROJECT_VERSION@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>@CMAKE_OSX_DEPLOYMENT_TARGET@</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+
+	<key>DawnMode</key>
+	<string>@DN_LAUNCH_MODE@</string>
+
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>@DN_LAUNCH_TYPE_NAME@</string>
+			<key>CFBundleTypeRole</key>
+			<string>@DN_LAUNCH_ROLE@</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>@DN_LAUNCH_UTI@</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

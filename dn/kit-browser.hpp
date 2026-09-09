@@ -118,7 +118,6 @@ struct Browser : Widget {
 	Kit &kit_;
 	Thumbnailer &thumbnailer_;
 	uint64_t thumbnail_client_ = 0;
-	Page *page_ = nullptr;
 	ScrollColumn *places_ = nullptr;
 	std::vector<PlaceItem> place_items_;
 
@@ -186,7 +185,6 @@ struct Browser : Widget {
 
 	void init();
 	void destroy();
-	void set_host(float width_pts, float height_pts, float dpr);
 	void open_dir(const QUrl &url, bool record);
 	void rescan();
 	bool hist_back();
@@ -198,9 +196,11 @@ struct Browser : Widget {
 	void file_gone(const QUrl &url);
 	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
-	void set_screen_profile(std::shared_ptr<dawn::Cmm> cmm,
-		std::shared_ptr<dawn::Profile> profile, bool force_reload);
-	void present(Page &ui);
+	void screen_changed(
+		const ScreenState &state, bool changed, bool force_reload) override;
+	void rescale(Kit &kit) override;
+	void present(Kit &kit, Page &ui) override;
+	bool busy() const override { return thumbs_busy(); }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	Scroll *scrollbar() override { return &this->scroll_; }

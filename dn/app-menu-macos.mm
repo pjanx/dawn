@@ -193,7 +193,8 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 		if (w->host().apply)
 			w->host().apply(a);
 	} else if (a == dn::Action::NewWindow && _app)
-		_app->open(dn::path_to_url(QDir::currentPath()), {}, {}, false);
+		_app->open(
+			dn::path_to_url(QDir::currentPath()), {}, {}, dn::Mode::View);
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item
@@ -374,8 +375,8 @@ install_macos_app_menu(App *app)
 				titles.push_back(t);
 		}
 	};
-	consider(viewer_menu());
-	consider(browser_menu());
+	for (const auto &mode : modes())
+		consider(mode.menu);
 	for (const QString &t : titles) {
 		// Both trees end with Help, and macOS wants Window just before it.
 		if (t == QStringLiteral("Help"))

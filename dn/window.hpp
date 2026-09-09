@@ -9,6 +9,8 @@
 
 #include "kit-browser.hpp"
 #include "kit-chrome.hpp"
+#include "kit-commander.hpp"
+#include "kit-crop-jpeg.hpp"
 #include "kit-viewer.hpp"
 #include "kit.hpp"
 #include "renderer.hpp"
@@ -45,7 +47,6 @@ class App;
 
 class Window final : public QWindow
 {
-	enum class Mode : uint8_t { View, Browser };
 
 	bool refresh_screen_profile(QScreen *target_screen);
 	void apply_screen_profile(QScreen *target_screen, bool force_reload);
@@ -93,11 +94,13 @@ class Window final : public QWindow
 	Renderer renderer_;
 	Kit kit_;
 	HostActions host_;
-	std::unique_ptr<Page> browser_ui_;
-	std::unique_ptr<Page> viewer_ui_;
+	std::unique_ptr<Page> pages_[size_t(Mode::Count)];
+	Cropper *cropper_ = nullptr;
+	Commander *commander_ = nullptr;
 	Browser *browser_ = nullptr;
 	Viewer *viewer_ = nullptr;
 	Mode mode_ = Mode::View;
+	ScreenState screen_state_;
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
@@ -145,9 +148,11 @@ public:
 	explicit Window(App *app, QWindow *parent);
 	~Window() override;
 
-	bool initialize(const QUrl &url, BrowseSetup setup, bool browse);
+	bool initialize(const QUrl &url, BrowseSetup setup, Mode mode);
 	void shutdown();
-	void open_any(const QUrl &url, bool browse);
+	void open_any(const QUrl &url);
+	void reveal_file(const QUrl &url);
+	Mode application() const { return application_mode(mode_); }
 	[[nodiscard]] QUrl current_url() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }

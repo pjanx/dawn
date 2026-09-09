@@ -523,34 +523,42 @@ action_accel(const ActionDef &def)
 	return accel_label(def);
 }
 
-span<const MenuNode>
-browser_menu()
+static const MenuNode kCropJpegMenu[] = {kFileMenu, kHelpMenu};
+static const MenuNode kCommanderMenu[] = {kFileMenu, kHelpMenu};
+
+static constexpr ModeDef kModes[] = {
+	{"view", "Dawn", kViewerMenu, kViewerKeys},
+	{"browse", "Dawn", kBrowserMenu, kBrowserKeys},
+	{"cropjpeg", "Dawn JPEG Cropper", kCropJpegMenu, {}},
+	{"commander", "Dawn Commander", kCommanderMenu, {}},
+};
+static_assert(size(kModes) == size_t(Mode::Count));
+
+span<const ModeDef>
+modes()
 {
-	return kBrowserMenu;
+	return kModes;
 }
 
-span<const MenuNode>
-viewer_menu()
+const ModeDef &
+mode_def(Mode mode)
 {
-	return kViewerMenu;
+	return kModes[size_t(mode)];
+}
+
+optional<Mode>
+parse_mode(string_view name)
+{
+	for (size_t i = 0; i < size(kModes); i++)
+		if (name == kModes[i].name)
+			return Mode(i);
+	return {};
 }
 
 span<const Action>
 window_keys()
 {
 	return kWindowKeys;
-}
-
-span<const Action>
-browser_keys()
-{
-	return kBrowserKeys;
-}
-
-span<const Action>
-viewer_keys()
-{
-	return kViewerKeys;
 }
 
 void

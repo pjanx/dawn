@@ -36,6 +36,14 @@ namespace dn
 {
 
 class Renderer;
+struct Page;
+
+struct ScreenState {
+	std::shared_ptr<dawn::Cmm> cmm;
+	std::shared_ptr<dawn::Profile> profile;
+	std::shared_ptr<const std::vector<uint8_t>> icc;
+	bool fallback = true;
+};
 
 struct [[nodiscard]] Size {
 	int w = 0;
@@ -161,6 +169,7 @@ struct TextCache {
 };
 
 struct Widget {
+	Page *page_ = nullptr;
 	Rect r;
 	bool visible = true;
 	bool layout_visible = true;
@@ -191,6 +200,10 @@ struct Widget {
 	Size measure(Kit &kit, int max_w, int max_h);
 
 	virtual ~Widget() = default;
+	virtual void present(Kit &kit, Page &page);
+	virtual bool busy() const { return false; }
+	virtual void screen_changed(const ScreenState &, bool, bool) {}
+	virtual void rescale(Kit &) {}
 	// At least as of now, we don't seem to need baseline measurements.
 	// Returns the requested size without changing arranged geometry.
 	virtual Size measure_content(Kit &kit, int max_w, int max_h) = 0;
@@ -922,6 +935,7 @@ struct Kit {
 	bool mouse_double_click(
 		float x, float y, Qt::MouseButton button, unsigned mods);
 	bool set_dpr(float dpr);
+	bool set_host(float width_pts, float height_pts, float dpr);
 	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
 	void pack_icon(const char *name, int px);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);

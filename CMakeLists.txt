@@ -229,6 +229,8 @@ if (DAWN_WITH_JPEG_QS)
 	endif()
 endif()
 
+option(DAWN_WIP "Expose unfinished subapplications" OFF)
+
 configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dawn-config.h")
@@ -328,6 +330,10 @@ include(CPack)
 # We've already figured out msitools.
 if (WIN32 AND CMAKE_CROSSCOMPILING)
 	set(DAWN_ICON_ICO "${PROJECT_BINARY_DIR}/dn/dn.ico")
+	set(DAWN_MSI_WIP OFF)
+	if (DAWN_WIP)
+		set(DAWN_MSI_WIP ON)
+	endif()
 	set(dawn_wxs "${PROJECT_BINARY_DIR}/dawn.wxs")
 	configure_file(dawn.wxs.in "${dawn_wxs}" @ONLY)
 
@@ -336,7 +342,7 @@ if (WIN32 AND CMAKE_CROSSCOMPILING)
 	add_custom_target(msi
 		COMMAND "${PROJECT_SOURCE_DIR}/msys2-package-msi.sh"
 			"${CMAKE_SYSTEM_PROCESSOR}" "${dawn_msi}" "${dawn_wxs}"
-			"${PROJECT_DESCRIPTION}"
+			"${PROJECT_DESCRIPTION}" "${DAWN_MSI_WIP}"
 		WORKING_DIRECTORY "${PROJECT_BINARY_DIR}"
 		VERBATIM)
 endif()

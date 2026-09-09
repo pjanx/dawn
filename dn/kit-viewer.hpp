@@ -55,7 +55,6 @@ struct Viewer : Widget {
 	};
 
 	Kit &kit_;
-	Page *page_ = nullptr;
 	Panel *error_ = nullptr;
 	Label *error_label_ = nullptr;
 	Label *scale_label_ = nullptr;
@@ -139,16 +138,15 @@ struct Viewer : Widget {
 
 	void init();
 	void destroy();
-	void set_host(float width_pts, float height_pts, float dpr);
 	void open(const QUrl &url);
 	void set_preload_urls(const QUrl &previous, const QUrl &next);
 	void cancel_loads();
 	[[nodiscard]] bool has_view() const;
 	[[nodiscard]] bool consume_open_done();
-	void set_screen_profile(std::shared_ptr<dawn::Cmm> cmm,
-		std::shared_ptr<dawn::Profile> profile, bool fallback,
-		bool force_reload);
-	void present(Page &ui);
+	void screen_changed(
+		const ScreenState &state, bool changed, bool force_reload) override;
+	void present(Kit &kit, Page &ui) override;
+	bool busy() const override { return opening_; }
 	[[nodiscard]] int wake_ms() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;

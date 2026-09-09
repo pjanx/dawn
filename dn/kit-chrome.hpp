@@ -176,6 +176,26 @@ private:
 	Rect well_{};
 };
 
+enum class Slot : uint8_t { Left, Middle, Right };
+struct ToolbarSpec {
+	Slot slot;
+	Action action;
+};
+std::unique_ptr<Toolbar> make_toolbar(std::span<const ToolbarSpec> items,
+	const std::function<std::unique_ptr<Widget>(const ToolbarSpec &)> &custom);
+struct PageSetup {
+	Mode mode = Mode::View;
+	std::unique_ptr<Widget> content;
+	std::unique_ptr<Toolbar> toolbar;
+	std::unique_ptr<Sidebar> sidebar;
+	Page::Side side = Page::Side::None;
+	Actor actor;
+};
+std::unique_ptr<Page> make_page(
+	Kit &kit, const HostActions &host, PageSetup setup);
+std::shared_ptr<dawn::Profile> profile_from_icc(
+	dawn::Cmm &cmm, const std::shared_ptr<const std::vector<uint8_t>> &icc);
+
 Actor chain_actor(const HostActions &host, std::function<bool(Action)> apply,
 	std::function<bool(Action)> enabled, std::function<bool(Action)> checked);
 

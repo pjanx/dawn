@@ -25,11 +25,11 @@ the _User Guide_.
 
 Options
 -------
-*--browse*::
-	When an image is passed, start in browsing mode, and preselect that
-	image in its containing directory.  This is used by *dn*'s inode/directory
-	handler to implement the "Open Containing Folder" feature of certain
-	applications.
+*--mode*=_view|browse|cropjpeg|commander_::
+	Select the application to open.  View and Browse are the image browser's
+	two faces; Browse preselects files in their directory, used to implement
+	the "Open Containing Folder" feature of certain applications.
+	JPEG Cropper and Commander are unimplemented.
 
 *--invalidate-cache*::
 	Invalidate the wide thumbnail cache, removing thumbnails for files that can

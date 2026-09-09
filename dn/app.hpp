@@ -84,8 +84,9 @@ protected:
 	bool event(QEvent *event) override;
 
 public:
-	App(int &argc, char **argv)
-		: QGuiApplication(argc, argv), thumbnailer(nullptr, 0)
+	App(int &argc, char **argv, Mode mode)
+		: QGuiApplication(argc, argv), thumbnailer(nullptr, 0),
+		  startup_mode(mode)
 	{
 	}
 
@@ -98,9 +99,14 @@ public:
 	QPointer<Window> default_window;
 	bool needs_csd = false;
 
+	const Mode startup_mode;
+	bool accepting_files = false;
+	std::vector<QUrl> pending_files;
+	void accept_files();
+
 	bool init();
 	OpenResult open(const QUrl &url, const QString &activation_token,
-		BrowseSetup setup, bool browse);
+		BrowseSetup setup, Mode mode);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);
 	// Not quit(): that name is taken by a static QCoreApplication slot,

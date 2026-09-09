@@ -4,6 +4,8 @@ qt_add_executable(dn
 	display-profile.cpp
 	gpu.cpp
 	kit-browser.cpp
+	kit-crop-jpeg.cpp
+	kit-commander.cpp
 	kit-chrome.cpp
 	kit-cie-diagram.cpp
 	kit.cpp
@@ -250,6 +252,12 @@ else()
 			add_custom_target(desktop-media-types ALL DEPENDS "${generated}")
 			set(desktop "${generated}")
 		endif()
+		if (DAWN_WIP)
+			install(FILES
+				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.CropJpeg.desktop"
+				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Commander.desktop"
+				DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+		endif()
 		install(FILES "${desktop}"
 			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Browse.desktop"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
@@ -359,4 +367,8 @@ endif()
 
 if (BUILD_TESTING)
 	add_test(NAME dn-help COMMAND $<TARGET_FILE:dn> --help)
+endif()
+
+if (APPLE AND DAWN_WIP)
+	include("${PROJECT_SOURCE_DIR}/cmake/macos-launchers.cmake")
 endif()

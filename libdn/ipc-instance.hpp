@@ -156,15 +156,15 @@ public:
 	[[nodiscard]] uint32_t server_pid() const;
 
 	// Ask the running dn to open these URLs, and wait for it to say
-	// whether it did. browse routes a file argument to its parent
-	// directory, with the file selected, rather than to the viewer.
+	// whether it did. mode is the stable application/mode name. An empty
+	// URL represents an application window without a document.
 	//
 	// On a refusal *error is filled in when non-null; on a timeout,
 	// protocol, or I/O failure it gets Internal and an empty message.
 	// Do not retry: once the request is out, the server may already have
 	// opened windows.
 	bool open(const std::vector<std::string> &urls,
-		std::string_view activation_token, bool browse, Error *error,
+		std::string_view activation_token, std::string_view mode, Error *error,
 		std::chrono::milliseconds timeout);
 };
 

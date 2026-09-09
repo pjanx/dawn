@@ -990,7 +990,8 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		app->activate_on_press = true;
 		app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
 		this->app_menu_button = app.get();
-		this->toolbar->left->add_item(make_unique<Sep>(), 0);
+		if (!this->toolbar->left->items_.empty())
+			this->toolbar->left->add_item(make_unique<Sep>(), 0);
 		this->toolbar->left->add_item(std::move(app), 0);
 	}
 #endif
@@ -1226,6 +1227,64 @@ Page::child(size_t i) const
 	default:
 		return nullptr;
 	}
+}
+
+shared_ptr<dawn::Profile>
+profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
+{
+	if (icc && !icc->empty())
+		if (auto profile = cmm.get_profile(*icc))
+			return profile;
+	return cmm.get_profile_sRGB();
+}
+
+unique_ptr<Toolbar>
+make_toolbar(span<const ToolbarSpec> items,
+	const function<unique_ptr<Widget>(const ToolbarSpec &)> &custom)
+{
+	auto row = [&](Slot slot) {
+		auto result = make_unique<ToolbarSlot>();
+		result->gap = 2.f;
+		for (const auto &spec : items) {
+			if (spec.slot != slot)
+				continue;
+			unique_ptr<Widget> item = custom ? custom(spec) : nullptr;
+			if (!item && spec.action == Action::None)
+				item = make_unique<Sep>();
+			if (!item) {
+				auto button = make_unique<Button>();
+				button->flat = true;
+				button->focus_on_press = false;
+				button->action = spec.action;
+				item = std::move(button);
+			}
+			result->add_item(std::move(item), size_t(-1));
+		}
+		return result;
+	};
+	auto left = row(Slot::Left), middle = row(Slot::Middle),
+		 right = row(Slot::Right);
+	right->align = Align::End;
+	return make_unique<Toolbar>(
+		std::move(left), std::move(middle), std::move(right));
+}
+
+unique_ptr<Page>
+make_page(Kit &kit, const HostActions &host, PageSetup setup)
+{
+	auto page = make_unique<Page>(std::move(setup.toolbar),
+		std::move(setup.sidebar), setup.side, std::move(setup.content));
+	page->host = &host;
+	page->context->on_new_window = host.new_window;
+	page->context->on_trash = host.trash;
+	page->context->on_bookmarked = host.bookmarked;
+	page->context->on_toggle_bookmark = host.toggle_bookmark;
+	page->menu_tree = mode_def(setup.mode).menu;
+	page->keys = mode_def(setup.mode).keys;
+	page->actor = std::move(setup.actor);
+	page->content->page_ = page.get();
+	page->bind_actions(kit);
+	return page;
 }
 
 Actor

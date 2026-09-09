@@ -87,11 +87,11 @@ WaylandWindow::~WaylandWindow()
 }
 
 bool
-WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, bool browse)
+WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 {
 	create();
 	place_content();
-	if (!this->content_.initialize(url, setup, browse))
+	if (!this->content_.initialize(url, setup, mode))
 		return false;
 	attach_color_management(true);
 	return true;

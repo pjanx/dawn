@@ -173,11 +173,16 @@ InstanceHost::Impl::on_request(
 	this->app_.default_window.clear();
 
 	const QString token = QString::fromUtf8(open_body->open.activation_token);
-	const bool browse = open_body->open.browse;
+	const auto mode = parse_mode(open_body->open.mode);
+	if (!mode || open_body->open.urls.empty()) {
+		call.fail(dawn::ipc::ErrorCode::InvalidArgument,
+			"unknown mode or empty open request");
+		return;
+	}
 	for (const string_view url : open_body->open.urls) {
 		const OpenResult r = this->app_.open(
 			QUrl::fromEncoded(QByteArray(url.data(), qsizetype(url.size()))),
-			token, {}, browse);
+			token, {}, *mode);
 		if (r != OpenResult::Ok) {
 			call.fail(map_open_error(r), {});
 			return;

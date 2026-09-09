@@ -81,8 +81,8 @@ error_fallback(dawn::ipc::ErrorCode code)
 }
 
 static bool
-handoff_open(
-	dawn::ipc::instance::Client &client, const vector<QUrl> &urls, bool browse)
+handoff_open(dawn::ipc::instance::Client &client, const vector<QUrl> &urls,
+	dn::Mode mode)
 {
 	const string token =
 		qEnvironmentVariable("XDG_ACTIVATION_TOKEN").toUtf8().toStdString();
@@ -97,7 +97,8 @@ handoff_open(
 		AllowSetForegroundWindow(DWORD(pid));
 #endif
 	dawn::ipc::Error error;
-	if (client.open(encoded, token, browse, &error, dawn::ipc::kRequestTimeout))
+	if (client.open(encoded, token, dn::mode_def(mode).name, &error,
+			dawn::ipc::kRequestTimeout))
 		return true;
 	if (!error.message.empty())
 		qWarning("%s", error.message.c_str());
@@ -108,7 +109,7 @@ handoff_open(
 
 // Returns an exit code once a running instance has taken the URLs over.
 static optional<int>
-try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
+try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 	bool &reported_mismatch)
 {
 	using HelloStatus = dawn::ipc::HelloStatus;
@@ -116,8 +117,7 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, bool browse,
 	auto client = dawn::ipc::instance::Client::connect(
 		session.toUtf8().toStdString(), &status, dawn::ipc::kHelloTimeout);
 	if (client) {
-		return handoff_open(*client, urls, browse) ? EXIT_SUCCESS
-												   : EXIT_FAILURE;
+		return handoff_open(*client, urls, mode) ? EXIT_SUCCESS : EXIT_FAILURE;
 	}
 
 	const char *mismatch = nullptr;
@@ -160,9 +160,10 @@ main(int argc, char **argv)
 		QStringLiteral("Remove invalid wide thumbnails and exit."));
 	parser.addOption(invalidate_opt);
 
-	const QCommandLineOption browse_opt(QStringLiteral("browse"),
-		QStringLiteral("Start in filesystem browsing mode."));
-	parser.addOption(browse_opt);
+	const QCommandLineOption mode_opt(QStringLiteral("mode"),
+		QStringLiteral("Application: view, browse, cropjpeg, commander."),
+		QStringLiteral("mode"));
+	parser.addOption(mode_opt);
 
 	const QCommandLineOption list_supported_opt(
 		QStringLiteral("list-supported-media-types"),
@@ -177,7 +178,7 @@ main(int argc, char **argv)
 	parser.addPositionalArgument(QStringLiteral("path | URL"),
 		QStringLiteral(
 			"Image file or directory. Repeat to open multiple windows. "
-			"Defaults to the current directory."),
+			"Defaults to an empty cropper or the current directory."),
 		QStringLiteral("[path | URL]..."));
 
 	{
@@ -202,21 +203,33 @@ main(int argc, char **argv)
 		}
 	}
 
-	dn::App app(argc, argv);
+	dn::Mode mode = dn::Mode::View;
+	if (parser.isSet(mode_opt)) {
+		auto parsed = dn::parse_mode(parser.value(mode_opt).toStdString());
+		if (!parsed) {
+			qWarning(
+				"unknown mode: %s", qUtf8Printable(parser.value(mode_opt)));
+			return EXIT_FAILURE;
+		}
+		mode = *parsed;
+	}
+#if !DAWN_WIP
+	if (!dn::viewer_mode(mode)) {
+		qWarning("unsupported mode: %s", dn::mode_def(mode).name);
+		return EXIT_FAILURE;
+	}
+#endif
+
+	dn::App app(argc, argv, mode);
 	QStringList raw = parser.positionalArguments();
 	const bool bare = raw.isEmpty();
-	if (bare)
-		raw.push_back(QStringLiteral("."));
-
-	// Without the working directory, relative arguments do not resolve to
-	// a local file, and every one of them is rejected as a foreign scheme.
 	const QString cwd = QDir::currentPath();
-
 	vector<QUrl> to_open;
 	for (const QString &arg : raw)
 		to_open.push_back(dn::url_from_user_input(arg, cwd));
-
-	const bool browse = parser.isSet(browse_opt);
+	if (bare)
+		to_open.push_back(
+			mode == dn::Mode::CropJpeg ? QUrl{} : dn::path_to_url(cwd));
 
 #ifndef Q_OS_MACOS
 	unique_ptr<dn::InstanceHost> host;
@@ -224,15 +237,15 @@ main(int argc, char **argv)
 		const QString session = instance_session();
 		bool reported_mismatch = false;
 		if (auto code =
-				try_remote_open(session, to_open, browse, reported_mismatch))
+				try_remote_open(session, to_open, mode, reported_mismatch))
 			return *code;
 
 		auto listen =
 			dawn::ipc::Endpoint::listen(dawn::ipc::instance::kService);
 		if (listen.status == dawn::ipc::Endpoint::ListenStatus::InUse) {
 			// Someone else bound it in the meantime.
-			if (auto code = try_remote_open(
-					session, to_open, browse, reported_mismatch))
+			if (auto code =
+					try_remote_open(session, to_open, mode, reported_mismatch))
 				return *code;
 		} else if (listen.status == dawn::ipc::Endpoint::ListenStatus::Ok) {
 			// Notifiers armed; Qt delivers them only in exec().
@@ -246,13 +259,14 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 
 	for (const QUrl &url : to_open) {
-		if (app.open(url, {}, {}, browse) != dn::OpenResult::Ok)
+		if (app.open(url, {}, {}, mode) != dn::OpenResult::Ok)
 			return EXIT_FAILURE;
 	}
 
-	// A bare launch opened the CWD above on a guess; see default_window().
+	// Finder may replace an untouched window from a documentless launch.
 	if (bare)
 		app.default_window = app.key_window();
+	app.accept_files();
 
 	return app.exec();
 }

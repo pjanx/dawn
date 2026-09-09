@@ -60,7 +60,6 @@ constexpr float kRotateMinR = 8.f;
 constexpr float kScaleMin = 0.0125f;
 constexpr float kScaleMax = 64.f;
 constexpr float kAngleFast = 1e-5f;
-constexpr const char *kMoreIcon = "disclose-arrow-down-symbolic";
 
 // The loader below is a local-filesystem reader, and keys its jobs by path.
 static string
@@ -69,62 +68,48 @@ viewer_local_path(const Viewer &v)
 	return url_to_path(v.url_).toStdString();
 }
 
-enum class Slot : uint8_t { Left, Middle, Right };
-enum class Kind : uint8_t { Icon, Scale, Sep };
+constexpr ToolbarSpec kItems[] = {
+	{Slot::Left, Action::Browse},
+	{Slot::Left, Action::PrevFile},
+	{Slot::Left, Action::NextFile},
+	{Slot::Left, Action::Reload},
+	{Slot::Left, Action::None},
 
-namespace
-{
-
-struct Spec {
-	Kind kind;
-	Slot slot;
-	Action action;
-};
-
-}  // namespace
-
-constexpr Spec kItems[] = {
-	{Kind::Icon, Slot::Left, Action::Browse},
-	{Kind::Icon, Slot::Left, Action::PrevFile},
-	{Kind::Icon, Slot::Left, Action::NextFile},
-	{Kind::Icon, Slot::Left, Action::Reload},
-	{Kind::Sep, Slot::Left, Action::None},
-
-	{Kind::Icon, Slot::Middle, Action::PageFirst},
-	{Kind::Icon, Slot::Middle, Action::PagePrevious},
-	{Kind::Icon, Slot::Middle, Action::PageNext},
-	{Kind::Icon, Slot::Middle, Action::PageLast},
-	{Kind::Sep, Slot::Middle, Action::None},
-	{Kind::Icon, Slot::Middle, Action::FrameFirst},
-	{Kind::Icon, Slot::Middle, Action::FramePrevious},
-	{Kind::Icon, Slot::Middle, Action::PlayPause},
-	{Kind::Icon, Slot::Middle, Action::FrameNext},
-	{Kind::Sep, Slot::Middle, Action::None},
-	{Kind::Icon, Slot::Middle, Action::Lock},
-	{Kind::Icon, Slot::Middle, Action::Fixate},
-	{Kind::Icon, Slot::Middle, Action::ZoomOut},
-	{Kind::Scale, Slot::Middle, Action::ZoomLevel},
-	{Kind::Icon, Slot::Middle, Action::ZoomIn},
-	{Kind::Icon, Slot::Middle, Action::Zoom1},
-	{Kind::Icon, Slot::Middle, Action::Fit},
-	{Kind::Sep, Slot::Middle, Action::None},
-	{Kind::Icon, Slot::Middle, Action::ColorManagement},
-	{Kind::Icon, Slot::Middle, Action::Smooth},
-	{Kind::Icon, Slot::Middle, Action::Checkerboard},
-	{Kind::Sep, Slot::Middle, Action::None},
+	{Slot::Middle, Action::PageFirst},
+	{Slot::Middle, Action::PagePrevious},
+	{Slot::Middle, Action::PageNext},
+	{Slot::Middle, Action::PageLast},
+	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::FrameFirst},
+	{Slot::Middle, Action::FramePrevious},
+	{Slot::Middle, Action::PlayPause},
+	{Slot::Middle, Action::FrameNext},
+	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::Lock},
+	{Slot::Middle, Action::Fixate},
+	{Slot::Middle, Action::ZoomOut},
+	{Slot::Middle, Action::ZoomLevel},
+	{Slot::Middle, Action::ZoomIn},
+	{Slot::Middle, Action::Zoom1},
+	{Slot::Middle, Action::Fit},
+	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::ColorManagement},
+	{Slot::Middle, Action::Smooth},
+	{Slot::Middle, Action::Checkerboard},
+	{Slot::Middle, Action::None},
 #if 0
-	{Kind::Icon, Slot::Middle, Action::None},
-	{Kind::Icon, Slot::Middle, Action::None},
+	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::None},
 #endif
-	{Kind::Icon, Slot::Middle, Action::Information},
-	{Kind::Sep, Slot::Middle, Action::None},
-	{Kind::Icon, Slot::Middle, Action::RotateLeft},
-	{Kind::Icon, Slot::Middle, Action::Mirror},
-	{Kind::Icon, Slot::Middle, Action::RotateRight},
+	{Slot::Middle, Action::Information},
+	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::RotateLeft},
+	{Slot::Middle, Action::Mirror},
+	{Slot::Middle, Action::RotateRight},
 
-	{Kind::Sep, Slot::Right, Action::None},
-	{Kind::Icon, Slot::Right, Action::DarkMode},
-	{Kind::Icon, Slot::Right, Action::Fullscreen},
+	{Slot::Right, Action::None},
+	{Slot::Right, Action::DarkMode},
+	{Slot::Right, Action::Fullscreen},
 };
 
 static bool
@@ -211,11 +196,9 @@ sync_scale_label(Viewer &v)
 }
 
 static unique_ptr<Widget>
-make_item(Viewer &v, const Spec &spec)
+make_item(Viewer &v, const ToolbarSpec &spec)
 {
-	if (spec.kind == Kind::Sep)
-		return make_unique<Sep>();
-	if (spec.kind == Kind::Scale) {
+	if (spec.action == Action::ZoomLevel) {
 		auto n = make_unique<Label>();
 		n->hittable = true;
 		n->align = Align::Center;
@@ -226,24 +209,7 @@ make_item(Viewer &v, const Spec &spec)
 		sync_scale_label(v);
 		return n;
 	}
-	auto n = make_unique<Button>();
-	n->flat = true;
-	n->focus_on_press = false;
-	const Action action = spec.action;
-	n->action = action;
-	return n;
-}
-
-static unique_ptr<ToolbarSlot>
-make_slot_row(Viewer &v, Slot slot)
-{
-	auto row = make_unique<ToolbarSlot>();
-	row->gap = kItemGap;
-	for (const Spec &spec : kItems) {
-		if (spec.slot == slot)
-			row->add_item(make_item(v, spec), size_t(-1));
-	}
-	return row;
+	return {};
 }
 
 static unique_ptr<Row>
@@ -363,16 +329,6 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	return out;
 }
 
-static shared_ptr<dawn::Profile>
-profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
-{
-	if (icc && !icc->empty()) {
-		if (auto profile = cmm.get_profile(*icc))
-			return profile;
-	}
-	return cmm.get_profile_sRGB();
-}
-
 static bool apply_action(Viewer &v, Action action);
 static void reload_open(Viewer &v);
 
@@ -399,30 +355,6 @@ struct Viewer::Worker {
 	thread foreground;
 	array<thread, 2> preloads;
 };
-
-static void
-pack_toolbar_icons(Viewer &v)
-{
-	const int px = v.kit_.icon_px();
-	for (const Spec &spec : kItems) {
-		const ActionDef &d = action_def(spec.action);
-		v.kit_.pack_icon(action_icon(d, false), px);
-		if (d.icon[1])
-			v.kit_.pack_icon(d.icon[1], px);
-	}
-	v.kit_.pack_icon(kMoreIcon, px);
-	v.kit_.pack_icon("open-menu-symbolic", px);
-	v.kit_.pack_icon("x-symbolic", px);
-}
-
-static bool
-set_dpr(Viewer &v, float dpr)
-{
-	if (!v.kit_.set_dpr(dpr))
-		return false;
-	pack_toolbar_icons(v);
-	return true;
-}
 
 static void
 set_message(Viewer &v, string text)
@@ -634,17 +566,6 @@ stop_worker(Viewer &v)
 			preload.join();
 	}
 	v.worker_.reset();
-}
-
-static unique_ptr<Toolbar>
-make_toolbar(Viewer &v)
-{
-	auto left = make_slot_row(v, Slot::Left);
-	auto mid = make_slot_row(v, Slot::Middle);
-	auto right = make_slot_row(v, Slot::Right);
-	right->align = Align::End;
-	return make_unique<Toolbar>(
-		std::move(left), std::move(mid), std::move(right));
 }
 
 static unique_ptr<Panel>
@@ -1883,19 +1804,7 @@ apply_view(const Viewer &v)
 	renderer.set_filter(v.filter_);
 	renderer.set_checkerboard(v.checkerboard_);
 	renderer.set_blend_linear_light(v.blend_linear_light_);
-	renderer.set_transfer(v.enable_cms_
-			? profile_transfer(v.screen_profile_.get())
-			: dawn::Transfer::Srgb);
 	renderer.set_view(gpu_scale, pan_x, pan_y, v.orientation_, v.angle_);
-}
-
-static Actor
-make_actor(Viewer &v, const HostActions &host)
-{
-	return chain_actor(
-		host, [&v](Action a) { return apply_action(v, a); },
-		[&v](Action a) { return spec_enabled(v, a); },
-		[&v](Action a) { return spec_active(v, a); });
 }
 
 Viewer::Viewer(Kit &kit) : kit_(kit)
@@ -1912,7 +1821,6 @@ void
 Viewer::init()
 {
 	this->scale_text_.clear();
-	pack_toolbar_icons(*this);
 	start_worker(*this);
 }
 
@@ -1952,39 +1860,26 @@ Viewer::paint(Kit &) const
 unique_ptr<Page>
 make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 {
-	auto viewer = make_unique<Viewer>(kit);
-	Viewer *v = viewer.get();
+	auto content = make_unique<Viewer>(kit);
+	Viewer *v = content.get();
 	v->init();
-	auto toolbar = make_toolbar(*v);
-	auto err = make_error(*v);
-	auto side = make_sidebar(*v);
-	auto page = make_unique<Page>(std::move(toolbar), std::move(side),
-		Page::Side::Right, std::move(viewer));
-	page->host = &host;
-	if (page->context) {
-		page->context->on_new_window = host.new_window;
-		page->context->on_trash = host.trash;
-	}
-	page->set_banner(std::move(err));
-	page->menu_tree = viewer_menu();
-	page->keys = viewer_keys();
-	page->actor = make_actor(*v, host);
-	v->page_ = page.get();
-	page->bind_actions(kit);
+	auto error = make_error(*v);
+	PageSetup setup;
+	setup.mode = Mode::View;
+	setup.toolbar = make_toolbar(
+		kItems, [v](const ToolbarSpec &spec) { return make_item(*v, spec); });
+	setup.sidebar = make_sidebar(*v);
+	setup.side = Page::Side::Right;
+	setup.actor = chain_actor(
+		host, [v](Action a) { return apply_action(*v, a); },
+		[v](Action a) { return spec_enabled(*v, a); },
+		[v](Action a) { return spec_active(*v, a); });
+	setup.content = std::move(content);
+	auto page = make_page(kit, host, std::move(setup));
+	page->set_banner(std::move(error));
 	if (out)
 		*out = v;
 	return page;
-}
-
-void
-Viewer::set_host(float width_pts, float height_pts, float dpr)
-{
-	// The platform speaks logical points; everything past here is pixels,
-	// so the scale has to be current before the conversion.
-	if (!set_dpr(*this, dpr))
-		pack_toolbar_icons(*this);
-	this->kit_.host_w_ = this->kit_.px(width_pts);
-	this->kit_.host_h_ = this->kit_.px(height_pts);
 }
 
 void
@@ -2097,25 +1992,15 @@ Viewer::consume_open_done()
 }
 
 void
-Viewer::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
-	shared_ptr<dawn::Profile> profile, bool fallback, bool force_reload)
+Viewer::screen_changed(
+	const ScreenState &state, bool changed, bool force_reload)
 {
-	auto screen_icc = profile
-		? make_shared<const vector<uint8_t>>(profile->to_bytes())
-		: nullptr;
-	const bool changed = bool(this->screen_icc_) != bool(screen_icc) ||
-		(this->screen_icc_ && *this->screen_icc_ != *screen_icc);
 	const bool reload = !this->url_.isEmpty() &&
 		(force_reload || (this->enable_cms_ && changed));
-	this->cmm_ = std::move(cmm);
-	this->screen_icc_ = std::move(screen_icc);
-	this->screen_profile_ = std::move(profile);
-	this->screen_profile_fallback_ = fallback;
-	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	if (this->kit_.renderer_)
-		this->kit_.renderer_->set_transfer(this->enable_cms_
-				? profile_transfer(this->screen_profile_.get())
-				: dawn::Transfer::Srgb);
+	this->cmm_ = state.cmm;
+	this->screen_profile_ = state.profile;
+	this->screen_icc_ = state.icc;
+	this->screen_profile_fallback_ = state.fallback;
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,
 			this->orientation_, this->angle_, this->view_locked_};
@@ -2124,7 +2009,7 @@ Viewer::set_screen_profile(shared_ptr<dawn::Cmm> cmm,
 }
 
 void
-Viewer::present(Page &ui)
+Viewer::present(Kit &, Page &ui)
 {
 	invalidate_arrange();
 	animate(*this);

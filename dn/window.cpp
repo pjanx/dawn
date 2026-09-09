@@ -207,8 +207,9 @@ Window::pixel_size() const
 }
 
 bool
-Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
+Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 {
+	this->mode_ = mode;
 	QVulkanInstance *const instance = &this->app_->vulkan_instance;
 	create();
 #ifdef Q_OS_MACOS
@@ -229,7 +230,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 		qWarning("chosen GPU cannot present to this window surface");
 		return false;
 	}
-	if (!this->app_->thumbnailer.init(this->app_->gpu))
+	if (viewer_mode(mode) && !this->app_->thumbnailer.init(this->app_->gpu))
 		return false;
 	// A parent currently identifies the Vulkan subsurface owned by
 	// WaylandWindow. Prefer MAILBOX there because Mesa's legacy Wayland FIFO
@@ -262,10 +263,20 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	});
 	this->kit_.init(host_dpr(*this));
 	this->kit_.renderer_ = &this->renderer_;
-	this->browser_ui_ = make_browser_page(
-		this->kit_, this->host_, this->app_->thumbnailer, &this->browser_);
-	this->viewer_ui_ =
-		make_viewer_page(this->kit_, this->host_, &this->viewer_);
+	if (viewer_mode(mode)) {
+		this->pages_[size_t(Mode::Browse)] = make_browser_page(
+			this->kit_, this->host_, this->app_->thumbnailer, &this->browser_);
+		this->pages_[size_t(Mode::View)] =
+			make_viewer_page(this->kit_, this->host_, &this->viewer_);
+	} else if (mode == Mode::CropJpeg) {
+		this->pages_[size_t(mode)] =
+			make_crop_jpeg_page(this->kit_, this->host_, &this->cropper_);
+	} else if (mode == Mode::Commander) {
+		this->pages_[size_t(mode)] =
+			make_commander_page(this->kit_, this->host_, &this->commander_);
+	} else {
+		return false;
+	}
 	if (this->viewer_)
 		this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
 	if (this->browser_) {
@@ -277,7 +288,10 @@ Window::initialize(const QUrl &url, BrowseSetup setup, bool browse)
 	}
 	apply_screen_profile(screen(), false);
 
-	open_any(url.isEmpty() ? path_to_url(QDir::currentPath()) : url, browse);
+	if (mode == Mode::Browse)
+		reveal_file(url);
+	else
+		open_any(url);
 	return true;
 }
 
@@ -293,14 +307,18 @@ Window::drop_frames()
 	this->alt_armed_ = false;
 	this->browser_ = nullptr;
 	this->viewer_ = nullptr;
-	this->browser_ui_.reset();
-	this->viewer_ui_.reset();
+	this->cropper_ = nullptr;
+	this->commander_ = nullptr;
+	this->awaiting_view_ = false;
+	for (auto &page : this->pages_)
+		page.reset();
 }
 
 void
 Window::bind_host()
 {
 	this->host_.apply = [this](Action a) {
+		this->app_->default_window.clear();
 		switch (a) {
 		case Action::CloseWindow:
 			begin_close();
@@ -344,8 +362,8 @@ Window::bind_host()
 
 			dialog_location(
 				this->kit_, *ui->dialog, [this](const QString &location) {
-					open_any(url_from_user_input(location, QDir::currentPath()),
-						false);
+					open_any(
+						url_from_user_input(location, QDir::currentPath()));
 				});
 			request_render();
 			break;
@@ -403,12 +421,12 @@ Window::bind_host()
 	};
 	this->host_.enabled = [this](Action a) {
 		if (a == Action::Back) {
-			if (this->mode_ == Mode::Browser && this->browser_)
+			if (this->mode_ == Mode::Browse && this->browser_)
 				return this->browser_->hist_can_back();
 			return this->browser_ && !this->browser_->dir_url_.isEmpty();
 		}
 		if (a == Action::Forward) {
-			if (this->mode_ == Mode::Browser && this->browser_)
+			if (this->mode_ == Mode::Browse && this->browser_)
 				return this->browser_->hist_can_forward() ||
 					(this->viewer_ && this->viewer_->has_view());
 			return this->browser_ && this->browser_->hist_can_forward();
@@ -436,7 +454,7 @@ Window::bind_host()
 		BrowseSetup setup;
 		if (this->browser_)
 			setup = this->browser_->browse_setup();
-		this->app_->open(url, {}, setup, false);
+		this->app_->open(url, {}, setup, application());
 	};
 	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
 	this->host_.trash = [this](QUrl url) { trash_url(url); };
@@ -587,6 +605,8 @@ Window::launch_exiftool(const QUrl &url)
 void
 Window::set_mode(Mode m)
 {
+	if (application_mode(m) != application() || !this->pages_[size_t(m)])
+		return;
 	if (this->mode_ == m)
 		return;
 	this->mode_ = m;
@@ -597,13 +617,8 @@ Window::set_mode(Mode m)
 void
 Window::sync_title()
 {
-	QUrl url;
-	if (this->mode_ == Mode::View && this->viewer_ &&
-		!this->viewer_->url_.isEmpty())
-		url = this->viewer_->url_;
-	else if (this->browser_ && !this->browser_->dir_url_.isEmpty())
-		url = this->browser_->dir_url_;
-	const QString app = QStringLiteral(DAWN_NAME);
+	const QUrl url = current_url();
+	const QString app = QString::fromUtf8(mode_def(this->mode_).title);
 	const QString title = url.isEmpty()
 		? app
 		: url_parse_name(url) + QStringLiteral(" \u2014 ") + app;
@@ -618,24 +633,20 @@ Window::sync_title()
 			ui->titlebar->invalidate_arrange();
 		}
 	};
-	set_bar(this->browser_ui_.get());
-	set_bar(this->viewer_ui_.get());
+	for (auto &page : this->pages_)
+		set_bar(page.get());
 }
 
 Page *
 Window::active_ui()
 {
-	if (this->mode_ == Mode::Browser)
-		return this->browser_ui_.get();
-	return this->viewer_ui_.get();
+	return this->pages_[size_t(this->mode_)].get();
 }
 
 const Page *
 Window::active_ui() const
 {
-	if (this->mode_ == Mode::Browser)
-		return this->browser_ui_.get();
-	return this->viewer_ui_.get();
+	return this->pages_[size_t(this->mode_)].get();
 }
 
 const Actor *
@@ -713,15 +724,22 @@ Window::refresh_screen_profile(QScreen *target_screen)
 void
 Window::apply_screen_profile(QScreen *target_screen, bool force_reload)
 {
-	if (!refresh_screen_profile(target_screen) && !force_reload)
-		return;
+	// This compares the profiles themselves, modulo their creation
+	// timestamps, so re-reading the same one does not count as a change.
+	const bool changed = refresh_screen_profile(target_screen);
 
-	if (this->viewer_)
-		this->viewer_->set_screen_profile(this->cmm_, this->screen_profile_,
-			this->screen_profile_fallback_, force_reload);
-	if (this->browser_)
-		this->browser_->set_screen_profile(
-			this->cmm_, this->screen_profile_, force_reload);
+	auto icc = this->screen_profile_
+		? make_shared<const vector<uint8_t>>(this->screen_profile_->to_bytes())
+		: nullptr;
+	this->screen_state_ = {this->cmm_, this->screen_profile_, std::move(icc),
+		this->screen_profile_fallback_};
+
+	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
+	this->renderer_.set_transfer(profile_transfer(this->screen_profile_.get()));
+	for (auto &page : this->pages_)
+		if (page && page->content)
+			page->content->screen_changed(
+				this->screen_state_, changed, force_reload);
 }
 
 QWindow *
@@ -848,15 +866,18 @@ Window::open_sibling(int delta)
 	if (!this->viewer_ || !this->browser_ || this->browser_->files_.empty() ||
 		delta == 0)
 		return;
+
 	const int i = viewer_file_index(this->viewer_->url_);
 	if (i < 0)
 		return;
+
 	const int n = int(this->browser_->files_.size());
 	int j = (i + delta) % n;
 	if (j < 0)
 		j += n;
 	if (j == i)
 		return;
+
 	open_viewer(this->browser_->file_url(j));
 	set_mode(Mode::View);
 	request_render();
@@ -867,6 +888,7 @@ Window::request_render()
 {
 	if (!this->renderer_ready_ || this->update_pending_)
 		return;
+
 	this->update_pending_ = true;
 	// This window presents FIFO itself. QWindow::requestUpdate asks the
 	// platform frame clock for a slot we do not drive (wl_surface.frame,
@@ -904,10 +926,10 @@ Window::render()
 	const float dpr = host_dpr(*this);
 	this->kit_.dpi_ = host_dpi(*this);
 	const bool fullscreen = bool(shell()->windowState() & Qt::WindowFullScreen);
-	if (this->mode_ == Mode::Browser && this->browser_)
-		this->browser_->set_host(w, h, dpr);
-	else if (this->viewer_)
-		this->viewer_->set_host(w, h, dpr);
+	if (this->kit_.set_host(w, h, dpr))
+		for (auto &page : this->pages_)
+			if (page && page->content)
+				page->content->rescale(this->kit_);
 
 	// Nothing to do for a resize: relayout_popups() re-places every popup
 	// and drops the ones whose opener stopped being shown.
@@ -924,17 +946,9 @@ Window::render()
 	sync_title();
 	if (ui->titlebar)
 		ui->titlebar->sync(this->kit_);
-	if (ui->toolbar) {
-		if (this->mode_ == Mode::Browser)
-			ui->toolbar->busy = this->awaiting_view_ ||
-				(this->browser_ && this->browser_->thumbs_busy());
-		else
-			ui->toolbar->busy = this->viewer_ && this->viewer_->opening_;
-	}
-	if (this->mode_ == Mode::Browser && this->browser_)
-		this->browser_->present(*ui);
-	else if (this->viewer_)
-		this->viewer_->present(*ui);
+	if (ui->toolbar)
+		ui->toolbar->busy = this->awaiting_view_ || ui->content->busy();
+	ui->content->present(this->kit_, *ui);
 	sync_csd();
 	if (this->viewer_ && this->viewer_->consume_open_done() &&
 		this->awaiting_view_) {
@@ -967,8 +981,8 @@ void
 Window::arm_ui_wake()
 {
 	int ms = this->kit_.wake_ms();
-	if (this->mode_ == Mode::View && this->viewer_)
-		ms = sooner(ms, this->viewer_->wake_ms());
+	if (Page *page = active_ui(); page && page->content)
+		ms = sooner(ms, page->content->wake_ms());
 	if (ms >= 0)
 		this->ui_wake_.start(ms);
 	else
@@ -1010,12 +1024,12 @@ Window::show_browser(bool select)
 {
 	if (!this->browser_ || this->browser_->dir_url_.isEmpty())
 		return;
-	if (this->viewer_ui_)
+	if (this->pages_[size_t(Mode::View)])
 		this->kit_.close_popups();
 	if (select && this->viewer_)
 		this->browser_->select_file(this->viewer_->url_);
 	cancel_viewer_loads();
-	set_mode(Mode::Browser);
+	set_mode(Mode::Browse);
 	request_render();
 }
 
@@ -1036,7 +1050,7 @@ Window::go_forward()
 	if (this->browser_ && this->browser_->hist_forward()) {
 		this->kit_.close_popups();
 		cancel_viewer_loads();
-		set_mode(Mode::Browser);
+		set_mode(Mode::Browse);
 		request_render();
 		return;
 	}
@@ -1051,6 +1065,18 @@ Window::go_forward()
 bool
 Window::event(QEvent *event)
 {
+	switch (event->type()) {
+	case QEvent::MouseButtonPress:
+	case QEvent::KeyPress:
+	case QEvent::Wheel:
+	case QEvent::TouchBegin:
+	case QEvent::Drop:
+		// Whatever dn guessed at startup has now been used; see new_window.
+		this->app_->default_window.clear();
+		break;
+	default:
+		break;
+	}
 	switch (event->type()) {
 	case QEvent::NativeGesture:
 		return handle_native_gesture((QNativeGestureEvent *) event);
@@ -1123,7 +1149,7 @@ Window::event(QEvent *event)
 			event->ignore();
 			return true;
 		}
-		open_any(url, false);
+		open_any(url);
 		drop->acceptProposedAction();
 		return true;
 	}
@@ -1243,6 +1269,10 @@ Window::apply_window(Action a)
 QUrl
 Window::current_url() const
 {
+	if (this->cropper_)
+		return this->cropper_->jpeg_url_;
+	if (this->commander_)
+		return this->commander_->dir_url_;
 	if (this->mode_ == Mode::View && this->viewer_ &&
 		!this->viewer_->url_.isEmpty())
 		return this->viewer_->url_;
@@ -1252,8 +1282,34 @@ Window::current_url() const
 }
 
 void
-Window::open_any(const QUrl &url, bool browse)
+Window::open_any(const QUrl &input)
 {
+	QUrl url = input;
+	if (url.isEmpty() && !this->cropper_)
+		url = path_to_url(QDir::currentPath());
+	if (this->cropper_) {
+		if (!url.isEmpty() &&
+			(url_to_path(url).isEmpty() || QFileInfo(url_to_path(url)).isDir()))
+			return;
+		this->cropper_->jpeg_url_ =
+			url.isEmpty() ? QUrl{} : url_normalized(url);
+		sync_title();
+		request_render();
+		return;
+	}
+	if (this->commander_) {
+		const QString path = url_to_path(url);
+		if (path.isEmpty())
+			return;
+		const QFileInfo target(path);
+		const QFileInfo dir(target.isDir() ? path : target.absolutePath());
+		if (!dir.isDir() || !dir.isReadable())
+			return;
+		this->commander_->dir_url_ = path_to_url(dir.absoluteFilePath());
+		sync_title();
+		request_render();
+		return;
+	}
 	// The browser always wants a directory: a file opens the one holding it.
 	const QString path = url_to_path(url);
 	const QFileInfo info(path);
@@ -1261,16 +1317,7 @@ Window::open_any(const QUrl &url, bool browse)
 		if (this->browser_)
 			this->browser_->open_dir(url, true);
 		cancel_viewer_loads();
-		set_mode(Mode::Browser);
-	} else if (browse) {
-		// A file with --browse is a request to point at it, not to view it:
-		// browse the parent and put the cursor on the file.
-		if (this->browser_) {
-			this->browser_->open_dir(path_to_url(info.absolutePath()), true);
-			this->browser_->select_file(url);
-		}
-		cancel_viewer_loads();
-		set_mode(Mode::Browser);
+		set_mode(Mode::Browse);
 	} else {
 		if (this->viewer_)
 			this->viewer_->open(url);
@@ -1283,6 +1330,24 @@ Window::open_any(const QUrl &url, bool browse)
 		}
 		sync_viewer_preloads();
 	}
+	request_render();
+	sync_title();
+}
+
+void
+Window::reveal_file(const QUrl &input)
+{
+	if (!this->browser_)
+		return;
+
+	const QUrl url = input.isEmpty() ? path_to_url(QDir::currentPath()) : input;
+	const QFileInfo info(url_to_path(url));
+	this->browser_->open_dir(
+		info.isDir() ? url : path_to_url(info.absolutePath()), true);
+	if (!info.isDir())
+		this->browser_->select_file(url);
+	cancel_viewer_loads();
+	set_mode(Mode::Browse);
 	request_render();
 	sync_title();
 }
@@ -1332,12 +1397,12 @@ Window::keyPressEvent(QKeyEvent *event)
 			show_browser(true);
 			return;
 		}
-		if (this->mode_ == Mode::Browser && this->awaiting_view_) {
+		if (this->mode_ == Mode::Browse && this->awaiting_view_) {
 			cancel_viewer_loads();
 			request_render();
 			return;
 		}
-		if (this->mode_ == Mode::Browser)
+		if (this->mode_ == Mode::Browse)
 			return;
 		begin_close();
 	}
@@ -1534,6 +1599,7 @@ Window::wheelEvent(QWheelEvent *event)
 	const QPoint ang = event->angleDelta();
 	const QPoint pix = event->pixelDelta();
 	const bool alt = event->modifiers() & Qt::AltModifier;
+
 	// Qt Wayland (and Windows) transpose Alt+wheel onto the X axis.
 	// Sway still sends a vertical wl_pointer.axis; Qt swaps it before
 	// QWheelEvent. Read Y, then X.
