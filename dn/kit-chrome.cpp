@@ -110,8 +110,14 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 				this->on_toggle_bookmark(url);
 		};
 	}
+	add_sep();
+	auto *copy = add_item_with_mnemonic("_Copy");
+	copy->accel = action_accel(action_def(Action::Copy));
+	copy->on_click = [url](Kit &) {
+		const QUrl urls[] = {url};
+		copy_files(urls, false);
+	};
 	if (QFileInfo(path).isFile() && this->on_trash) {
-		add_sep();
 		auto *trash = add_item_with_mnemonic("Move to _Trash");
 		trash->accel = action_accel(action_def(Action::Trash));
 		trash->on_click = [this, url](Kit &) {
