@@ -1,0 +1,55 @@
+name: Bug report
+description: Report something that isn't working correctly.
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Briefly describe the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happens instead? Include any error messages.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Application version
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: |
+        Optionally attach screenshots, logs, or a sample file.
+        Remove private information before attaching.

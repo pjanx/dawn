@@ -111,8 +111,9 @@ Acknowledgments
 Contributing and Support
 ------------------------
 Use https://git.janouch.name/p/dawn to report any bugs, request features,
-or submit pull requests.  `git send-email` is tolerated.  If you want to discuss
-the project, feel free to join at ircs://irc.janouch.name, channel #dev.
+or submit pull requests.  The lead developer also accepts `git send-email`.
+If you want to discuss the project, feel free to join at
+ircs://irc.janouch.name, channel #dev.
 
 Bitcoin donations are accepted at: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
 
