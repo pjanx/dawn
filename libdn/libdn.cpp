@@ -1739,6 +1739,14 @@ constexpr Loader kLoaders[] = {
 		{},
 #endif
 		{}, {}, {}},
+
+	{"Poppler",
+#if DAWN_WITH_POPPLER
+		&detail::load_poppler,
+#else
+		{},
+#endif
+		"PDF", {}, {}},
 };
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw

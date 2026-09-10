@@ -25,6 +25,7 @@
 #cmakedefine01 DAWN_WITH_JPEG_QS
 #cmakedefine01 DAWN_WITH_LIBRAW
 #cmakedefine01 DAWN_WITH_LIBWMF
+#cmakedefine01 DAWN_WITH_POPPLER
 #cmakedefine01 DAWN_WITH_LIBRSVG
 #cmakedefine01 DAWN_WITH_XCURSOR
 #cmakedefine01 DAWN_WITH_LIBHEIF

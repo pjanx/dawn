@@ -57,6 +57,7 @@ LoadFn load_jxr;
 LoadFn load_dnrs;
 LoadFn load_imageio;
 LoadFn load_cgpdf;
+LoadFn load_poppler;
 
 /// Inflate a raw DEFLATE stream into an exactly sized buffer.  Wuffs is only
 /// implemented in load-wuffs.cpp, so ZIP-based loaders borrow it from there.

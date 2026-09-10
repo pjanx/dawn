@@ -112,6 +112,7 @@ dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
 dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
 dawn_optional_pkg(LIBWMF "WMF support" libwmf)
+dawn_optional_pkg(POPPLER "PDF via Poppler" poppler-cpp)
 
 find_program(CARGO_EXECUTABLE cargo)
 if (CARGO_EXECUTABLE)

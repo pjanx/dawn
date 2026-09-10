@@ -15,7 +15,8 @@ apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
 .Optional dependencies
 ```sh
 apt install cargo librsvg2-dev libxcursor-dev libheif-dev libtiff-dev \
-  libraw-dev libjxl-dev libopenjp2-7-dev libjxr-dev libwmf-dev
+  libraw-dev libjxl-dev libopenjp2-7-dev libjxr-dev libwmf-dev \
+  libpoppler-cpp-dev
 ```
 
 Cargo builds the in-tree libdnrs library, which requires a recent Rust version.
