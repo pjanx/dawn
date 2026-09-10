@@ -84,10 +84,10 @@ Platforms
 ---------
 I want to be able to use the software on all main OSs, as I daily drive two
 in combination.  This results in architectural pain that I'm willing to engineer
-for.  Deployment is a tad difficult:
+for.  Deployment is challenging:
 
- - Linux has many odd dependencies that make it difficult to package
-   the software in a way that it wants to integrate.  I eventually succeeded
+ - Linux has dependencies that may make it difficult to package the software in
+   a way that satisfies distribution packagers.  I eventually succeeded
    in taming Flatpaks, though Flathub--the usual distribution platform--has
    hostile policies towards AI.
 
@@ -157,6 +157,7 @@ That toolkit has a clean design.  Now for _a small sample_ of its problems:
 
  - It has diverged significantly from my idea of what a user interface
    https://p.janouch.name/text/human-interface-guidelines.html[should be like].
+   It keeps on diverging.
  - Writing this in C is very laborious, and my UX requirements necessitate
    a lot of custom widgets.  G-I is suboptimal.
  - The clean design comes with breaks in compatibility between even minor
@@ -172,7 +173,7 @@ a problem of its own.
 In the end, I almost handrolled the backend completely, but after a final
 evaluation of Qt as part of cleaning up my notes, I found out that *Qt GUI*,
 which lives _underneath_ Qt Widgets and Qt Quick, happens to be useful.
-(I've since checked that a GDK 4 path is impossible.)
+(I've since checked that a GDK 4 path is technically impossible.)
 
 Its largest dependency is ICU, which we don't strictly require, and Qt can
 actually be built without it if needed for smaller standalone packages.
@@ -211,7 +212,7 @@ In general, keyboard navigation is
 https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
 
 As of writing, no effort has been made to have true popup windows, so we're
-somewhat GTK style, and it might actually not be much of a problem.
+somewhat modern GTK style, and it might actually not be much of a problem.
 
 // TODO(p): Talk more about particular user interface choices.
 
@@ -239,35 +240,35 @@ Other file formats
 ------------------
 The primary loader is https://github.com/google/wuffs[*Wuffs*], which is fast,
 supposedly safe, and covers a lot of formats.  It's just moderately hard to
-integrate.
+integrate, but that's already behind us.
 
 With JPEG, although Wuffs has some support for it as well, it's fairly simple:
-prefer the well-established *libjpeg-turbo*.  I also bundle
-https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*] because
-it's interesting--DCT artifacts can otherwise nullify a decent scaling
-algorithm.
+prefer the well-established *libjpeg-turbo*.  I also bundle the interesting
+https://github.com/ilyakurdyukov/jpeg-quantsmooth[*jpeg-quantsmooth*]--DCT
+artifacts can otherwise nullify a decent scaling algorithm.
 
 Raw camera photos are served with *LibRaw*, since there isn't much of a choice.
-Its automatic rendering, as well as general engineering qualities, are quite
-poor.  Thus we first try to extract full-size JPEG thumbnails from TIFF/EP
-compatible formats (I own a Nikon DSLR).
-
-I don't especially care about niche formats.  If it ever becomes desirable,
-there is an obscure project called https://snisurset.net/code/abydos/about.html[
-Abydos] which gets quite exhaustive in that regard.
+Its general engineering qualities are poor, yet making anything similar is
+a significant effort requiring constant maintenance.  Its automatic rendering
+lags in quality behind camera renders, so we first try to extract full-size JPEG
+thumbnails from TIFF/EP compatible formats (such as DNG or Nikon's NEF).
 
 The general fallback in my previous viewer used to be GdkPixbuf.  Today, that
 would mostly defer to Glycin, which in turn rather trivially encapsulates
 Rust _image-rs_, plus a few effectively duplicate libraries.  Given that Glycin
-also does its own sandboxing, and came with API problems, I've introduced
+unhelpfully does its own sandboxing, and came with API problems, I've introduced
 a minimal Rust library directly into the project.  This also makes the list of
 supported formats fixed on build.  The amount of Cargo fluff the thin layer
 wants me to check in is disgusting, so this may be something best left to
 release tarballs.
 
-Similarly, Windows Imaging Component was so ugly that I rather added JPEG XR
+Similarly, Windows Imaging Component was so ugly that I added JPEG XR support
 explicitly instead as the only thing no other loader could do (the Raw Image
 Extension on Microsoft Store uses LibRaw, interestingly).
+
+I don't especially care about niche formats.  If it ever becomes desirable,
+there is an obscure project called https://snisurset.net/code/abydos/about.html[
+Abydos] which gets quite exhaustive in that regard.
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 
