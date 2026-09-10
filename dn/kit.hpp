@@ -174,6 +174,8 @@ struct Widget {
 	bool visible = true;
 	bool layout_visible = true;
 	bool hittable = false;
+	// The parent distributes spare space along its packing axis.
+	bool grow = false;
 
 	Widget *parent_ = nullptr;
 	// A toolbar also measures items temporarily parented to its overflow.
@@ -210,7 +212,6 @@ struct Widget {
 	virtual void arrange_content(Kit &kit, Rect alloc) = 0;
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
-	virtual bool grows() const { return false; }
 	[[nodiscard]] bool shown() const
 	{
 		return this->visible && this->layout_visible;
@@ -314,9 +315,7 @@ struct Button : Widget {
 struct Checkbox : Button {
 	bool checked = false;
 	bool wrap = false;
-	bool grow = false;
 
-	bool grows() const override { return this->grow; }
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
@@ -333,7 +332,6 @@ struct Label : Widget {
 	float pad_y = 0;
 	bool bold = false;
 	bool wrap = false;
-	bool grow = false;
 	bool dim = false;
 	Align align = Align::Start;
 	Align valign = Align::Center;
@@ -345,7 +343,6 @@ struct Label : Widget {
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
-	bool grows() const override { return this->grow; }
 	bool activate(Kit &kit) override;
 	[[nodiscard]] QChar mnemonic_key() const override;
 	QString tip() const override { return this->tip_text; }
@@ -364,10 +361,6 @@ struct Entry : Widget {
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
 	bool flat = false;
-	// A field takes what room it is given -- in the overflow popup it moved
-	// into as much as in the bar, where it fills out the rest of the line it
-	// wrapped onto.
-	bool grow = true;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_submit;
 	std::function<void(Kit &)> on_cancel;
@@ -380,13 +373,12 @@ struct Entry : Widget {
 	bool focused_ = false;
 	bool caret_on_ = false;
 
-	Entry() { this->hittable = true; }
+	Entry() { this->hittable = this->grow = true; }
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool focusable() const override;
-	bool grows() const override { return this->grow; }
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -429,10 +421,10 @@ struct Container : Composite {
 	float gap = 0;
 	float pad_x = 0;
 	float pad_y = 0;
-	bool grow = false;
-	bool grows() const override { return this->grow; }
 
-	Size measure_pack(Kit &kit, int max_w, int max_h, bool hz);
+	// Returns the requested size; optionally records child allocations.
+	Size measure_pack(
+		Kit &kit, int max_w, int max_h, bool hz, std::vector<Size> *sizes);
 	void arrange_pack(Kit &kit, Rect alloc, bool hz, Align align);
 };
 
@@ -552,12 +544,10 @@ struct Panel : Composite {
 	Fill fill = Fill::None;
 	Stroke stroke = Stroke::None;
 	bool busy = false;
-	bool grow = false;
 	bool clip = false;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	bool grows() const override { return this->grow; }
 	bool clips_children() const override { return this->clip; }
 };
 
