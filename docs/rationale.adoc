@@ -44,7 +44,7 @@ for a single person.  Moreover, 2026 frontier models run circles around me in
 certain areas and aspects.  Sadly not in product design--that is my own burden.
 
 The model evaluation at the time of writing is that Cursor Grok 4.6 High is
-a dumb servant that doesn't question, and Opus 5 or GPT 5.6 Sol are capable of
+a dumb servant that doesn't question, and Opus 5 or GPT 6 Astra are capable of
 resolving most problems, at a significant cost.  Claude is a superb wordsmith
 if you don't let it run amok.
 
@@ -215,6 +215,14 @@ As of writing, no effort has been made to have true popup windows, so we're
 somewhat modern GTK style, and it might actually not be much of a problem.
 
 // TODO(p): Talk more about particular user interface choices.
+
+Why no animations
+-----------------
+While computer interfaces should be attractive to users, my philosophy is that
+a computer should not stand in the way.  In this respect, animations feel like
+putting an advertisement segment in between invoking an action and its
+completion.  The sad trend is that this is slowly spreading (thinking of GTK
+here in particular), often with no effective option to turn it off.
 
 Icons
 -----
