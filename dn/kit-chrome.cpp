@@ -395,6 +395,8 @@ static unique_ptr<Checkbox>
 settings_check(const char *label, bool checked)
 {
 	auto check = make_unique<Checkbox>();
+	check->grow = true;
+	check->wrap = true;
 	check->text = menu_label(label, &check->mnemonic);
 	check->checked = checked;
 	return check;
@@ -535,6 +537,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 		auto down =
 			loader_arrow("go-down-symbolic", QStringLiteral("Move down"));
 		auto check = make_unique<Checkbox>();
+		check->grow = true;
+		check->wrap = true;
 
 		up->on_click = [rows, i](Kit &k) { rows->move(k, i, -1); };
 		down->on_click = [rows, i](Kit &k) { rows->move(k, i, 1); };

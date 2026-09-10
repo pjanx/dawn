@@ -313,7 +313,10 @@ struct Button : Widget {
 
 struct Checkbox : Button {
 	bool checked = false;
+	bool wrap = false;
+	bool grow = false;
 
+	bool grows() const override { return this->grow; }
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;

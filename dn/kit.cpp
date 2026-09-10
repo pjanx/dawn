@@ -900,14 +900,21 @@ shown_mnemonic(const QString &full, int mnemonic, const QString &shown)
 	return mnemonic;
 }
 
-static QString
-checkbox_shown(const Kit &kit, const Checkbox &c)
+static int
+checkbox_text_avail(const Kit &kit, const Checkbox &c, int width)
 {
 	const int px = kit.px(kFramePadX + c.pad_x);
 	const int box = kit.icon_px() + kit.hairline() * 2;
 	const int used = px * 2 + box + kit.px(4.f);
-	return c.text_cache_.elide_lines(
-		kit, c.text, max(1, c.r.w - used), 1, false);
+	return max(1, width - used);
+}
+
+static QString
+checkbox_shown(const Kit &kit, const Checkbox &c)
+{
+	return c.wrap ? c.text
+				  : c.text_cache_.elide_lines(kit, c.text,
+						checkbox_text_avail(kit, c, c.r.w), 1, false);
 }
 
 void
@@ -1083,16 +1090,20 @@ Button::activate(Kit &kit)
 // --- Checkbox ---------------------------------------------------------------
 
 Size
-Checkbox::measure_content(Kit &kit, int, int)
+Checkbox::measure_content(Kit &kit, int max_w, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int box = kit.icon_px() + kit.hairline() * 2;
 	int cw = box;
 	int ch = box;
 	if (!this->text.isEmpty()) {
-		cw +=
-			kit.px(4.f) + this->text_cache_.text_width(kit, this->text, false);
-		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
+		int tw = this->text_cache_.text_width(kit, this->text, false);
+		if (max_w < kUnlim)
+			tw = min(tw, checkbox_text_avail(kit, *this, max_w));
+		cw += kit.px(4.f) + tw;
+		ch = max(ch,
+			this->text_cache_.text_height(
+				kit, this->text, this->wrap ? max(1, tw) : 0, false));
 	}
 	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
@@ -1129,12 +1140,15 @@ Checkbox::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
-		const int th = this->text_cache_.text_height(kit, this->text, 0, false);
+		const int wrap =
+			this->wrap ? checkbox_text_avail(kit, *this, this->r.w) : 0;
+		const int th =
+			this->text_cache_.text_height(kit, this->text, wrap, false);
 		const QString shown = checkbox_shown(kit, *this);
 		emit_text(kit, this->text_cache_, float(tx),
 			float(this->r.y + (this->r.h - th) / 2), shown,
 			col(kit.colours_[ColourInk], ink_a), false,
-			shown_mnemonic(this->text, this->mnemonic, shown));
+			shown_mnemonic(this->text, this->mnemonic, shown), wrap);
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -1148,8 +1162,8 @@ Checkbox::prepare(Kit &kit)
 
 	kit.pack_icon("object-select-symbolic", kit.icon_px());
 	if (!this->text.isEmpty())
-		cache_text(
-			kit, this->text_cache_, checkbox_shown(kit, *this), false, 0);
+		cache_text(kit, this->text_cache_, checkbox_shown(kit, *this), false,
+			this->wrap ? checkbox_text_avail(kit, *this, this->r.w) : 0);
 }
 
 bool
@@ -1164,6 +1178,15 @@ Checkbox::activate(Kit &kit)
 }
 
 // --- Label -------------------------------------------------------------------
+
+static QString
+label_shown(const Kit &kit, const Label &label)
+{
+	return label.wrap
+		? label.text
+		: label.text_cache_.elide_lines(kit, label.text,
+			  max(1, label.r.w - kit.px(label.pad_x) * 2), 1, label.bold);
+}
 
 void
 Label::set_text(const QString &value)
@@ -1183,7 +1206,7 @@ Label::measure_content(Kit &kit, int max_w, int)
 	int w = max(this->text_cache_.text_width(kit, this->text, this->bold),
 		kit.px(this->min_w));
 	if (this->wrap)
-		w = max(1, iw < kUnlim ? iw : w);
+		w = max(1, max_w < kUnlim ? iw : w);
 	return {w + pad_x * 2,
 		this->text_cache_.text_height(
 			kit, this->text, this->wrap ? w : 0, this->bold) +
@@ -1194,12 +1217,6 @@ void
 Label::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = shown() ? alloc : Rect{};
-	if (!shown() || !this->wrap)
-		return;
-	const int w = max(1, this->r.w - kit.px(this->pad_x) * 2);
-	this->r.h = max(this->r.h,
-		this->text_cache_.text_height(kit, this->text, w, this->bold) +
-			kit.px(this->pad_y) * 2);
 }
 
 void
@@ -1208,11 +1225,11 @@ Label::paint(Kit &kit) const
 	if (!shown())
 		return;
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const QString shown = label_shown(kit, *this);
 	int tx = this->r.x + pad_x;
 	const bool wrap_center = this->wrap && this->align == Align::Center;
 	if (!this->wrap && this->align != Align::Start) {
-		const int tw =
-			this->text_cache_.text_width(kit, this->text, this->bold);
+		const int tw = this->text_cache_.text_width(kit, shown, this->bold);
 		// Centring ignores the padding, as it always has; ending against
 		// the far edge cannot, or the text would sit outside it.
 		tx = this->align == Align::Center
@@ -1227,17 +1244,18 @@ Label::paint(Kit &kit) const
 		ty = this->r.y + (this->r.h - th) / 2;
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - pad_y - th;
-	emit_text(kit, this->text_cache_, float(tx), float(ty), this->text,
+	emit_text(kit, this->text_cache_, float(tx), float(ty), shown,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
-		this->bold, this->mnemonic, wrap_w, wrap_center);
+		this->bold, shown_mnemonic(this->text, this->mnemonic, shown), wrap_w,
+		wrap_center);
 }
 
 void
 Label::prepare(Kit &kit)
 {
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, this->text_cache_, this->text, this->bold,
+		cache_text(kit, this->text_cache_, label_shown(kit, *this), this->bold,
 			this->wrap ? max(1, this->r.w - kit.px(this->pad_x) * 2) : 0);
 }
 
@@ -1795,8 +1813,8 @@ Size
 Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
-	const int iw = max(0, max_w - pad_x * 2);
-	const int ih = max(0, max_h - pad_y * 2);
+	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
+	const int ih = max_h < kUnlim ? max(0, max_h - pad_y * 2) : kUnlim;
 	int growers = 0, vis = 0;
 	int used = 0, cross = 0;
 	for (const auto &child : this->kids) {
@@ -1826,14 +1844,17 @@ Container::measure_pack(Kit &kit, int max_w, int max_h, bool hz)
 			Widget *k = child.get();
 			if (!k || !k->shown() || !k->grows())
 				continue;
-			const int got = share_slack(slack, growers, i++);
+			const int got = (hz ? max_w : max_h) < kUnlim
+				? share_slack(slack, growers, i++)
+				: kUnlim;
 			const Size size = k->measure(kit, hz ? got : iw, hz ? ih : got);
 			used += hz ? size.w : size.h;
 			cross = max(cross, hz ? size.h : size.w);
 		}
 	}
 	used += gaps;
-	return {this->grow ? max_w : pad_x * 2 + (hz ? used : cross),
+	return {
+		this->grow && max_w < kUnlim ? max_w : pad_x * 2 + (hz ? used : cross),
 		pad_y * 2 + (hz ? cross : used)};
 }
 
@@ -2379,8 +2400,8 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int min_w = kit.px(this->min_w), min_h = kit.px(this->min_h);
 	const int max_h = kit.px(this->max_h);
-	const int iw = max(0, avail_w - pad_x * 2);
-	const int ih = max(0, avail_h - pad_y * 2);
+	const int iw = avail_w < kUnlim ? max(0, avail_w - pad_x * 2) : kUnlim;
+	const int ih = avail_h < kUnlim ? max(0, avail_h - pad_y * 2) : kUnlim;
 	int w = min_w, h = 0;
 	for (auto &k : this->kids) {
 		if (!k || !k->shown())
@@ -2389,7 +2410,7 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 		w = max(w, child_size.w);
 		h += child_size.h;
 	}
-	size.w = this->grow ? avail_w : pad_x * 2 + w;
+	size.w = this->grow && avail_w < kUnlim ? avail_w : pad_x * 2 + w;
 	size.h = pad_y * 2 + h;
 	if (min_h > 0)
 		size.h = max(size.h, min_h);
