@@ -40,6 +40,7 @@ struct StageClock {
 LoadFn load_wuffs;
 LoadFn load_icns;
 LoadFn load_psd;
+LoadFn load_ora;
 LoadFn load_jpeg;
 LoadFn load_webp;
 LoadFn load_tiff_ep;
@@ -56,6 +57,10 @@ LoadFn load_jxr;
 LoadFn load_dnrs;
 LoadFn load_imageio;
 LoadFn load_cgpdf;
+
+/// Inflate a raw DEFLATE stream into an exactly sized buffer.  Wuffs is only
+/// implemented in load-wuffs.cpp, so ZIP-based loaders borrow it from there.
+bool inflate_raw(std::span<const uint8_t> src, std::span<uint8_t> dst);
 
 /// MIME types compiled into the in-tree Rust decoder.
 std::vector<std::string> dnrs_media_types();

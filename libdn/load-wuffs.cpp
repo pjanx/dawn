@@ -532,6 +532,27 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 
 // --- Public entry points -----------------------------------------------------
 
+bool
+detail::inflate_raw(span<const uint8_t> src, span<uint8_t> dst)
+{
+	unique_ptr<wuffs_deflate__decoder, void (*)(void *)> dec(
+		wuffs_deflate__decoder__alloc(), &free);
+	if (!dec)
+		return false;
+
+	wuffs_base__io_buffer in =
+		wuffs_base__ptr_u8__reader((uint8_t *) src.data(), src.size(), true);
+	wuffs_base__io_buffer out =
+		wuffs_base__ptr_u8__writer(dst.data(), dst.size());
+
+	uint8_t workbuf[WUFFS_DEFLATE__DECODER_WORKBUF_LEN_MAX_INCL_WORST_CASE];
+	wuffs_base__status status = wuffs_deflate__decoder__transform_io(dec.get(),
+		&out, &in, wuffs_base__make_slice_u8(workbuf, sizeof workbuf));
+
+	// A stream that ends early or runs long is a corrupt one, either way.
+	return wuffs_base__status__is_ok(&status) && out.meta.wi == dst.size();
+}
+
 ImagePtr
 detail::load_wuffs(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)

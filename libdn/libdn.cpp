@@ -1620,6 +1620,9 @@ constexpr Loader kLoaders[] = {
 	{"Photoshop", &detail::load_psd, "PSD/PSB (subset)",
 		{"image/vnd.adobe.photoshop"}, {}},
 
+	{"OpenRaster", &detail::load_ora, "OpenRaster, Krita",
+		{"image/openraster", "application/x-krita"}, {}},
+
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
 	{"TIFF/EP previews", &detail::load_tiff_ep, "raw photos", {"image/x-dcraw"},
 		{}},
