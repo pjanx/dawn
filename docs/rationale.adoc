@@ -266,9 +266,10 @@ Similarly, Windows Imaging Component was so ugly that I added JPEG XR support
 explicitly instead as the only thing no other loader could do (the Raw Image
 Extension on Microsoft Store uses LibRaw, interestingly).
 
-I don't especially care about niche formats.  If it ever becomes desirable,
-there is an obscure project called https://snisurset.net/code/abydos/about.html[
-Abydos] which gets quite exhaustive in that regard.
+I don't especially care about niche formats, despite already supporting a lot.
+If it ever becomes desirable, there is an obscure project called
+https://snisurset.net/code/abydos/about.html[ Abydos] which gets quite
+exhaustive in that regard.
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 

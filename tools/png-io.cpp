@@ -71,9 +71,12 @@ write_png16(FILE *file, uint32_t width, uint32_t height, uint32_t stride,
 	entry.key = const_cast<char *>("dawn:orientation");
 	entry.text = text.data();
 	png_set_text(png, info, &entry, 1);
+	png_write_info(png, info);
+
+	// Only now does libpng know the bit depth, and png_set_swap() quietly
+	// does nothing until it does.
 	if constexpr (endian::native == endian::little)
 		png_set_swap(png);
-	png_write_info(png, info);
 	for (uint32_t y = 0; y < height; y++) {
 		const auto *src =
 			reinterpret_cast<const uint16_t *>(pixels + size_t(y) * stride);

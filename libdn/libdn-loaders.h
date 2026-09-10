@@ -39,6 +39,7 @@ struct StageClock {
 
 LoadFn load_wuffs;
 LoadFn load_icns;
+LoadFn load_psd;
 LoadFn load_jpeg;
 LoadFn load_webp;
 LoadFn load_tiff_ep;

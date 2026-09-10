@@ -13,6 +13,7 @@ add_library(libdn SHARED
 	libdn.cpp
 	load-icns.cpp
 	load-jpeg.cpp
+	load-psd.cpp
 	load-tiff-ep.cpp
 	load-webp.cpp
 	load-wuffs.cpp
