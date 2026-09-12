@@ -104,7 +104,7 @@ Language
 In principle, the project consists of several parts that may be heterogeneous,
 communicating over IPC protocols.
 
-In practice, most good libraries for reuse either have a C or *C++* API,
+In practice, most good libraries for reuse have either a C or *C++* API,
 and additional layers are undesirable.  I'm not too happy here.
 Alternatives need to be stable, which Zig isn't, and must not come with a myriad
 of papercuts, which Rust and Cargo do.
@@ -217,12 +217,30 @@ somewhat modern GTK style, and it might actually not be much of a problem.
 // TODO(p): Talk more about particular user interface choices.
 
 Why no animations
------------------
+~~~~~~~~~~~~~~~~~
 While computer interfaces should be attractive to users, my philosophy is that
 a computer should not stand in the way.  In this respect, animations feel like
 putting an advertisement segment in between invoking an action and its
 completion.  The sad trend is that this is slowly spreading (thinking of GTK
 here in particular), often with no effective option to turn it off.
+'`Reduce motion`' is interpreted literally: transitions aren't movement.
+
+Theme colours
+-------------
+My visual system is not a fan of anything white on black (the first level is
+that imperfectly corrected eyesight makes everything blurred).  That said,
+even to me, a dark mode toggle is useful for testing out how transparent images,
+such as program icons, look on a dark background.
+
+What _I_ am not a fan of is deciphering text that is grey on white.  The
+implication so far is that I normally want everything to be deep black on white.
+Meanwhile, designers seem to have decided that the computer monitors of today
+have too much contrast, and just about everything requires manual adjustment
+to set it straight.  How wonderful that I can buck this miserable trend.
+
+Regardless, it would be a good idea to add support for full customisation,
+if only because there's no universal way of learning the system's accent colour.
+In order to fit in everywhere, we limit ourselves to greyscale.
 
 Icons
 -----
