@@ -1824,10 +1824,17 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	ImagePtr image;
 	auto attempt = [&](const Loader &loader) {
-		if (!(image = try_loader(loader.load, data, ctx, error)))
-			return false;
-		image->loader = loader.name;
-		return true;
+		if ((image = try_loader(loader.load, data, ctx, error))) {
+			image->loader = loader.name;
+			return true;
+		}
+
+		// Loaders talk about the format they know, never about themselves.
+		if (error && !error->message.empty()) {
+			error->message = format_message(
+				_("%s: %s"), loader.name, error->message.c_str());
+		}
+		return false;
 	};
 
 	if (ctx.loaders.empty()) {

@@ -38,14 +38,14 @@ struct FrameGuard {
 using DecoderPtr = unique_ptr<dnrs_decoder, DecoderDeleter>;
 using DnrsErrorPtr = unique_ptr<dnrs_error, ErrorDeleter>;
 
-// "Rust" names the loader, and the codec is what image-rs picked within it;
-// neither is a word, so only the punctuation around them is up for grabs.
+// The codec image-rs picked within this loader is worth naming, as one
+// loader stands in for a whole pile of them.
 static string
 dnrs_wrap(const char *codec, const char *detail)
 {
 	if (codec && *codec)
-		return format_message(_("Rust (%s): %s"), codec, detail);
-	return format_message(_("Rust: %s"), detail);
+		return format_message(_("%s: %s"), codec, detail);
+	return detail;
 }
 
 static string
@@ -126,17 +126,17 @@ load_frame(const dnrs_frame &frame, Error *error)
 		bpp = 8;
 		break;
 	default:
-		set_error(error, _("Rust: unsupported pixel format"));
+		set_error(error, _("unsupported pixel format"));
 		return nullptr;
 	}
 	if (!valid_frame(frame, bpp)) {
-		set_error(error, _("Rust: invalid or truncated frame"));
+		set_error(error, _("invalid or truncated frame"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(frame.width, frame.height);
 	if (!image) {
-		set_error(error, _("Rust: image allocation failure"));
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 	switch (frame.format) {

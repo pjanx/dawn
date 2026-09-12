@@ -95,13 +95,14 @@ test_library_error()
 {
 	const uint8_t garbage[] = {0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3};
 	// One loader, so that what is left over is its own diagnostic, and one
-	// this build is certain to have.
+	// this build is certain to have.  Its name comes from the loader table,
+	// which is why only the second half of this is translated.
 	const string only[] = {"ICNS"};
 	dawn::OpenContext ctx;
 	ctx.loaders = only;
 	dawn::Error error;
 	CHECK(!dawn::open_from_data(garbage, ctx, &error));
-	CHECK(error.message == "toto není obrázek ICNS");
+	CHECK(error.message == "ICNS: toto není obrázek ICNS");
 }
 
 int
