@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Dawn JPEG Cropper
-GenericName=Image Cropper
-X-GNOME-FullName=Dawn JPEG Cropper
+Name=Dawn Lossless JPEG Cropper
+GenericName=Lossless JPEG Cropper
+X-GNOME-FullName=Dawn Lossless JPEG Cropper
 Icon=name.janouch.Dawn
 Exec=dn --mode=cropjpeg -- %U
 Terminal=false
