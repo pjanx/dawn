@@ -243,22 +243,20 @@ dim_text(uint32_t v)
 	return QString::fromUtf8(buf);
 }
 
-// FIXME: This is very stupid.
-constexpr int kInfoFixedKids = 6 + DAWN_WITH_JPEG_QS;
-
 static void
 fill_info_texts(Viewer &v, const dawn::Image *im)
 {
-	if (!v.info_ || v.info_text_src_ == im)
+	if (!v.info_ || !v.tags_ || v.info_text_src_ == im)
 		return;
 
-	auto &list = *v.info_;
 	v.info_text_src_ = im;
-	list.scroll_.offset = 0;
-	list.invalidate_arrange();
-	if (int(list.kids.size()) > kInfoFixedKids)
-		list.erase_children(v.kit_, size_t(kInfoFixedKids));
-	if (!im || im->text.empty())
+	v.info_->scroll_.offset = 0;
+	v.info_->invalidate_arrange();
+
+	auto &list = *v.tags_;
+	list.erase_children(v.kit_, 0);
+	list.set_visible(im && !im->text.empty());
+	if (!list.visible)
 		return;
 
 	vector<pair<string, string>> rows(im->text.begin(), im->text.end());
@@ -602,7 +600,7 @@ make_error(Viewer &v)
 }
 
 static unique_ptr<Sidebar>
-make_sidebar(Viewer &v)
+make_sidebar(Viewer &v, const HostActions &host)
 {
 	// FIXME: This needs proper layouting.
 	// The widest of them decides, and only translation says which that is.
@@ -651,18 +649,30 @@ make_sidebar(Viewer &v)
 	col->add_child(std::move(jpegqs), size_t(-1));
 #endif
 
-	auto exiftool = make_unique<Button>();
-	exiftool->text = QString::fromUtf8(_("Launch ExifTool"));
-	exiftool->on_click = [&v](Kit &) {
-		if (v.page_ && v.page_->host && v.page_->host->launch_exiftool)
-			v.page_->host->launch_exiftool(v.url_);
-	};
-	v.exiftool_button_ = exiftool.get();
-	col->add_child(std::move(exiftool), size_t(-1));
+	// The host only offers this when ExifTool is installed.
+	if (host.launch_exiftool) {
+		auto exiftool = make_unique<Button>();
+		exiftool->text = QString::fromUtf8(_("Launch ExifTool"));
+		exiftool->on_click = [&v](Kit &) {
+			if (v.page_ && v.page_->host && v.page_->host->launch_exiftool)
+				v.page_->host->launch_exiftool(v.url_);
+		};
+		v.exiftool_button_ = exiftool.get();
+		col->add_child(std::move(exiftool), size_t(-1));
+	}
 
 	auto cie = make_unique<CieDiagram>();
 	v.cie_ = cie.get();
 	col->add_child(std::move(cie), size_t(-1));
+
+	// The decoder's text tags are the only part that changes with the image,
+	// and they get their own container, so that refreshing them is a matter
+	// of emptying it, rather than of knowing what comes before.
+	auto tags = make_unique<Column>();
+	tags->gap = kItemGap;
+	tags->visible = false;
+	v.tags_ = tags.get();
+	col->add_child(std::move(tags), size_t(-1));
 
 	auto side = make_unique<Sidebar>(std::move(col));
 	side->min_w = kInfoSidebarPts;
@@ -1871,7 +1881,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	setup.mode = Mode::View;
 	setup.toolbar = make_toolbar(
 		kItems, [v](const ToolbarSpec &spec) { return make_item(*v, spec); });
-	setup.sidebar = make_sidebar(*v);
+	setup.sidebar = make_sidebar(*v, host);
 	setup.side = Page::Side::Right;
 	setup.actor = chain_actor(
 		host, [v](Action a) { return apply_action(*v, a); },
@@ -1912,6 +1922,7 @@ Viewer::destroy()
 	this->jpeg_quant_smooth_ = nullptr;
 	this->exiftool_button_ = nullptr;
 	this->cie_ = nullptr;
+	this->tags_ = nullptr;
 	this->info_text_src_ = nullptr;
 	this->page_ = nullptr;
 }

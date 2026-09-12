@@ -66,6 +66,7 @@ struct Viewer : Widget {
 	Checkbox *jpeg_quant_smooth_ = nullptr;
 	Button *exiftool_button_ = nullptr;
 	CieDiagram *cie_ = nullptr;
+	Column *tags_ = nullptr;
 	const dawn::Image *info_text_src_ = nullptr;
 	QString scale_text_;
 	std::string message_;

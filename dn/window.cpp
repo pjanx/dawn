@@ -47,6 +47,7 @@
 #include <QRectF>
 #include <QRegion>
 #include <QScreen>
+#include <QStandardPaths>
 #include <QStyleHints>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -315,6 +316,29 @@ Window::drop_frames()
 		page.reset();
 }
 
+// How to run ExifTool, resolved once, empty when it isn't installed.
+static QStringList
+exiftool_command()
+{
+	static const QStringList command = [] {
+#ifdef Q_OS_WIN
+		// The Windows package ships it, with a Perl to interpret it.
+		const QString dir = QCoreApplication::applicationDirPath();
+		const QString perl = dir + QStringLiteral("/wperl.exe");
+		const QString script = dir + QStringLiteral("/exiftool");
+		if (QFile::exists(perl) && QFile::exists(script))
+			return QStringList{perl, script};
+#else
+		const QString path =
+			QStandardPaths::findExecutable(QStringLiteral("exiftool"));
+		if (!path.isEmpty())
+			return QStringList{path};
+#endif
+		return QStringList{};
+	}();
+	return command;
+}
+
 void
 Window::bind_host()
 {
@@ -457,7 +481,8 @@ Window::bind_host()
 			setup = this->browser_->browse_setup();
 		this->app_->open(url, {}, setup, application());
 	};
-	this->host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
+	if (!exiftool_command().isEmpty())
+		host_.launch_exiftool = [this](QUrl url) { launch_exiftool(url); };
 	this->host_.trash = [this](QUrl url) { trash_url(url); };
 	this->host_.bookmarks = [this] { return this->app_->settings.bookmarks; };
 	this->host_.bookmarked = [this](const QUrl &url) {
@@ -551,14 +576,8 @@ Window::launch_exiftool(const QUrl &url)
 	auto *process = new QProcess(qGuiApp);
 	process->setProcessChannelMode(QProcess::MergedChannels);
 	process->setStandardOutputFile(report_path, QIODeviceBase::Truncate);
-	QStringList arguments;
-#ifdef Q_OS_WIN
-	const QString app_dir = QCoreApplication::applicationDirPath();
-	process->setProgram(app_dir + QStringLiteral("/wperl.exe"));
-	arguments.append(app_dir + QStringLiteral("/exiftool"));
-#else
-	process->setProgram(QStringLiteral("exiftool"));
-#endif
+	QStringList arguments = exiftool_command();
+	process->setProgram(arguments.takeFirst());
 	arguments.append(
 		{QStringLiteral("-groupNames"), QStringLiteral("-duplicates"),
 			QStringLiteral("-extractEmbedded"), QStringLiteral("--binary"),
