@@ -30,7 +30,8 @@ endforeach()
 
 set(dn_launcher "${CMAKE_CURRENT_BINARY_DIR}/dn-launcher")
 add_custom_command(OUTPUT "${dn_launcher}"
-	COMMAND "${DN_LIPO_EXECUTABLE}" -create ${dn_launcher_slices} -output "${dn_launcher}"
+	COMMAND "${DN_LIPO_EXECUTABLE}"
+		-create ${dn_launcher_slices} -output "${dn_launcher}"
 	DEPENDS ${dn_launcher_slices} VERBATIM)
 
 foreach (DN_LAUNCH_ID IN ITEMS CropJpeg Commander)
@@ -53,11 +54,14 @@ foreach (DN_LAUNCH_ID IN ITEMS CropJpeg Commander)
 		"${bundle}/Contents/Info.plist" @ONLY)
 	add_custom_command(OUTPUT "${bundle}/Contents/MacOS/dn-launcher"
 			"${bundle}/Contents/Resources/dn.icns"
-		COMMAND "${CMAKE_COMMAND}" -E copy "${dn_launcher}" "${bundle}/Contents/MacOS/dn-launcher"
-		COMMAND "${CMAKE_COMMAND}" -E copy "${DN_ICON_ICNS}" "${bundle}/Contents/Resources/dn.icns"
+		COMMAND "${CMAKE_COMMAND}" -E copy
+			"${dn_launcher}" "${bundle}/Contents/MacOS/dn-launcher"
+		COMMAND "${CMAKE_COMMAND}" -E copy
+			"${DN_ICON_ICNS}" "${bundle}/Contents/Resources/dn.icns"
 		DEPENDS "${dn_launcher}" "${DN_ICON_ICNS}" VERBATIM)
 	add_custom_target(dn-launcher-${DN_LAUNCH_ID} ALL
-		DEPENDS "${bundle}/Contents/MacOS/dn-launcher" "${bundle}/Contents/Resources/dn.icns")
+		DEPENDS "${bundle}/Contents/MacOS/dn-launcher"
+			"${bundle}/Contents/Resources/dn.icns")
 	add_dependencies(dn-launcher-${DN_LAUNCH_ID} dn)
 	install(DIRECTORY "${bundle}" DESTINATION . USE_SOURCE_PERMISSIONS)
 endforeach()

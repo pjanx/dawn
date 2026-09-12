@@ -60,9 +60,9 @@ set_target_properties(libdnrs PROPERTIES
 add_dependencies(libdnrs libdnrs-build)
 
 if (BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
-	add_test(NAME dnrs_rust
+	add_test(NAME dnrs-rust
 		COMMAND ${CMAKE_COMMAND} -E env ${cargo_env}
 			${CARGO_EXECUTABLE} test --all-features)
-	set_tests_properties(dnrs_rust PROPERTIES
+	set_tests_properties(dnrs-rust PROPERTIES
 		WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()

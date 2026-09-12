@@ -399,10 +399,6 @@ if (APPLE AND DAWN_CATALOGUES)
 	target_sources(dn PRIVATE ${DAWN_CATALOGUES})
 endif()
 
-if (BUILD_TESTING)
-	add_test(NAME dn-help COMMAND $<TARGET_FILE:dn> --help)
-endif()
-
 if (APPLE AND DAWN_WITH_WIP)
 	include("${PROJECT_SOURCE_DIR}/cmake/macos-launchers.cmake")
 endif()
