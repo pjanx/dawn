@@ -241,7 +241,7 @@ main(int argc, char **argv)
 		}
 		mode = *parsed;
 	}
-#if !DAWN_WIP
+#if !DAWN_WITH_WIP
 	if (!dn::viewer_mode(mode)) {
 		qWarning("%s",
 			qUtf8Printable(QString::fromUtf8(_("unsupported mode: %1"))

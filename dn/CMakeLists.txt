@@ -254,7 +254,7 @@ else()
 
 		set(desktops "${desktop}"
 			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Browse.desktop")
-		if (DAWN_WIP)
+		if (DAWN_WITH_WIP)
 			list(APPEND desktops
 				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.CropJpeg.desktop"
 				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Commander.desktop")
@@ -403,6 +403,6 @@ if (BUILD_TESTING)
 	add_test(NAME dn-help COMMAND $<TARGET_FILE:dn> --help)
 endif()
 
-if (APPLE AND DAWN_WIP)
+if (APPLE AND DAWN_WITH_WIP)
 	include("${PROJECT_SOURCE_DIR}/cmake/macos-launchers.cmake")
 endif()

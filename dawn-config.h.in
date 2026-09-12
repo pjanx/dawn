@@ -7,7 +7,7 @@
 
 #pragma once
 
-#cmakedefine01 DAWN_WIP
+#cmakedefine01 DAWN_WITH_WIP
 
 #define DAWN_NAME "@PROJECT_NAME@"
 #define DAWN_NAMESPACE "@DAWN_NAMESPACE@"

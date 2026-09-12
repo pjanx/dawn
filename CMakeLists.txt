@@ -231,7 +231,7 @@ if (DAWN_WITH_JPEG_QS)
 	endif()
 endif()
 
-option(DAWN_WIP "Expose unfinished subapplications" OFF)
+option(DAWN_WITH_WIP "Expose unfinished subapplications" OFF)
 
 # CMAKE_INSTALL_FULL_LOCALEDIR goes into dawn-config.h.
 include(GNUInstallDirs)
@@ -337,7 +337,7 @@ include(CPack)
 if (WIN32 AND CMAKE_CROSSCOMPILING)
 	set(DAWN_ICON_ICO "${PROJECT_BINARY_DIR}/dn/dn.ico")
 	set(DAWN_MSI_WIP OFF)
-	if (DAWN_WIP)
+	if (DAWN_WITH_WIP)
 		set(DAWN_MSI_WIP ON)
 	endif()
 	set(dawn_wxs "${PROJECT_BINARY_DIR}/dawn.wxs")
