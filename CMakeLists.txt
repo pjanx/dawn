@@ -6,6 +6,9 @@ project(Dawn
 	HOMEPAGE_URL "https://git.janouch.name/p/dawn"
 	LANGUAGES C CXX
 )
+if (APPLE)
+	enable_language(OBJCXX)
+endif()
 
 set(DAWN_NAMESPACE "name.janouch.Dawn")
 set(CPACK_PACKAGE_VENDOR "The Dawn Authors")
@@ -22,6 +25,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
 if (WIN32 AND CMAKE_CROSSCOMPILING)
+	# XXX: Building from within MSYS2 might need to have DAWN_MSYS2_PREFIX
+	# preset in the cache.
 	set(DAWN_MSYS2_PREFIX "${PROJECT_BINARY_DIR}/ucrt64")
 	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
 	list(APPEND CMAKE_FIND_ROOT_PATH "${DAWN_MSYS2_PREFIX}")
@@ -59,7 +64,6 @@ else()
 	set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
 endif()
 
-# Dependency fetching is centralised here in the root CMakeLists.txt.
 set(CMAKE_MODULE_PATH
 	"${PROJECT_SOURCE_DIR}/cmake"
 	"${PROJECT_SOURCE_DIR}/submodules/liberty/cmake"
@@ -74,11 +78,6 @@ find_package(Intl REQUIRED)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
 find_program(AWK NAMES awk REQUIRED)
 include(lxdr-generate)
-find_program(GLSLANG_VALIDATOR
-	NAMES glslangValidator glslang
-	HINTS ${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}
-	REQUIRED
-)
 include(embed-shader)
 
 set(DN_WITH_WAYLAND "${Qt6WaylandClient_FOUND}")
@@ -96,7 +95,6 @@ pkg_check_modules(JPEG REQUIRED IMPORTED_TARGET libjpeg)
 pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 pkg_check_modules(WEBPDEMUX REQUIRED IMPORTED_TARGET libwebpdemux)
 pkg_check_modules(WEBPMUX REQUIRED IMPORTED_TARGET libwebpmux)
-pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
 pkg_check_modules(LIBPNG IMPORTED_TARGET libpng)
 # Qt6 SVG cannot render our icons correctly, so we hard depend on resvg.
 pkg_check_modules(RESVG REQUIRED IMPORTED_TARGET resvg)
@@ -109,15 +107,15 @@ macro(dawn_optional_pkg stem doc module)
 	endif()
 endmacro()
 
-dawn_optional_pkg(LIBRSVG "SVG via librsvg" librsvg-2.0)
-dawn_optional_pkg(XCURSOR "Xcursor support" xcursor)
 dawn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
 dawn_optional_pkg(LIBJXL "JPEG XL support" libjxl)
-dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
-dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
 dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
+dawn_optional_pkg(LIBRSVG "SVG via librsvg" librsvg-2.0)
+dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
 dawn_optional_pkg(LIBWMF "WMF support" libwmf)
+dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
 dawn_optional_pkg(POPPLER "PDF via Poppler" poppler-cpp)
+dawn_optional_pkg(XCURSOR "Xcursor support" xcursor)
 
 find_program(CARGO_EXECUTABLE cargo)
 if (CARGO_EXECUTABLE)
@@ -142,6 +140,7 @@ if (DAWN_WITH_JXRLIB AND NOT JXRLIB_FOUND)
 endif()
 
 if (APPLE)
+	# These don't make much sense to disable, but it's more regular with them.
 	option(DAWN_WITH_IMAGEIO "ImageIO loader" ON)
 	option(DAWN_WITH_CGPDF "Core Graphics PDF page rendering" ON)
 endif()
@@ -156,7 +155,6 @@ set(DAWN_WITH_LCMS2_FAST_FLOAT FALSE)
 set(DAWN_WITH_LCMS2_THREADED FALSE)
 
 add_library(dawn-lcms2 INTERFACE)
-set(DAWN_LCMS2_TARGET dawn-lcms2)
 if (NOT DAWN_BUNDLED_LCMS2)
 	pkg_check_modules(LCMS2 REQUIRED IMPORTED_TARGET lcms2)
 	target_link_libraries(dawn-lcms2 INTERFACE PkgConfig::LCMS2)
@@ -265,21 +263,13 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 		$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>)
 endif()
 
-# --- Targets ------------------------------------------------------------------
+# --- libdn --------------------------------------------------------------------
 
-add_custom_command(
-	OUTPUT ${PROJECT_BINARY_DIR}/tiff-tables.h
-	COMMAND ${AWK} -f ${PROJECT_SOURCE_DIR}/libdn/tiff-tables.awk
-		${PROJECT_SOURCE_DIR}/libdn/tiff-tables.db
-		> ${PROJECT_BINARY_DIR}/tiff-tables.h
-	DEPENDS
-		${PROJECT_SOURCE_DIR}/libdn/tiff-tables.awk
-		${PROJECT_SOURCE_DIR}/libdn/tiff-tables.db
-	VERBATIM
-)
 add_library(libdn SHARED
 	libdn/gettext.cpp
 	libdn/ipc.cpp
+	libdn/ipc-instance.cpp
+	libdn/ipc-rpc.cpp
 	libdn/libdn.cpp
 	libdn/load-icns.cpp
 	libdn/load-jpeg.cpp
@@ -289,11 +279,15 @@ add_library(libdn SHARED
 	libdn/load-tiff-ep.cpp
 	libdn/load-webp.cpp
 	libdn/load-wuffs.cpp
+	libdn/scale-engine.cpp
+	libdn/scale-scaler.cpp
+	libdn/thumb-scaler.cpp
+	libdn/vk-device.cpp
 )
 find_package(Threads REQUIRED)
 target_link_libraries(libdn
 	PUBLIC
-		${DAWN_LCMS2_TARGET}
+		dawn-lcms2
 		Intl::Intl
 		Vulkan::Vulkan
 	PRIVATE
@@ -304,44 +298,49 @@ target_link_libraries(libdn
 		PkgConfig::WEBPDEMUX
 )
 
+if (WIN32)
+	target_sources(libdn PRIVATE
+		libdn/config-windows.cpp
+		libdn/ipc-loop-windows.cpp
+		libdn/ipc-shm-windows.cpp
+		libdn/ipc-windows.cpp
+	)
+	target_link_libraries(libdn PRIVATE advapi32)
+elseif (APPLE)
+	target_sources(libdn PRIVATE
+		libdn/config-macos.mm
+		libdn/ipc-loop-unix.cpp
+		libdn/ipc-shm-unix.cpp
+		libdn/ipc-unix.cpp
+	)
+else()
+	target_sources(libdn PRIVATE
+		libdn/config-unix.cpp
+		libdn/ipc-loop-unix.cpp
+		libdn/ipc-shm-unix.cpp
+		libdn/ipc-unix.cpp
+	)
+endif()
+
+macro(dawn_loader stem suffix)
+	if (DAWN_WITH_${stem})
+		target_sources(libdn PRIVATE libdn/load-${suffix}.cpp)
+		target_link_libraries(libdn PRIVATE PkgConfig::${stem})
+	endif()
+endmacro()
+
+dawn_loader(LIBHEIF heif)
+dawn_loader(LIBJXL jxl)
+dawn_loader(LIBRAW libraw)
+dawn_loader(LIBRSVG librsvg)
+dawn_loader(LIBTIFF tiff)
+dawn_loader(LIBWMF libwmf)
+dawn_loader(OPENJPEG openjpeg)
+dawn_loader(POPPLER poppler)
+dawn_loader(XCURSOR xcursor)
+
 if (DAWN_WITH_JPEG_QS)
 	target_link_libraries(libdn PRIVATE jpegqs)
-endif()
-if (DAWN_WITH_LIBRAW)
-	target_sources(libdn PRIVATE libdn/load-libraw.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBRAW)
-endif()
-if (DAWN_WITH_LIBWMF)
-	target_sources(libdn PRIVATE libdn/load-libwmf.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBWMF)
-endif()
-if (DAWN_WITH_POPPLER)
-	target_sources(libdn PRIVATE libdn/load-poppler.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::POPPLER)
-endif()
-if (DAWN_WITH_LIBRSVG)
-	target_sources(libdn PRIVATE libdn/load-librsvg.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBRSVG)
-endif()
-if (DAWN_WITH_XCURSOR)
-	target_sources(libdn PRIVATE libdn/load-xcursor.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::XCURSOR)
-endif()
-if (DAWN_WITH_LIBHEIF)
-	target_sources(libdn PRIVATE libdn/load-heif.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBHEIF)
-endif()
-if (DAWN_WITH_LIBJXL)
-	target_sources(libdn PRIVATE libdn/load-jxl.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBJXL)
-endif()
-if (DAWN_WITH_OPENJPEG)
-	target_sources(libdn PRIVATE libdn/load-openjpeg.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::OPENJPEG)
-endif()
-if (DAWN_WITH_LIBTIFF)
-	target_sources(libdn PRIVATE libdn/load-tiff.cpp)
-	target_link_libraries(libdn PRIVATE PkgConfig::LIBTIFF)
 endif()
 if (DAWN_WITH_JXRLIB)
 	target_sources(libdn PRIVATE libdn/load-jxr.cpp)
@@ -354,10 +353,6 @@ if (DAWN_WITH_DNRS)
 
 	target_sources(libdn PRIVATE libdn/load-dnrs.cpp)
 	target_link_libraries(libdn PRIVATE libdnrs)
-	if (WIN32)
-		# Rust's MinGW standard library calls these Native API helpers.
-		target_link_libraries(libdn PRIVATE ntdll)
-	endif()
 
 	# Rust would otherwise export rust_eh_personality, which resvg exports
 	# as well, and ELF interposition would cross the two runtimes.
@@ -370,59 +365,35 @@ if (DAWN_WITH_DNRS)
 	endif()
 endif()
 
-# Target is libdn; SONAME/file is libdn.so (avoid liblibdn.so).
-# MinGW would otherwise emit libdn.dll; the exe looks for dn.dll beside itself.
-set_target_properties(libdn PROPERTIES OUTPUT_NAME dn)
-if (WIN32)
-	set_target_properties(libdn PROPERTIES PREFIX "")
-endif()
-add_library(dawn::libdn ALIAS libdn)
-
-target_sources(libdn PRIVATE
-	libdn/ipc-instance.cpp
-	libdn/ipc-rpc.cpp
-)
-if (WIN32)
-	target_sources(libdn PRIVATE
-		libdn/config-windows.cpp
-		libdn/ipc-loop-windows.cpp
-		libdn/ipc-shm-windows.cpp
-		libdn/ipc-windows.cpp
-	)
-	target_link_libraries(libdn PRIVATE advapi32)
-elseif (APPLE)
-	enable_language(OBJCXX)
+if (APPLE)
 	find_library(DAWN_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
-	target_sources(libdn PRIVATE
-		libdn/config-macos.mm
-		libdn/ipc-loop-unix.cpp
-		libdn/ipc-shm-unix.cpp
-		libdn/ipc-unix.cpp
-	)
-	target_link_libraries(libdn PRIVATE "${DAWN_COREFOUNDATION_FRAMEWORK}")
+	find_library(DAWN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+	find_library(DAWN_IMAGEIO_FRAMEWORK ImageIO REQUIRED)
 
-	if (DAWN_WITH_IMAGEIO OR DAWN_WITH_CGPDF)
-		find_library(DAWN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
-		target_link_libraries(libdn PRIVATE "${DAWN_COREGRAPHICS_FRAMEWORK}")
-	endif()
+	target_link_libraries(libdn PRIVATE
+		"${DAWN_COREFOUNDATION_FRAMEWORK}" "${DAWN_COREGRAPHICS_FRAMEWORK}")
 
 	if (DAWN_WITH_IMAGEIO)
-		find_library(DAWN_IMAGEIO_FRAMEWORK ImageIO REQUIRED)
 		target_sources(libdn PRIVATE libdn/load-imageio.mm)
 		target_link_libraries(libdn PRIVATE "${DAWN_IMAGEIO_FRAMEWORK}")
 	endif()
-
 	if (DAWN_WITH_CGPDF)
 		target_sources(libdn PRIVATE libdn/load-cgpdf.mm)
 	endif()
-else()
-	target_sources(libdn PRIVATE
-		libdn/config-unix.cpp
-		libdn/ipc-loop-unix.cpp
-		libdn/ipc-shm-unix.cpp
-		libdn/ipc-unix.cpp
-	)
 endif()
+
+add_custom_command(
+	OUTPUT "${PROJECT_BINARY_DIR}/tiff-tables.h"
+	COMMAND ${AWK} -f "${PROJECT_SOURCE_DIR}/libdn/tiff-tables.awk"
+		"${PROJECT_SOURCE_DIR}/libdn/tiff-tables.db"
+		> "${PROJECT_BINARY_DIR}/tiff-tables.h"
+	DEPENDS
+		"${PROJECT_SOURCE_DIR}/libdn/tiff-tables.awk"
+		"${PROJECT_SOURCE_DIR}/libdn/tiff-tables.db"
+	VERBATIM
+)
+target_sources(libdn PRIVATE
+	"${PROJECT_BINARY_DIR}/tiff-tables.h")
 
 # Generated LXDR headers; ipc-instance.cpp binds instance to the RPC core,
 # and tests/test-lxdr.cpp checks them against Encoder/Decoder.  The types
@@ -433,48 +404,28 @@ lxdr_generate(
 	Common
 	${PROJECT_SOURCE_DIR}/ipc/common.lxdr
 )
-lxdr_generate(
-	${PROJECT_BINARY_DIR}/generated/ipc/instance.lxdr.hpp
-	dawn::ipc::instance
-	Instance
-	${PROJECT_SOURCE_DIR}/ipc/instance.lxdr
-	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
-)
-lxdr_generate(
-	${PROJECT_BINARY_DIR}/generated/ipc/imaged.lxdr.hpp
-	dawn::ipc::imaged
-	Imaged
-	${PROJECT_SOURCE_DIR}/ipc/imaged.lxdr
-	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
-)
-lxdr_generate(
-	${PROJECT_BINARY_DIR}/generated/ipc/thumbd.lxdr.hpp
-	dawn::ipc::thumbd
-	Thumbd
-	${PROJECT_SOURCE_DIR}/ipc/thumbd.lxdr
-	EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
-)
-
-add_custom_target(dn-tiff-tables
-	DEPENDS ${PROJECT_BINARY_DIR}/tiff-tables.h)
-add_dependencies(libdn
-	dn-tiff-tables
-	lxdr-common_lxdr_hpp
-	lxdr-imaged_lxdr_hpp
-	lxdr-instance_lxdr_hpp
-	lxdr-thumbd_lxdr_hpp
-)
+target_sources(libdn PRIVATE
+	"${PROJECT_BINARY_DIR}/generated/ipc/common.lxdr.hpp")
+foreach (ipc Instance Imaged Thumbd)
+	string(TOLOWER "${ipc}" lower)
+	lxdr_generate(
+		${PROJECT_BINARY_DIR}/generated/ipc/${lower}.lxdr.hpp
+		dawn::ipc::${lower}
+		${ipc}
+		${PROJECT_SOURCE_DIR}/ipc/${lower}.lxdr
+		EXTERN ${PROJECT_SOURCE_DIR}/ipc/common.lxdr
+	)
+	target_sources(libdn PRIVATE
+		"${PROJECT_BINARY_DIR}/generated/ipc/${lower}.lxdr.hpp")
+endforeach()
 
 target_include_directories(libdn
 	PUBLIC
 		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
 		$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>
-		$<INSTALL_INTERFACE:include>
 	PRIVATE
-		${PROJECT_BINARY_DIR}
 		${PROJECT_SOURCE_DIR}/submodules/wuffs-mirror-release-c/release/c
 )
-
 
 # Vulkan scale shaders
 dawn_embed_shader(libdn fullscreen.vert fullscreen_vert)
@@ -487,38 +438,27 @@ dawn_embed_shader(libdn thumb-scale-h.comp thumb_scale_h)
 dawn_embed_shader(libdn thumb-scale-v.comp thumb_scale_v)
 dawn_embed_shader(libdn thumb-reduce.comp thumb_reduce)
 
-target_sources(libdn PRIVATE
-	libdn/scale-engine.cpp
-	libdn/scale-scaler.cpp
-	libdn/thumb-scaler.cpp
-	libdn/vk-device.cpp
+set_target_properties(libdn PROPERTIES
+	OUTPUT_NAME dn
+	SOVERSION 0
 )
+
+# --- Other targets ------------------------------------------------------------
 
 if (LIBPNG_FOUND)
 	foreach (target dnimage dnthumb)
-		add_executable(${target}
-			tools/${target}.cpp
-			tools/png-io.cpp
-		)
-		target_link_libraries(${target} PRIVATE
-			dawn::libdn
-			PkgConfig::LIBPNG
-		)
-		target_include_directories(${target} PRIVATE
-			${PROJECT_SOURCE_DIR}/libdn
-		)
+		add_executable(${target} tools/${target}.cpp tools/png-io.cpp)
+		target_link_libraries(${target} PRIVATE libdn PkgConfig::LIBPNG)
 	endforeach()
 endif()
 
 add_subdirectory(po)
 
 add_executable(dnimaged dnimaged/main.cpp)
-target_link_libraries(dnimaged PRIVATE dawn::libdn)
-target_include_directories(dnimaged PRIVATE "${PROJECT_SOURCE_DIR}/libdn")
+target_link_libraries(dnimaged PRIVATE libdn)
 
 add_executable(dnthumbd dnthumbd/main.cpp)
-target_link_libraries(dnthumbd PRIVATE dawn::libdn)
-target_include_directories(dnthumbd PRIVATE "${PROJECT_SOURCE_DIR}/libdn")
+target_link_libraries(dnthumbd PRIVATE libdn)
 
 qt_add_executable(dn
 	dn/action.cpp
@@ -526,11 +466,11 @@ qt_add_executable(dn
 	dn/display-profile.cpp
 	dn/gpu.cpp
 	dn/kit-browser.cpp
-	dn/kit-crop-jpeg.cpp
-	dn/kit-commander.cpp
 	dn/kit-chrome.cpp
 	dn/kit-cie-diagram.cpp
+	dn/kit-commander.cpp
 	dn/kit.cpp
+	dn/kit-crop-jpeg.cpp
 	dn/kit-viewer.cpp
 	dn/main.cpp
 	dn/overlay.cpp
@@ -542,23 +482,10 @@ qt_add_executable(dn
 	dn/xdg.cpp
 	dn/icons.qrc
 )
-set_target_properties(dn PROPERTIES AUTOMOC ON AUTORCC ON)
-target_include_directories(dn PRIVATE
-	"${PROJECT_SOURCE_DIR}/dn"
-	"${PROJECT_SOURCE_DIR}/libdn"
-)
+set_target_properties(dn PROPERTIES AUTORCC ON)
 
-# Widget geometry is integral device pixels, and the only way in is an explicit
-# conversion: a silent float truncation here is a layout bug.  Scoped to dn, as
-# vendored dependencies do not build clean under it.
-# TODO(p): Just move it up.
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-	target_compile_options(dn PRIVATE -Werror=float-conversion)
-endif()
-
-find_package(Threads REQUIRED)
 target_link_libraries(dn PRIVATE
-	dawn::libdn
+	libdn
 	Qt6::Gui
 	PkgConfig::WEBP
 	PkgConfig::WEBPDEMUX
@@ -570,25 +497,23 @@ target_link_libraries(dn PRIVATE
 
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/generated")
 add_custom_command(
-	OUTPUT ${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h
-	COMMAND ${AWK} -f ${PROJECT_SOURCE_DIR}/dn/cmf-to-header.awk
-		${PROJECT_SOURCE_DIR}/dn/ciexyz31_1.csv
-		${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h
+	OUTPUT "${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h"
+	COMMAND ${AWK} -f "${PROJECT_SOURCE_DIR}/dn/cmf-to-header.awk"
+		"${PROJECT_SOURCE_DIR}/dn/ciexyz31_1.csv"
+		"${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h"
 	DEPENDS
-		${PROJECT_SOURCE_DIR}/dn/cmf-to-header.awk
-		${PROJECT_SOURCE_DIR}/dn/ciexyz31_1.csv
+		"${PROJECT_SOURCE_DIR}/dn/cmf-to-header.awk"
+		"${PROJECT_SOURCE_DIR}/dn/ciexyz31_1.csv"
 	COMMENT "Generate CIE 1931 2° 1 nm CMF header"
 	VERBATIM
 )
-add_custom_target(dn-cmf-header
-	DEPENDS ${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h)
-add_dependencies(dn dn-cmf-header)
+target_sources(dn PRIVATE
+	"${PROJECT_BINARY_DIR}/generated/cmf-cie1931-2deg-1nm.h")
 
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
 dawn_embed_shader(dn dn-thumb.frag dn_thumb_frag)
 dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
-dawn_embed_shader(dn fullscreen.vert fullscreen_vert)
 
 if (WIN32)
 	target_sources(dn PRIVATE
@@ -599,11 +524,10 @@ if (WIN32)
 		gdi32 shell32 shlwapi ole32 advapi32 user32)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
-	enable_language(OBJCXX)
-	find_library(dn_appkit_framework AppKit REQUIRED)
-	find_library(dn_coregraphics_framework CoreGraphics REQUIRED)
-	find_library(dn_coreservices_framework CoreServices REQUIRED)
-	find_library(dn_uniformtypes_framework UniformTypeIdentifiers REQUIRED)
+	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
+	find_library(DN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
+	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
 	target_sources(dn PRIVATE
 		dn/display-profile-macos.mm
 		dn/assoc-macos.mm
@@ -611,10 +535,10 @@ elseif (APPLE)
 		dn/window-appearance-macos.mm
 	)
 	target_link_libraries(dn PRIVATE
-		"${dn_appkit_framework}"
-		"${dn_coregraphics_framework}"
-		"${dn_coreservices_framework}"
-		"${dn_uniformtypes_framework}")
+		"${DN_APPKIT_FRAMEWORK}"
+		"${DN_COREGRAPHICS_FRAMEWORK}"
+		"${DN_CORESERVICES_FRAMEWORK}"
+		"${DN_UNIFORMTYPES_FRAMEWORK}")
 else()
 	pkg_check_modules(COLORD REQUIRED IMPORTED_TARGET colord)
 	target_sources(dn PRIVATE
@@ -634,15 +558,15 @@ set(dn_icon_svg "${PROJECT_SOURCE_DIR}/dn/dn.svg")
 if (APPLE)
 	find_program(DN_SWIFT_EXECUTABLE swift REQUIRED)
 	set(MACOSX_BUNDLE_ICON_FILE dn.icns)
-	set(DN_ICON_ICNS "${PROJECT_BINARY_DIR}/${MACOSX_BUNDLE_ICON_FILE}")
-	add_custom_command(OUTPUT "${DN_ICON_ICNS}"
+	set(dn_icon_icns "${PROJECT_BINARY_DIR}/${MACOSX_BUNDLE_ICON_FILE}")
+	add_custom_command(OUTPUT "${dn_icon_icns}"
 		COMMAND "${DN_SWIFT_EXECUTABLE}"
-			"${PROJECT_SOURCE_DIR}/dn/gen-icon.swift" "${DN_ICON_ICNS}"
+			"${PROJECT_SOURCE_DIR}/dn/gen-icon.swift" "${dn_icon_icns}"
 		DEPENDS "${PROJECT_SOURCE_DIR}/dn/gen-icon.swift"
 		COMMENT "Generating dn application icon" VERBATIM)
-	set_source_files_properties("${DN_ICON_ICNS}" PROPERTIES
+	set_source_files_properties("${dn_icon_icns}" PROPERTIES
 		MACOSX_PACKAGE_LOCATION Resources)
-	target_sources(dn PRIVATE "${DN_ICON_ICNS}")
+	target_sources(dn PRIVATE "${dn_icon_icns}")
 
 	# Mirrors supported_media_types(), restricted to macOS types.
 	# See /System/Library/CoreServices/CoreTypes.bundle/Contents/Info.plist
@@ -741,9 +665,8 @@ else()
 
 		set(dn_icon_rc "${PROJECT_BINARY_DIR}/dn.rc")
 		# Qt specifically looks up IDI_ICON1 and nothing else.
-		add_custom_command(OUTPUT "${dn_icon_rc}"
-			COMMAND ${CMAKE_COMMAND} -E echo "IDI_ICON1 ICON \"dn.ico\""
-				> ${dn_icon_rc} VERBATIM)
+		file(CONFIGURE OUTPUT "${dn_icon_rc}"
+			CONTENT "IDI_ICON1 ICON \"dn.ico\"")
 		set_property(SOURCE "${dn_icon_rc}"
 			APPEND PROPERTY OBJECT_DEPENDS ${dn_icon_ico})
 		target_sources(dn PRIVATE "${dn_icon_rc}")
@@ -854,7 +777,7 @@ if (DN_WITH_WAYLAND)
 	target_link_libraries(dn PRIVATE PkgConfig::WAYLAND Qt6::GuiPrivate)
 endif()
 
-# User guide: build tree at share/docs/dawnn (../share from bin/),
+# User guide: build tree at share/docs/dawn (../share from bin/),
 # installed next to the application on each platform.
 set(DAWN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dawn")
 file(MAKE_DIRECTORY "${DAWN_HELP_DIR}")
@@ -866,27 +789,15 @@ configure_file(
 	"${PROJECT_SOURCE_DIR}/docs/stylesheet.css"
 	"${DAWN_HELP_DIR}/stylesheet.css"
 	COPYONLY)
+set(dawn_help_files
+	"${DAWN_HELP_DIR}/dn.html"
+	"${DAWN_HELP_DIR}/stylesheet.css")
 
 if (APPLE)
-	set_source_files_properties(
-		"${DAWN_HELP_DIR}/dn.html"
-		"${DAWN_HELP_DIR}/stylesheet.css"
+	set_source_files_properties(${dawn_help_files}
 		PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/share/doc/dawn")
-	target_sources(dn PRIVATE
-		"${DAWN_HELP_DIR}/dn.html"
-		"${DAWN_HELP_DIR}/stylesheet.css"
-	)
-elseif (WIN32)
-	install(FILES
-		"${DAWN_HELP_DIR}/dn.html"
-		"${DAWN_HELP_DIR}/stylesheet.css"
-		DESTINATION share/doc/dawn)
-else()
-	install(FILES
-		"${DAWN_HELP_DIR}/dn.html"
-		"${DAWN_HELP_DIR}/stylesheet.css"
-		DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/dawn")
-
+	target_sources(dn PRIVATE ${dawn_help_files})
+elseif (NOT WIN32)
 	# This manual page generator should be good enough.
 	set(ASCIIMAN "${PROJECT_SOURCE_DIR}/submodules/liberty/tools/asciiman.awk")
 	foreach (page dn)
@@ -901,12 +812,6 @@ else()
 	endforeach()
 
 	add_custom_target(docs ALL DEPENDS ${project_MAN_PAGES})
-
-	foreach (page ${project_MAN_PAGES})
-		string(REGEX MATCH "\\.([0-9])$" manpage_suffix "${page}")
-		install(FILES "${page}"
-			DESTINATION "${CMAKE_INSTALL_MANDIR}/man${CMAKE_MATCH_1}")
-	endforeach()
 endif()
 
 # Message catalogues.  The bundle's Resources have to be complete already
@@ -984,8 +889,8 @@ if (APPLE AND DAWN_WITH_WIP)
 			COMMAND "${CMAKE_COMMAND}" -E copy
 				"${dn_launcher}" "${bundle}/Contents/MacOS/dn-launcher"
 			COMMAND "${CMAKE_COMMAND}" -E copy
-				"${DN_ICON_ICNS}" "${bundle}/Contents/Resources/dn.icns"
-			DEPENDS "${dn_launcher}" "${DN_ICON_ICNS}" VERBATIM)
+				"${dn_icon_icns}" "${bundle}/Contents/Resources/dn.icns"
+			DEPENDS "${dn_launcher}" "${dn_icon_icns}" VERBATIM)
 		add_custom_target(dn-launcher-${dn_launch_id} ALL
 			DEPENDS "${bundle}/Contents/MacOS/dn-launcher"
 				"${bundle}/Contents/Resources/dn.icns")
@@ -1014,6 +919,9 @@ if (WIN32)
 	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QWindowsIntegrationPlugin
 		RUNTIME DESTINATION platforms
 		LIBRARY DESTINATION platforms)
+
+	install(FILES ${dawn_help_files}
+		DESTINATION share/doc/dawn)
 	install(FILES
 		"${DAWN_MSYS2_PREFIX}/share/mime/globs2"
 		"${DAWN_MSYS2_PREFIX}/share/mime/subclasses"
@@ -1040,39 +948,39 @@ elseif (APPLE)
 	# macOS app bundle: Qt Frameworks/PlugIns + fiv-like Resources/share.
 	# MACOSX_BUNDLE is set on dn next to qt_add_executable.
 
-	set(_dn_bundle "$<TARGET_BUNDLE_DIR_NAME:dn>")
+	set(dn_bundle "$<TARGET_BUNDLE_DIR_NAME:dn>")
 	install(TARGETS dn BUNDLE DESTINATION .)
-	#install(TARGETS dnthumbd
-	#	RUNTIME DESTINATION "${_dn_bundle}/Contents/MacOS")
+	#install(TARGETS dnimaged dnthumbd
+	#	RUNTIME DESTINATION "${dn_bundle}/Contents/MacOS")
 	install(TARGETS libdn
-		LIBRARY DESTINATION "${_dn_bundle}/Contents/Frameworks")
+		LIBRARY DESTINATION "${dn_bundle}/Contents/Frameworks")
 
-	set(_dn_mime_dir)
-	pkg_get_variable(_dn_smi_datadir shared-mime-info datadir)
-	if(_dn_smi_datadir AND EXISTS "${_dn_smi_datadir}/mime/globs2"
-			AND EXISTS "${_dn_smi_datadir}/mime/subclasses")
-		set(_dn_mime_dir "${_dn_smi_datadir}/mime")
+	set(dn_mime_dir)
+	pkg_get_variable(dn_smi_datadir shared-mime-info datadir)
+	if (dn_smi_datadir AND EXISTS "${dn_smi_datadir}/mime/globs2"
+			AND EXISTS "${dn_smi_datadir}/mime/subclasses")
+		set(dn_mime_dir "${dn_smi_datadir}/mime")
 	endif()
-	if(NOT _dn_mime_dir)
-		foreach(_dn_root IN ITEMS
+	if (NOT dn_mime_dir)
+		foreach (dn_root IN ITEMS
 			"$ENV{HOMEBREW_PREFIX}" /opt/homebrew /usr/local)
-			if(_dn_root AND EXISTS "${_dn_root}/share/mime/globs2"
-					AND EXISTS "${_dn_root}/share/mime/subclasses")
-				set(_dn_mime_dir "${_dn_root}/share/mime")
+			if(dn_root AND EXISTS "${dn_root}/share/mime/globs2"
+					AND EXISTS "${dn_root}/share/mime/subclasses")
+				set(dn_mime_dir "${dn_root}/share/mime")
 				break()
 			endif()
 		endforeach()
 	endif()
 	install(FILES
-		"${_dn_mime_dir}/globs2"
-		"${_dn_mime_dir}/subclasses"
-		DESTINATION "${_dn_bundle}/Contents/Resources/share/mime")
+		"${dn_mime_dir}/globs2"
+		"${dn_mime_dir}/subclasses"
+		DESTINATION "${dn_bundle}/Contents/Resources/share/mime")
 
 	# macdeployqt otherwise copies imageformats/virtualkeyboard/styles and
 	# pulls QtSvg, QtPdf, QtQuick, QtWidgets, QtNetwork with them.
 	install(IMPORTED_RUNTIME_ARTIFACTS Qt6::QCocoaIntegrationPlugin
-		LIBRARY DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms"
-		RUNTIME DESTINATION "${_dn_bundle}/Contents/PlugIns/platforms")
+		LIBRARY DESTINATION "${dn_bundle}/Contents/PlugIns/platforms"
+		RUNTIME DESTINATION "${dn_bundle}/Contents/PlugIns/platforms")
 
 	# MoltenVK is an ICD; macdeployqt only copies the linked loader.
 	# Homebrew lib/libMoltenVK.dylib is a Cellar symlink; install(FILES) would
@@ -1082,7 +990,7 @@ elseif (APPLE)
 	get_filename_component(
 		DN_MOLTENVK_LIBRARY "${DN_MOLTENVK_LIBRARY}" REALPATH)
 	install(FILES "${DN_MOLTENVK_LIBRARY}"
-		DESTINATION "${_dn_bundle}/Contents/Frameworks")
+		DESTINATION "${dn_bundle}/Contents/Frameworks")
 	file(WRITE "${CMAKE_BINARY_DIR}/MoltenVK_icd.json" [[{
 		"file_format_version": "1.0.0",
 		"ICD": {
@@ -1093,19 +1001,25 @@ elseif (APPLE)
 	}
 	]])
 	install(FILES "${CMAKE_BINARY_DIR}/MoltenVK_icd.json"
-		DESTINATION "${_dn_bundle}/Contents/Resources/vulkan/icd.d")
-	unset(_dn_bundle)
+		DESTINATION "${dn_bundle}/Contents/Resources/vulkan/icd.d")
+	unset(dn_bundle)
 
-	qt_generate_deploy_app_script(TARGET dn OUTPUT_SCRIPT _dn_deploy_dn
-		NO_PLUGINS)
-	install(SCRIPT "${_dn_deploy_dn}")
+	qt_generate_deploy_app_script(TARGET dn OUTPUT_SCRIPT dn_deploy NO_PLUGINS)
+	install(SCRIPT "${dn_deploy}")
 	# Homebrew Qt QTBUG-127075: run macdeployqt twice.
-	install(SCRIPT "${_dn_deploy_dn}")
+	install(SCRIPT "${dn_deploy}")
 else()
-	install(TARGETS dn
-		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-	install(TARGETS libdn
+	install(TARGETS dn libdn
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+	install(FILES ${dawn_help_files}
+		DESTINATION "${CMAKE_INSTALL_DATADIR}/doc/dawn")
+	foreach (page ${project_MAN_PAGES})
+		string(REGEX MATCH "\\.([0-9])$" manpage_suffix "${page}")
+		install(FILES "${page}"
+			DESTINATION "${CMAKE_INSTALL_MANDIR}/man${CMAKE_MATCH_1}")
+	endforeach()
 
 	# Software centres want this, and Flatpak bundles only carry an icon
 	# when an AppStream component points at one.
@@ -1127,7 +1041,7 @@ include(CPack)
 # CPack's WIX generator needs the real WiX toolset (Windows or wine).
 # We've already figured out msitools.
 if (WIN32 AND CMAKE_CROSSCOMPILING)
-	set(DAWN_ICON_ICO "${PROJECT_BINARY_DIR}/dn/dn.ico")
+	set(DAWN_ICON_ICO "${dn_icon_ico}")
 	set(DAWN_MSI_WIP OFF)
 	if (DAWN_WITH_WIP)
 		set(DAWN_MSI_WIP ON)

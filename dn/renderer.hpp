@@ -8,11 +8,11 @@
 #pragma once
 
 #include "gpu.hpp"
-#include "libdn/libdnvk.h"
 #include "overlay.hpp"
 #include "types.hpp"
 
-#include <libdn.h>
+#include <libdn/libdn.h>
+#include <libdn/libdnvk.h>
 
 #include <vulkan/vulkan.h>
 

@@ -11,7 +11,7 @@
 
 #include "xdg.hpp"
 
-#include <libdn.h>
+#include <libdn/libdn.h>
 
 #include <QByteArray>
 #include <QDir>

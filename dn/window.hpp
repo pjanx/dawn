@@ -21,7 +21,7 @@
 #include <QVariant>
 #include <QWindow>
 
-#include <libdn.h>
+#include <libdn/libdn.h>
 
 #include <memory>
 #include <span>

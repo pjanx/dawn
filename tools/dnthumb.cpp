@@ -7,10 +7,11 @@
 
 #include <dawn-gettext.h>
 
-#include "ipc-rpc.hpp"
-#include "ipc-shm.hpp"
+#include <libdn/ipc-rpc.hpp>
+#include <libdn/ipc-shm.hpp>
+#include <libdn/libdn.h>
+
 #include "ipc/thumbd.lxdr.hpp"
-#include "libdn.h"
 #include "png-io.hpp"
 
 #include <charconv>

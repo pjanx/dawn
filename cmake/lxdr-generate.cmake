@@ -13,12 +13,12 @@
 # header to any compile target.
 #
 
-function(lxdr_generate out_header namespace prefix_camel)
+function (lxdr_generate out_header namespace prefix_camel)
 	cmake_parse_arguments(arg "" "" "EXTERN" ${ARGN})
-	if(NOT AWK)
+	if (NOT AWK)
 		message(FATAL_ERROR "lxdr_generate requires AWK")
 	endif()
-	if(NOT arg_UNPARSED_ARGUMENTS)
+	if (NOT arg_UNPARSED_ARGUMENTS)
 		message(FATAL_ERROR "lxdr_generate: no .lxdr inputs")
 	endif()
 
@@ -28,19 +28,18 @@ function(lxdr_generate out_header namespace prefix_camel)
 	get_filename_component(out_dir "${out_header}" DIRECTORY)
 	get_filename_component(out_name "${out_header}" NAME)
 	get_filename_component(out_subdir "${out_dir}" NAME)
-	string(MAKE_C_IDENTIFIER "${out_name}" out_ident)
 
 	# The extern ones have to come first, and are named to AWK by the
 	# include stem their own header was generated under.
 	set(lxdr_abs)
 	set(extern_stems)
-	foreach(f IN LISTS arg_EXTERN arg_UNPARSED_ARGUMENTS)
-		if(NOT IS_ABSOLUTE "${f}")
+	foreach (f IN LISTS arg_EXTERN arg_UNPARSED_ARGUMENTS)
+		if (NOT IS_ABSOLUTE "${f}")
 			get_filename_component(f "${f}" ABSOLUTE)
 		endif()
 		list(APPEND lxdr_abs "${f}")
 	endforeach()
-	foreach(f IN LISTS arg_EXTERN)
+	foreach (f IN LISTS arg_EXTERN)
 		get_filename_component(f "${f}" NAME)
 		list(APPEND extern_stems "${out_subdir}/${f}")
 	endforeach()
@@ -60,5 +59,4 @@ function(lxdr_generate out_header namespace prefix_camel)
 		COMMENT "Generating ${out_name}"
 		VERBATIM
 	)
-	add_custom_target(lxdr-${out_ident} DEPENDS "${out_header}")
 endfunction()

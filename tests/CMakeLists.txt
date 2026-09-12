@@ -1,14 +1,16 @@
+pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
+
 add_executable(gen-fixtures gen-fixtures.cpp)
 target_link_libraries(gen-fixtures PRIVATE
 	PkgConfig::ZLIB
-	${DAWN_LCMS2_TARGET}
+	dawn-lcms2
 )
 
 if (LIBPNG_FOUND)
 	add_executable(gen-sample gen-sample.c)
 	target_link_libraries(gen-sample PRIVATE
 		PkgConfig::LIBPNG
-		${DAWN_LCMS2_TARGET}
+		dawn-lcms2
 	)
 endif()
 
@@ -61,7 +63,7 @@ add_executable(test-channels test-channels.cpp)
 if(NOT CMAKE_CROSSCOMPILING)
 	add_dependencies(test-channels test-fixtures)
 endif()
-target_link_libraries(test-channels PRIVATE dawn::libdn)
+target_link_libraries(test-channels PRIVATE libdn)
 target_compile_definitions(test-channels PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
 )
@@ -73,13 +75,13 @@ set_tests_properties(channels PROPERTIES
 
 if (DAWN_WITH_DNRS)
 	add_executable(test-dnrs test-dnrs.cpp)
-	target_link_libraries(test-dnrs PRIVATE dawn::libdn)
+	target_link_libraries(test-dnrs PRIVATE libdn)
 	add_test(NAME dnrs COMMAND test-dnrs)
 endif()
 
 if (APPLE AND DAWN_WITH_IMAGEIO)
 	add_executable(test-imageio test-imageio.cpp)
-	target_link_libraries(test-imageio PRIVATE dawn::libdn)
+	target_link_libraries(test-imageio PRIVATE libdn)
 	target_compile_definitions(test-imageio PRIVATE
 		DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
 	)
@@ -87,11 +89,11 @@ if (APPLE AND DAWN_WITH_IMAGEIO)
 endif()
 
 add_executable(test-icns test-icns.cpp)
-target_link_libraries(test-icns PRIVATE dawn::libdn)
+target_link_libraries(test-icns PRIVATE libdn)
 add_test(NAME icns COMMAND test-icns)
 
 add_executable(bench-open bench-open.cpp)
-target_link_libraries(bench-open PRIVATE dawn::libdn)
+target_link_libraries(bench-open PRIVATE libdn)
 
 add_executable(test-xdg test-xdg.cpp "${PROJECT_SOURCE_DIR}/dn/xdg.cpp")
 target_include_directories(test-xdg PRIVATE
@@ -107,7 +109,7 @@ add_executable(test-thumbnail-cache
 target_include_directories(test-thumbnail-cache PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn")
 target_link_libraries(test-thumbnail-cache PRIVATE
-	dawn::libdn
+	libdn
 	Qt6::Gui
 	PkgConfig::WEBP
 	PkgConfig::WEBPDEMUX
@@ -122,7 +124,7 @@ target_include_directories(test-thumbnailer PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn"
 	"${PROJECT_SOURCE_DIR}/libdn")
 target_link_libraries(test-thumbnailer PRIVATE
-	dawn::libdn
+	libdn
 	Qt6::Gui
 	Threads::Threads
 	PkgConfig::WEBP
@@ -145,7 +147,7 @@ if (MSGFMT_EXECUTABLE)
 		VERBATIM)
 
 	add_executable(test-gettext test-gettext.cpp "${gettext_mo}")
-	target_link_libraries(test-gettext PRIVATE dawn::libdn)
+	target_link_libraries(test-gettext PRIVATE libdn)
 	target_compile_definitions(test-gettext PRIVATE
 		DAWN_TEST_LOCALE_DIR="${gettext_locale_dir}")
 
@@ -163,15 +165,15 @@ if (MSGFMT_EXECUTABLE)
 endif()
 
 add_executable(test-lxdr test-lxdr.cpp)
-target_link_libraries(test-lxdr PRIVATE dawn::libdn)
+target_link_libraries(test-lxdr PRIVATE libdn)
 add_test(NAME lxdr COMMAND test-lxdr)
 
 add_executable(test-ipc test-ipc.cpp)
-target_link_libraries(test-ipc PRIVATE dawn::libdn)
+target_link_libraries(test-ipc PRIVATE libdn)
 add_test(NAME ipc COMMAND test-ipc)
 
 add_executable(test-shm test-shm.cpp)
-target_link_libraries(test-shm PRIVATE dawn::libdn)
+target_link_libraries(test-shm PRIVATE libdn)
 add_test(NAME shm COMMAND test-shm)
 
 # The main desktop file has its MimeType= rewritten during the build.

@@ -9,16 +9,13 @@
 # <src> is relative to ${PROJECT_SOURCE_DIR}/shaders.  Compiles it to
 # SPIR-V and writes <target BINARY_DIR>/generated/<stem>-spv.h (stem =
 # symbol with '_' → '-').  BINARY_DIR is the target's, so a call from
-# another listfile still lands next to that target.  Targets defined
-# in different directories (libdn vs dn) each get their own
-# fullscreen-vert-spv.h.
+# another listfile still lands next to that target.
 #
 
-function(dawn_embed_shader target src symbol)
-	if(NOT GLSLANG_VALIDATOR)
-		message(FATAL_ERROR "dawn_embed_shader requires GLSLANG_VALIDATOR")
-	endif()
-	if(NOT TARGET "${target}")
+find_program(GLSLANG_VALIDATOR NAMES glslangValidator glslang REQUIRED)
+
+function (dawn_embed_shader target src symbol)
+	if (NOT TARGET "${target}")
 		message(FATAL_ERROR
 			"dawn_embed_shader: target '${target}' does not exist")
 	endif()

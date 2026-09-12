@@ -10,7 +10,7 @@
 #include "kit-chrome.hpp"
 #include "types.hpp"
 
-#include <libdn.h>
+#include <libdn/libdn.h>
 
 #include <QString>
 #include <QUrl>

@@ -57,6 +57,10 @@ add_library(libdnrs STATIC IMPORTED GLOBAL)
 set_target_properties(libdnrs PROPERTIES
 	IMPORTED_LOCATION "${archive}"
 	INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}")
+if (WIN32)
+	# Rust's MinGW standard library calls these Native API helpers.
+	target_link_libraries(libdnrs INTERFACE ntdll)
+endif()
 add_dependencies(libdnrs libdnrs-build)
 
 if (BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
