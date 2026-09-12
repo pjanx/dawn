@@ -1877,7 +1877,7 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
 	const int imain = hz ? in.w : in.h;
 	vector<Size> sizes;
-	measure_pack(kit, alloc.w, alloc.h, hz, &sizes);
+	(void) measure_pack(kit, alloc.w, alloc.h, hz, &sizes);
 	int packed = 0;
 	int nv = 0;
 	for (size_t i = 0; i < this->kids.size(); i++) {
