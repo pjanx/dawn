@@ -7,7 +7,7 @@
 # Usage: cmake -DINPUT=foo.spv -DOUTPUT=foo-spv.h -DSYMBOL=foo_spv -P embed-spirv.cmake
 #
 
-if(NOT INPUT OR NOT OUTPUT OR NOT SYMBOL)
+if (NOT INPUT OR NOT OUTPUT OR NOT SYMBOL)
 	message(FATAL_ERROR "INPUT, OUTPUT, and SYMBOL required")
 endif()
 
