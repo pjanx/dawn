@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -537,7 +538,8 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 				append_page(image, tail, std::move(sub));
 			else
 				add_warning(ctx,
-					"MPF image " + to_string(i + 2) + ": " + suberror.message);
+					format_message(_("MPF image %d: %s"), int(i + 2),
+						suberror.message.c_str()));
 		}
 	}
 
@@ -646,7 +648,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 
 	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 

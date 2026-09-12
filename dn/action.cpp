@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "action.hpp"
 
 #include <QByteArray>
@@ -34,12 +36,15 @@ constexpr unsigned kShift = unsigned(Qt::ShiftModifier);
 // clang-format off
 constexpr ActionDef kDefs[] = {
 	{},
-	{kMenu, {"_New Window"}, {}, {{Qt::Key_N, kCtrl}}, {}},
-	{kMenu, {"_Close Window"}, {}, {{Qt::Key_W, kCtrl}, {Qt::Key_Q}}, {}},
-	{0, {"_Minimise"}, {}, {}, {}},
-	{kToggle, {"_Maximise", "Res_tore"}, {}, {}, {}},
-	{kMenu, {"_Quit"}, {}, {{Qt::Key_Q, kCtrl}}, {}},
-	{kToggle, {"Enter _Full Screen", "Exit _Full Screen"},
+	// TRANSLATORS: The underscore in a label marks the mnemonic, the letter
+	// that follows it.  Every label in this file works that way; keep one,
+	// on a letter that no other entry of the same menu has taken.
+	{kMenu, {N_("_New Window")}, {}, {{Qt::Key_N, kCtrl}}, {}},
+	{kMenu, {N_("_Close Window")}, {}, {{Qt::Key_W, kCtrl}, {Qt::Key_Q}}, {}},
+	{0, {N_("_Minimise")}, {}, {}, {}},
+	{kToggle, {N_("_Maximise"), N_("Res_tore")}, {}, {}, {}},
+	{kMenu, {N_("_Quit")}, {}, {{Qt::Key_Q, kCtrl}}, {}},
+	{kToggle, {N_("Enter _Full Screen"), N_("Exit _Full Screen")},
 		{"view-fullscreen-symbolic", "view-restore-symbolic"}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_F, kCtrl | kMeta},
@@ -47,92 +52,93 @@ constexpr ActionDef kDefs[] = {
 		{Qt::Key_F11},
 #endif
 		}, {}},
-	{kToggle, {"_Dark Mode"}, {"dark-mode-symbolic"}, {{Qt::Key_D}}, {}},
-	{kMenu, {"_Hint"}, {}, {{Qt::Key_F}}, {}},
-	{kMenu, {"_Back in History"}, {"curved-arrow-left-symbolic"}, {
+	{kToggle, {N_("_Dark Mode")}, {"dark-mode-symbolic"}, {{Qt::Key_D}}, {}},
+	// TRANSLATORS: Labels every clickable thing with a letter to type.
+	{kMenu, {N_("_Hint")}, {}, {{Qt::Key_F}}, {}},
+	{kMenu, {N_("_Back in History")}, {"curved-arrow-left-symbolic"}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_BracketLeft, kCtrl},
 #else
 		{Qt::Key_Left, kAlt},
 #endif
 		{Qt::Key_Backspace}}, {}},
-	{kMenu, {"_Forward in History"}, {"curved-arrow-right-symbolic"}, {
+	{kMenu, {N_("_Forward in History")}, {"curved-arrow-right-symbolic"}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_BracketRight, kCtrl},
 #else
 		{Qt::Key_Right, kAlt},
 #endif
 		}, {}},
-	{kMenu, {"_Location..."}, {}, {
+	{kMenu, {N_("_Location...")}, {}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_G, kCtrl | kShift},
 #else
 		{Qt::Key_L, kCtrl},
 #endif
 		}, {}},
-	{kMenu, {"_Contents"}, {}, {
+	{kMenu, {N_("_Contents")}, {}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_Question, kCtrl},
 #else
 		{Qt::Key_F1},
 #endif
 		}, {}},
-	{kMenu, {"_About"}, {}, {}, {}},
-	{kMenu, {"_Keyboard Shortcuts"}, {}, {
+	{kMenu, {N_("_About")}, {}, {}, {}},
+	{kMenu, {N_("_Keyboard Shortcuts")}, {}, {
 #ifndef Q_OS_MACOS
 		{Qt::Key_Question, kCtrl},
 #endif
 		}, {}},
-	{kMenu, {"_Settings..."}, {}, {{Qt::Key_Comma, kCtrl}}, {}},
+	{kMenu, {N_("_Settings...")}, {}, {{Qt::Key_Comma, kCtrl}}, {}},
 	// TODO(p): Skip on macOS entirely, as it uses the global menu.
-	{0, {"_Menu"}, {}, {{Qt::Key_F10}}, {}},
+	{0, {N_("_Menu")}, {}, {{Qt::Key_F10}}, {}},
 	// The context menu action is mostly for documentation only.
-	{0, {"_Context Menu"}, {}, {{Qt::Key_Menu}, {Qt::Key_F10, kShift}}, {}},
-	{0, {"_Cancel"}, {}, {{Qt::Key_Escape}}, {}},
-	{0, {"_Next Pane"}, {}, {{Qt::Key_F6}}, {}},
-	{0, {"_Previous Pane"}, {}, {{Qt::Key_F6, kShift}}, {}},
+	{0, {N_("_Context Menu")}, {}, {{Qt::Key_Menu}, {Qt::Key_F10, kShift}}, {}},
+	{0, {N_("_Cancel")}, {}, {{Qt::Key_Escape}}, {}},
+	{0, {N_("_Next Pane")}, {}, {{Qt::Key_F6}}, {}},
+	{0, {N_("_Previous Pane")}, {}, {{Qt::Key_F6, kShift}}, {}},
 
-	{kToggle, {"Show _Sidebar"}, {"sidebar-left-symbolic"},
+	{kToggle, {N_("Show _Sidebar")}, {"sidebar-left-symbolic"},
 		{{Qt::Key_F9}}, {}},
-	{kMenu, {"_Previous Directory in Tree"}, {"go-previous-symbolic"},
+	{kMenu, {N_("_Previous Directory in Tree")}, {"go-previous-symbolic"},
 		{{Qt::Key_BracketLeft}}, {}},
-	{kMenu, {"_Next Directory in Tree"}, {"go-next-symbolic"},
+	{kMenu, {N_("_Next Directory in Tree")}, {"go-next-symbolic"},
 		{{Qt::Key_BracketRight}}, {}},
-	{kMenu, {"Parent _Directory"}, {"go-up-symbolic"}, {
+	{kMenu, {N_("Parent _Directory")}, {"go-up-symbolic"}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_Up, kCtrl},
 #else
 		{Qt::Key_Up, kAlt},
 #endif
 		}, {}},
-	{kMenu, {"_Home"}, {}, {
+	{kMenu, {N_("_Home")}, {}, {
 #ifdef Q_OS_MACOS
 		{Qt::Key_H, kCtrl | kShift},
 #else
 		{Qt::Key_Home, kAlt},
 #endif
 		}, {}},
-	{kMenu, {"S_maller Thumbnails"}, {"minus-framed-symbolic"},
+	{kMenu, {N_("S_maller Thumbnails")}, {"minus-framed-symbolic"},
 		{{Qt::Key_Minus}, {Qt::Key_Minus, kCtrl}}, {}},
-	{kMenu, {"_Larger Thumbnails"}, {"plus-framed-symbolic"},
+	{kMenu, {N_("_Larger Thumbnails")}, {"plus-framed-symbolic"},
 		{{Qt::Key_Plus}, {Qt::Key_Plus, kCtrl}}, {}},
-	{kToggle, {"Tiled _View"}, {"blocks-symbolic"},
+	{kToggle, {N_("Tiled _View")}, {"blocks-symbolic"},
 		{{Qt::Key_1}, {Qt::Key_1, kCtrl}}, {}},
-	{kToggle, {"_Grid View"}, {"view-grid-symbolic"},
+	{kToggle, {N_("_Grid View")}, {"view-grid-symbolic"},
 		{{Qt::Key_2}, {Qt::Key_2, kCtrl}}, {}},
-	{kToggle, {"L_ist View"}, {"view-list-symbolic"},
+	{kToggle, {N_("L_ist View")}, {"view-list-symbolic"},
 		{{Qt::Key_3}, {Qt::Key_3, kCtrl}}, {}},
-	{kToggle, {"Sho_w Filenames"}, {"font-symbolic"},
+	{kToggle, {N_("Sho_w Filenames")}, {"font-symbolic"},
 		{{Qt::Key_T}, {Qt::Key_T, kCtrl}}, {}},
-	{kToggle, {"Hide _Unsupported Files"}, {"filter-symbolic"},
+	{kToggle, {N_("Hide _Unsupported Files")}, {"filter-symbolic"},
 		{{Qt::Key_H}, {Qt::Key_H, kCtrl}}, {}},
-	{kToggle, {"Sort Des_cending", "Sort As_cending"},
+	{kToggle, {N_("Sort Des_cending"), N_("Sort As_cending")},
 		{"view-sort-descending-symbolic", "view-sort-ascending-symbolic"},
 		{{Qt::Key_C}}, {}},
-	{kToggle, {"Sort by _Name"}, {}, {{Qt::Key_1, kCtrl | kAlt}}, {}},
-	{kToggle, {"Sort by _Time"}, {}, {{Qt::Key_2, kCtrl | kAlt}}, {}},
-	{kMenu, {"_Filter"}, {}, {{Qt::Key_F, kCtrl}, {Qt::Key_Slash}}, {}},
-	{0, {"_Open"}, {}, {
+	{kToggle, {N_("Sort by _Name")}, {}, {{Qt::Key_1, kCtrl | kAlt}}, {}},
+	{kToggle, {N_("Sort by _Time")}, {}, {{Qt::Key_2, kCtrl | kAlt}}, {}},
+	{kMenu, {N_("_Filter")}, {}, {{Qt::Key_F, kCtrl}, {Qt::Key_Slash}}, {}},
+	{0, {N_("_Open")}, {}, {
 		// In Finder, Return nonsensically renames items.
 		{Qt::Key_Return}, {Qt::Key_Enter},
 #ifdef Q_OS_MACOS
@@ -140,55 +146,59 @@ constexpr ActionDef kDefs[] = {
 #endif
 		}, {}},
 
-	{kMenu, {"_Browse"}, {"blocks-symbolic"},
+	{kMenu, {N_("_Browse")}, {"blocks-symbolic"},
 		{{Qt::Key_Return}, {Qt::Key_Enter}}, {}},
-	{kMenu, {"_Previous File"}, {"go-previous-symbolic"},
+	{kMenu, {N_("_Previous File")}, {"go-previous-symbolic"},
 		{{Qt::Key_Left}, {Qt::Key_Up}, {Qt::Key_PageUp}}, {}},
-	{kMenu, {"_Next File"}, {"go-next-symbolic"},
+	{kMenu, {N_("_Next File")}, {"go-next-symbolic"},
 		{{Qt::Key_Right}, {Qt::Key_Down}, {Qt::Key_PageDown}}, {}},
-	{kMenu, {"Zoom _In"}, {"plus-framed-symbolic"},
+	{kMenu, {N_("Zoom _In")}, {"plus-framed-symbolic"},
 		{{Qt::Key_Plus}, {Qt::Key_Plus, kCtrl}}, {}},
-	{kMenu, {"Zoom _Out"}, {"minus-framed-symbolic"},
+	{kMenu, {N_("Zoom _Out")}, {"minus-framed-symbolic"},
 		{{Qt::Key_Minus}, {Qt::Key_Minus, kCtrl}}, {}},
-	{kMenu, {"O_riginal Size"}, {"one-framed-symbolic"},
+	{kMenu, {N_("O_riginal Size")}, {"one-framed-symbolic"},
 		{{Qt::Key_0, kCtrl}}, {}},
-	{0, {"Zoom _Level"}, {}, {}, "1-9"},
-	{kToggle, {"_Scale to Fit"}, {"zoom-fit-symbolic"}, {{Qt::Key_X}}, {}},
-	{0, {"Fit to _Width"}, {}, {{Qt::Key_W}}, {}},
-	{0, {"Fit to H_eight"}, {}, {{Qt::Key_H}}, {}},
-	{kToggle, {"_Lock View"},
+	// TRANSLATORS: The toolbar's zoom readout; "1-9" beside it is the range
+	// of digit keys that set it, and is not a label.
+	{0, {N_("Zoom _Level")}, {}, {}, "1-9"},
+	{kToggle, {N_("_Scale to Fit")}, {"zoom-fit-symbolic"}, {{Qt::Key_X}}, {}},
+	{0, {N_("Fit to _Width")}, {}, {{Qt::Key_W}}, {}},
+	{0, {N_("Fit to H_eight")}, {}, {{Qt::Key_H}}, {}},
+	{kToggle, {N_("_Lock View")},
 		{"padlock-open-symbolic", "padlock-closed-symbolic"},
 		{{Qt::Key_L}}, {}},
-	{kToggle, {"_Keep Zoom and Position"}, {"pin2-symbolic"},
+	// TRANSLATORS: Keeps the current zoom and scroll position across images.
+	{kToggle, {N_("_Keep Zoom and Position")}, {"pin2-symbolic"},
 		{{Qt::Key_K}}, {}},
-	{kToggle, {"_Colour Management"}, {"color-symbolic"}, {{Qt::Key_C}}, {}},
-	{kToggle, {"S_mooth Scaling"}, {"blend-tool-symbolic"}, {{Qt::Key_I}}, {}},
-	{kToggle, {"Highlight _Transparency"},
+	{kToggle, {N_("_Colour Management")}, {"color-symbolic"}, {{Qt::Key_C}}, {}},
+	{kToggle, {N_("S_mooth Scaling")}, {"blend-tool-symbolic"}, {{Qt::Key_I}}, {}},
+	{kToggle, {N_("Highlight _Transparency")},
 		{"transparent-background-symbolic"}, {{Qt::Key_T}}, {}},
-	{kToggle, {"Blend in Linear Light"}, {}, {}, {}},
-	{kMenu, {"Rotate _Left"}, {"rotate-acw-symbolic"}, {{Qt::Key_Less}}, {}},
-	{kMenu, {"_Mirror"}, {"flip-h-symbolic"}, {{Qt::Key_Equal}}, {}},
-	{kMenu, {"Rotate _Right"}, {"rotate-cw-symbolic"},
+	{kToggle, {N_("Blend in Linear Light")}, {}, {}, {}},
+	{kMenu, {N_("Rotate _Left")}, {"rotate-acw-symbolic"}, {{Qt::Key_Less}}, {}},
+	// TRANSLATORS: A verb: flips the image horizontally.
+	{kMenu, {N_("_Mirror")}, {"flip-h-symbolic"}, {{Qt::Key_Equal}}, {}},
+	{kMenu, {N_("Rotate _Right")}, {"rotate-cw-symbolic"},
 		{{Qt::Key_Greater}}, {}},
-	{kToggle, {"Show I_nformation"}, {"info-outline-symbolic"},
+	{kToggle, {N_("Show I_nformation")}, {"info-outline-symbolic"},
 		{{Qt::Key_Return, kAlt}, {Qt::Key_Enter, kAlt}}, {}},
-	{kMenu, {"_First Page"}, {"go-top-symbolic"}, {}, {}},
-	{kMenu, {"Pr_evious Page"}, {"go-up-symbolic"},
+	{kMenu, {N_("_First Page")}, {"go-top-symbolic"}, {}, {}},
+	{kMenu, {N_("Pr_evious Page")}, {"go-up-symbolic"},
 		{{Qt::Key_BracketLeft}}, {}},
-	{kMenu, {"_Next Page"}, {"go-down-symbolic"},
+	{kMenu, {N_("_Next Page")}, {"go-down-symbolic"},
 		{{Qt::Key_BracketRight}}, {}},
-	{kMenu, {"La_st Page"}, {"go-bottom-symbolic"}, {}, {}},
-	{kMenu, {"Re_wind"}, {"media-skip-backward-symbolic"}, {}, {}},
-	{kMenu, {"Pre_vious Frame"}, {"media-seek-backward-symbolic"},
+	{kMenu, {N_("La_st Page")}, {"go-bottom-symbolic"}, {}, {}},
+	{kMenu, {N_("Re_wind")}, {"media-skip-backward-symbolic"}, {}, {}},
+	{kMenu, {N_("Pre_vious Frame")}, {"media-seek-backward-symbolic"},
 		{{Qt::Key_BraceLeft}}, {}},
-	{kToggle, {"_Play", "_Pause"},
+	{kToggle, {N_("_Play"), N_("_Pause")},
 		{"media-playback-start-symbolic", "media-playback-pause-symbolic"},
 		{{Qt::Key_Space}}, {}},
-	{kMenu, {"Ne_xt Frame"}, {"media-seek-forward-symbolic"},
+	{kMenu, {N_("Ne_xt Frame")}, {"media-seek-forward-symbolic"},
 		{{Qt::Key_BraceRight}}, {}},
-	{0, {"_Copy"}, {}, {{Qt::Key_C, kCtrl}, {Qt::Key_Insert, kCtrl}}, {}},
-	{0, {"Move to _Trash"}, {}, {{Qt::Key_Delete}}, {}},
-	{kMenu, {"_Reload"}, {"arrows-circle-symbolic"},
+	{0, {N_("_Copy")}, {}, {{Qt::Key_C, kCtrl}, {Qt::Key_Insert, kCtrl}}, {}},
+	{0, {N_("Move to _Trash")}, {}, {{Qt::Key_Delete}}, {}},
+	{kMenu, {N_("_Reload")}, {"arrows-circle-symbolic"},
 		{{Qt::Key_F5}, {Qt::Key_R}, {Qt::Key_R, kCtrl}}, {}},
 };
 // clang-format on
@@ -302,7 +312,7 @@ constexpr Action kViewerKeys[] = {
 };
 
 // clang-format off
-const MenuNode kFileMenu = MenuNode::group("_File", {
+const MenuNode kFileMenu = MenuNode::group(N_("_File"), {
 	MenuNode::item(Action::NewWindow),
 	MenuNode::item(Action::CloseWindow),
 	{},
@@ -313,7 +323,7 @@ const MenuNode kFileMenu = MenuNode::group("_File", {
 	MenuNode::item(Action::Quit),
 });
 
-const MenuNode kHelpMenu = MenuNode::group("_Help", {
+const MenuNode kHelpMenu = MenuNode::group(N_("_Help"), {
 	MenuNode::item(Action::Help),
 	MenuNode::item(Action::Shortcuts),
 	MenuNode::item(Action::About),
@@ -321,7 +331,7 @@ const MenuNode kHelpMenu = MenuNode::group("_Help", {
 
 const MenuNode kBrowserMenu[] = {
 	kFileMenu,
-	MenuNode::group("_Go", {
+	MenuNode::group(N_("_Go"), {
 		MenuNode::item(Action::Back),
 		MenuNode::item(Action::Forward),
 		MenuNode::item(Action::Location),
@@ -331,7 +341,7 @@ const MenuNode kBrowserMenu[] = {
 		MenuNode::item(Action::DirParent),
 		MenuNode::item(Action::DirHome),
 	}),
-	MenuNode::group("_View", {
+	MenuNode::group(N_("_View"), {
 		MenuNode::item(Action::Sidebar),
 		{},
 		MenuNode::item(Action::ThumbPlus),
@@ -358,7 +368,7 @@ const MenuNode kBrowserMenu[] = {
 
 const MenuNode kViewerMenu[] = {
 	kFileMenu,
-	MenuNode::group("_Go", {
+	MenuNode::group(N_("_Go"), {
 		MenuNode::item(Action::Back),
 		MenuNode::item(Action::Forward),
 		MenuNode::item(Action::Location),
@@ -367,7 +377,7 @@ const MenuNode kViewerMenu[] = {
 		MenuNode::item(Action::PrevFile),
 		MenuNode::item(Action::NextFile),
 	}),
-	MenuNode::group("_View", {
+	MenuNode::group(N_("_View"), {
 		MenuNode::item(Action::Information),
 		{},
 		MenuNode::item(Action::ZoomIn),
@@ -389,7 +399,7 @@ const MenuNode kViewerMenu[] = {
 		MenuNode::item(Action::DarkMode),
 		MenuNode::item(Action::Fullscreen),
 	}),
-	MenuNode::group("_Image", {
+	MenuNode::group(N_("_Image"), {
 		MenuNode::item(Action::RotateLeft),
 		MenuNode::item(Action::Mirror),
 		MenuNode::item(Action::RotateRight),
@@ -469,15 +479,18 @@ accel_label(const ActionDef &def)
 	return accel_key_label(def.keys[0]);
 }
 
+// Where source strings become what the user reads, and so where they get
+// translated; call sites mark their literals with N_().  An empty msgid
+// would only ever return the catalogue's own header.
 QString
 menu_label(const char *label, int *mnemonic_index)
 {
 	if (mnemonic_index)
 		*mnemonic_index = -1;
-	if (!label)
+	if (!label || !*label)
 		return {};
 
-	QString s = QString::fromUtf8(label);
+	QString s = QString::fromUtf8(_(label));
 	// On macOS, the Alt/Option key modifies characters, so mnemonics are
 	// unusable for window navigation.  The remaining thing mnemonics could do
 	// is act as unmodified accelerators in menus, though AppKit menu navigation
@@ -527,10 +540,13 @@ static const MenuNode kCropJpegMenu[] = {kFileMenu, kHelpMenu};
 static const MenuNode kCommanderMenu[] = {kFileMenu, kHelpMenu};
 
 static constexpr ModeDef kModes[] = {
-	{"view", "Dawn", kViewerMenu, kViewerKeys},
-	{"browse", "Dawn", kBrowserMenu, kBrowserKeys},
-	{"cropjpeg", "Dawn JPEG Cropper", kCropJpegMenu, {}},
-	{"commander", "Dawn Commander", kCommanderMenu, {}},
+	// TRANSLATORS: The application's name, in window titles.  Transliterate
+	// it if that is what your script does with foreign names; do not
+	// translate the word.
+	{"view", N_("Dawn"), kViewerMenu, kViewerKeys},
+	{"browse", N_("Dawn"), kBrowserMenu, kBrowserKeys},
+	{"cropjpeg", N_("Dawn JPEG Cropper"), kCropJpegMenu, {}},
+	{"commander", N_("Dawn Commander"), kCommanderMenu, {}},
 };
 static_assert(size(kModes) == size_t(Mode::Count));
 

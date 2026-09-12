@@ -8,6 +8,7 @@
 // Deliberately not advertising support elsewhere, as with Core Graphics PDF.
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -76,7 +77,7 @@ PopplerRenderClosure::render_internal(
 	// A PDF unit is 1/72 inch, see load-cgpdf.mm.
 	double dpi = dpi_ * scale;
 	if (!isfinite(dpi) || dpi <= 0) {
-		set_error(error, "invalid scale");
+		set_error(error, _("invalid scale"));
 		return nullptr;
 	}
 
@@ -84,10 +85,9 @@ PopplerRenderClosure::render_internal(
 	double w = 0, h = 0;
 	{
 		lock_guard<mutex> guard(document_->lock);
-		unique_ptr<poppler::page> page(
-			document_->document->create_page(page_));
+		unique_ptr<poppler::page> page(document_->document->create_page(page_));
 		if (!page) {
-			set_error(error, "no such page");
+			set_error(error, _("no such page"));
 			return nullptr;
 		}
 
@@ -104,7 +104,7 @@ PopplerRenderClosure::render_internal(
 		double cw = ceil(w), ch = ceil(h);
 		if (!(w > 0 && h > 0) || cw > kMaxDimension || ch > kMaxDimension ||
 			cw * kBytesPerPixel * ch > UINT32_MAX) {
-			set_error(error, "image dimensions overflow");
+			set_error(error, _("image dimensions overflow"));
 			return nullptr;
 		}
 
@@ -124,13 +124,13 @@ PopplerRenderClosure::render_internal(
 	if (!raster.is_valid() || raster.format() != poppler::image::format_rgb24 ||
 		rw < 1 || rh < 1 || abs(rw - w) > 1 || abs(rh - h) > 1 ||
 		raster.bytes_per_row() < rw * 3) {
-		set_error(error, "Poppler rendering failed");
+		set_error(error, _("Poppler rendering failed"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(uint32_t(rw), uint32_t(rh));
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -150,7 +150,7 @@ detail::load_poppler(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (!poppler::page_renderer::can_render()) {
-		set_error(error, "Poppler has been built without Splash");
+		set_error(error, _("Poppler has been built without Splash"));
 		return nullptr;
 	}
 
@@ -160,17 +160,17 @@ detail::load_poppler(
 	auto document = make_shared<PopplerDocument>();
 	document->document.reset(poppler::document::load_from_data(&bytes));
 	if (!document->document) {
-		set_error(error, "not a PDF document");
+		set_error(error, _("not a PDF document"));
 		return nullptr;
 	}
 	if (document->document->is_locked()) {
-		set_error(error, "the document is password-protected");
+		set_error(error, _("the document is password-protected"));
 		return nullptr;
 	}
 
 	int count = document->document->pages();
 	if (count <= 0) {
-		set_error(error, "the document has no pages");
+		set_error(error, _("the document has no pages"));
 		return nullptr;
 	}
 

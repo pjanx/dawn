@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -70,14 +71,14 @@ setup_decoder(JxlLoadContext &ctx, span<const uint8_t> data, Error *error)
 	if (JxlDecoderSubscribeEvents(ctx.dec,
 			JXL_DEC_BASIC_INFO | JXL_DEC_COLOR_ENCODING | JXL_DEC_FRAME |
 				JXL_DEC_FULL_IMAGE | JXL_DEC_BOX) != JXL_DEC_SUCCESS) {
-		set_error(error, "failed to subscribe to libjxl events");
+		set_error(error, _("failed to subscribe to libjxl events"));
 		return false;
 	}
 
 	// dawn rotates at display time, off Image::orientation, so letting libjxl
 	// bake the orientation into the pixels here would apply it twice.
 	if (JxlDecoderSetKeepOrientation(ctx.dec, JXL_TRUE) != JXL_DEC_SUCCESS) {
-		set_error(error, "failed to retain the JPEG XL orientation");
+		set_error(error, _("failed to retain the JPEG XL orientation"));
 		return false;
 	}
 
@@ -86,7 +87,7 @@ setup_decoder(JxlLoadContext &ctx, span<const uint8_t> data, Error *error)
 
 	if (JxlDecoderSetInput(ctx.dec, data.data(), data.size()) !=
 		JXL_DEC_SUCCESS) {
-		set_error(error, "failed to hand the data to libjxl");
+		set_error(error, _("failed to hand the data to libjxl"));
 		return false;
 	}
 
@@ -174,7 +175,7 @@ take_icc_profile(JxlLoadContext &ctx)
 	if (JxlDecoderGetColorAsICCProfile(ctx.dec, JXL_COLOR_PROFILE_TARGET_DATA,
 			ctx.icc.data(), size) != JXL_DEC_SUCCESS) {
 		ctx.icc.clear();
-		add_warning(*ctx.octx, "failed to read the ICC profile");
+		add_warning(*ctx.octx, _("failed to read the ICC profile"));
 	}
 }
 
@@ -185,7 +186,7 @@ take_frame_header(JxlLoadContext &ctx, Error *error)
 {
 	JxlFrameHeader frame = {};
 	if (JxlDecoderGetFrameHeader(ctx.dec, &frame) != JXL_DEC_SUCCESS) {
-		set_error(error, "failed to read a frame header");
+		set_error(error, _("failed to read a frame header"));
 		return false;
 	}
 
@@ -204,14 +205,14 @@ bind_frame_buffer(JxlLoadContext &ctx, Error *error)
 	size_t size = 0;
 	if (JxlDecoderImageOutBufferSize(ctx.dec, &kFormat, &size) !=
 		JXL_DEC_SUCCESS) {
-		set_error(error, "failed to size the output buffer");
+		set_error(error, _("failed to size the output buffer"));
 		return false;
 	}
 
 	ctx.scratch.resize(size);
 	if (JxlDecoderSetImageOutBuffer(ctx.dec, &kFormat, ctx.scratch.data(),
 			ctx.scratch.size()) != JXL_DEC_SUCCESS) {
-		set_error(error, "failed to set the output buffer");
+		set_error(error, _("failed to set the output buffer"));
 		return false;
 	}
 	return true;
@@ -222,13 +223,13 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 {
 	// This also catches a frame arriving before the header we subscribed to.
 	if (!ctx.info.xsize || !ctx.info.ysize) {
-		set_error(error, "invalid image dimensions");
+		set_error(error, _("invalid image dimensions"));
 		return false;
 	}
 
 	ImagePtr image = image_new(ctx.info.xsize, ctx.info.ysize);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return false;
 	}
 
@@ -256,14 +257,14 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 {
 	switch (JxlDecoderProcessInput(ctx.dec)) {
 	case JXL_DEC_ERROR:
-		set_error(error, "invalid or unsupported JPEG XL data");
+		set_error(error, _("invalid or unsupported JPEG XL data"));
 		return false;
 	case JXL_DEC_NEED_MORE_INPUT:
-		set_error(error, "truncated JPEG XL data");
+		set_error(error, _("truncated JPEG XL data"));
 		return false;
 	case JXL_DEC_BASIC_INFO:
 		if (JxlDecoderGetBasicInfo(ctx.dec, &ctx.info) != JXL_DEC_SUCCESS) {
-			set_error(error, "failed to read the JPEG XL header");
+			set_error(error, _("failed to read the JPEG XL header"));
 			return false;
 		}
 		break;
@@ -291,7 +292,7 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 		*done = true;
 		break;
 	default:
-		set_error(error, "unexpected libjxl decoder state");
+		set_error(error, _("unexpected libjxl decoder state"));
 		return false;
 	}
 	return true;
@@ -307,7 +308,7 @@ detail::load_jxl(
 	ctx.octx = &octx;
 	ctx.dec = JxlDecoderCreate(nullptr);
 	if (!ctx.dec) {
-		set_error(error, "failed to obtain a libjxl decoder");
+		set_error(error, _("failed to obtain a libjxl decoder"));
 		return nullptr;
 	}
 	if (!setup_decoder(ctx, data, error))
@@ -319,7 +320,7 @@ detail::load_jxl(
 
 	finish_box(ctx);
 	if (!ctx.result) {
-		set_error(error, "empty or unsupported image");
+		set_error(error, _("empty or unsupported image"));
 		return nullptr;
 	}
 

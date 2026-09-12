@@ -173,6 +173,7 @@ dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \
 	$pkg-jxrlib $pkg-libwmf $pkg-zlib $pkg-shared-mime-info $pkg-gcc-libs \
+	$pkg-gettext-runtime \
 	#$pkg-perl $pkg-perl-win32-api
 verify
 extract

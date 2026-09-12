@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "kit-cie-diagram.hpp"
 
 #include "cmf-cie1931-2deg-1nm.h"
@@ -35,13 +37,26 @@ constexpr Colour kMidGreyCol{188 / 255.f, 188 / 255.f, 188 / 255.f, 1.f};
 constexpr Colour kBlackCol{0.f, 0.f, 0.f, 1.f};
 constexpr Colour kWhiteCol{1.f, 1.f, 1.f, 1.f};
 
-const QString kSourceLab = QStringLiteral("Source");
-const QString kTargetLab = QStringLiteral("Target");
+// Static initialisation would run before the catalogue has been bound,
+// and the language cannot change afterwards, so once on use is enough.
+static const QString &
+source_label()
+{
+	static const QString text = QString::fromUtf8(_("Source"));
+	return text;
+}
+
+static const QString &
+target_label()
+{
+	static const QString text = QString::fromUtf8(_("Target"));
+	return text;
+}
 
 static int
 caption_h(const Kit &kit)
 {
-	return kit.px(kCapGap) + kit.text_height(kSourceLab, 0, false) +
+	return kit.px(kCapGap) + kit.text_height(source_label(), 0, false) +
 		kit.px(4.f);
 }
 
@@ -233,8 +248,8 @@ CieDiagram::measure_content(Kit &kit, int max_w, int max_h)
 	const int cap = caption_h(kit);
 	const int plot_h = max(0, max_h - cap);
 	const Rect fit = plot_rect({0, 0, max_w, plot_h});
-	const int labs = kit.text_width(kSourceLab, false) + kit.px(8.f) +
-		kit.text_width(kTargetLab, false);
+	const int labs = kit.text_width(source_label(), false) + kit.px(8.f) +
+		kit.text_width(target_label(), false);
 	return {max(fit.w, labs), fit.h + cap};
 }
 
@@ -247,8 +262,8 @@ CieDiagram::arrange_content(Kit &kit, Rect alloc)
 void
 CieDiagram::prepare(Kit &kit)
 {
-	kit.cache_text(kSourceLab, false);
-	kit.cache_text(kTargetLab, false);
+	kit.cache_text(source_label(), false);
+	kit.cache_text(target_label(), false);
 
 	const int cap = caption_h(kit);
 	const Rect plot =
@@ -290,7 +305,7 @@ CieDiagram::paint(Kit &kit) const
 	const int x0 = plot.x > 0 ? plot.x : this->r.x;
 	const int cap_y0 = plot.h >= 8 ? plot.y + plot.h : this->r.y;
 	const int y = cap_y0 + kit.px(kCapGap);
-	const int th = kit.text_height(kSourceLab, 0, true);
+	const int th = kit.text_height(source_label(), 0, true);
 	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
 	kit.list_.add_rect_filled({x0, y, x0 + cap_w, y + th}, kMidGreyCol);
 	if (plot.w >= 8 && plot.h >= 8 && !this->slot_.empty())
@@ -299,10 +314,10 @@ CieDiagram::paint(Kit &kit) const
 
 	const int cx = x0 + cap_w / 2;
 	const int gap = kit.px(4.f);
-	const int widthS = kit.text_width(kSourceLab, true);
+	const int widthS = kit.text_width(source_label(), true);
 	kit.emit_text(
-		float(cx - gap - widthS), float(y), kSourceLab, kBlackCol, true);
-	kit.emit_text(float(cx + gap), float(y), kTargetLab, kWhiteCol, true);
+		float(cx - gap - widthS), float(y), source_label(), kBlackCol, true);
+	kit.emit_text(float(cx + gap), float(y), target_label(), kWhiteCol, true);
 }
 
 }  // namespace dn

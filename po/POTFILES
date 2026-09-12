@@ -1,0 +1,41 @@
+# Every source that holds a translatable string, listed for every platform:
+# extraction must not depend on what the machine running it can compile.
+# Paths are relative to the top of the repository.
+dn/action.cpp
+dn/app-menu-macos.mm
+dn/app.cpp
+dn/kit-browser.cpp
+dn/kit-chrome.cpp
+dn/kit-cie-diagram.cpp
+dn/kit-viewer.cpp
+dn/main.cpp
+dn/name.janouch.Dawn.Browse.desktop
+dn/name.janouch.Dawn.Commander.desktop
+dn/name.janouch.Dawn.CropJpeg.desktop
+dn/name.janouch.Dawn.desktop
+dn/window.cpp
+libdn/config-macos.mm
+libdn/config-unix.cpp
+libdn/config-windows.cpp
+libdn/libdn.cpp
+libdn/load-cgpdf.mm
+libdn/load-dnrs.cpp
+libdn/load-heif.cpp
+libdn/load-icns.cpp
+libdn/load-imageio.mm
+libdn/load-jpeg.cpp
+libdn/load-jxl.cpp
+libdn/load-jxr.cpp
+libdn/load-libraw.cpp
+libdn/load-librsvg.cpp
+libdn/load-libwmf.cpp
+libdn/load-openjpeg.cpp
+libdn/load-ora.cpp
+libdn/load-poppler.cpp
+libdn/load-psd.cpp
+libdn/load-resvg.cpp
+libdn/load-tiff-ep.cpp
+libdn/load-tiff.cpp
+libdn/load-webp.cpp
+libdn/load-wuffs.cpp
+libdn/load-xcursor.cpp

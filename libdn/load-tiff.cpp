@@ -13,6 +13,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -109,8 +110,7 @@ tiff_size(thandle_t h)
 	return ((TiffIo *) h)->len;
 }
 
-DAWN_FORMAT(3, 0)
-static void
+DAWN_FORMAT(3, 0) static void
 tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
@@ -124,8 +124,7 @@ tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 		add_warning(*io->ctx, string(module) + ": " + buf);
 }
 
-DAWN_FORMAT(3, 0)
-static void
+DAWN_FORMAT(3, 0) static void
 tiff_warning(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
@@ -200,19 +199,19 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 		return nullptr;
 
 	if (width > kMaxDimension || height > kMaxDimension) {
-		set_error(error, "image dimensions too large");
+		set_error(error, _("image dimensions too large"));
 		return nullptr;
 	}
 
 	tmsize_t scan_bytes = TIFFScanlineSize(tiff);
 	if (scan_bytes <= 0) {
-		set_error(error, "invalid TIFF scanline size");
+		set_error(error, _("invalid TIFF scanline size"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(width, height);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -222,7 +221,7 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 	if (grey) {
 		for (uint32_t y = 0; y < height; y++) {
 			if (TIFFReadScanline(tiff, scan.data(), y, 0) < 0) {
-				set_error(error, "TIFF decoding error");
+				set_error(error, _("TIFF decoding error"));
 				return nullptr;
 			}
 			auto *s = assume_aligned<const uint16_t>(scan.data());
@@ -237,7 +236,7 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 		vector<uint16_t> packed(size_t(width) * spp * height);
 		for (uint32_t y = 0; y < height; y++) {
 			if (TIFFReadScanline(tiff, scan.data(), y, 0) < 0) {
-				set_error(error, "TIFF decoding error");
+				set_error(error, _("TIFF decoding error"));
 				return nullptr;
 			}
 			memcpy(packed.data() + size_t(y) * width * spp, scan.data(),
@@ -308,14 +307,14 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	}
 
 	if (img.width > kMaxDimension || img.height > kMaxDimension) {
-		set_error(error, "image dimensions too large");
+		set_error(error, _("image dimensions too large"));
 		TIFFRGBAImageEnd(&img);
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(img.width, img.height);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		TIFFRGBAImageEnd(&img);
 		return nullptr;
 	}
@@ -327,7 +326,7 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	bool ok = TIFFRGBAImageGet(&img, raster.data(), img.width, img.height);
 	TIFFRGBAImageEnd(&img);
 	if (!ok) {
-		set_error(error, "TIFF decoding error");
+		set_error(error, _("TIFF decoding error"));
 		return nullptr;
 	}
 
@@ -409,7 +408,7 @@ detail::load_tiff(
 		head.reset();
 		set_error(error, io.error);
 	} else if (!head) {
-		set_error(error, "empty or unsupported TIFF image");
+		set_error(error, _("empty or unsupported TIFF image"));
 	}
 	return head;
 }

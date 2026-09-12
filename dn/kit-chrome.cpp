@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "assoc.hpp"
 #include "kit-browser.hpp"
@@ -90,35 +91,35 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	add_apps(rec);
 	add_apps(fall);
 
-	auto *new_win = add_item_with_mnemonic("Open in New _Window");
+	auto *new_win = add_item_with_mnemonic(N_("Open in New _Window"));
 	new_win->on_click = [this, url](Kit &) {
 		if (this->on_new_window)
 			this->on_new_window(url);
 	};
 	if (apps_sep) {
-		add_item_with_mnemonic("Open _With")->sub = apps.get();
+		add_item_with_mnemonic(N_("Open _With"))->sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
 	if (QFileInfo(path).isDir() && this->on_bookmarked &&
 		this->on_toggle_bookmark) {
 		add_sep();
 		auto *bookmark = add_item_with_mnemonic(this->on_bookmarked(url)
-				? "Remove from _Bookmarks"
-				: "Add to _Bookmarks");
+				? N_("Remove from _Bookmarks")
+				: N_("Add to _Bookmarks"));
 		bookmark->on_click = [this, url](Kit &) {
 			if (this->on_toggle_bookmark)
 				this->on_toggle_bookmark(url);
 		};
 	}
 	add_sep();
-	auto *copy = add_item_with_mnemonic("_Copy");
+	auto *copy = add_item_with_mnemonic(N_("_Copy"));
 	copy->accel = action_accel(action_def(Action::Copy));
 	copy->on_click = [url](Kit &) {
 		const QUrl urls[] = {url};
 		copy_files(urls, false);
 	};
 	if (QFileInfo(path).isFile() && this->on_trash) {
-		auto *trash = add_item_with_mnemonic("Move to _Trash");
+		auto *trash = add_item_with_mnemonic(N_("Move to _Trash"));
 		trash->accel = action_accel(action_def(Action::Trash));
 		trash->on_click = [this, url](Kit &) {
 			if (this->on_trash)
@@ -155,20 +156,20 @@ ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 constexpr float kDialogActionPad = 16.f;
 
 static unique_ptr<Label>
-dialog_label(const QString &text, bool bold = false, bool wrap = false)
+dialog_label(const char *text, bool bold = false, bool wrap = false)
 {
 	auto label = make_unique<Label>();
-	label->text = menu_label(text.toStdString().c_str(), &label->mnemonic);
+	label->text = menu_label(text, &label->mnemonic);
 	label->bold = bold;
 	label->wrap = wrap;
 	return label;
 }
 
 static unique_ptr<Button>
-dialog_action(const QString &text, function<void(Kit &)> on_click)
+dialog_action(const char *text, function<void(Kit &)> on_click)
 {
 	auto button = make_unique<Button>();
-	button->text = menu_label(text.toStdString().c_str(), &button->mnemonic);
+	button->text = menu_label(text, &button->mnemonic);
 	button->pad_x = kDialogActionPad;
 	button->on_click = std::move(on_click);
 	return button;
@@ -178,7 +179,7 @@ static unique_ptr<Button>
 dialog_close_action(Dialog &dialog)
 {
 	return dialog_action(
-		QStringLiteral("_Close"), [&dialog](Kit &kit) { dialog.close(kit); });
+		N_("_Close"), [&dialog](Kit &kit) { dialog.close(kit); });
 }
 
 static QString
@@ -220,10 +221,11 @@ shortcut_row(const ActionDef &def, float accel_w)
 {
 	auto row = make_unique<Row>();
 	row->gap = 8.f;
-	auto accel = dialog_label(shortcut_accel(def));
+	auto accel = make_unique<Label>();
+	accel->text = shortcut_accel(def);
 	accel->min_w = accel_w;
 	accel->dim = true;
-	auto name = dialog_label(menu_label(def.label[0], nullptr));
+	auto name = dialog_label(def.label[0]);
 	row->add_child(std::move(accel), size_t(-1));
 	row->add_child(std::move(name), size_t(-1));
 	return row;
@@ -236,10 +238,9 @@ dialog_about(Kit &kit, Dialog &dialog)
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(QStringLiteral(DAWN_NAME), true), size_t(-1));
-	col->add_child(
-		dialog_label(QStringLiteral("Colour-managed image browser and viewer."),
-			false, true),
+	col->add_child(dialog_label(DAWN_NAME, true), size_t(-1));
+	col->add_child(dialog_label(N_("Colour-managed image browser and viewer."),
+					   false, true),
 		size_t(-1));
 	dialog.show(kit, std::move(col), 360.f, dialog_close_action(dialog));
 }
@@ -250,8 +251,7 @@ dialog_location(
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(
-		dialog_label(QStringLiteral("Enter location"), true), size_t(-1));
+	col->add_child(dialog_label(N_("Enter location"), true), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
@@ -268,9 +268,8 @@ dialog_location(
 
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
-	actions->add_child(
-		dialog_action(QStringLiteral("_Open"), submit), size_t(-1));
-	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
+	actions->add_child(dialog_action(N_("_Open"), submit), size_t(-1));
+	actions->add_child(dialog_action(N_("_Cancel"),
 						   [&dialog](Kit &inner) { dialog.close(inner); }),
 		size_t(-1));
 	dialog.show(kit, std::move(col), 420.f, std::move(actions));
@@ -312,8 +311,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 	auto col = make_unique<Column>();
 	col->gap = 2.f;
-	col->add_child(
-		dialog_label(QStringLiteral("Keyboard Shortcuts"), true), size_t(-1));
+	col->add_child(dialog_label(N_("Keyboard Shortcuts"), true), size_t(-1));
 	for (const MenuNode &section : tree) {
 		if (section.items.empty())
 			continue;
@@ -324,8 +322,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		});
 		if (!any)
 			continue;
-		col->add_child(
-			dialog_label(menu_label(section.title, nullptr), true), size_t(-1));
+		col->add_child(dialog_label(section.title, true), size_t(-1));
 		for_leaves(section.items, [&](Action action) {
 			const ActionDef &def = action_def(action);
 			if (!has_shortcut(def))
@@ -343,8 +340,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		if ((def.flags & ActionInMenu) || !has_shortcut(def))
 			return;
 		if (!other) {
-			col->add_child(
-				dialog_label(QStringLiteral("Other"), true), size_t(-1));
+			col->add_child(dialog_label(N_("Other"), true), size_t(-1));
 			other = true;
 		}
 		seen[i] = true;
@@ -363,8 +359,8 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 // --- Settings dialog ---------------------------------------------------------
 
 // TODO(p): This needs to be in one place with sizes.
-static const QString kThumbSizeNames[] = {QStringLiteral("Small"),
-	QStringLiteral("Normal"), QStringLiteral("Large"), QStringLiteral("Huge")};
+static const char *const kThumbSizeNames[] = {
+	N_("Small"), N_("Normal"), N_("Large"), N_("Huge")};
 
 static QString
 loader_text(const SettingsDraft::Loader &loader)
@@ -377,7 +373,7 @@ loader_text(const SettingsDraft::Loader &loader)
 
 // TODO(p): This sizing model is bad.
 static unique_ptr<Row>
-settings_row(const QString &label, float label_w, unique_ptr<Widget> control)
+settings_row(const char *label, float label_w, unique_ptr<Widget> control)
 {
 	auto text = dialog_label(label);
 	text->min_w = label_w;
@@ -467,19 +463,23 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	// Save hands that copy back, and Cancel simply drops it.
 	auto state = make_shared<SettingsDraft>(std::move(draft));
 
+	// The gutter is as wide as the labels that go in it, which is only known
+	// once they have been translated.
 	float label_w = 0;
-	const QString thumb_label = QStringLiteral("Default _thumbnail size");
-	const QString icc_label = QStringLiteral("ICC _profile override");
-	for (const QString &label : {thumb_label, icc_label})
-		label_w = max(label_w, kit.pts(kit.text_width(label, false)));
+	const char *const thumb_label = N_("Default _thumbnail size");
+	const char *const icc_label = N_("ICC _profile override");
+	for (const char *label : {thumb_label, icc_label}) {
+		label_w = max(label_w,
+			kit.pts(kit.text_width(menu_label(label, nullptr), false)));
+	}
 
 	auto col = make_unique<Column>();
 	col->gap = 4.f;
-	col->add_child(dialog_label(QStringLiteral("Settings"), true), size_t(-1));
+	col->add_child(dialog_label(N_("Settings"), true), size_t(-1));
 
 	auto combo = make_unique<Combo>();
-	for (const QString &name : kThumbSizeNames)
-		combo->items.push_back(name);
+	for (const char *name : kThumbSizeNames)
+		combo->items.push_back(QString::fromUtf8(_(name)));
 	for (int i = 0; i < int(size(kThumbSizes)); i++) {
 		if (kThumbSizes[i] == state->thumbnail_size)
 			combo->current = i;
@@ -491,16 +491,17 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 		settings_row(thumb_label, label_w, std::move(combo)), size_t(-1));
 
 	auto names =
-		settings_check("Show _filenames by default", state->show_filenames);
+		settings_check(N_("Show _filenames by default"), state->show_filenames);
 	Checkbox *names_ref = names.get();
 	names->on_click = [state, names_ref](Kit &) {
 		state->show_filenames = names_ref->checked;
 	};
-	col->add_child(settings_row({}, label_w, std::move(names)), size_t(-1));
+	col->add_child(
+		settings_row(nullptr, label_w, std::move(names)), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	entry->text = state->icc_profile_path;
-	entry->placeholder = QStringLiteral("Path to an ICC profile");
+	entry->placeholder = QString::fromUtf8(_("Path to an ICC profile"));
 	Entry *entry_ref = entry.get();
 	entry->on_change = [state, entry_ref](Kit &) {
 		state->icc_profile_path = entry_ref->text;
@@ -509,18 +510,18 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 		settings_row(icc_label, label_w, std::move(entry)), size_t(-1));
 
 	auto dither = settings_check(
-		"Disable _dithering on 8-bit swapchains", state->disable_dithering);
+		N_("Disable _dithering on 8-bit swapchains"), state->disable_dithering);
 	Checkbox *dither_ref = dither.get();
 	dither->on_click = [state, dither_ref](Kit &) {
 		state->disable_dithering = dither_ref->checked;
 	};
-	col->add_child(settings_row({}, label_w, std::move(dither)), size_t(-1));
+	col->add_child(
+		settings_row(nullptr, label_w, std::move(dither)), size_t(-1));
 
 	col->add_child(make_unique<Sep>(), size_t(-1));
 
-	auto note = dialog_label(
-		QStringLiteral("Image loaders may be able to handle multiple "
-					   "formats. Failures pass through."),
+	auto note = dialog_label(N_("Image loaders may be able to handle multiple "
+								"formats. Failures pass through."),
 		false, true);
 	note->dim = true;
 	col->add_child(std::move(note), size_t(-1));
@@ -533,9 +534,10 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	loaders->gap = 2.f;
 	rows->col = loaders.get();
 	for (int i = 0; i < int(state->loaders.size()); i++) {
-		auto up = loader_arrow("go-up-symbolic", QStringLiteral("Move up"));
+		auto up =
+			loader_arrow("go-up-symbolic", QString::fromUtf8(_("Move up")));
 		auto down =
-			loader_arrow("go-down-symbolic", QStringLiteral("Move down"));
+			loader_arrow("go-down-symbolic", QString::fromUtf8(_("Move down")));
 		auto check = make_unique<Checkbox>();
 		check->grow = true;
 		check->wrap = true;
@@ -573,14 +575,14 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	auto actions = make_unique<Row>();
 	actions->gap = 8.f;
 	actions->add_child(
-		dialog_action(QStringLiteral("_Save"),
+		dialog_action(N_("_Save"),
 			[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
 				dialog.close(inner);
 				if (on_save)
 					on_save(*state);
 			}),
 		size_t(-1));
-	actions->add_child(dialog_action(QStringLiteral("_Cancel"),
+	actions->add_child(dialog_action(N_("_Cancel"),
 						   [&dialog](Kit &inner) { dialog.close(inner); }),
 		size_t(-1));
 	dialog.show(kit, std::move(col), 520.f, std::move(actions));

@@ -11,6 +11,7 @@
 // producing no pages at all.
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -86,7 +87,7 @@ CGPDFRenderClosure::render_internal(
 {
 	CGPDFPageRef page = CGPDFDocumentGetPage(document_.get(), page_);
 	if (!page) {
-		set_error(error, "no such page");
+		set_error(error, _("no such page"));
 		return nullptr;
 	}
 
@@ -99,7 +100,7 @@ CGPDFRenderClosure::render_internal(
 	cgpdf_page_size(page, &pw, &ph);
 	double w = ceil(pw * zoom), h = ceil(ph * zoom);
 	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
-		set_error(error, "image dimensions overflow");
+		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
 
@@ -108,7 +109,7 @@ CGPDFRenderClosure::render_internal(
 	// sRGB, which then genuinely is one, and leave the rest to lcms2.
 	CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 	if (!srgb) {
-		set_error(error, "cannot create an sRGB colour space");
+		set_error(error, _("cannot create an sRGB colour space"));
 		return nullptr;
 	}
 
@@ -123,7 +124,7 @@ CGPDFRenderClosure::render_internal(
 	if (!context) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, "cannot create a bitmap context");
+		set_error(error, _("cannot create a bitmap context"));
 		return nullptr;
 	}
 
@@ -142,7 +143,7 @@ CGPDFRenderClosure::render_internal(
 	if (!image) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -169,14 +170,14 @@ detail::load_cgpdf(
 	CFDataRef bytes =
 		CFDataCreate(kCFAllocatorDefault, data.data(), CFIndex(data.size()));
 	if (!bytes) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
 	CGDataProviderRef provider = CGDataProviderCreateWithCFData(bytes);
 	CFRelease(bytes);
 	if (!provider) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -184,20 +185,20 @@ detail::load_cgpdf(
 		CGPDFDocumentCreateWithProvider(provider), CGPDFDocumentRelease);
 	CGDataProviderRelease(provider);
 	if (!document) {
-		set_error(error, "not a PDF document");
+		set_error(error, _("not a PDF document"));
 		return nullptr;
 	}
 
 	// Core Graphics opens encrypted documents, then draws nothing of them.
 	if (CGPDFDocumentIsEncrypted(document.get()) &&
 		!CGPDFDocumentUnlockWithPassword(document.get(), "")) {
-		set_error(error, "the document is password-protected");
+		set_error(error, _("the document is password-protected"));
 		return nullptr;
 	}
 
 	size_t count = CGPDFDocumentGetNumberOfPages(document.get());
 	if (!count) {
-		set_error(error, "the document has no pages");
+		set_error(error, _("the document has no pages"));
 		return nullptr;
 	}
 

@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "window.hpp"
 
@@ -507,14 +508,15 @@ Window::show_help()
 	const QString path = help_document_path();
 	if (!QFile::exists(path)) {
 		const QString message =
-			QStringLiteral("Help document not found: ") + path;
+			QString::fromUtf8(_("Help document not found: %1")).arg(path);
 		qWarning("%s", qUtf8Printable(message));
 		show_viewer_error(message);
 		return;
 	}
 	if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path))) {
 		const QString message =
-			QStringLiteral("Could not open the help document: ") + path;
+			QString::fromUtf8(_("Could not open the help document: %1"))
+				.arg(path);
 		qWarning("%s", qUtf8Printable(message));
 		show_viewer_error(message);
 	}
@@ -537,9 +539,9 @@ Window::launch_exiftool(const QUrl &url)
 	auto *report = new QTemporaryFile(
 		QDir::tempPath() + QStringLiteral("/dn-exiftool-XXXXXX.txt"), qGuiApp);
 	if (!report->open()) {
-		show_error(
-			QStringLiteral("Could not create a temporary ExifTool report: ") +
-			report->errorString());
+		show_error(QString::fromUtf8(
+			_("Could not create a temporary ExifTool report: %1"))
+				.arg(report->errorString()));
 		report->deleteLater();
 		return;
 	}
@@ -569,8 +571,8 @@ Window::launch_exiftool(const QUrl &url)
 			if (error != QProcess::FailedToStart || *finished)
 				return;
 			*finished = true;
-			show_error(QStringLiteral("Could not launch ExifTool: ") +
-				process->errorString());
+			show_error(QString::fromUtf8(_("Could not launch ExifTool: %1"))
+					.arg(process->errorString()));
 			report->deleteLater();
 			process->deleteLater();
 		});
@@ -583,20 +585,24 @@ Window::launch_exiftool(const QUrl &url)
 			QFile output(report_path);
 			if (output.open(QIODeviceBase::Append | QIODeviceBase::Text)) {
 				if (exit_status == QProcess::CrashExit) {
-					output.write("\nExifTool terminated abnormally.\n");
+					output.write(QByteArrayLiteral("\n") +
+						_("ExifTool terminated abnormally.") + "\n");
 				} else if (exit_code != 0) {
-					output.write(
-						QStringLiteral("\nExifTool exited with status %1.\n")
-							.arg(exit_code)
+					output.write(QStringLiteral("\n%1\n")
+							.arg(QString::fromUtf8(
+								_("ExifTool exited with status %1."))
+									.arg(exit_code))
 							.toUtf8());
 				} else if (output.size() == 0) {
-					output.write("ExifTool produced no output.\n");
+					output.write(
+						QByteArray(_("ExifTool produced no output.")) + "\n");
 				}
 				output.close();
 			}
 			if (!QDesktopServices::openUrl(QUrl::fromLocalFile(report_path)))
-				show_error(QStringLiteral("Could not open the ExifTool report "
-										  "through a .txt association."));
+				show_error(QString::fromUtf8(_("Could not open the ExifTool "
+											   "report through a .txt "
+											   "association.")));
 			process->deleteLater();
 		});
 	process->start();
@@ -618,7 +624,7 @@ void
 Window::sync_title()
 {
 	const QUrl url = current_url();
-	const QString app = QString::fromUtf8(mode_def(this->mode_).title);
+	const QString app = QString::fromUtf8(_(mode_def(this->mode_).title));
 	const QString title = url.isEmpty()
 		? app
 		: url_parse_name(url) + QStringLiteral(" \u2014 ") + app;

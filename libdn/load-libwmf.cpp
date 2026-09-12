@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -86,7 +88,7 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 	uint32_t *width, uint32_t *height, Error *error)
 {
 	if (data.size() > size_t(LONG_MAX)) {
-		set_error(error, "libwmf: input is too large");
+		set_error(error, _("libwmf: input is too large"));
 		return false;
 	}
 
@@ -96,7 +98,8 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 		WMF_OPT_NO_ERROR | WMF_OPT_NO_DEBUG;
 	wmf_error_t status = wmf_api_create(&wmf.api, flags, &options);
 	if (status != wmf_E_None) {
-		set_error(error, string("libwmf: ") + wmf_error_string(status));
+		set_error(
+			error, format_message(_("libwmf: %s"), wmf_error_string(status)));
 		return false;
 	}
 
@@ -104,7 +107,7 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 	// way to destroy; only its encoders dispose of one themselves.
 	wmf_gd_t *device = WMF_GD_GetData(wmf.api);
 	if (!(device->flags & WMF_GD_SUPPORTS_PNG)) {
-		set_error(error, "libwmf: built without PNG support");
+		set_error(error, _("libwmf: built without PNG support"));
 		return false;
 	}
 	device->type = wmf_gd_png;
@@ -112,7 +115,8 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 
 	status = wmf_mem_open(wmf.api, data.data(), long(data.size()));
 	if (status != wmf_E_None) {
-		set_error(error, string("libwmf: ") + wmf_error_string(status));
+		set_error(
+			error, format_message(_("libwmf: %s"), wmf_error_string(status)));
 		return false;
 	}
 
@@ -122,11 +126,12 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 	if (status == wmf_E_None)
 		status = wmf_display_size(wmf.api, &w, &h, 72, 72);
 	if (status != wmf_E_None) {
-		set_error(error, string("libwmf: ") + wmf_error_string(status));
+		set_error(
+			error, format_message(_("libwmf: %s"), wmf_error_string(status)));
 		return false;
 	}
 	if (!w || !h || w > kMaxDimension || h > kMaxDimension) {
-		set_error(error, "libwmf: invalid image dimensions");
+		set_error(error, _("libwmf: invalid image dimensions"));
 		return false;
 	}
 
@@ -180,9 +185,9 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 		status == wmf_E_None && device->memory ? png_length(device->memory) : 0;
 	if (!length) {
 		set_error(error,
-			string("libwmf: ") +
-				(status == wmf_E_None ? "GD device produced no image"
-									  : wmf_error_string(status)));
+			format_message(_("libwmf: %s"),
+				status == wmf_E_None ? _("GD device produced no image")
+									 : wmf_error_string(status)));
 		return nullptr;
 	}
 	return detail::load_wuffs(
@@ -202,7 +207,7 @@ WmfRenderClosure::render_internal(
 {
 	double w = ceil(width_ * scale), h = ceil(height_ * scale);
 	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
-		set_error(error, "libwmf: image dimensions overflow");
+		set_error(error, _("libwmf: image dimensions overflow"));
 		return nullptr;
 	}
 	OpenContext ctx;

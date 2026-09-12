@@ -9,7 +9,7 @@ package names:
 .Required dependencies
 ```sh
 apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
-  librsvg2-bin libwebp-dev libjpeg-dev libcolord-dev shared-mime-info
+  librsvg2-bin libwebp-dev libjpeg-dev libcolord-dev shared-mime-info gettext
 ```
 
 .Optional dependencies
@@ -52,6 +52,27 @@ these packages.
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -- package
+```
+
+Translations
+------------
+Message catalogues are compiled by every build, from the PO files committed
+in _po/_, and they need nothing but the gettext tools.  Rewriting those files
+is a separate step, run after the sources have changed:
+
+```sh
+cmake --build build --target update-po
+```
+
+An underscore within a message marks the mnemonic, the letter that follows
+it; translations keep one, on a letter that nothing else in the same menu has
+taken.  Everything else the user reads comes from Qt's own catalogues.
+
+A new language starts from the template that step leaves behind, and is
+picked up once its code is added to _po/LINGUAS_:
+
+```sh
+(cd po && msginit --locale=cs --input=dawn.pot)
 ```
 
 Windows

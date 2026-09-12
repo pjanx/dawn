@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -268,7 +269,7 @@ decode_low_depth(const Entry &entry, const IconInfo &info,
 		: info.encoding == Encoding::Palette4      ? (pixels + 1) / 2
 												   : pixels;
 	if (entry.data.size() < bytes * (info.combined_mask ? 2 : 1)) {
-		set_error(error, "truncated indexed icon data");
+		set_error(error, _("truncated indexed icon data"));
 		return nullptr;
 	}
 
@@ -283,7 +284,7 @@ decode_low_depth(const Entry &entry, const IconInfo &info,
 
 	ImagePtr image = image_new(info.width, info.height);
 	if (!image) {
-		set_error(error, "failed to allocate indexed icon image");
+		set_error(error, _("failed to allocate indexed icon image"));
 		return nullptr;
 	}
 	for (uint32_t y = 0; y < info.height; y++) {
@@ -316,25 +317,25 @@ decode_rle_channel(
 	size_t in = 0, out = 0;
 	while (out < output.size()) {
 		if (in >= data.size()) {
-			set_error(error, "truncated RLE icon data");
+			set_error(error, _("truncated RLE icon data"));
 			return false;
 		}
 		uint8_t control = data[in++];
 		size_t count = control < 128 ? size_t(control) + 1 : control - 125;
 		if (count > output.size() - out) {
-			set_error(error, "RLE icon run exceeds its channel");
+			set_error(error, _("RLE icon run exceeds its channel"));
 			return false;
 		}
 		if (control < 128) {
 			if (count > data.size() - in) {
-				set_error(error, "truncated RLE icon literal");
+				set_error(error, _("truncated RLE icon literal"));
 				return false;
 			}
 			copy_n(data.data() + in, count, output.data() + out);
 			in += count;
 		} else {
 			if (in >= data.size()) {
-				set_error(error, "truncated RLE icon repeat");
+				set_error(error, _("truncated RLE icon repeat"));
 				return false;
 			}
 			fill_n(output.data() + out, count, data[in++]);
@@ -349,7 +350,7 @@ static ImagePtr
 decode_argb_rle(span<const uint8_t> data, const IconInfo &info, Error *error)
 {
 	if (data.size() < 4 || memcmp(data.data(), "ARGB", 4)) {
-		set_error(error, "invalid ARGB icon data");
+		set_error(error, _("invalid ARGB icon data"));
 		return nullptr;
 	}
 	data = data.subspan(4);
@@ -363,7 +364,7 @@ decode_argb_rle(span<const uint8_t> data, const IconInfo &info, Error *error)
 
 	ImagePtr image = image_new(info.width, info.height);
 	if (!image) {
-		set_error(error, "failed to allocate ARGB icon image");
+		set_error(error, _("failed to allocate ARGB icon image"));
 		return nullptr;
 	}
 	for (uint32_t y = 0; y < info.height; y++)
@@ -388,7 +389,7 @@ decode_rgb24(const Entry &entry, const IconInfo &info,
 	if (!interleaved) {
 		if (entry.type == fourcc('i', 't', '3', '2')) {
 			if (data.size() < 4) {
-				set_error(error, "truncated 128x128 icon prefix");
+				set_error(error, _("truncated 128x128 icon prefix"));
 				return nullptr;
 			}
 			data = data.subspan(4);
@@ -404,7 +405,7 @@ decode_rgb24(const Entry &entry, const IconInfo &info,
 	span<const uint8_t> mask = mask_data(entries, info, &one_bit_mask);
 	ImagePtr image = image_new(info.width, info.height);
 	if (!image) {
-		set_error(error, "failed to allocate RGB icon image");
+		set_error(error, _("failed to allocate RGB icon image"));
 		return nullptr;
 	}
 	for (uint32_t y = 0; y < info.height; y++)
@@ -428,12 +429,12 @@ decode_argb_raw(span<const uint8_t> data, const IconInfo &info, Error *error)
 {
 	size_t pixels = size_t(info.width) * info.height;
 	if (data.size() != pixels * 4) {
-		set_error(error, "unsupported ARGB icon encoding");
+		set_error(error, _("unsupported ARGB icon encoding"));
 		return nullptr;
 	}
 	ImagePtr image = image_new(info.width, info.height);
 	if (!image) {
-		set_error(error, "failed to allocate ARGB icon image");
+		set_error(error, _("failed to allocate ARGB icon image"));
 		return nullptr;
 	}
 	for (uint32_t y = 0; y < info.height; y++)
@@ -458,7 +459,7 @@ decode_entry(const Entry &entry, const vector<Entry> &entries,
 #if DAWN_WITH_OPENJPEG
 		return detail::load_openjpeg(entry.data, nested, error);
 #else
-		set_error(error, "JPEG 2000 support is disabled");
+		set_error(error, _("JPEG 2000 support is disabled"));
 		return nullptr;
 #endif
 	}
@@ -487,12 +488,12 @@ detail::load_icns(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 8 || memcmp(data.data(), "icns", 4)) {
-		set_error(error, "not an ICNS image");
+		set_error(error, _("not an ICNS image"));
 		return nullptr;
 	}
 	uint32_t declared = be32(data.data() + 4);
 	if (declared < 8 || declared > data.size()) {
-		set_error(error, "invalid ICNS file length");
+		set_error(error, _("invalid ICNS file length"));
 		return nullptr;
 	}
 
@@ -500,14 +501,15 @@ detail::load_icns(
 	size_t offset = 8;
 	while (offset < declared) {
 		if (declared - offset < 8) {
-			add_warning(ctx, "truncated ICNS entry header");
+			add_warning(ctx, _("truncated ICNS entry header"));
 			break;
 		}
 		uint32_t type = be32(data.data() + offset);
 		uint32_t length = be32(data.data() + offset + 4);
 		if (length < 8 || length > declared - offset) {
-			add_warning(
-				ctx, "invalid ICNS " + type_name(type) + " entry length");
+			add_warning(ctx,
+				format_message(_("invalid ICNS %s entry length"),
+					type_name(type).c_str()));
 			break;
 		}
 		entries.push_back({type, data.subspan(offset + 8, size_t(length) - 8)});
@@ -523,12 +525,13 @@ detail::load_icns(
 			if (ctx.first_frame_only)
 				break;
 		} else if (!suberror.message.empty()) {
-			add_warning(
-				ctx, "ICNS " + type_name(entry.type) + ": " + suberror.message);
+			add_warning(ctx,
+				format_message(_("ICNS %s: %s"), type_name(entry.type).c_str(),
+					suberror.message.c_str()));
 		}
 	}
 	if (!head) {
-		set_error(error, "empty or unsupported ICNS image");
+		set_error(error, _("empty or unsupported ICNS image"));
 		return nullptr;
 	}
 	for (Image *page = head.get(); page; page = page->page_next.get())

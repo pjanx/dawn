@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -60,7 +62,7 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 	auto height = uint32_t(config->input.height);
 	ImagePtr image = image_new(width, height);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -78,7 +80,7 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 
 	WebPIDecoder *idec = WebPIDecode(nullptr, 0, config);
 	if (!idec) {
-		set_error(error, "WebP decoding error");
+		set_error(error, _("WebP decoding error"));
 		return nullptr;
 	}
 
@@ -87,13 +89,14 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 	if (err != VP8_STATUS_OK) {
 		if (err != VP8_STATUS_SUSPENDED) {
 			set_error(error,
-				string("WebP decoding error: ") + webp_status_string(err));
+				format_message(
+					_("WebP decoding error: %s"), webp_status_string(err)));
 			return nullptr;
 		}
 
 		// The undecoded remainder of the buffer is zero, i.e. transparent
 		// black, which is a reasonable substitute for the missing data.
-		add_warning(ctx, "image file is truncated");
+		add_warning(ctx, _("image file is truncated"));
 	}
 
 	widen_bgra8_to_bgra16(*image, buffer.data(), stride);
@@ -108,13 +111,13 @@ load_webp_frame(WebPAnimDecoder *dec, const WebPAnimInfo &info,
 	uint8_t *buf = nullptr;
 	int timestamp = 0;
 	if (!WebPAnimDecoderGetNext(dec, &buf, &timestamp)) {
-		set_error(error, "WebP decoding error");
+		set_error(error, _("WebP decoding error"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(info.canvas_width, info.canvas_height);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -139,7 +142,7 @@ load_webp_animated(
 
 	WebPAnimDecoder *dec = WebPAnimDecoderNew(&wd, &options);
 	if (!dec) {
-		set_error(error, "WebP decoding error");
+		set_error(error, _("WebP decoding error"));
 		return nullptr;
 	}
 
@@ -147,7 +150,7 @@ load_webp_animated(
 	WebPAnimDecoderGetInfo(dec, &info);
 	if (info.canvas_width > kMaxDimension ||
 		info.canvas_height > kMaxDimension) {
-		set_error(error, "image dimensions overflow");
+		set_error(error, _("image dimensions overflow"));
 		WebPAnimDecoderDelete(dec);
 		return nullptr;
 	}
@@ -168,7 +171,7 @@ load_webp_animated(
 
 	WebPAnimDecoderDelete(dec);
 	if (!head)
-		set_error(error, "the animation has no frames");
+		set_error(error, _("the animation has no frames"));
 	return head;
 }
 
@@ -180,7 +183,7 @@ load_webp_metadata(Image &image, const WebPData &wd, const OpenContext &ctx)
 	WebPDemuxState state = WEBP_DEMUX_PARSE_ERROR;
 	WebPDemuxer *demux = WebPDemuxPartial(&wd, &state);
 	if (!demux) {
-		add_warning(ctx, "demux failure while reading metadata");
+		add_warning(ctx, _("demux failure while reading metadata"));
 		return;
 	}
 
@@ -226,7 +229,7 @@ detail::load_webp(
 	// It is wholly zero-initialized by libwebp.
 	WebPDecoderConfig config = {};
 	if (!WebPInitDecoderConfig(&config)) {
-		set_error(error, "libwebp version mismatch");
+		set_error(error, _("libwebp version mismatch"));
 		return nullptr;
 	}
 
@@ -234,8 +237,9 @@ detail::load_webp(
 	WebPData wd{data.data(), data.size()};
 	VP8StatusCode err = WebPGetFeatures(wd.bytes, wd.size, &config.input);
 	if (err != VP8_STATUS_OK) {
-		set_error(
-			error, string("WebP decoding error: ") + webp_status_string(err));
+		set_error(error,
+			format_message(
+				_("WebP decoding error: %s"), webp_status_string(err)));
 		return nullptr;
 	}
 

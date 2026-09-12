@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "app-menu-macos.hpp"
 
 #include "action.hpp"
@@ -111,6 +113,12 @@ ns_equiv(dn::Accel a, NSEventModifierFlags *mods)
 			return @"";
 	}
 	return [NSString stringWithCharacters:&c length:1];
+}
+
+static NSString *
+localized(const char *text)
+{
+	return QString::fromUtf8(_(text)).toNSString();
 }
 
 static const dn::MenuNode *
@@ -285,20 +293,22 @@ add_top_menu(NSMenu *main, NSString *title, NSMenu *sub)
 static void
 add_window_menu(NSMenu *main)
 {
-	NSString *title = @"Window";
+	// TRANSLATORS: AppKit's standard Window menu, which it does not hand out
+	// translated; use the wording other applications on the system show.
+	NSString *title = localized(N_("Window"));
 	if (has_menu(main, title))
 		return;
 
 	NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
 	// With no target, AppKit handles these through the responder chain.
-	[sub addItemWithTitle:@"Minimize"
+	[sub addItemWithTitle:localized(N_("Minimize"))
 				   action:@selector(performMiniaturize:)
 			keyEquivalent:@"m"];
-	[sub addItemWithTitle:@"Zoom"
+	[sub addItemWithTitle:localized(N_("Zoom"))
 				   action:@selector(performZoom:)
 			keyEquivalent:@""];
 	[sub addItem:[NSMenuItem separatorItem]];
-	[sub addItemWithTitle:@"Bring All to Front"
+	[sub addItemWithTitle:localized(N_("Bring All to Front"))
 				   action:@selector(arrangeInFront:)
 			keyEquivalent:@""];
 	add_top_menu(main, title, sub);
@@ -379,7 +389,7 @@ install_macos_app_menu(App *app)
 		consider(mode.menu);
 	for (const QString &t : titles) {
 		// Both trees end with Help, and macOS wants Window just before it.
-		if (t == QStringLiteral("Help"))
+		if (&t == &titles.back())
 			add_window_menu(main);
 
 		NSString *title = t.toNSString();

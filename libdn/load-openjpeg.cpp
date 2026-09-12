@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -158,7 +159,7 @@ static bool
 open_codec(OpenJpegLoadContext &ctx, OPJ_CODEC_FORMAT format, Error *error)
 {
 	if (!(ctx.codec = opj_create_decompress(format))) {
-		set_error(error, "failed to obtain an OpenJPEG decoder");
+		set_error(error, _("failed to obtain an OpenJPEG decoder"));
 		return false;
 	}
 
@@ -168,7 +169,7 @@ open_codec(OpenJpegLoadContext &ctx, OPJ_CODEC_FORMAT format, Error *error)
 	opj_dparameters_t parameters = {};
 	opj_set_default_decoder_parameters(&parameters);
 	if (!opj_setup_decoder(ctx.codec, &parameters)) {
-		set_error(error, "failed to set up the OpenJPEG decoder");
+		set_error(error, _("failed to set up the OpenJPEG decoder"));
 		return false;
 	}
 
@@ -176,7 +177,7 @@ open_codec(OpenJpegLoadContext &ctx, OPJ_CODEC_FORMAT format, Error *error)
 	opj_decoder_set_strict_mode(ctx.codec, OPJ_FALSE);
 
 	if (!(ctx.stream = opj_stream_default_create(OPJ_TRUE))) {
-		set_error(error, "failed to obtain an OpenJPEG stream");
+		set_error(error, _("failed to obtain an OpenJPEG stream"));
 		return false;
 	}
 
@@ -282,7 +283,7 @@ plan_layout(const opj_image_t &image, Layout *out, Error *error)
 	OPJ_COLOR_SPACE space = image.color_space;
 	uint32_t n = image.numcomps;
 	if (!n) {
-		set_error(error, "no image components");
+		set_error(error, _("no image components"));
 		return false;
 	}
 
@@ -306,11 +307,11 @@ plan_layout(const opj_image_t &image, Layout *out, Error *error)
 		break;
 	default:
 		// CMYK would need an ink profile we have no way to guess at.
-		set_error(error, "unsupported JPEG 2000 colour space");
+		set_error(error, _("unsupported JPEG 2000 colour space"));
 		return false;
 	}
 	if (n < colours) {
-		set_error(error, "too few image components");
+		set_error(error, _("too few image components"));
 		return false;
 	}
 
@@ -378,7 +379,7 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 
 		const opj_image_comp_t &c = image.comps[wanted[i]];
 		if (!c.data || !c.w || !c.h || !c.prec || c.prec > 32) {
-			set_error(error, "unsupported image component");
+			set_error(error, _("unsupported image component"));
 			return nullptr;
 		}
 		samplers[i] =
@@ -387,7 +388,7 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 
 	ImagePtr out = image_new(first.w, first.h);
 	if (!out) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -409,7 +410,7 @@ detail::load_openjpeg(
 {
 	OPJ_CODEC_FORMAT format = detect_codec(data);
 	if (format == OPJ_CODEC_UNKNOWN) {
-		set_error(error, "not a JPEG 2000 image");
+		set_error(error, _("not a JPEG 2000 image"));
 		return nullptr;
 	}
 

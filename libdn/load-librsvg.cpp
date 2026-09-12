@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -80,7 +82,7 @@ LibrsvgRenderClosure::render_internal(
 		.x = 0, .y = 0, .width = width_ * scale, .height = height_ * scale};
 	double w = ceil(viewport.width), h = ceil(viewport.height);
 	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
-		set_error(error, "image dimensions overflow");
+		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
 
@@ -88,7 +90,7 @@ LibrsvgRenderClosure::render_internal(
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, int(uw), int(uh));
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		cairo_surface_destroy(surface);
 		return nullptr;
 	}
@@ -114,7 +116,7 @@ LibrsvgRenderClosure::render_internal(
 	cairo_surface_flush(surface);
 	ImagePtr image = image_new(uw, uh);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		cairo_surface_destroy(surface);
 		return nullptr;
 	}
@@ -161,7 +163,7 @@ detail::load_librsvg(
 		rsvg_handle_get_intrinsic_dimensions(handle, nullptr, nullptr, nullptr,
 			nullptr, &has_viewport, &viewbox);
 		if (!has_viewport) {
-			set_error(error, "cannot compute pixel dimensions");
+			set_error(error, _("cannot compute pixel dimensions"));
 			g_object_unref(handle);
 			return nullptr;
 		}
@@ -169,7 +171,7 @@ detail::load_librsvg(
 		h = viewbox.height;
 	}
 	if (!(w > 0) || !(h > 0)) {
-		set_error(error, "cannot compute pixel dimensions");
+		set_error(error, _("cannot compute pixel dimensions"));
 		g_object_unref(handle);
 		return nullptr;
 	}

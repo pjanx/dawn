@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn.h"
 
@@ -35,7 +36,7 @@ make_cfstring(string_view value, Error *error)
 		reinterpret_cast<const UInt8 *>(value.data()), CFIndex(value.size()),
 		kCFStringEncodingUTF8, false);
 	if (!result)
-		fail(error, "invalid UTF-8 configuration string");
+		fail(error, _("invalid UTF-8 configuration string"));
 	return result;
 }
 
@@ -48,7 +49,7 @@ to_utf8(CFStringRef value, Error *error)
 	vector<char> bytes(static_cast<size_t>(maximum));
 	if (!CFStringGetCString(
 			value, bytes.data(), maximum, kCFStringEncodingUTF8)) {
-		fail(error, "cannot convert configuration string to UTF-8");
+		fail(error, _("cannot convert configuration string to UTF-8"));
 		return nullopt;
 	}
 	return string(bytes.data());
@@ -73,7 +74,7 @@ config_get(string_view key, Error *error)
 
 	if (CFGetTypeID(value) != CFStringGetTypeID()) {
 		CFRelease(value);
-		fail(error, "configuration value is not a string");
+		fail(error, _("configuration value is not a string"));
 		return nullopt;
 	}
 	optional<string> result = to_utf8(CFStringRef(value), error);
@@ -103,7 +104,7 @@ config_set(string_view key, string_view value, Error *error)
 	CFRelease(cf_value);
 	if (!CFPreferencesSynchronize(CFSTR(DAWN_NAMESPACE),
 			kCFPreferencesCurrentUser, kCFPreferencesAnyHost)) {
-		fail(error, "cannot synchronize configuration");
+		fail(error, _("cannot synchronize configuration"));
 		return false;
 	}
 	return true;

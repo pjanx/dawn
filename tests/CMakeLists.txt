@@ -130,6 +130,38 @@ target_link_libraries(test-thumbnailer PRIVATE
 	PkgConfig::WEBPMUX)
 add_test(NAME thumbnailer COMMAND test-thumbnailer)
 
+# Translation needs a catalogue to find, and gettext settles the language
+# once per process, so each case gets a process of its own.
+if (MSGFMT_EXECUTABLE)
+	set(gettext_locale_dir "${CMAKE_CURRENT_BINARY_DIR}/locale")
+	set(gettext_mo "${gettext_locale_dir}/xx/LC_MESSAGES/dawn.mo")
+	add_custom_command(OUTPUT "${gettext_mo}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory
+			"${gettext_locale_dir}/xx/LC_MESSAGES"
+		COMMAND "${MSGFMT_EXECUTABLE}" --check -o "${gettext_mo}"
+			"${CMAKE_CURRENT_SOURCE_DIR}/test-gettext.po"
+		DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/test-gettext.po"
+		COMMENT "Compiling the test catalogue"
+		VERBATIM)
+
+	add_executable(test-gettext test-gettext.cpp "${gettext_mo}")
+	target_link_libraries(test-gettext PRIVATE dawn::libdn)
+	target_compile_definitions(test-gettext PRIVATE
+		DAWN_TEST_LOCALE_DIR="${gettext_locale_dir}")
+
+	add_test(NAME gettext_fallback COMMAND test-gettext fallback)
+	set_tests_properties(gettext_fallback PROPERTIES ENVIRONMENT "LANGUAGE=")
+	foreach (case translated context plural library)
+		add_test(NAME gettext_${case} COMMAND test-gettext ${case})
+		set_tests_properties(gettext_${case} PROPERTIES ENVIRONMENT
+			"LANGUAGE=xx")
+	endforeach()
+
+	# A system with no locale but "C" leaves gettext nothing to select with.
+	set_tests_properties(gettext_fallback gettext_translated gettext_context
+		gettext_plural gettext_library PROPERTIES SKIP_RETURN_CODE 77)
+endif()
+
 add_executable(test-lxdr test-lxdr.cpp)
 target_link_libraries(test-lxdr PRIVATE dawn::libdn)
 add_test(NAME lxdr COMMAND test-lxdr)

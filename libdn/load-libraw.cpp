@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -46,14 +47,14 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 
 	// This should have been transformed, and kept, respectively.
 	if (image->colors != 3 || image->bits != 16) {
-		set_error(error, "unexpected number of colours, or bit depth");
+		set_error(error, _("unexpected number of colours, or bit depth"));
 		libraw_dcraw_clear_mem(image);
 		return nullptr;
 	}
 
 	ImagePtr result = image_new(image->width, image->height);
 	if (!result) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		libraw_dcraw_clear_mem(image);
 		return nullptr;
 	}
@@ -77,7 +78,7 @@ detail::load_libraw(
 	// callback flag (unlike in older LibRaw releases fiv-io.c targeted).
 	libraw_data_t *iprc = libraw_init(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK);
 	if (!iprc) {
-		set_error(error, "failed to obtain a LibRaw handle");
+		set_error(error, _("failed to obtain a LibRaw handle"));
 		return nullptr;
 	}
 

@@ -13,6 +13,9 @@
 #define DAWN_NAMESPACE "@DAWN_NAMESPACE@"
 #define DAWN_VERSION "@PROJECT_VERSION@"
 
+// Relocatable packages find theirs next to the executable.
+#define DAWN_LOCALEDIR "@CMAKE_INSTALL_FULL_LOCALEDIR@"
+
 #if defined __GNUC__ || defined __clang__
 #define DAWN_FORMAT(format_index, first_arg)                                   \
 	__attribute__((format(printf, format_index, first_arg)))

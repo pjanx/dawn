@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "kit-browser.hpp"
 
 #include "action.hpp"
@@ -2015,11 +2017,11 @@ scan_dir(Browser &b)
 			narrow(get_drive_label(drive)).c_str(), get_drive_icon(letter));
 	}
 #else
-	push_place(b, root, "/", "Computer", "computer-symbolic");
+	push_place(b, root, "/", _("Computer"), "computer-symbolic");
 #endif
 
 	push_place(
-		b, root, QDir::homePath().toStdString(), "Home", "go-home-symbolic");
+		b, root, QDir::homePath().toStdString(), _("Home"), "go-home-symbolic");
 	{
 		const QString pictures =
 			QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
@@ -2241,7 +2243,7 @@ make_item(Browser &b, const ToolbarSpec &spec)
 		auto e = make_unique<Entry>();
 		b.search_ = e.get();
 		e->flat = true;
-		e->placeholder = QStringLiteral("Filter");
+		e->placeholder = QString::fromUtf8(_("Filter"));
 		e->on_change = [&b](Kit &) {
 			scan_dir(b);
 			enqueue_thumbs(b);
@@ -2265,8 +2267,9 @@ make_item(Browser &b, const ToolbarSpec &spec)
 	n->focus_on_press = false;
 	n->action = spec.action;
 	n->pad_x = 2.f;
-	n->text = spec.action == Action::SortTime ? QStringLiteral("Time")
-											  : QStringLiteral("Name");
+	// TRANSLATORS: Column headings the browser sorts by, kept short.
+	const char *by = spec.action == Action::SortTime ? _("Time") : _("Name");
+	n->text = QString::fromUtf8(by);
 	return n;
 }
 

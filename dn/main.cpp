@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "app.hpp"
 #include "libdn/libdn.h"
@@ -28,6 +29,9 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QGuiApplication>
+#include <QLibraryInfo>
+#include <QLocale>
+#include <QTranslator>
 #include <QUrl>
 #include <QtLogging>
 
@@ -68,15 +72,15 @@ error_fallback(dawn::ipc::ErrorCode code)
 	using dawn::ipc::ErrorCode;
 	switch (code) {
 	case ErrorCode::NotFound:
-		return "not found";
+		return _("not found");
 	case ErrorCode::PermissionDenied:
-		return "permission denied";
+		return _("permission denied");
 	case ErrorCode::InvalidArgument:
-		return "invalid argument";
+		return _("invalid argument");
 	case ErrorCode::Internal:
-		return "internal error";
+		return _("internal error");
 	default:
-		return "open failed";
+		return _("open failed");
 	}
 }
 
@@ -122,11 +126,11 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 
 	const char *mismatch = nullptr;
 	if (status == HelloStatus::VersionMismatch)
-		mismatch = "version";
+		mismatch = N_("running isolated (version mismatch)");
 	else if (status == HelloStatus::SessionMismatch)
-		mismatch = "session";
+		mismatch = N_("running isolated (session mismatch)");
 	if (mismatch && !reported_mismatch) {
-		qWarning("running isolated (%s mismatch)", mismatch);
+		qWarning("%s", _(mismatch));
 		reported_mismatch = true;
 	}
 	return {};
@@ -134,9 +138,28 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 
 #endif
 
+// Qt's own text -- the generic command-line options, the items macOS adds to
+// the application menu -- lives in its catalogues, which it will not load on
+// its own.  Qt reads the environment itself, and does not know about LANGUAGE.
+static void
+install_qt_translations(QCoreApplication &app)
+{
+	static QTranslator translations;
+	if (translations.isEmpty() &&
+		!translations.load(QLocale(), QStringLiteral("qtbase"),
+			QStringLiteral("_"),
+			QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+		return;
+
+	app.installTranslator(&translations);
+}
+
 int
 main(int argc, char **argv)
 {
+	// Before the first translated literal, which the parser below builds.
+	dawn::gettext_init();
+
 	QCoreApplication::setApplicationName(QStringLiteral("dn"));
 	QCoreApplication::setApplicationVersion(QStringLiteral(DAWN_VERSION));
 	QGuiApplication::setDesktopFileName(QStringLiteral(DAWN_NAMESPACE));
@@ -148,42 +171,46 @@ main(int argc, char **argv)
 
 	QCommandLineParser parser;
 	parser.setApplicationDescription(
-		QStringLiteral("Display images or browse directories."));
+		QString::fromUtf8(_("Display images or browse directories.")));
 	parser.addHelpOption();
 	parser.addVersionOption();
 
+	// Option names are what the user types, and stay as they are.
 	const QCommandLineOption new_instance_opt(QStringLiteral("new-instance"),
-		QStringLiteral("Do not connect to a running dn; start a new process."));
+		QString::fromUtf8(
+			_("Do not connect to a running dn; start a new process.")));
 	parser.addOption(new_instance_opt);
 
 	const QCommandLineOption invalidate_opt(QStringLiteral("invalidate-cache"),
-		QStringLiteral("Remove invalid wide thumbnails and exit."));
+		QString::fromUtf8(_("Remove invalid wide thumbnails and exit.")));
 	parser.addOption(invalidate_opt);
 
 	const QCommandLineOption mode_opt(QStringLiteral("mode"),
-		QStringLiteral("Application: view, browse, cropjpeg, commander."),
+		QString::fromUtf8(_("Application: view, browse, cropjpeg, commander.")),
 		QStringLiteral("mode"));
 	parser.addOption(mode_opt);
 
 	const QCommandLineOption list_supported_opt(
 		QStringLiteral("list-supported-media-types"),
-		QStringLiteral("Output supported media types and exit."));
+		QString::fromUtf8(_("Output supported media types and exit.")));
 	parser.addOption(list_supported_opt);
 
 	const QCommandLineOption list_extensions_opt(
 		QStringLiteral("list-supported-extensions"),
-		QStringLiteral("Output supported filename globs and exit."));
+		QString::fromUtf8(_("Output supported filename globs and exit.")));
 	parser.addOption(list_extensions_opt);
 
-	parser.addPositionalArgument(QStringLiteral("path | URL"),
-		QStringLiteral(
-			"Image file or directory. Repeat to open multiple windows. "
-			"Defaults to an empty cropper or the current directory."),
-		QStringLiteral("[path | URL]..."));
+	// TRANSLATORS: The name of the positional argument, and its syntax.
+	parser.addPositionalArgument(QString::fromUtf8(_("path | URL")),
+		QString::fromUtf8(
+			_("Image file or directory. Repeat to open multiple windows. "
+			  "Defaults to an empty cropper or the current directory.")),
+		QString::fromUtf8(_("[path | URL]...")));
 
 	{
 		// xdg_data_dirs() invokes the static QCoreApplication::instance().
 		QCoreApplication bootstrap(argc, argv);
+		install_qt_translations(bootstrap);
 		parser.process(bootstrap);
 
 		if (parser.isSet(invalidate_opt)) {
@@ -207,20 +234,24 @@ main(int argc, char **argv)
 	if (parser.isSet(mode_opt)) {
 		auto parsed = dn::parse_mode(parser.value(mode_opt).toStdString());
 		if (!parsed) {
-			qWarning(
-				"unknown mode: %s", qUtf8Printable(parser.value(mode_opt)));
+			qWarning("%s",
+				qUtf8Printable(QString::fromUtf8(_("unknown mode: %1"))
+						.arg(parser.value(mode_opt))));
 			return EXIT_FAILURE;
 		}
 		mode = *parsed;
 	}
 #if !DAWN_WIP
 	if (!dn::viewer_mode(mode)) {
-		qWarning("unsupported mode: %s", dn::mode_def(mode).name);
+		qWarning("%s",
+			qUtf8Printable(QString::fromUtf8(_("unsupported mode: %1"))
+					.arg(QLatin1String(dn::mode_def(mode).name))));
 		return EXIT_FAILURE;
 	}
 #endif
 
 	dn::App app(argc, argv, mode);
+	install_qt_translations(app);
 	QStringList raw = parser.positionalArguments();
 	const bool bare = raw.isEmpty();
 	const QString cwd = QDir::currentPath();

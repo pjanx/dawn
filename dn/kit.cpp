@@ -3084,10 +3084,10 @@ Menu::add_item(const QString &text)
 }
 
 MenuItem *
-Menu::add_item_with_mnemonic(const QString &text)
+Menu::add_item_with_mnemonic(const char *label)
 {
 	auto item = make_unique<MenuItem>();
-	item->text = menu_label(text.toStdString().c_str(), &item->mnemonic);
+	item->text = menu_label(label, &item->mnemonic);
 	MenuItem *ref = item.get();
 	if (this->col)
 		this->col->add_child(std::move(item), size_t(-1));

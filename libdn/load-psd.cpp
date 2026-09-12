@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -191,7 +193,7 @@ parse_resources(
 		}
 	}
 	if (!r.ok)
-		add_warning(ctx, "truncated PSD image resources");
+		add_warning(ctx, _("truncated PSD image resources"));
 }
 
 // --- Composite ---------------------------------------------------------------
@@ -237,7 +239,7 @@ read_composite(
 {
 	uint16_t compression = read16(r);
 	if (!r.ok) {
-		set_error(error, "truncated PSD image data section");
+		set_error(error, _("truncated PSD image data section"));
 		return false;
 	}
 
@@ -245,7 +247,7 @@ read_composite(
 	// image_new() has already bounded the pixel count; this guards the
 	// remaining multiplications on 32-bit size_t.
 	if (uint64_t(h.width) * h.height * sample * h.channels > SIZE_MAX) {
-		set_error(error, "PSD composite too large");
+		set_error(error, _("PSD composite too large"));
 		return false;
 	}
 
@@ -254,7 +256,7 @@ read_composite(
 	try {
 		planes->resize(row * rows);
 	} catch (const bad_alloc &) {
-		set_error(error, "PSD composite too large");
+		set_error(error, _("PSD composite too large"));
 		return false;
 	}
 
@@ -263,7 +265,7 @@ read_composite(
 		for (size_t i = 0; i < rows; i++) {
 			const uint8_t *p = take(r, row);
 			if (!p) {
-				set_error(error, "truncated PSD composite");
+				set_error(error, _("truncated PSD composite"));
 				return false;
 			}
 			memcpy(planes->data() + row * i, p, row);
@@ -276,13 +278,13 @@ read_composite(
 		for (size_t i = 0; i < rows; i++) {
 			if (unpack_bits(r, planes->data() + row * i, row))
 				continue;
-			set_error(error, "truncated PSD composite");
+			set_error(error, _("truncated PSD composite"));
 			return false;
 		}
 		return true;
 	default:
 		// Both ZIP variants only ever show up on layers in practice.
-		set_error(error, "unsupported PSD composite compression");
+		set_error(error, _("unsupported PSD composite compression"));
 		return false;
 	}
 }
@@ -355,7 +357,7 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	Reader r{data};
 	const uint8_t *signature = take(r, 4);
 	if (!signature || memcmp(signature, "8BPS", 4)) {
-		set_error(error, "not a PSD image");
+		set_error(error, _("not a PSD image"));
 		return nullptr;
 	}
 
@@ -368,13 +370,14 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	h.depth = read16(r);
 	h.color_mode = read16(r);
 	if (!r.ok) {
-		set_error(error, "truncated PSD header");
+		set_error(error, _("truncated PSD header"));
 		return nullptr;
 	}
 
 	// Version 2 is PSB, which only widens two of the section lengths.
 	if (version != 1 && version != 2) {
-		set_error(error, "unsupported PSD version " + to_string(version));
+		set_error(
+			error, format_message(_("unsupported PSD version %u"), version));
 		return nullptr;
 	}
 	h.psb = version == 2;
@@ -391,16 +394,17 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		break;
 	default:
 		set_error(error,
-			string("unsupported PSD colour mode: ") +
-				color_mode_name(h.color_mode));
+			format_message(_("unsupported PSD colour mode: %s"),
+				color_mode_name(h.color_mode)));
 		return nullptr;
 	}
 	if (h.depth != 8 && h.depth != 16) {
-		set_error(error, "unsupported PSD bit depth " + to_string(h.depth));
+		set_error(
+			error, format_message(_("unsupported PSD bit depth %u"), h.depth));
 		return nullptr;
 	}
 	if (h.file_channels < h.color_channels) {
-		set_error(error, "PSD channel count does not match its colour mode");
+		set_error(error, _("PSD channel count does not match its colour mode"));
 		return nullptr;
 	}
 
@@ -410,7 +414,7 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	uint32_t resources_length = read32(r);
 	const uint8_t *resources = take(r, resources_length);
 	if (!resources) {
-		set_error(error, "truncated PSD image resources");
+		set_error(error, _("truncated PSD image resources"));
 		return nullptr;
 	}
 
@@ -421,7 +425,7 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// count, which is the only place the composite's alpha is announced.
 	uint64_t layers = h.psb ? read64(r) : read32(r);
 	if (!r.ok || layers > data.size() - r.offset) {
-		set_error(error, "truncated PSD layer and mask section");
+		set_error(error, _("truncated PSD layer and mask section"));
 		return nullptr;
 	}
 
@@ -435,14 +439,14 @@ detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	if (res.dummy_merged_data || data.size() - r.offset < 2) {
 		set_error(error,
-			"PSD carries no composite image, "
-			"it needs to be saved with Maximize Compatibility");
+			_("PSD carries no composite image, "
+			  "it needs to be saved with Maximize Compatibility"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(h.width, h.height);
 	if (!image) {
-		set_error(error, "unsupported PSD image dimensions");
+		set_error(error, _("unsupported PSD image dimensions"));
 		return nullptr;
 	}
 

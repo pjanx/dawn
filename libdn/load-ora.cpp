@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -259,13 +261,13 @@ ImagePtr
 detail::load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 4 || le32(data.data()) != kSignatureLocal) {
-		set_error(error, "not a ZIP archive");
+		set_error(error, _("not a ZIP archive"));
 		return nullptr;
 	}
 
 	vector<ZipEntry> entries;
 	if (!read_directory(data, &entries)) {
-		set_error(error, "malformed ZIP archive");
+		set_error(error, _("malformed ZIP archive"));
 		return nullptr;
 	}
 
@@ -278,7 +280,7 @@ detail::load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	if (mimetype && read_entry(data, *mimetype, &type))
 		id = string_view((const char *) type.data(), type.size());
 	if (id != "image/openraster" && id != "application/x-krita") {
-		set_error(error, "not an OpenRaster or Krita image");
+		set_error(error, _("not an OpenRaster or Krita image"));
 		return nullptr;
 	}
 
@@ -300,11 +302,12 @@ detail::load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		}
 	}
 	if (!found) {
-		set_error(error, "the archive carries no composite image");
+		set_error(error, _("the archive carries no composite image"));
 		return nullptr;
 	}
 	if (found != kComposites[0])
-		add_warning(ctx, string(found) + " is a reduced-size preview");
+		add_warning(
+			ctx, format_message(_("%s is a reduced-size preview"), found));
 
 	return detail::load_wuffs(png, ctx, error);
 }

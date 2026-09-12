@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "kit-viewer.hpp"
 
@@ -604,8 +605,15 @@ static unique_ptr<Sidebar>
 make_sidebar(Viewer &v)
 {
 	// FIXME: This needs proper layouting.
-	const float label_w =
-		float(v.kit_.text_width(QStringLiteral("Height:"), true)) / v.kit_.dpr_;
+	// The widest of them decides, and only translation says which that is.
+	const char *const labels[] = {
+		N_("Name:"), N_("Loader:"), N_("Width:"), N_("Height:")};
+	float label_w = 0;
+	for (const char *label : labels) {
+		label_w = max(label_w,
+			float(v.kit_.text_width(QString::fromUtf8(_(label)), true)) /
+				v.kit_.dpr_);
+	}
 
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
@@ -614,24 +622,19 @@ make_sidebar(Viewer &v)
 	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
 
-	col->add_child(meta_row(QStringLiteral("Name:"), QStringLiteral("-"),
-					   label_w, v.name_label_),
-		size_t(-1));
-	col->add_child(meta_row(QStringLiteral("Loader:"), QStringLiteral("-"),
-					   label_w, v.loader_label_),
-		size_t(-1));
-	col->add_child(meta_row(QStringLiteral("Width:"), QStringLiteral("-"),
-					   label_w, v.width_label_),
-		size_t(-1));
-	col->add_child(meta_row(QStringLiteral("Height:"), QStringLiteral("-"),
-					   label_w, v.height_label_),
-		size_t(-1));
+	Label **const values[] = {
+		&v.name_label_, &v.loader_label_, &v.width_label_, &v.height_label_};
+	for (size_t i = 0; i < size(labels); i++) {
+		col->add_child(meta_row(QString::fromUtf8(_(labels[i])),
+						   QStringLiteral("-"), label_w, *values[i]),
+			size_t(-1));
+	}
 
 #if DAWN_WITH_JPEG_QS
 	// QuantSmooth processing can take extremely long,
 	// so it's not elligible as a regular loader.
 	auto jpegqs = make_unique<Checkbox>();
-	jpegqs->text = QStringLiteral("Enable JPEG Quant Smooth");
+	jpegqs->text = QString::fromUtf8(_("Enable JPEG Quant Smooth"));
 	jpegqs->enabled_ = false;
 	jpegqs->on_click = [&v](Kit &) {
 		if (!v.jpeg_quant_smooth_)
@@ -649,7 +652,7 @@ make_sidebar(Viewer &v)
 #endif
 
 	auto exiftool = make_unique<Button>();
-	exiftool->text = QStringLiteral("Launch ExifTool");
+	exiftool->text = QString::fromUtf8(_("Launch ExifTool"));
 	exiftool->on_click = [&v](Kit &) {
 		if (v.page_ && v.page_->host && v.page_->host->launch_exiftool)
 			v.page_->host->launch_exiftool(v.url_);
@@ -681,8 +684,8 @@ sync_ui(Viewer &v, Page &ui)
 			v.error_->invalidate_measure();
 		}
 		if (v.error_->visible && v.error_label_)
-			v.error_label_->set_text(
-				QStringLiteral("Error: ") + QString::fromStdString(v.message_));
+			v.error_label_->set_text(QString::fromUtf8(_("Error: %1"))
+					.arg(QString::fromStdString(v.message_)));
 	}
 	if (v.info_)
 		fill_info_texts(v, v.current_ ? v.current_.get() : v.image_.get());

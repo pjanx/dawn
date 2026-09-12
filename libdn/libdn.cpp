@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -441,7 +442,8 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 	if (!in) {
 		if (error) {
 			error->code = Error::Code::Io;
-			error->message = "failed to open: " + path;
+			error->message =
+				format_message(_("failed to open: %s"), path.c_str());
 		}
 		return false;
 	}
@@ -450,7 +452,8 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 	if (sz < 0) {
 		if (error) {
 			error->code = Error::Code::Io;
-			error->message = "failed to size: " + path;
+			error->message =
+				format_message(_("failed to size: %s"), path.c_str());
 		}
 		return false;
 	}
@@ -459,7 +462,8 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 	if (sz > 0 && !in.read((char *) out->data(), streamsize(sz))) {
 		if (error) {
 			error->code = Error::Code::Io;
-			error->message = "failed to read: " + path;
+			error->message =
+				format_message(_("failed to read: %s"), path.c_str());
 		}
 		return false;
 	}
@@ -1596,12 +1600,16 @@ exif_orientation(span<const uint8_t> exif)
 
 // The order is the default loading order.
 constexpr Loader kLoaders[] = {
-	{"libjpeg-turbo", &detail::load_jpeg, "JPEG", {"image/jpeg"}, {}},
+	// TRANSLATORS: What a loader reads, as the settings dialog lists it.
+	// These are format names throughout, bar the odd word such as "raw
+	// photos" or "(subset)"; leave the names as they are.
+	{"libjpeg-turbo", &detail::load_jpeg, N_("JPEG"), {"image/jpeg"}, {}},
 
-	{"libwebp", &detail::load_webp, "WebP", {"image/webp"}, {}},
+	{"libwebp", &detail::load_webp, N_("WebP"), {"image/webp"}, {}},
 
 	{"Wuffs", &detail::load_wuffs,
-		"BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, WebP (subset)",
+		N_("BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, "
+		   "WebP (subset)"),
 		{
 			"image/bmp",
 			"image/gif",
@@ -1615,17 +1623,17 @@ constexpr Loader kLoaders[] = {
 			"image/x-tga",
 		}},
 
-	{"ICNS", &detail::load_icns, "ICNS", {"image/x-icns"}, {}},
+	{"ICNS", &detail::load_icns, N_("ICNS"), {"image/x-icns"}, {}},
 
-	{"Photoshop", &detail::load_psd, "PSD/PSB (subset)",
+	{"Photoshop", &detail::load_psd, N_("PSD/PSB (subset)"),
 		{"image/vnd.adobe.photoshop"}, {}},
 
-	{"OpenRaster", &detail::load_ora, "OpenRaster, Krita",
+	{"OpenRaster", &detail::load_ora, N_("OpenRaster, Krita"),
 		{"image/openraster", "application/x-krita"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF/EP previews", &detail::load_tiff_ep, "raw photos", {"image/x-dcraw"},
-		{}},
+	{"TIFF/EP previews", &detail::load_tiff_ep, N_("raw photos"),
+		{"image/x-dcraw"}, {}},
 
 	{"LibRaw",
 #if DAWN_WITH_LIBRAW
@@ -1633,9 +1641,9 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"raw photos", {"image/x-dcraw"}, {}},
+		N_("raw photos"), {"image/x-dcraw"}, {}},
 
-	{"resvg", &detail::load_resvg, "SVG", {"image/svg+xml"}, {}},
+	{"resvg", &detail::load_resvg, N_("SVG"), {"image/svg+xml"}, {}},
 
 	{"librsvg",
 #if DAWN_WITH_LIBRSVG
@@ -1643,7 +1651,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"SVG", {"image/svg+xml"}, {}},
+		N_("SVG"), {"image/svg+xml"}, {}},
 
 	{"libXcursor",
 #if DAWN_WITH_XCURSOR
@@ -1651,7 +1659,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"Xcursor", {"image/x-xcursor"}, {}},
+		N_("Xcursor"), {"image/x-xcursor"}, {}},
 
 	// Before libheif: JPEG XL's container is ISOBMFF too, and we would rather
 	// not rely on libheif rejecting an unknown ftyp brand.
@@ -1661,7 +1669,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"JPEG XL", {"image/jxl"}, {}},
+		N_("JPEG XL"), {"image/jxl"}, {}},
 
 	{"libheif",
 #if DAWN_WITH_LIBHEIF
@@ -1669,7 +1677,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"AVIF, HEIC, HEIF",
+		N_("AVIF, HEIC, HEIF"),
 		{
 			"image/avif",
 			"image/heic",
@@ -1683,7 +1691,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"JPEG 2000",
+		N_("JPEG 2000"),
 		// Not image/jpx or image/jpm: OpenJPEG decodes neither JPX (Part 2)
 		// nor compound JPM, and claiming them would only fail later.
 		{"image/jp2", "image/x-jp2-codestream"}, {}},
@@ -1695,7 +1703,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"TIFF", {"image/tiff"}, {}},
+		N_("TIFF"), {"image/tiff"}, {}},
 
 	{"jxrlib",
 #if DAWN_WITH_JXRLIB
@@ -1703,7 +1711,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"JPEG XR", {"image/jxr", "image/vnd.ms-photo"}, {}},
+		N_("JPEG XR"), {"image/jxr", "image/vnd.ms-photo"}, {}},
 
 	{"libwmf",
 #if DAWN_WITH_LIBWMF
@@ -1711,13 +1719,13 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"WMF", {"image/wmf", "image/x-wmf"}, {}},
+		N_("WMF"), {"image/wmf", "image/x-wmf"}, {}},
 
 	{"Rust",
 #if DAWN_WITH_DNRS
 		&detail::load_dnrs,
-		"BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, "
-		"Radiance HDR, TARGA, TIFF, WebP, XBM, XPM, ...",
+		N_("BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, "
+		   "Radiance HDR, TARGA, TIFF, WebP, XBM, XPM, ..."),
 		{}, &detail::dnrs_media_types},
 #else
 		{}, {}, {}, {}},
@@ -1746,7 +1754,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		"PDF", {}, {}},
+		N_("PDF"), {}, {}},
 };
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
@@ -1810,7 +1818,7 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	detail::OpenTimingGuard timing(ctx.timing);
 	if (data.empty()) {
-		set_error(error, "empty input");
+		set_error(error, _("empty input"));
 		return nullptr;
 	}
 
@@ -1837,7 +1845,7 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	if (!image) {
 		if (error && error->message.empty())
-			set_error(error, "unrecognized or unsupported image format");
+			set_error(error, _("unrecognized or unsupported image format"));
 		return nullptr;
 	}
 
@@ -1859,7 +1867,7 @@ open(const OpenContext &ctx, Error *error)
 {
 	detail::OpenTimingGuard timing(ctx.timing);
 	if (ctx.uri.empty()) {
-		set_error(error, "empty URI");
+		set_error(error, _("empty URI"));
 		return nullptr;
 	}
 	vector<uint8_t> data;

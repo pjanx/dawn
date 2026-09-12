@@ -9,6 +9,7 @@ add_custom_command(
 	VERBATIM
 )
 add_library(libdn SHARED
+	gettext.cpp
 	ipc.cpp
 	libdn.cpp
 	load-icns.cpp
@@ -23,6 +24,7 @@ find_package(Threads REQUIRED)
 target_link_libraries(libdn
 	PUBLIC
 		${DAWN_LCMS2_TARGET}
+		Intl::Intl
 		Vulkan::Vulkan
 	PRIVATE
 		Threads::Threads

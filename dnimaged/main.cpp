@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "ipc-rpc.hpp"
 #include "ipc-shm.hpp"
 #include "ipc/imaged.lxdr.hpp"
@@ -183,6 +185,10 @@ handle_payload(State &state, uint64_t connection, span<const byte> payload,
 int
 main()
 {
+	// The client displays what we send it, already rendered, so these
+	// diagnostics speak whatever language this process started in.
+	dawn::gettext_init();
+
 	auto endpoint = dawn::ipc::Endpoint::listen(kService);
 	if (endpoint.status != dawn::ipc::Endpoint::ListenStatus::Ok) {
 		fprintf(stderr, "dnimaged: %s\n",

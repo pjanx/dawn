@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -32,7 +33,7 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 	int has_alpha = heif_image_handle_has_alpha_channel(handle);
 	int bit_depth = heif_image_handle_get_luma_bits_per_pixel(handle);
 	if (bit_depth < 0) {
-		set_error(error, "undefined bit depth");
+		set_error(error, _("undefined bit depth"));
 		return nullptr;
 	}
 
@@ -58,14 +59,14 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 	int w = heif_image_get_width(image, heif_channel_interleaved);
 	int h = heif_image_get_height(image, heif_channel_interleaved);
 	if (w <= 0 || h <= 0) {
-		set_error(error, "invalid image dimensions");
+		set_error(error, _("invalid image dimensions"));
 		heif_image_release(image);
 		return nullptr;
 	}
 
 	ImagePtr result = image_new(uint32_t(w), uint32_t(h));
 	if (!result) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		heif_image_release(image);
 		return nullptr;
 	}
@@ -148,7 +149,7 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 			// Chiefly PQ and HLG, which have no ICC v2 equivalent; those
 			// images stay as wrong as they were before, just not more so.
 			add_warning(
-				ctx, "unrepresentable nclx colour space, assuming sRGB");
+				ctx, _("unrepresentable nclx colour space, assuming sRGB"));
 	}
 	if (nclx)
 		heif_nclx_color_profile_free(nclx);
@@ -208,7 +209,7 @@ detail::load_heif(
 	// The library is generally awful through and through.
 	heif_context *hctx = heif_context_alloc();
 	if (!hctx) {
-		set_error(error, "failed to obtain a libheif context");
+		set_error(error, _("failed to obtain a libheif context"));
 		return nullptr;
 	}
 
@@ -251,7 +252,7 @@ detail::load_heif(
 
 	heif_context_free(hctx);
 	if (!head) {
-		set_error(error, "empty or unsupported image");
+		set_error(error, _("empty or unsupported image"));
 		return nullptr;
 	}
 

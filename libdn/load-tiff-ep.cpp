@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -215,13 +217,13 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 		entry.type == TIFFER_BYTE && entry.remaining_count == 4 &&
 		entry.p[0] == 1 && entry.p[1] <= 6 && !entry.p[2] && !entry.p[3];
 	if (!is_tiffep && !is_supported_dng) {
-		set_error(error, "not a supported TIFF/EP or DNG image");
+		set_error(error, _("not a supported TIFF/EP or DNG image"));
 		return nullptr;
 	}
 
 	tiffer fullT = {};
 	if (!tiff_ep_find_main(T, &fullT)) {
-		set_error(error, "could not find a main image");
+		set_error(error, _("could not find a main image"));
 		return nullptr;
 	}
 
@@ -229,13 +231,13 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	if (!tiffer_find_integer(&fullT, TIFF_ImageWidth, &width) ||
 		!tiffer_find_integer(&fullT, TIFF_ImageLength, &height) || width <= 0 ||
 		height <= 0) {
-		set_error(error, "missing or invalid main image dimensions");
+		set_error(error, _("missing or invalid main image dimensions"));
 		return nullptr;
 	}
 
 	TiffEpJpeg out;
 	if (!tiff_ep_find_jpeg(T, &out)) {
-		set_error(error, "error looking for a full-size JPEG preview");
+		set_error(error, _("error looking for a full-size JPEG preview"));
 		return nullptr;
 	}
 
@@ -244,7 +246,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	// Be a bit more generous than that with our crop tolerance.
 	// TODO(p): Also take into account DNG DefaultCropSize, if present.
 	if (double(out.pixels) / (double(width) * double(height)) < 0.95) {
-		set_error(error, "could not find a large enough JPEG preview");
+		set_error(error, _("could not find a large enough JPEG preview"));
 		return nullptr;
 	}
 
@@ -272,7 +274,7 @@ detail::load_tiff_ep(
 {
 	tiffer T = {};
 	if (!tiffer_init(&T, data.data(), data.size())) {
-		set_error(error, "not a TIFF file");
+		set_error(error, _("not a TIFF file"));
 		return nullptr;
 	}
 
@@ -294,7 +296,7 @@ detail::load_tiff_ep(
 	}
 
 	if (!head)
-		set_error(error, "not a TIFF/EP or DNG image with a usable preview");
+		set_error(error, _("not a TIFF/EP or DNG image with a usable preview"));
 	return head;
 }
 

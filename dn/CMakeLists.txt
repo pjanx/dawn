@@ -239,7 +239,7 @@ else()
 		set(desktop "${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.desktop")
 		if (NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
 			set(generated
-				"${CMAKE_CURRENT_BINARY_DIR}/${DAWN_NAMESPACE}.desktop")
+				"${CMAKE_CURRENT_BINARY_DIR}/${DAWN_NAMESPACE}.mime.desktop")
 			add_custom_command(OUTPUT "${generated}"
 				COMMAND ${CMAKE_COMMAND}
 					"-DEMULATOR=${CMAKE_CROSSCOMPILING_EMULATOR}"
@@ -249,17 +249,38 @@ else()
 				DEPENDS dn "${desktop}"
 				COMMENT "Filling in desktop file media types"
 				VERBATIM)
-			add_custom_target(desktop-media-types ALL DEPENDS "${generated}")
 			set(desktop "${generated}")
 		endif()
+
+		set(desktops "${desktop}"
+			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Browse.desktop")
 		if (DAWN_WIP)
-			install(FILES
+			list(APPEND desktops
 				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.CropJpeg.desktop"
-				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Commander.desktop"
-				DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+				"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Commander.desktop")
 		endif()
-		install(FILES "${desktop}"
-			"${CMAKE_CURRENT_SOURCE_DIR}/${DAWN_NAMESPACE}.Browse.desktop"
+
+		# What the launcher says is translated from the same catalogue as the
+		# application, which is why the names in it are never invented here.
+		set(entries)
+		file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/applications")
+		foreach (template IN LISTS desktops)
+			get_filename_component(entry "${template}" NAME)
+			string(REPLACE ".mime." "." entry "${entry}")
+			set(output "${CMAKE_CURRENT_BINARY_DIR}/applications/${entry}")
+			add_custom_command(OUTPUT "${output}"
+				COMMAND "${MSGFMT_EXECUTABLE}" --desktop
+					--keyword=Name --keyword=GenericName
+					--keyword=X-GNOME-FullName
+					"--template=${template}" -d "${PROJECT_SOURCE_DIR}/po"
+					-o "${output}"
+				DEPENDS "${template}" ${DAWN_TRANSLATIONS}
+				COMMENT "Translating ${entry}"
+				VERBATIM)
+			list(APPEND entries "${output}")
+		endforeach()
+		add_custom_target(desktop-entries ALL DEPENDS ${entries})
+		install(FILES ${entries}
 			DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 	endif()
 endif()
@@ -363,6 +384,19 @@ else()
 		install(FILES "${page}"
 			DESTINATION "${CMAKE_INSTALL_MANDIR}/man${CMAKE_MATCH_1}")
 	endforeach()
+endif()
+
+# Message catalogues.  The bundle's Resources have to be complete already
+# in the build tree; the installation copies the bundle as it finds it.
+add_dependencies(dn catalogues)
+if (APPLE AND DAWN_CATALOGUES)
+	foreach (mo IN LISTS DAWN_CATALOGUES)
+		file(RELATIVE_PATH rel "${DAWN_LOCALE_DIR}" "${mo}")
+		get_filename_component(rel "${rel}" DIRECTORY)
+		set_source_files_properties("${mo}" PROPERTIES
+			MACOSX_PACKAGE_LOCATION "Resources/share/locale/${rel}")
+	endforeach()
+	target_sources(dn PRIVATE ${DAWN_CATALOGUES})
 endif()
 
 if (BUILD_TESTING)

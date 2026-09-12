@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "ipc-rpc.hpp"
 #include "ipc-shm.hpp"
 #include "ipc/thumbd.lxdr.hpp"
@@ -54,6 +56,8 @@ receive(dawn::ipc::Channel &channel, proto::FrameView &view,
 int
 main(int argc, char **argv)
 {
+	dawn::gettext_init();
+
 #ifdef _WIN32
 	_setmode(_fileno(stdin), _O_BINARY);
 	_setmode(_fileno(stdout), _O_BINARY);

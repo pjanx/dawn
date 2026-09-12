@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn.h"
 
@@ -29,9 +30,9 @@ fail(Error *error, const char *operation, LSTATUS status = ERROR_SUCCESS)
 		return;
 
 	error->code = Error::Code::Io;
-	error->message = operation;
-	if (status != ERROR_SUCCESS)
-		error->message += ": Windows error " + to_string(status);
+	error->message = status == ERROR_SUCCESS
+		? string(operation)
+		: format_message(_("%s: Windows error %ld"), operation, long(status));
 }
 
 static optional<wstring>
@@ -43,14 +44,14 @@ to_wide(string_view value, Error *error)
 	const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
 		value.data(), int(value.size()), nullptr, 0);
 	if (!size) {
-		fail(error, "invalid UTF-8 configuration string", GetLastError());
+		fail(error, _("invalid UTF-8 configuration string"), GetLastError());
 		return nullopt;
 	}
 
 	wstring out(size_t(size), L'\0');
 	if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
 			int(value.size()), out.data(), size)) {
-		fail(error, "cannot convert configuration string", GetLastError());
+		fail(error, _("cannot convert configuration string"), GetLastError());
 		return nullopt;
 	}
 	return out;
@@ -65,14 +66,14 @@ to_utf8(wstring_view value, Error *error)
 	const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
 		value.data(), int(value.size()), nullptr, 0, nullptr, nullptr);
 	if (!size) {
-		fail(error, "invalid UTF-16 configuration string", GetLastError());
+		fail(error, _("invalid UTF-16 configuration string"), GetLastError());
 		return nullopt;
 	}
 
 	string out(size_t(size), '\0');
 	if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
 			int(value.size()), out.data(), size, nullptr, nullptr)) {
-		fail(error, "cannot convert configuration string", GetLastError());
+		fail(error, _("cannot convert configuration string"), GetLastError());
 		return nullopt;
 	}
 	return out;
@@ -93,7 +94,7 @@ registry_name(string_view key, Error *error)
 {
 	const size_t slash = key.rfind('/');
 	if (slash == string_view::npos || slash == 0 || slash + 1 == key.size()) {
-		fail(error, "invalid configuration key");
+		fail(error, _("invalid configuration key"));
 		return nullopt;
 	}
 	string subkey = "Software\\" DAWN_NAMESPACE "\\";
@@ -124,7 +125,7 @@ config_get(string_view key, Error *error)
 	if (status == ERROR_FILE_NOT_FOUND)
 		return nullopt;
 	if (status != ERROR_SUCCESS) {
-		fail(error, "cannot read configuration value", status);
+		fail(error, _("cannot read configuration value"), status);
 		return nullopt;
 	}
 
@@ -132,7 +133,7 @@ config_get(string_view key, Error *error)
 	status = RegGetValueW(HKEY_CURRENT_USER, name->subkey.c_str(),
 		name->value.c_str(), RRF_RT_REG_SZ, nullptr, data.data(), &bytes);
 	if (status != ERROR_SUCCESS) {
-		fail(error, "cannot read configuration value", status);
+		fail(error, _("cannot read configuration value"), status);
 		return nullopt;
 	}
 
@@ -157,7 +158,7 @@ config_set(string_view key, string_view value, Error *error)
 	LSTATUS status = RegCreateKeyExW(HKEY_CURRENT_USER, name->subkey.c_str(), 0,
 		nullptr, 0, KEY_SET_VALUE, nullptr, &handle, nullptr);
 	if (status != ERROR_SUCCESS) {
-		fail(error, "cannot open configuration key", status);
+		fail(error, _("cannot open configuration key"), status);
 		return false;
 	}
 
@@ -166,7 +167,7 @@ config_set(string_view key, string_view value, Error *error)
 		DWORD((data->size() + 1) * sizeof(wchar_t)));
 	RegCloseKey(handle);
 	if (status != ERROR_SUCCESS) {
-		fail(error, "cannot write configuration value", status);
+		fail(error, _("cannot write configuration value"), status);
 		return false;
 	}
 	return true;

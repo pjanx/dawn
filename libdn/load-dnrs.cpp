@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -36,22 +38,21 @@ struct FrameGuard {
 using DecoderPtr = unique_ptr<dnrs_decoder, DecoderDeleter>;
 using DnrsErrorPtr = unique_ptr<dnrs_error, ErrorDeleter>;
 
+// "Rust" names the loader, and the codec is what image-rs picked within it;
+// neither is a word, so only the punctuation around them is up for grabs.
 static string
-dnrs_prefix(const char *codec = nullptr)
+dnrs_wrap(const char *codec, const char *detail)
 {
-	string message = "Rust";
 	if (codec && *codec)
-		message += string(" (") + codec + ")";
-	return message + ": ";
+		return format_message(_("Rust (%s): %s"), codec, detail);
+	return format_message(_("Rust: %s"), detail);
 }
 
 static string
 dnrs_message(dnrs_error *error, const char *codec = nullptr)
 {
-	string message = dnrs_prefix(codec);
 	const char *detail = error ? dnrs_error_message(error) : nullptr;
-	message += detail && *detail ? detail : "decoding error";
-	return message;
+	return dnrs_wrap(codec, detail && *detail ? detail : _("decoding error"));
 }
 
 static bool
@@ -125,17 +126,17 @@ load_frame(const dnrs_frame &frame, Error *error)
 		bpp = 8;
 		break;
 	default:
-		set_error(error, "Rust: unsupported pixel format");
+		set_error(error, _("Rust: unsupported pixel format"));
 		return nullptr;
 	}
 	if (!valid_frame(frame, bpp)) {
-		set_error(error, "Rust: invalid or truncated frame");
+		set_error(error, _("Rust: invalid or truncated frame"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(frame.width, frame.height);
 	if (!image) {
-		set_error(error, "Rust: image allocation failure");
+		set_error(error, _("Rust: image allocation failure"));
 		return nullptr;
 	}
 	switch (frame.format) {
@@ -232,7 +233,7 @@ detail::load_dnrs(
 		if (!page_info.width || !page_info.height ||
 			page_info.width > kMaxDimension ||
 			page_info.height > kMaxDimension) {
-			set_error(error, dnrs_prefix(codec) + "invalid image dimensions");
+			set_error(error, dnrs_wrap(codec, _("invalid image dimensions")));
 			return nullptr;
 		}
 
@@ -257,7 +258,7 @@ detail::load_dnrs(
 				break;
 		}
 		if (!frames) {
-			set_error(error, dnrs_prefix(codec) + "page has no frames");
+			set_error(error, dnrs_wrap(codec, _("page has no frames")));
 			return nullptr;
 		}
 
@@ -280,7 +281,7 @@ detail::load_dnrs(
 			break;
 	}
 	if (!pages)
-		set_error(error, dnrs_prefix(codec) + "image has no pages");
+		set_error(error, dnrs_wrap(codec, _("image has no pages")));
 	return pages;
 }
 

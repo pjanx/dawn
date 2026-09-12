@@ -27,6 +27,7 @@
 #include "wuffs-v0.4.c"
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -55,7 +56,7 @@ grow_metadata_buffer(vector<uint8_t> *storage, wuffs_base__io_buffer *dst,
 	size_t required, Error *error)
 {
 	if (required > kMaxMetadataSize) {
-		set_error(error, "metadata is too large");
+		set_error(error, _("metadata is too large"));
 		return false;
 	}
 	size_t size = storage->size();
@@ -80,7 +81,7 @@ pull_passthrough(const wuffs_base__more_information *minfo,
 	uint64_t pos = src->meta.pos;
 	if (pos > r.min_incl ||
 		wuffs_base__u64__sat_sub(r.max_excl, pos) > src->meta.wi) {
-		set_error(error, "metadata is outside the read buffer");
+		set_error(error, _("metadata is outside the read buffer"));
 		return false;
 	}
 	const uint64_t length64 = r.max_excl - r.min_incl;
@@ -118,7 +119,7 @@ pull_metadata(wuffs_base__image_decoder *dec, wuffs_base__io_buffer *src,
 			// Use Wuffs accessor functions in the caller.
 			break;
 		default:
-			set_error(error, "Wuffs metadata API incompatibility");
+			set_error(error, _("Wuffs metadata API incompatibility"));
 			return false;
 
 		case WUFFS_BASE__MORE_INFORMATION__FLAVOR__METADATA_RAW_PASSTHROUGH:
@@ -209,7 +210,7 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 	switch (wuffs_base__more_information__metadata__fourcc(&minfo)) {
 	case WUFFS_BASE__FOURCC__EXIF:
 		if (ctx.have_exif) {
-			add_warning(*ctx.octx, "ignoring repeated Exif");
+			add_warning(*ctx.octx, _("ignoring repeated Exif"));
 			break;
 		}
 		ctx.meta_exif = std::move(bytes);
@@ -217,7 +218,7 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		break;
 	case WUFFS_BASE__FOURCC__ICCP:
 		if (ctx.have_iccp) {
-			add_warning(*ctx.octx, "ignoring repeated ICC profile");
+			add_warning(*ctx.octx, _("ignoring repeated ICC profile"));
 			break;
 		}
 		ctx.meta_iccp = std::move(bytes);
@@ -225,7 +226,7 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		break;
 	case WUFFS_BASE__FOURCC__XMP:
 		if (ctx.have_xmp) {
-			add_warning(*ctx.octx, "ignoring repeated XMP");
+			add_warning(*ctx.octx, _("ignoring repeated XMP"));
 			break;
 		}
 		ctx.meta_xmp = std::move(bytes);
@@ -278,7 +279,7 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 	const ImagePtr &prev = ctx.result_tail;
 	ImagePtr canvas = image_new(prev->width, prev->height);
 	if (!canvas) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return false;
 	}
 
@@ -311,7 +312,7 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 		WUFFS_BASE__ANIMATION_DISPOSAL__RESTORE_PREVIOUS) {
 		ctx.restore_previous = image_new(canvas->width, canvas->height);
 		if (!ctx.restore_previous) {
-			set_error(error, "image allocation failure");
+			set_error(error, _("image allocation failure"));
 			return false;
 		}
 		memcpy(ctx.restore_previous->data.data(), canvas->data.data(),
@@ -324,7 +325,7 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 		bounds.max_excl_y > bounds.min_incl_y) {
 		ImagePtr region = crop(*image, bounds);
 		if (!region) {
-			set_error(error, "image allocation failure");
+			set_error(error, _("image allocation failure"));
 			return false;
 		}
 		BlendOp op = wuffs_base__frame_config__overwrite_instead_of_blend(&fc)
@@ -366,7 +367,7 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 
 	ImagePtr image = image_new(ctx.width, ctx.height);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		ctx.result.reset();
 		ctx.result_tail.reset();
 		return false;
@@ -471,14 +472,14 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 
 	// This, at least currently, seems excessive.
 	if (!wuffs_base__image_config__is_valid(&ctx.cfg)) {
-		set_error(error, "invalid Wuffs image configuration");
+		set_error(error, _("invalid Wuffs image configuration"));
 		return nullptr;
 	}
 
 	ctx.width = wuffs_base__pixel_config__width(&ctx.cfg.pixcfg);
 	ctx.height = wuffs_base__pixel_config__height(&ctx.cfg.pixcfg);
 	if (ctx.width == 0 || ctx.height == 0) {
-		set_error(error, "invalid image dimensions");
+		set_error(error, _("invalid image dimensions"));
 		return nullptr;
 	}
 
@@ -510,7 +511,7 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 
 	apply_collected_metadata(ctx);
 	if (!ctx.result && error && error->message.empty())
-		set_error(error, "no frames decoded");
+		set_error(error, _("no frames decoded"));
 	return ctx.result;
 }
 
@@ -521,7 +522,7 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 	unique_ptr<wuffs_base__image_decoder, void (*)(void *)> dec(
 		allocate(), &free);
 	if (!dec) {
-		set_error(error, "memory allocation failed or internal error");
+		set_error(error, _("memory allocation failed or internal error"));
 		return nullptr;
 	}
 
@@ -604,7 +605,7 @@ detail::load_wuffs(
 			wuffs_webp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
 	default:
-		set_error(error, "unsupported or unrecognized Wuffs format");
+		set_error(error, _("unsupported or unrecognized Wuffs format"));
 		return nullptr;
 	}
 }

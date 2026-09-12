@@ -3,5 +3,6 @@
 /build/
 /build-*/
 /libdnrs/Cargo.lock
+/po/dawn.pot
 compile_commands.json
 .cache/

@@ -10,6 +10,7 @@
 // or GdkPixbuf.
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -135,11 +136,11 @@ imageio_target_space(
 	// Display P3 would narrow the loss without removing it, and this is
 	// a fallback loader--revisit if anyone actually views EXR files in anger.
 	if (source && CGColorSpaceUsesExtendedRange(source))
-		add_warning(ctx, "extended range colours clipped to sRGB");
+		add_warning(ctx, _("extended range colours clipped to sRGB"));
 
 	CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 	if (!srgb) {
-		set_error(error, "cannot create an sRGB colour space");
+		set_error(error, _("cannot create an sRGB colour space"));
 		return nullptr;
 	}
 	*icc = CGColorSpaceCopyICCData(srgb);
@@ -151,7 +152,7 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 {
 	size_t width = CGImageGetWidth(cg), height = CGImageGetHeight(cg);
 	if (!width || !height || width > kMaxDimension || height > kMaxDimension) {
-		set_error(error, "image dimensions overflow");
+		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
 
@@ -181,7 +182,7 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 	if (!context) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, "cannot create a bitmap context");
+		set_error(error, _("cannot create a bitmap context"));
 		return nullptr;
 	}
 
@@ -189,7 +190,7 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 	if (!image) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -215,7 +216,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 	const OpenContext &ctx, Error *error)
 {
 	if (CGImageSourceGetStatus(source) != kCGImageStatusComplete) {
-		set_error(error, "incomplete or unsupported ImageIO image");
+		set_error(error, _("incomplete or unsupported ImageIO image"));
 		return nullptr;
 	}
 
@@ -235,7 +236,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 		ImagePtr image;
 		CGImageRef cg = CGImageSourceCreateImageAtIndex(source, i, options);
 		if (!cg) {
-			set_error(&suberror, "ImageIO decoding error");
+			set_error(&suberror, _("ImageIO decoding error"));
 		} else {
 			image = load_imageio_image(cg, ctx, &suberror);
 			CGImageRelease(cg);
@@ -270,7 +271,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 			break;
 	}
 	if (!head) {
-		set_error(error, "empty ImageIO image");
+		set_error(error, _("empty ImageIO image"));
 		return nullptr;
 	}
 
@@ -289,7 +290,7 @@ detail::load_imageio(
 	CFDataRef wrapper = CFDataCreateWithBytesNoCopy(kCFAllocatorDefault,
 		data.data(), CFIndex(data.size()), kCFAllocatorNull);
 	if (!wrapper) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -307,7 +308,7 @@ detail::load_imageio(
 		image = load_imageio_indexes(source, options, ctx, error);
 		CFRelease(source);
 	} else {
-		set_error(error, "not an ImageIO-decodable image");
+		set_error(error, _("not an ImageIO-decodable image"));
 	}
 
 	CFRelease(options);

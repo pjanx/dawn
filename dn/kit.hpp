@@ -647,7 +647,7 @@ struct Menu : MenuPopup {
 	void build(Kit &kit, std::span<const MenuNode> nodes, const Actor &actor);
 	void sync();
 	MenuItem *add_item(const QString &text);
-	MenuItem *add_item_with_mnemonic(const QString &text);
+	MenuItem *add_item_with_mnemonic(const char *label);
 	void add_sep();
 	void clear(Kit &kit);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;

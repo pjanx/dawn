@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -130,7 +131,7 @@ detail::load_xcursor(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() > size_t(LONG_MAX)) {
-		set_error(error, "size overflow");
+		set_error(error, _("size overflow"));
 		return nullptr;
 	}
 
@@ -144,7 +145,7 @@ detail::load_xcursor(
 	unique_ptr<XcursorImages, void (*)(XcursorImages *)> images(
 		XcursorXcFileLoadAllImages(&file.parent), XcursorImagesDestroy);
 	if (!images) {
-		set_error(error, "not an Xcursor image");
+		set_error(error, _("not an Xcursor image"));
 		return nullptr;
 	}
 
@@ -162,7 +163,7 @@ detail::load_xcursor(
 
 		ImagePtr frame = load_xcursor_image(src);
 		if (!frame) {
-			add_warning(ctx, "image allocation failure");
+			add_warning(ctx, _("image allocation failure"));
 			last_size = src->size;
 			continue;
 		}
@@ -179,7 +180,7 @@ detail::load_xcursor(
 	}
 
 	if (!pages) {
-		set_error(error, "empty or unsupported Xcursor image");
+		set_error(error, _("empty or unsupported Xcursor image"));
 		return nullptr;
 	}
 

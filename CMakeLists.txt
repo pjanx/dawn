@@ -66,6 +66,7 @@ set(CMAKE_MODULE_PATH
 
 find_package(PkgConfig REQUIRED)
 find_package(Vulkan REQUIRED)
+find_package(Intl REQUIRED)
 # Maybe we need a newer version, just not to build.
 find_package(Qt6 6.8 REQUIRED COMPONENTS Gui OPTIONAL_COMPONENTS WaylandClient)
 find_program(AWK NAMES awk REQUIRED)
@@ -232,6 +233,9 @@ endif()
 
 option(DAWN_WIP "Expose unfinished subapplications" OFF)
 
+# CMAKE_INSTALL_FULL_LOCALEDIR goes into dawn-config.h.
+include(GNUInstallDirs)
+
 configure_file(
 	"${PROJECT_SOURCE_DIR}/dawn-config.h.in"
 	"${PROJECT_BINARY_DIR}/dawn-config.h")
@@ -264,6 +268,7 @@ add_subdirectory(dnthumbd)
 if (LIBPNG_FOUND)
 	add_subdirectory(tools)
 endif()
+add_subdirectory(po)
 add_subdirectory(dn)
 
 if (BUILD_TESTING)

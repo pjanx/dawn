@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "app.hpp"
 
@@ -171,8 +172,11 @@ merge_loaders(const vector<string> &order, const vector<string> &disabled)
 			return;
 
 		used[i] = true;
+
+		// libdn only states what the text is; showing it is up to us.
+		const char *formats = known[i].formats;
 		out.push_back({QString::fromUtf8(known[i].name),
-			QString::fromUtf8(known[i].formats),
+			QString::fromUtf8(formats ? _(formats) : nullptr),
 			find(disabled.begin(), disabled.end(), known[i].name) ==
 				disabled.end()});
 	};

@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn.h"
 
@@ -194,7 +195,7 @@ config_path(Error *error)
 	}
 	if (const char *home = getenv("HOME"); home && *home)
 		return fs::path(home) / ".config" / DAWN_NAMESPACE / "dawn.conf";
-	fail(error, "cannot locate the user configuration directory");
+	fail(error, _("cannot locate the user configuration directory"));
 	return {};
 }
 
@@ -204,20 +205,22 @@ load_ini(const fs::path &path, Error *error)
 	error_code ec;
 	if (!fs::exists(path, ec)) {
 		if (ec)
-			fail(error, "cannot inspect configuration file: " + ec.message());
+			fail(error,
+				format_message(_("cannot inspect configuration file: %s"),
+					ec.message().c_str()));
 		else
 			return IniFile{};
 		return nullopt;
 	}
 	ifstream input(path, ios::binary);
 	if (!input) {
-		fail(error, "cannot open configuration file");
+		fail(error, _("cannot open configuration file"));
 		return nullopt;
 	}
 	string text(
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
 	if (input.bad()) {
-		fail(error, "cannot read configuration file");
+		fail(error, _("cannot read configuration file"));
 		return nullopt;
 	}
 	return detail::ini_parse(text);
@@ -231,7 +234,7 @@ config_get(string_view key, Error *error)
 
 	const auto parts = split_key(key);
 	if (!parts) {
-		fail(error, "invalid configuration key");
+		fail(error, _("invalid configuration key"));
 		return nullopt;
 	}
 	const fs::path path = config_path(error);
@@ -258,7 +261,7 @@ config_set(string_view key, string_view value, Error *error)
 
 	const auto parts = split_key(key);
 	if (!parts) {
-		fail(error, "invalid configuration key");
+		fail(error, _("invalid configuration key"));
 		return false;
 	}
 	const fs::path path = config_path(error);
@@ -284,7 +287,9 @@ config_set(string_view key, string_view value, Error *error)
 	error_code ec;
 	fs::create_directories(path.parent_path(), ec);
 	if (ec) {
-		fail(error, "cannot create configuration directory: " + ec.message());
+		fail(error,
+			format_message(_("cannot create configuration directory: %s"),
+				ec.message().c_str()));
 		return false;
 	}
 	const fs::path temporary = path.string() + ".new";
@@ -293,13 +298,15 @@ config_set(string_view key, string_view value, Error *error)
 		ofstream output(temporary, ios::binary | ios::trunc);
 		if (!output || !output.write(data.data(), streamsize(data.size())) ||
 			!output.flush()) {
-			fail(error, "cannot write configuration file");
+			fail(error, _("cannot write configuration file"));
 			return false;
 		}
 	}
 	fs::rename(temporary, path, ec);
 	if (ec) {
-		fail(error, "cannot replace configuration file: " + ec.message());
+		fail(error,
+			format_message(_("cannot replace configuration file: %s"),
+				ec.message().c_str()));
 		return false;
 	}
 	return true;

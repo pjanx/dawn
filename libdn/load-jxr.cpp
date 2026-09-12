@@ -6,6 +6,7 @@
 //
 
 #include <dawn-config.h>
+#include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
 #include "libdn.h"
@@ -212,18 +213,18 @@ decode_image(JxrLoadContext &ctx, const OpenContext &octx, Error *error)
 	I32 width = 0, height = 0;
 	if (ctx.decoder->GetPixelFormat(ctx.decoder, &format) ||
 		ctx.decoder->GetSize(ctx.decoder, &width, &height)) {
-		set_error(error, "cannot read the JPEG XR image header");
+		set_error(error, _("cannot read the JPEG XR image header"));
 		return nullptr;
 	}
 	if (width <= 0 || height <= 0 || uint32_t(width) > kMaxDimension ||
 		uint32_t(height) > kMaxDimension) {
-		set_error(error, "invalid image dimensions");
+		set_error(error, _("invalid image dimensions"));
 		return nullptr;
 	}
 
 	const Layout *layout = find_layout(format);
 	if (!layout && !(layout = open_converter(ctx))) {
-		set_error(error, "unsupported JPEG XR pixel format");
+		set_error(error, _("unsupported JPEG XR pixel format"));
 		return nullptr;
 	}
 
@@ -242,13 +243,13 @@ decode_image(JxrLoadContext &ctx, const OpenContext &octx, Error *error)
 		? ctx.converter->Copy(ctx.converter, &rect, buffer.data(), U32(stride))
 		: ctx.decoder->Copy(ctx.decoder, &rect, buffer.data(), U32(stride));
 	if (err) {
-		set_error(error, "cannot decode the JPEG XR image");
+		set_error(error, _("cannot decode the JPEG XR image"));
 		return nullptr;
 	}
 
 	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
@@ -276,27 +277,27 @@ detail::load_jxr(
 	static const uint8_t signature[] = {'I', 'I', 0xBC};
 	if (data.size() < sizeof signature ||
 		memcmp(data.data(), signature, sizeof signature)) {
-		set_error(error, "not a JPEG XR image");
+		set_error(error, _("not a JPEG XR image"));
 		return nullptr;
 	}
 
 	JxrLoadContext ctx;
 	if (PKCreateFactory(&ctx.factory, PK_SDK_VERSION) ||
 		PKCreateCodecFactory(&ctx.codecs, WMP_SDK_VERSION)) {
-		set_error(error, "failed to obtain a jxrlib decoder");
+		set_error(error, _("failed to obtain a jxrlib decoder"));
 		return nullptr;
 	}
 
 	// jxrlib only ever reads from a stream it decodes, hence the cast.
 	if (ctx.factory->CreateStreamFromMemory(
 			&ctx.stream, (void *) data.data(), data.size())) {
-		set_error(error, "failed to obtain a jxrlib stream");
+		set_error(error, _("failed to obtain a jxrlib stream"));
 		return nullptr;
 	}
 	if (ctx.codecs->CreateCodec(
 			&IID_PKImageWmpDecode, (void **) &ctx.decoder) ||
 		ctx.decoder->Initialize(ctx.decoder, ctx.stream)) {
-		set_error(error, "unsupported or unrecognized JPEG XR image");
+		set_error(error, _("unsupported or unrecognized JPEG XR image"));
 		return nullptr;
 	}
 

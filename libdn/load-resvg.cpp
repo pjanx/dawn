@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-gettext.h>
+
 #include "libdn-loaders.h"
 #include "libdn.h"
 
@@ -88,7 +90,7 @@ ResvgRenderClosure::render_internal(
 {
 	double w = ceil(width_ * scale), h = ceil(height_ * scale);
 	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
-		set_error(error, "image dimensions overflow");
+		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
 
@@ -102,7 +104,7 @@ ResvgRenderClosure::render_internal(
 
 	ImagePtr image = image_new(uw, uh);
 	if (!image) {
-		set_error(error, "image allocation failure");
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 
