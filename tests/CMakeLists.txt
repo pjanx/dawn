@@ -186,6 +186,6 @@ if(DAWN_DESKTOP_FILE_VALIDATE)
 		name.janouch.Dawn.CropJpeg.desktop
 	)
 		add_test(NAME ${desktop} COMMAND "${DAWN_DESKTOP_FILE_VALIDATE}"
-			"${PROJECT_SOURCE_DIR}/dn/${desktop}")
+			"${PROJECT_SOURCE_DIR}/packaging/${desktop}")
 	endforeach()
 endif()

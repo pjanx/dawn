@@ -6,7 +6,8 @@ src=$(CDPATH= cd "$(dirname "$0")" && pwd)
 dst=${1:-$src/build-flatpak}
 
 version=$(awk '$1 == "VERSION" { print $2; exit }' "$src/CMakeLists.txt")
-baseyml=$src/$appid.BaseApp.yml
+baseyml=$src/packaging/$appid.BaseApp.yml
+yml=$src/packaging/$appid.yml
 
 # XXX: Not sure how to version the BaseApp; supposedly newer means better.
 baseapp=$dst/Dawn-BaseApp-latest-$arch.flatpak
@@ -43,14 +44,14 @@ flatpak --user install -y --reinstall "$baseapp"
 
 # We can't use --install-deps-from=flathub here because it would try to update
 # the BaseApp from Flathub.
-runtime_version=$(sed -n "s/^runtime-version: '\(.*\)'$/\1/p" "$src/$appid.yml")
+runtime_version=$(sed -n "s/^runtime-version: '\(.*\)'$/\1/p" "$yml")
 flatpak --user install --or-update -y flathub \
 	"org.freedesktop.Sdk//$runtime_version" \
 	"org.freedesktop.Sdk.Extension.rust-stable//$runtime_version"
 
 flatpak-builder --user --force-clean \
 	--default-branch=stable --state-dir="$dst/state" \
-	--repo="$dst/repo" "$dst/appdir" "$src/$appid.yml"
+	--repo="$dst/repo" "$dst/appdir" "$yml"
 flatpak build-bundle --arch="$arch" --runtime-repo="$flathub" \
 	"$dst/repo" "$bundle" "$appid" stable
 

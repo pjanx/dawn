@@ -11,6 +11,7 @@ if (APPLE)
 endif()
 
 set(DAWN_NAMESPACE "name.janouch.Dawn")
+set(dawn_packaging "${PROJECT_SOURCE_DIR}/packaging")
 set(CPACK_PACKAGE_VENDOR "The Dawn Authors")
 set(CPACK_PACKAGE_CONTACT "Přemysl Eric Janouch <p@janouch.name>")
 
@@ -554,7 +555,7 @@ endif()
 
 # Application icon: SVG → PNG/ICO (xT) on non-Apple; Swift squircle ICNS (xM)
 # on Darwin. Qt looks up IDI_ICON1 and nothing else.
-set(dn_icon_svg "${PROJECT_SOURCE_DIR}/dn/dn.svg")
+set(dn_icon_svg "${dawn_packaging}/${DAWN_NAMESPACE}.svg")
 if (APPLE)
 	find_program(DN_SWIFT_EXECUTABLE swift REQUIRED)
 	set(MACOSX_BUNDLE_ICON_FILE dn.icns)
@@ -674,15 +675,14 @@ else()
 		add_custom_target(icons ALL DEPENDS ${dn_icon_png_list})
 
 		install(FILES "${dn_icon_svg}"
-			DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
-			RENAME "${DAWN_NAMESPACE}.svg")
+			DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
 		install(DIRECTORY "${dn_icon_base}"
 			DESTINATION "${CMAKE_INSTALL_DATADIR}")
 
 		# MimeType= follows the loader table compiled into dn, so ask it.
 		# A cross build can only ask through an emulator; without one,
 		# the checked-in list is installed as it is.
-		set(desktop "${PROJECT_SOURCE_DIR}/dn/${DAWN_NAMESPACE}.desktop")
+		set(desktop "${dawn_packaging}/${DAWN_NAMESPACE}.desktop")
 		if (NOT CMAKE_CROSSCOMPILING OR CMAKE_CROSSCOMPILING_EMULATOR)
 			set(generated
 				"${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.mime.desktop")
@@ -699,11 +699,11 @@ else()
 		endif()
 
 		set(desktops "${desktop}"
-			"${PROJECT_SOURCE_DIR}/dn/${DAWN_NAMESPACE}.Browse.desktop")
+			"${dawn_packaging}/${DAWN_NAMESPACE}.Browse.desktop")
 		if (DAWN_WITH_WIP)
 			list(APPEND desktops
-				"${PROJECT_SOURCE_DIR}/dn/${DAWN_NAMESPACE}.CropJpeg.desktop"
-				"${PROJECT_SOURCE_DIR}/dn/${DAWN_NAMESPACE}.Commander.desktop")
+				"${dawn_packaging}/${DAWN_NAMESPACE}.CropJpeg.desktop"
+				"${dawn_packaging}/${DAWN_NAMESPACE}.Commander.desktop")
 		endif()
 
 		# What the launcher says is translated from the same catalogue as the
@@ -1023,7 +1023,7 @@ else()
 
 	# Software centres want this, and Flatpak bundles only carry an icon
 	# when an AppStream component points at one.
-	configure_file(flatpak-metainfo.xml.in
+	configure_file("${dawn_packaging}/${DAWN_NAMESPACE}.metainfo.xml.in"
 		"${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml" @ONLY)
 	install(FILES "${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml"
 		DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
@@ -1047,7 +1047,7 @@ if (WIN32 AND CMAKE_CROSSCOMPILING)
 		set(DAWN_MSI_WIP ON)
 	endif()
 	set(dawn_wxs "${PROJECT_BINARY_DIR}/dawn.wxs")
-	configure_file(dawn.wxs.in "${dawn_wxs}" @ONLY)
+	configure_file("${dawn_packaging}/Dawn.wxs.in" "${dawn_wxs}" @ONLY)
 
 	set(dawn_msi
 		"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_PROCESSOR}.msi")

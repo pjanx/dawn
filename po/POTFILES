@@ -9,10 +9,6 @@ dn/kit-chrome.cpp
 dn/kit-cie-diagram.cpp
 dn/kit-viewer.cpp
 dn/main.cpp
-dn/name.janouch.Dawn.Browse.desktop
-dn/name.janouch.Dawn.Commander.desktop
-dn/name.janouch.Dawn.CropJpeg.desktop
-dn/name.janouch.Dawn.desktop
 dn/window.cpp
 libdn/config-macos.mm
 libdn/config-unix.cpp
@@ -39,3 +35,7 @@ libdn/load-tiff.cpp
 libdn/load-webp.cpp
 libdn/load-wuffs.cpp
 libdn/load-xcursor.cpp
+packaging/name.janouch.Dawn.Browse.desktop
+packaging/name.janouch.Dawn.Commander.desktop
+packaging/name.janouch.Dawn.CropJpeg.desktop
+packaging/name.janouch.Dawn.desktop
