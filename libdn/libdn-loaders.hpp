@@ -1,5 +1,5 @@
 //
-// libdn-loaders.h: internal loader entry points
+// libdn-loaders.hpp: internal loader entry points
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0

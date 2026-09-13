@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <libdnrs.h>
@@ -196,8 +196,7 @@ dnrs_media_types()
 }
 
 ImagePtr
-load_dnrs(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	dnrs_error *raw_error = nullptr;
 	DecoderPtr decoder(dnrs_decoder_new(

@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #if DAWN_WITH_LIBRAW
@@ -70,8 +70,7 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 }
 
 ImagePtr
-load_libraw(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// https://github.com/LibRaw/LibRaw/issues/418
 	// Memory allocation failures are reported via return codes and need no

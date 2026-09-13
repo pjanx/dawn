@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #if DAWN_WITH_LIBHEIF
@@ -178,7 +178,7 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 	if (n <= 0)
 		return;
 
-	vector<heif_item_id> ids(static_cast<size_t>(n));
+	vector<heif_item_id> ids((size_t) n);
 	n = heif_image_handle_get_list_of_auxiliary_image_IDs(
 		top, filter, ids.data(), n);
 	for (int i = 0; i < n; i++) {
@@ -202,8 +202,7 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 }
 
 ImagePtr
-load_heif(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// libheif will throw C++ exceptions on allocation failures.
 	// The library is generally awful through and through.

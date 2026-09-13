@@ -1,5 +1,5 @@
 //
-// load-wuffs.cpp: BMP/GIF/NIE/PNG/PNM/QOI/TGA/WBMP loading via Wuffs
+// load-wuffs.cpp: Wuffs BMP/GIF/JPEG/NIE/PNG/PNM/QOI/TARGA/WBMP/WebP loader
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -29,7 +29,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <cmath>
@@ -555,8 +555,7 @@ inflate_raw(span<const uint8_t> src, span<uint8_t> dst)
 }
 
 ImagePtr
-load_wuffs(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_wuffs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	wuffs_base__slice_u8 prefix =
 		wuffs_base__make_slice_u8((uint8_t *) data.data(), data.size());

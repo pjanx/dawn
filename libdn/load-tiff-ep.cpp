@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #define TIFF_TABLES_CONSTANTS_ONLY
@@ -249,8 +249,8 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = load_jpeg(
-		span<const uint8_t>(out.jpeg, out.jpeg_length), ctx, error);
+	ImagePtr image =
+		load_jpeg(span<const uint8_t>(out.jpeg, out.jpeg_length), ctx, error);
 	if (!image)
 		return nullptr;
 
@@ -268,8 +268,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 }
 
 ImagePtr
-load_tiff_ep(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_tiff_ep(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	tiffer T = {};
 	if (!tiffer_init(&T, data.data(), data.size())) {

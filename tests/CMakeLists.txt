@@ -81,6 +81,7 @@ endif()
 
 if (APPLE AND DAWN_WITH_IMAGEIO)
 	add_executable(test-imageio test-imageio.cpp)
+	add_dependencies(test-imageio test-fixtures)
 	target_link_libraries(test-imageio PRIVATE libdn)
 	target_compile_definitions(test-imageio PRIVATE
 		DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"

@@ -866,7 +866,7 @@ if (APPLE AND DAWN_WITH_WIP)
 
 	foreach (dn_launch_id IN ITEMS CropJpeg Commander)
 		if (dn_launch_id STREQUAL CropJpeg)
-			set(DN_LAUNCH_NAME "Dawn JPEG Cropper")
+			set(DN_LAUNCH_NAME "Dawn Lossless JPEG Cropper")
 			set(DN_LAUNCH_MODE cropjpeg)
 			set(DN_LAUNCH_TYPE_NAME JPEG)
 			set(DN_LAUNCH_UTI public.jpeg)

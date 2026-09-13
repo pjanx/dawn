@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <X11/Xcursor/Xcursor.h>
@@ -127,8 +127,7 @@ load_xcursor_image(const XcursorImage *src)
 //
 // Unlike other formats, there is no meaningful colour management to apply.
 ImagePtr
-load_xcursor(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_xcursor(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() > size_t(LONG_MAX)) {
 		set_error(error, _("size overflow"));

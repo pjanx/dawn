@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <lcms2.h>
@@ -1581,6 +1581,7 @@ constexpr Loader kLoaders[] = {
 
 	{"libwebp", &load_webp, N_("WebP"), {"image/webp"}, {}},
 
+	// NIE not mentioned as it is practically a Wuffs internal format.
 	{"Wuffs", &load_wuffs,
 		N_("BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, "
 		   "WebP (subset)"),
@@ -1606,8 +1607,9 @@ constexpr Loader kLoaders[] = {
 		{"image/openraster", "application/x-krita"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF/EP previews", &load_tiff_ep, N_("raw photos"),
-		{"image/x-dcraw"}, {}},
+	// XXX: The name should be translated, though it is an exception.
+	{"TIFF/EP previews", &load_tiff_ep, N_("raw photos"), {"image/x-dcraw"},
+		{}},
 
 	{"LibRaw",
 #if DAWN_WITH_LIBRAW

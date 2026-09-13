@@ -7,7 +7,7 @@
 
 #include <dawn-config.h>
 
-#include "libdn/libdn-loaders.h"
+#include "libdn/libdn-loaders.hpp"
 #include "libdn/libdn.hpp"
 #include "test.hpp"
 

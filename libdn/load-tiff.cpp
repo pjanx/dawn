@@ -15,7 +15,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <tiff.h>
@@ -363,8 +363,7 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 }
 
 ImagePtr
-load_tiff(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_tiff(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// libtiff error handlers are process-global; serialize installs.
 	static mutex tiff_handler_mutex;

@@ -545,7 +545,7 @@ static constexpr ModeDef kModes[] = {
 	// translate the word.
 	{"view", N_("Dawn"), kViewerMenu, kViewerKeys},
 	{"browse", N_("Dawn"), kBrowserMenu, kBrowserKeys},
-	{"cropjpeg", N_("Dawn JPEG Cropper"), kCropJpegMenu, {}},
+	{"cropjpeg", N_("Dawn Lassless JPEG Cropper"), kCropJpegMenu, {}},
 	{"commander", N_("Dawn Commander"), kCommanderMenu, {}},
 };
 static_assert(size(kModes) == size_t(Mode::Count));

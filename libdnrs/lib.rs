@@ -1,5 +1,5 @@
 //
-// libdnrs: image-rs and other decoders exposed through a small C ABI
+// lib.rs: image-rs and other Rust image decoders exposed through a small C ABI
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0

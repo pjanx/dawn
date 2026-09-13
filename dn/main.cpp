@@ -32,6 +32,7 @@
 #include <QGuiApplication>
 #include <QLibraryInfo>
 #include <QLocale>
+#include <QStringList>
 #include <QTranslator>
 #include <QUrl>
 #include <QtLogging>
@@ -186,8 +187,14 @@ main(int argc, char **argv)
 		QString::fromUtf8(_("Remove invalid wide thumbnails and exit.")));
 	parser.addOption(invalidate_opt);
 
+	// These are stable command-line spellings, so they are never translated.
+	QStringList mode_names;
+	for (const dn::ModeDef &mode : dn::modes())
+		mode_names += QLatin1String(mode.name);
+
 	const QCommandLineOption mode_opt(QStringLiteral("mode"),
-		QString::fromUtf8(_("Application: view, browse, cropjpeg, commander.")),
+		// TRANSLATORS: %1 is a comma-separated list of mode names.
+		QString::fromUtf8(_("Application: %1.")).arg(mode_names.join(u", ")),
 		QStringLiteral("mode"));
 	parser.addOption(mode_opt);
 
@@ -272,7 +279,7 @@ main(int argc, char **argv)
 				try_remote_open(session, to_open, mode, reported_mismatch))
 			return *code;
 
-		// XXX: It might make more sense to do always do this.
+		// XXX: It might make more sense to always do this.
 		auto listen =
 			dawn::ipc::Endpoint::listen(dawn::ipc::instance::kService);
 		if (listen.status == dawn::ipc::Endpoint::ListenStatus::InUse) {

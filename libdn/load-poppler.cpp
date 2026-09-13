@@ -10,7 +10,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <poppler-document.h>
@@ -146,8 +146,7 @@ PopplerRenderClosure::render_internal(
 }
 
 ImagePtr
-load_poppler(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_poppler(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (!poppler::page_renderer::can_render()) {
 		set_error(error, _("Poppler has been built without Splash"));

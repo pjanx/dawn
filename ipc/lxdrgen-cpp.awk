@@ -64,7 +64,7 @@ function view_array_type(type) {
 }
 
 function array_encode(f, type,    ser) {
-	ser = "\tencoder.u32(static_cast<uint32_t>(" f ".size()));\n"
+	ser = "\tencoder.u32(uint32_t(" f ".size()));\n"
 	if (type == "u8")
 		return ser "\tencoder.bytes(" f ");\n"
 	if (type == "i8")
@@ -217,7 +217,7 @@ function emit_enum(name, cg,    fields) {
 	print "inline void encode(const " name \
 		" &value, dawn::ipc::Encoder &encoder)"
 	print "{"
-	print "\tencoder.i8(static_cast<int8_t>(value));"
+	print "\tencoder.i8(int8_t(value));"
 	print "}"
 
 	print ""

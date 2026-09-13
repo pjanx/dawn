@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <cairo.h>
@@ -136,8 +136,7 @@ LibrsvgRenderClosure::render_internal(
 }
 
 ImagePtr
-load_librsvg(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	GFile *base_file = g_file_new_for_uri(ctx.uri.c_str());
 	GInputStream *is = g_memory_input_stream_new_from_data(

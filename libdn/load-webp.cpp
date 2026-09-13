@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <webp/decode.h>
@@ -218,8 +218,7 @@ load_webp_metadata(Image &image, const WebPData &wd, const OpenContext &ctx)
 }
 
 ImagePtr
-load_webp(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_webp(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 12 || memcmp(data.data(), "RIFF", 4) ||
 		memcmp(data.data() + 8, "WEBP", 4))

@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <resvg.h>
@@ -122,8 +122,7 @@ ResvgRenderClosure::render_internal(
 }
 
 ImagePtr
-load_resvg(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	resvg_options *opt = resvg_options_create();
 	resvg_options_load_system_fonts(opt);

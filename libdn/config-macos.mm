@@ -46,7 +46,7 @@ to_utf8(CFStringRef value, Error *error)
 	const CFIndex length = CFStringGetLength(value);
 	const CFIndex maximum =
 		CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
-	vector<char> bytes(static_cast<size_t>(maximum));
+	vector<char> bytes((size_t)maximum);
 	if (!CFStringGetCString(
 			value, bytes.data(), maximum, kCFStringEncodingUTF8)) {
 		fail(error, _("cannot convert configuration string to UTF-8"));

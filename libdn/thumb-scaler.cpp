@@ -59,7 +59,7 @@ reduced_dim(uint32_t n, uint32_t k)
 static bool
 higher(ThumbScaler::Priority a, ThumbScaler::Priority b)
 {
-	return static_cast<uint8_t>(a) < static_cast<uint8_t>(b);
+	return uint8_t(a) < uint8_t(b);
 }
 
 static bool
@@ -68,8 +68,7 @@ check_vk(VkResult r, const char *what, string *error)
 	if (r == VK_SUCCESS)
 		return true;
 	if (error)
-		*error = string(what) + " failed: VkResult " +
-			to_string(static_cast<int>(r));
+		*error = string(what) + " failed: VkResult " + to_string(int(r));
 	return false;
 }
 

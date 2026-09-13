@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #if DAWN_WITH_LIBJXL
@@ -301,8 +301,7 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 // --- Public entry point ------------------------------------------------------
 
 ImagePtr
-load_jxl(
-	span<const uint8_t> data, const OpenContext &octx, Error *error)
+load_jxl(span<const uint8_t> data, const OpenContext &octx, Error *error)
 {
 	JxlLoadContext ctx;
 	ctx.octx = &octx;

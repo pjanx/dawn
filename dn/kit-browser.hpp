@@ -127,7 +127,7 @@ struct Browser : Widget {
 	std::shared_ptr<dawn::Profile> screen_profile_;
 	std::shared_ptr<const std::vector<uint8_t>> screen_icc_;
 
-	bool show_names_ = false;
+	bool show_names_ = true;
 	// The toolbar search field, whose text narrows the listing; it is
 	// deliberately per-window, and not part of BrowseSetup.
 	Entry *search_ = nullptr;

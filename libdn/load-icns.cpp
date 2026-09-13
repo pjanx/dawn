@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <algorithm>
@@ -484,8 +484,7 @@ decode_entry(const Entry &entry, const vector<Entry> &entries,
 }
 
 ImagePtr
-load_icns(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_icns(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 8 || memcmp(data.data(), "icns", 4)) {
 		set_error(error, _("not an ICNS image"));

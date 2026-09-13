@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 // jxrlib's headers only parse as C++ in their ANSI configuration.
@@ -269,8 +269,7 @@ decode_image(JxrLoadContext &ctx, const OpenContext &octx, Error *error)
 // --- Public entry point ------------------------------------------------------
 
 ImagePtr
-load_jxr(
-	span<const uint8_t> data, const OpenContext &octx, Error *error)
+load_jxr(span<const uint8_t> data, const OpenContext &octx, Error *error)
 {
 	// This sits ahead of the fallback loaders, so it needs to say no quickly.
 	// The rest of the container is jxrlib's business.

@@ -42,7 +42,7 @@ Options
 *--list-supported-extensions*::
 	Output supported media types or file extensions and exit.
 
-*-V*, *--version*::
+*-v*, *--version*::
 	Output version information and exit.
 
 Reporting bugs

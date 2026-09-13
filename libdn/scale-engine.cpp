@@ -103,8 +103,7 @@ check_vk(VkResult r, const char *what, string *error)
 {
 	if (r != VK_SUCCESS) {
 		if (error)
-			*error = string(what) + " failed: VkResult " +
-				to_string(static_cast<int>(r));
+			*error = string(what) + " failed: VkResult " + to_string(int(r));
 		return false;
 	}
 	return true;

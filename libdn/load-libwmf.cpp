@@ -6,7 +6,7 @@
 //
 
 #include "gettext.hpp"
-#include "libdn-loaders.h"
+#include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
 #include <libwmf/api.h>
@@ -185,8 +185,7 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 								 : wmf_error_string(status));
 		return nullptr;
 	}
-	return load_wuffs(
-		{(const uint8_t *) device->memory, length}, ctx, error);
+	return load_wuffs({(const uint8_t *) device->memory, length}, ctx, error);
 }
 
 ImagePtr
@@ -216,8 +215,7 @@ WmfRenderClosure::render_internal(
 }
 
 ImagePtr
-load_libwmf(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_libwmf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	vector<uint8_t> owned(data.begin(), data.end());
 	uint32_t width = 0, height = 0;
