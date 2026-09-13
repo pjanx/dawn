@@ -1430,14 +1430,7 @@ set_scale_to_fit(Viewer &v, bool enabled)
 	request_render(v);
 }
 
-enum class SnapDir : uint8_t { Left, Right, Mirror };
-
-static dawn::Orientation
-orientation_flip_v(dawn::Orientation orientation)
-{
-	return orientation_mirror(
-		orientation_rotate_left(orientation_rotate_left(orientation)));
-}
+enum class SnapDir : uint8_t { Left, Right, Nearest };
 
 static void
 set_orientation(Viewer &v, dawn::Orientation next)
@@ -1468,28 +1461,44 @@ set_orientation(Viewer &v, dawn::Orientation next)
 	request_render(v);
 }
 
+// The orientation turns the image the same way the free angle does, so the
+// two just add up, and a snap moves to the next multiple of 90° in the given
+// direction, counting the lean in (180°+1° + > → 270°).  A hair of lean on
+// the key's own side is rounding noise, not a step (1° left + < → 0).
 static void
 snap_view(Viewer &v, SnapDir dir)
 {
+	constexpr float kQuarter = numbers::pi_v<float> * 0.5f;
 	const float a = v.angle_;
-	if (dir == SnapDir::Mirror) {
-		const float c = cosf(a);
-		const float s = sinf(a);
-		const dawn::Orientation next = (fabs(c) >= fabs(s))
-			? orientation_mirror(v.orientation_)
-			: orientation_flip_v(v.orientation_);
-		set_orientation(v, next);
-		return;
+	int quarters = 0;
+	switch (dir) {
+	case SnapDir::Left:
+		quarters = int(ceilf((a - kAngleFast) / kQuarter)) - 1;
+		break;
+	case SnapDir::Right:
+		quarters = int(floorf((a + kAngleFast) / kQuarter)) + 1;
+		break;
+	case SnapDir::Nearest:
+		quarters = int(lroundf(a / kQuarter));
 	}
-	// Leftover on this key's side: drop it (1° left + < → 0).
-	// Otherwise take the 90° step (180°+1° + > → 270°).
-	if (dir == SnapDir::Left) {
-		if (a <= kAngleFast)
-			set_orientation(v, orientation_rotate_left(v.orientation_));
-	} else if (a >= -kAngleFast)
-		set_orientation(v, orientation_rotate_right(v.orientation_));
+
+	dawn::Orientation next = v.orientation_;
+	for (; quarters > 0; quarters--)
+		next = orientation_rotate_right(next);
+	for (; quarters < 0; quarters++)
+		next = orientation_rotate_left(next);
 	v.angle_ = 0;
+	set_orientation(v, next);
 	request_render(v);
+}
+
+// Mirroring flips what is on the screen around the vertical axis through the
+// middle of the well: the display frame mirrors, and the lean goes with it.
+static void
+mirror_view(Viewer &v)
+{
+	v.angle_ = -v.angle_;
+	set_orientation(v, orientation_mirror(v.orientation_));
 }
 
 // A locked view has no free angle, so a drag turns it in quarter steps,
@@ -1696,7 +1705,7 @@ apply_action(Viewer &v, Action action)
 	case Action::Lock:
 		v.view_locked_ = !v.view_locked_;
 		if (v.view_locked_)
-			v.angle_ = 0;
+			snap_view(v, SnapDir::Nearest);
 		else
 			set_scale_to_fit(v, false);
 		request_render(v);
@@ -1729,7 +1738,7 @@ apply_action(Viewer &v, Action action)
 		snap_view(v, SnapDir::Left);
 		return true;
 	case Action::Mirror:
-		snap_view(v, SnapDir::Mirror);
+		mirror_view(v);
 		return true;
 	case Action::RotateRight:
 		snap_view(v, SnapDir::Right);
