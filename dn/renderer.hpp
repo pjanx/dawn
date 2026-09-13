@@ -148,12 +148,13 @@ class Renderer
 	std::vector<VkImage> images_;
 	std::vector<VkImageView> views_;
 	std::vector<VkFramebuffer> framebuffers_;
+	// Presentation consumes these, so they must not be shared between images.
+	std::vector<VkSemaphore> render_finished_;
 
 	VkCommandPool cmd_pool_ = VK_NULL_HANDLE;
 	VkCommandBuffer cmd_ = VK_NULL_HANDLE;
 	VkFence fence_ = VK_NULL_HANDLE;
 	VkSemaphore image_available_ = VK_NULL_HANDLE;
-	VkSemaphore render_finished_ = VK_NULL_HANDLE;
 
 	dawn::ScaleEngine engine_;
 	OverlayVulkan overlay_;

@@ -230,8 +230,6 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	};
 	CALL_VK(CreateSemaphore, " image_available", this->device_, &semaphore_info,
 		nullptr, &this->image_available_);
-	CALL_VK(CreateSemaphore, " render_finished", this->device_, &semaphore_info,
-		nullptr, &this->render_finished_);
 
 	this->want_extent_ = {pixel.width, pixel.height};
 	create_swapchain();
@@ -259,6 +257,11 @@ Renderer::destroy_swapchain()
 		vkDestroySwapchainKHR(this->device_, this->swapchain_, nullptr);
 		this->swapchain_ = VK_NULL_HANDLE;
 	}
+	// Presentation only lets go of these once its swapchain is gone.
+	for (VkSemaphore semaphore : this->render_finished_)
+		if (semaphore)
+			vkDestroySemaphore(this->device_, semaphore, nullptr);
+	this->render_finished_.clear();
 }
 
 void
@@ -269,8 +272,6 @@ Renderer::destroy()
 		this->overlay_.destroy();
 		destroy_swapchain();
 		this->engine_.destroy();
-		if (this->render_finished_)
-			vkDestroySemaphore(this->device_, this->render_finished_, nullptr);
 		if (this->image_available_)
 			vkDestroySemaphore(this->device_, this->image_available_, nullptr);
 		if (this->fence_)
@@ -286,7 +287,6 @@ Renderer::destroy()
 	this->cmd_ = VK_NULL_HANDLE;
 	this->fence_ = VK_NULL_HANDLE;
 	this->image_available_ = VK_NULL_HANDLE;
-	this->render_finished_ = VK_NULL_HANDLE;
 	this->extent_ = {};
 	this->want_extent_ = {};
 	this->overlay_format_ = VK_FORMAT_UNDEFINED;
@@ -415,7 +415,13 @@ Renderer::create_swapchain()
 		this->images_.data());
 	this->views_.resize(count);
 	this->framebuffers_.resize(count);
+	this->render_finished_.resize(count);
+	VkSemaphoreCreateInfo semaphore_info{
+		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+	};
 	for (uint32_t i = 0; i < count; i++) {
+		CALL_VK(CreateSemaphore, " render_finished", this->device_,
+			&semaphore_info, nullptr, &this->render_finished_[i]);
 		VkImageViewCreateInfo view_info{
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.image = this->images_[i],
@@ -657,13 +663,13 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.commandBufferCount = 1,
 		.pCommandBuffers = &this->cmd_,
 		.signalSemaphoreCount = 1,
-		.pSignalSemaphores = &this->render_finished_,
+		.pSignalSemaphores = &this->render_finished_[index],
 	};
 	CALL_VK(QueueSubmit, "", this->queue_, 1, &submit_info, this->fence_);
 	VkPresentInfoKHR present_info{
 		.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 		.waitSemaphoreCount = 1,
-		.pWaitSemaphores = &this->render_finished_,
+		.pWaitSemaphores = &this->render_finished_[index],
 		.swapchainCount = 1,
 		.pSwapchains = &this->swapchain_,
 		.pImageIndices = &index,
