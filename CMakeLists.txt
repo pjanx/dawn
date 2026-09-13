@@ -520,6 +520,7 @@ if (WIN32)
 	target_sources(dn PRIVATE
 		dn/display-profile-windows.cpp
 		dn/assoc-windows.cpp
+		dn/volumes-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE
 		gdi32 shell32 shlwapi ole32 advapi32 user32)
@@ -529,22 +530,26 @@ elseif (APPLE)
 	find_library(DN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
 	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
 	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
+	find_library(DN_IOKIT_FRAMEWORK IOKit REQUIRED)
 	target_sources(dn PRIVATE
 		dn/display-profile-macos.mm
 		dn/assoc-macos.mm
 		dn/app-menu-macos.mm
 		dn/window-appearance-macos.mm
+		dn/volumes-macos.mm
 	)
 	target_link_libraries(dn PRIVATE
 		"${DN_APPKIT_FRAMEWORK}"
 		"${DN_COREGRAPHICS_FRAMEWORK}"
 		"${DN_CORESERVICES_FRAMEWORK}"
-		"${DN_UNIFORMTYPES_FRAMEWORK}")
+		"${DN_UNIFORMTYPES_FRAMEWORK}"
+		"${DN_IOKIT_FRAMEWORK}")
 else()
 	pkg_check_modules(COLORD REQUIRED IMPORTED_TARGET colord)
 	target_sources(dn PRIVATE
 		dn/display-profile-linux.cpp
 		dn/assoc-unix.cpp
+		dn/volumes-unix.cpp
 	)
 	target_link_libraries(dn PRIVATE PkgConfig::COLORD)
 endif()

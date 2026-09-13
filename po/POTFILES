@@ -9,6 +9,7 @@ dn/kit-chrome.cpp
 dn/kit-cie-diagram.cpp
 dn/kit-viewer.cpp
 dn/main.cpp
+dn/volumes-unix.cpp
 dn/window.cpp
 libdn/config-macos.mm
 libdn/config-unix.cpp
