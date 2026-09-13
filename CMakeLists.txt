@@ -853,8 +853,8 @@ if (APPLE AND DAWN_WITH_WIP)
 			COMMAND "${DN_SWIFTC_EXECUTABLE}" -swift-version 5 -O
 				-target "${arch}-apple-macosx${CMAKE_OSX_DEPLOYMENT_TARGET}"
 				-sdk "${dn_launcher_sdk}" -framework AppKit
-				"${PROJECT_SOURCE_DIR}/dn/mode-launcher.swift" -o "${slice}"
-			DEPENDS "${PROJECT_SOURCE_DIR}/dn/mode-launcher.swift"
+				"${PROJECT_SOURCE_DIR}/dn/launcher.swift" -o "${slice}"
+			DEPENDS "${PROJECT_SOURCE_DIR}/dn/launcher.swift"
 			VERBATIM)
 		list(APPEND dn_launcher_slices "${slice}")
 	endforeach()
@@ -882,7 +882,7 @@ if (APPLE AND DAWN_WITH_WIP)
 		set(bundle "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${DN_LAUNCH_NAME}.app")
 		file(MAKE_DIRECTORY
 			"${bundle}/Contents/MacOS" "${bundle}/Contents/Resources")
-		configure_file("${PROJECT_SOURCE_DIR}/dn/Launcher-Info.plist.in"
+		configure_file("${PROJECT_SOURCE_DIR}/dn/launcher.Info.plist.in"
 			"${bundle}/Contents/Info.plist" @ONLY)
 		add_custom_command(OUTPUT "${bundle}/Contents/MacOS/dn-launcher"
 				"${bundle}/Contents/Resources/dn.icns"
