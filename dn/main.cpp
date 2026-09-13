@@ -272,6 +272,7 @@ main(int argc, char **argv)
 				try_remote_open(session, to_open, mode, reported_mismatch))
 			return *code;
 
+		// XXX: It might make more sense to do always do this.
 		auto listen =
 			dawn::ipc::Endpoint::listen(dawn::ipc::instance::kService);
 		if (listen.status == dawn::ipc::Endpoint::ListenStatus::InUse) {

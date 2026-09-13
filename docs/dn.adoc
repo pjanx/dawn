@@ -31,6 +31,9 @@ Options
 	the "Open Containing Folder" feature of certain applications.
 	JPEG Cropper and Commander are unimplemented.
 
+*--new-instance*::
+	Start an independent isolated process.
+
 *--invalidate-cache*::
 	Invalidate the wide thumbnail cache, removing thumbnails for files that can
 	no longer be found.
