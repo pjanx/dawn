@@ -11,7 +11,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <poppler-document.h>
 #include <poppler-page-renderer.h>
@@ -146,7 +146,7 @@ PopplerRenderClosure::render_internal(
 }
 
 ImagePtr
-detail::load_poppler(
+load_poppler(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (!poppler::page_renderer::can_render()) {

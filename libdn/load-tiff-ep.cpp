@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #define TIFF_TABLES_CONSTANTS_ONLY
 #include "tiff-tables.h"
@@ -33,7 +33,7 @@ namespace dawn
 static int64_t
 jpeg_pixel_count(const uint8_t *data, size_t len)
 {
-	return detail::jpeg_sof_pixel_count(span<const uint8_t>(data, len));
+	return jpeg_sof_pixel_count(span<const uint8_t>(data, len));
 }
 
 // --- TIFF/EP + DNG -----------------------------------------------------------
@@ -250,7 +250,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = detail::load_jpeg(
+	ImagePtr image = load_jpeg(
 		span<const uint8_t>(out.jpeg, out.jpeg_length), ctx, error);
 	if (!image)
 		return nullptr;
@@ -269,7 +269,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 }
 
 ImagePtr
-detail::load_tiff_ep(
+load_tiff_ep(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	tiffer T = {};

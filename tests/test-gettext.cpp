@@ -7,7 +7,7 @@
 
 #include <dawn-gettext.h>
 
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 #include "test.hpp"
 
 #include <clocale>

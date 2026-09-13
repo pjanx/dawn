@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <libwmf/api.h>
 #include <libwmf/gd.h>
@@ -186,7 +186,7 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 								 : wmf_error_string(status));
 		return nullptr;
 	}
-	return detail::load_wuffs(
+	return load_wuffs(
 		{(const uint8_t *) device->memory, length}, ctx, error);
 }
 
@@ -217,7 +217,7 @@ WmfRenderClosure::render_internal(
 }
 
 ImagePtr
-detail::load_libwmf(
+load_libwmf(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	vector<uint8_t> owned(data.begin(), data.end());

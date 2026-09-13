@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 #include "libdn/libdnvk.h"
 
 #include <getopt.h>

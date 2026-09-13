@@ -9,7 +9,7 @@
 
 #include <libdn/ipc-rpc.hpp>
 #include <libdn/ipc-shm.hpp>
-#include <libdn/libdn.h>
+#include <libdn/libdn.hpp>
 
 #include "ipc/thumbd.lxdr.hpp"
 #include "png-io.hpp"

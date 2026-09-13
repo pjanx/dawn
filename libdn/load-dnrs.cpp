@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <libdnrs.h>
 
@@ -184,7 +184,7 @@ copy_blob(vector<uint8_t> &out, dnrs_blob blob)
 }  // namespace
 
 vector<string>
-detail::dnrs_media_types()
+dnrs_media_types()
 {
 	size_t length = 0;
 	const char *const *types = dnrs_mime_types(&length);
@@ -197,7 +197,7 @@ detail::dnrs_media_types()
 }
 
 ImagePtr
-detail::load_dnrs(
+load_dnrs(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	dnrs_error *raw_error = nullptr;

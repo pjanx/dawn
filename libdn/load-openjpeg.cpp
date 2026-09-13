@@ -9,7 +9,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #if DAWN_WITH_OPENJPEG
 #include <openjpeg.h>
@@ -405,7 +405,7 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 // --- Public entry point ------------------------------------------------------
 
 ImagePtr
-detail::load_openjpeg(
+load_openjpeg(
 	span<const uint8_t> data, const OpenContext &octx, Error *error)
 {
 	OPJ_CODEC_FORMAT format = detect_codec(data);

@@ -1,5 +1,5 @@
 //
-// libdn.h: image loading and colour management
+// libdn.hpp: image loading and colour management
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -86,28 +86,27 @@ struct Error {
 std::optional<std::string> config_get(std::string_view key, Error *error);
 bool config_set(std::string_view key, std::string_view value, Error *error);
 
-// TODO(p): Why in Hell is this called detail, and what should it be called?
-namespace detail
+namespace ini
 {
 
-struct IniGroup {
+struct Group {
 	std::string name;
 	std::vector<std::pair<std::string, std::string>> keys;
 };
 
-struct IniFile {
+struct File {
 	std::vector<std::string> preamble;
-	std::vector<IniGroup> groups;
+	std::vector<Group> groups;
 };
 
-IniFile ini_parse(std::string_view text);
-std::string ini_serialize(const IniFile &ini);
-std::string ini_get(const IniGroup &group, std::string_view key);
-void ini_set(IniGroup &group, std::string_view key, std::string_view value);
+File parse(std::string_view text);
+std::string serialize(const File &ini);
+std::string get(const Group &group, std::string_view key);
+void set(Group &group, std::string_view key, std::string_view value);
 std::string desktop_unescape(std::string_view value);
 std::string desktop_escape(std::string_view value);
 
-}  // namespace detail
+}  // namespace ini
 
 class Cmm;
 class Profile;
@@ -319,6 +318,8 @@ public:
 	void *context() { return context_; }
 };
 
+// --- Opening -----------------------------------------------------------------
+
 struct OpenContext {
 	std::string uri;
 	std::shared_ptr<Cmm> cmm;
@@ -337,17 +338,14 @@ ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
-namespace detail
-{
 using LoadFn = ImagePtr(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
-}
 
 /// One image loader.  Loaders this build was configured without keep their
 /// place, with a null `load`.
 struct Loader {
 	const char *name;  ///< As Image::loader names it.
-	detail::LoadFn *load;
+	LoadFn *load;
 	const char *formats;  ///< Human-readable, comma-separated; may be null.
 	std::initializer_list<const char *> media_types;
 	std::vector<std::string> (*dynamic_types)();

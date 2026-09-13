@@ -11,7 +11,7 @@
 
 #include "action.hpp"
 #include "kit-chrome.hpp"
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 #include "libdn/thumb-scaler.hpp"
 #include "renderer.hpp"
 #include "thumbnail-cache.hpp"

@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "libdn/libdn-loaders.h"
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 #include "test.hpp"
 
 #include <cmath>
@@ -243,7 +243,7 @@ test_jpeg_fatal_error()
 		ctx.enhance = enhance;
 		ctx.first_frame_only = true;
 		dawn::Error error;
-		dawn::ImagePtr img = dawn::detail::load_jpeg(bytes, ctx, &error);
+		dawn::ImagePtr img = dawn::load_jpeg(bytes, ctx, &error);
 		CHECK(img == nullptr);
 		CHECK(error);
 		CHECK(!error.message.empty());
@@ -358,7 +358,7 @@ test_large_icc_and_p3_red()
 	context.screen_profile = target;
 	context.first_frame_only = true;
 	dawn::Error error;
-	dawn::ImagePtr image = dawn::detail::load_wuffs(bytes, context, &error);
+	dawn::ImagePtr image = dawn::load_wuffs(bytes, context, &error);
 	if (!image) {
 		test::fail("Wuffs P3 fixture: %s", error.message.c_str());
 		return;
@@ -501,7 +501,7 @@ test_chromaticities()
 		ctx.cmm = cmm;
 		ctx.first_frame_only = true;
 		dawn::Error error;
-		dawn::ImagePtr img = dawn::detail::load_wuffs(bytes, ctx, &error);
+		dawn::ImagePtr img = dawn::load_wuffs(bytes, ctx, &error);
 		if (img && img->effective_profile) {
 			CHECK(!img->profile_assumed);
 			dawn::Chromaticities p =

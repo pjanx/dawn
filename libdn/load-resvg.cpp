@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <resvg.h>
 
@@ -123,7 +123,7 @@ ResvgRenderClosure::render_internal(
 }
 
 ImagePtr
-detail::load_resvg(
+load_resvg(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	resvg_options *opt = resvg_options_create();

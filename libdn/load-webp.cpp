@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <webp/decode.h>
 #include <webp/demux.h>
@@ -219,7 +219,7 @@ load_webp_metadata(Image &image, const WebPData &wd, const OpenContext &ctx)
 }
 
 ImagePtr
-detail::load_webp(
+load_webp(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 12 || memcmp(data.data(), "RIFF", 4) ||

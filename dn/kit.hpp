@@ -10,7 +10,7 @@
 #include "action.hpp"
 #include "overlay.hpp"
 
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 
 #include <QFont>
 #include <QImage>

@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 
 #include "libdn/libdn-loaders.h"
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 #include "test.hpp"
 
 #include <algorithm>
@@ -258,7 +258,7 @@ test_jpeg2000_gold()
 	ctx.warnings = &warnings;
 	dawn::Error error;
 	dawn::ImagePtr image =
-		dawn::detail::load_icns(bytes(kJpeg2000Gold), ctx, &error);
+		dawn::load_icns(bytes(kJpeg2000Gold), ctx, &error);
 #if DAWN_WITH_OPENJPEG
 	CHECK(image != nullptr);
 	if (image)
@@ -286,7 +286,7 @@ test_truncated_tail()
 	vector<string> warnings;
 	ctx.warnings = &warnings;
 	dawn::Error error;
-	dawn::ImagePtr image = dawn::detail::load_icns(data, ctx, &error);
+	dawn::ImagePtr image = dawn::load_icns(data, ctx, &error);
 	CHECK(image != nullptr);
 	CHECK(!warnings.empty());
 }

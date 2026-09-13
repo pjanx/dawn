@@ -7,12 +7,11 @@
 
 #pragma once
 
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <chrono>
 
-// TODO(p): Why in Hell is this called detail, and what should it be called?
-namespace dawn::detail
+namespace dawn
 {
 
 inline thread_local OpenTiming *open_timing = nullptr;
@@ -73,4 +72,4 @@ std::vector<std::string> imageio_media_types();
 /// no SOF is found. Does not validate the rest of the bitstream.
 int64_t jpeg_sof_pixel_count(std::span<const uint8_t> data);
 
-}  // namespace dawn::detail
+}  // namespace dawn

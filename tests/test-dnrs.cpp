@@ -6,7 +6,7 @@
 //
 
 #include "libdn/libdn-loaders.h"
-#include "libdn/libdn.h"
+#include "libdn/libdn.hpp"
 
 #include <cstdint>
 #include <span>
@@ -19,7 +19,7 @@ main()
 	dawn::OpenContext context;
 	context.first_frame_only = false;
 	dawn::Error error;
-	dawn::ImagePtr image = dawn::detail::load_dnrs(
+	dawn::ImagePtr image = dawn::load_dnrs(
 		std::span(pnm, sizeof pnm - 1), context, &error);
 	if (!image || error)
 		return 1;
@@ -47,7 +47,7 @@ main()
 		return 5;
 
 	const uint8_t pnm16[] = "P6\n1 1\n65535\n\x12\x34\x56\x78\x9a\xbc";
-	image = dawn::detail::load_dnrs(
+	image = dawn::load_dnrs(
 		std::span(pnm16, sizeof pnm16 - 1), context, &error);
 	if (!image || error)
 		return 6;
@@ -58,7 +58,7 @@ main()
 
 	const uint8_t junk[] = "not an image";
 	error = {};
-	image = dawn::detail::load_dnrs(
+	image = dawn::load_dnrs(
 		std::span(junk, sizeof junk - 1), context, &error);
 	if (image || !error)
 		return 8;

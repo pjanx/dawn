@@ -9,7 +9,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <lcms2.h>
 #if DAWN_WITH_LCMS2_FAST_FLOAT
@@ -47,14 +47,14 @@ using namespace std;
 namespace dawn
 {
 
-detail::StageClock::StageClock(double OpenTiming::*field)
-	: acc(detail::open_timing ? &(detail::open_timing->*field) : nullptr)
+StageClock::StageClock(double OpenTiming::*field)
+	: acc(open_timing ? &(open_timing->*field) : nullptr)
 {
 	if (acc)
 		t0 = chrono::steady_clock::now();
 }
 
-detail::StageClock::~StageClock()
+StageClock::~StageClock()
 {
 	if (acc) {
 		*acc +=
@@ -234,7 +234,7 @@ image_new(uint32_t width, uint32_t height)
 
 	auto image = make_shared<Image>();
 	try {
-		detail::StageClock clk(&OpenTiming::alloc_ms);
+		StageClock clk(&OpenTiming::alloc_ms);
 		image->data.assign(size_t(stride) * height, 0);
 	} catch (const bad_alloc &) {
 		return nullptr;
@@ -301,7 +301,7 @@ cmm_or_default(const OpenContext &ctx)
 void
 widen_bgra8_to_bgra16(Image &dst, const uint8_t *src, size_t src_stride)
 {
-	detail::StageClock clk(&OpenTiming::widen_ms);
+	StageClock clk(&OpenTiming::widen_ms);
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
 		const uint8_t *s = src + y * src_stride;
@@ -1166,7 +1166,7 @@ Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 	if (!source || !target)
 		return false;
 
-	detail::StageClock clk(&OpenTiming::cms_ms);
+	StageClock clk(&OpenTiming::cms_ms);
 	cmsUInt32Number src_fmt = source_premul ? kTypeBgra16Premul : kTypeBgra16;
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
@@ -1187,7 +1187,7 @@ Cmm::transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst, uint32_t width,
 	if (!src || !dst || !source || !target)
 		return false;
 
-	detail::StageClock clk(&OpenTiming::cms_ms);
+	StageClock clk(&OpenTiming::cms_ms);
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
 	return transform_tiled(cmsContext(context_), cmsHPROFILE(source->profile_),
@@ -1202,7 +1202,7 @@ Cmm::convert_cmyk8(
 	const uint32_t n = dst.width * dst.height;
 	assert(dst.data.size() >= size_t(n) * kBytesPerPixel);
 	if (source && target) {
-		detail::StageClock clk(&OpenTiming::cms_ms);
+		StageClock clk(&OpenTiming::cms_ms);
 		// CMYK has no extra/alpha. TYPE_*_PREMUL would see A=0 and zero RGB
 		// (same trap as kTransformFlags on the RGB path). Straight BGRA, then
 		// force opaque — premul is then a no-op.
@@ -1603,11 +1603,11 @@ constexpr Loader kLoaders[] = {
 	// TRANSLATORS: What a loader reads, as the settings dialog lists it.
 	// These are format names throughout, bar the odd word such as "raw
 	// photos" or "(subset)"; leave the names as they are.
-	{"libjpeg-turbo", &detail::load_jpeg, N_("JPEG"), {"image/jpeg"}, {}},
+	{"libjpeg-turbo", &load_jpeg, N_("JPEG"), {"image/jpeg"}, {}},
 
-	{"libwebp", &detail::load_webp, N_("WebP"), {"image/webp"}, {}},
+	{"libwebp", &load_webp, N_("WebP"), {"image/webp"}, {}},
 
-	{"Wuffs", &detail::load_wuffs,
+	{"Wuffs", &load_wuffs,
 		N_("BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, "
 		   "WebP (subset)"),
 		{
@@ -1623,31 +1623,31 @@ constexpr Loader kLoaders[] = {
 			"image/x-tga",
 		}},
 
-	{"ICNS", &detail::load_icns, N_("ICNS"), {"image/x-icns"}, {}},
+	{"ICNS", &load_icns, N_("ICNS"), {"image/x-icns"}, {}},
 
-	{"Photoshop", &detail::load_psd, N_("PSD/PSB (subset)"),
+	{"Photoshop", &load_psd, N_("PSD/PSB (subset)"),
 		{"image/vnd.adobe.photoshop"}, {}},
 
-	{"OpenRaster", &detail::load_ora, N_("OpenRaster, Krita"),
+	{"OpenRaster", &load_ora, N_("OpenRaster, Krita"),
 		{"image/openraster", "application/x-krita"}, {}},
 
 	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	{"TIFF/EP previews", &detail::load_tiff_ep, N_("raw photos"),
+	{"TIFF/EP previews", &load_tiff_ep, N_("raw photos"),
 		{"image/x-dcraw"}, {}},
 
 	{"LibRaw",
 #if DAWN_WITH_LIBRAW
-		&detail::load_libraw,
+		&load_libraw,
 #else
 		{},
 #endif
 		N_("raw photos"), {"image/x-dcraw"}, {}},
 
-	{"resvg", &detail::load_resvg, N_("SVG"), {"image/svg+xml"}, {}},
+	{"resvg", &load_resvg, N_("SVG"), {"image/svg+xml"}, {}},
 
 	{"librsvg",
 #if DAWN_WITH_LIBRSVG
-		&detail::load_librsvg,
+		&load_librsvg,
 #else
 		{},
 #endif
@@ -1655,7 +1655,7 @@ constexpr Loader kLoaders[] = {
 
 	{"libXcursor",
 #if DAWN_WITH_XCURSOR
-		&detail::load_xcursor,
+		&load_xcursor,
 #else
 		{},
 #endif
@@ -1665,7 +1665,7 @@ constexpr Loader kLoaders[] = {
 	// not rely on libheif rejecting an unknown ftyp brand.
 	{"libjxl",
 #if DAWN_WITH_LIBJXL
-		&detail::load_jxl,
+		&load_jxl,
 #else
 		{},
 #endif
@@ -1673,7 +1673,7 @@ constexpr Loader kLoaders[] = {
 
 	{"libheif",
 #if DAWN_WITH_LIBHEIF
-		&detail::load_heif,
+		&load_heif,
 #else
 		{},
 #endif
@@ -1687,7 +1687,7 @@ constexpr Loader kLoaders[] = {
 
 	{"OpenJPEG",
 #if DAWN_WITH_OPENJPEG
-		&detail::load_openjpeg,
+		&load_openjpeg,
 #else
 		{},
 #endif
@@ -1699,7 +1699,7 @@ constexpr Loader kLoaders[] = {
 	// LibTIFF must be after LibRaw, or it will pick up thumbnails.
 	{"LibTIFF",
 #if DAWN_WITH_LIBTIFF
-		&detail::load_tiff,
+		&load_tiff,
 #else
 		{},
 #endif
@@ -1707,7 +1707,7 @@ constexpr Loader kLoaders[] = {
 
 	{"jxrlib",
 #if DAWN_WITH_JXRLIB
-		&detail::load_jxr,
+		&load_jxr,
 #else
 		{},
 #endif
@@ -1715,7 +1715,7 @@ constexpr Loader kLoaders[] = {
 
 	{"libwmf",
 #if DAWN_WITH_LIBWMF
-		&detail::load_libwmf,
+		&load_libwmf,
 #else
 		{},
 #endif
@@ -1723,10 +1723,10 @@ constexpr Loader kLoaders[] = {
 
 	{"Rust",
 #if DAWN_WITH_DNRS
-		&detail::load_dnrs,
+		&load_dnrs,
 		N_("BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, "
 		   "Radiance HDR, TARGA, TIFF, WebP, XBM, XPM, ..."),
-		{}, &detail::dnrs_media_types},
+		{}, &dnrs_media_types},
 #else
 		{}, {}, {}, {}},
 #endif
@@ -1750,7 +1750,7 @@ constexpr Loader kLoaders[] = {
 
 	{"Poppler",
 #if DAWN_WITH_POPPLER
-		&detail::load_poppler,
+		&load_poppler,
 #else
 		{},
 #endif
@@ -1816,7 +1816,7 @@ try_loader(ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *),
 ImagePtr
 open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	detail::OpenTimingGuard timing(ctx.timing);
+	OpenTimingGuard timing(ctx.timing);
 	if (data.empty()) {
 		set_error(error, _("empty input"));
 		return nullptr;
@@ -1872,14 +1872,14 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 ImagePtr
 open(const OpenContext &ctx, Error *error)
 {
-	detail::OpenTimingGuard timing(ctx.timing);
+	OpenTimingGuard timing(ctx.timing);
 	if (ctx.uri.empty()) {
 		set_error(error, _("empty URI"));
 		return nullptr;
 	}
 	vector<uint8_t> data;
 	{
-		detail::StageClock clk(&OpenTiming::file_ms);
+		StageClock clk(&OpenTiming::file_ms);
 		if (!read_file(uri_to_path(ctx.uri), &data, error))
 			return nullptr;
 	}

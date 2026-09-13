@@ -11,7 +11,7 @@
 #include "overlay.hpp"
 #include "types.hpp"
 
-#include <libdn/libdn.h>
+#include <libdn/libdn.hpp>
 #include <libdn/libdnvk.h>
 
 #include <vulkan/vulkan.h>

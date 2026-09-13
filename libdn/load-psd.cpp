@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <cstdint>
 #include <cstring>
@@ -352,7 +352,7 @@ merged_transparency(Reader r, const Header &h)
 // --- Entry point -------------------------------------------------------------
 
 ImagePtr
-detail::load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	Reader r{data};
 	const uint8_t *signature = take(r, 4);

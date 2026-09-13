@@ -8,7 +8,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -252,13 +252,13 @@ read_entry(
 	} catch (const bad_alloc &) {
 		return false;
 	}
-	return detail::inflate_raw(body, *out);
+	return inflate_raw(body, *out);
 }
 
 // --- Public entry point ------------------------------------------------------
 
 ImagePtr
-detail::load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 4 || le32(data.data()) != kSignatureLocal) {
 		set_error(error, _("not a ZIP archive"));
@@ -309,7 +309,7 @@ detail::load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		add_warning(
 			ctx, format_message(_("%s is a reduced-size preview"), found));
 
-	return detail::load_wuffs(png, ctx, error);
+	return load_wuffs(png, ctx, error);
 }
 
 }  // namespace dawn

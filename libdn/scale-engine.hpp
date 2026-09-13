@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <vulkan/vulkan.h>
 

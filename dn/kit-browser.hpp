@@ -13,7 +13,7 @@
 #include "thumbnailer.hpp"
 #include "types.hpp"
 
-#include <libdn/libdn.h>
+#include <libdn/libdn.hpp>
 
 #include <QString>
 #include <QUrl>

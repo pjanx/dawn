@@ -9,7 +9,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -454,10 +454,10 @@ decode_entry(const Entry &entry, const vector<Entry> &entries,
 	OpenContext nested = ctx;
 	nested.first_frame_only = true;
 	if (is_png(entry.data))
-		return detail::load_wuffs(entry.data, nested, error);
+		return load_wuffs(entry.data, nested, error);
 	if (is_jpeg2000(entry.data)) {
 #if DAWN_WITH_OPENJPEG
-		return detail::load_openjpeg(entry.data, nested, error);
+		return load_openjpeg(entry.data, nested, error);
 #else
 		set_error(error, _("JPEG 2000 support is disabled"));
 		return nullptr;
@@ -484,7 +484,7 @@ decode_entry(const Entry &entry, const vector<Entry> &entries,
 }
 
 ImagePtr
-detail::load_icns(
+load_icns(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 8 || memcmp(data.data(), "icns", 4)) {

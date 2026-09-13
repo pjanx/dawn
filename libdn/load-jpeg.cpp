@@ -9,7 +9,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <jpeglib.h>
 #if DAWN_WITH_JPEG_QS
@@ -489,7 +489,7 @@ static void
 pack_jpeg_ext_to_bgra16(
 	Image &dst, const uint16_t *src, size_t src_stride, int bits, bool argb)
 {
-	detail::StageClock clk(&OpenTiming::widen_ms);
+	StageClock clk(&OpenTiming::widen_ms);
 	for (uint32_t y = 0; y < dst.height; y++) {
 		auto *d = row_u16(dst, y);
 		const uint16_t *s = assume_aligned<const uint16_t>(
@@ -610,7 +610,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	LibjpegDecoder decoder(ctx, error);
 	jpeg_decompress_struct &cinfo = decoder.cinfo;
 	{
-		detail::StageClock clk(&OpenTiming::decode_ms);
+		StageClock clk(&OpenTiming::decode_ms);
 		if (!decoder.call([&] {
 				jpeg_create_decompress(&cinfo);
 				jpeg_mem_src(&cinfo, data.data(), (unsigned long) data.size());
@@ -639,7 +639,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	}
 
 	{
-		detail::StageClock clk(&OpenTiming::decode_ms);
+		StageClock clk(&OpenTiming::decode_ms);
 		if (!decoder.call([&] { jpeg_calc_output_dimensions(&cinfo); }))
 			return nullptr;
 	}
@@ -657,14 +657,14 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 		// jpegqs / enhance only applies to the 8-bit path.
 		vector<uint16_t> samples;
 		{
-			detail::StageClock clk(&OpenTiming::alloc_ms);
+			StageClock clk(&OpenTiming::alloc_ms);
 			samples.resize(width * 4 * height);
 		}
 		if (precision == 12) {
 			vector<J12SAMPROW> lines(height);
 			for (size_t i = 0; i < height; i++)
 				lines[i] = (J12SAMPROW) (samples.data() + i * width * 4);
-			detail::StageClock clk(&OpenTiming::decode_ms);
+			StageClock clk(&OpenTiming::decode_ms);
 			if (!decoder.call(
 					[&] { load_libjpeg12_simple(&cinfo, lines.data()); }))
 				return nullptr;
@@ -672,7 +672,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 			vector<J16SAMPROW> lines(height);
 			for (size_t i = 0; i < height; i++)
 				lines[i] = (J16SAMPROW) (samples.data() + i * width * 4);
-			detail::StageClock clk(&OpenTiming::decode_ms);
+			StageClock clk(&OpenTiming::decode_ms);
 			if (!decoder.call(
 					[&] { load_libjpeg16_simple(&cinfo, lines.data()); }))
 				return nullptr;
@@ -684,7 +684,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	{
 		vector<uint8_t> pixels;
 		{
-			detail::StageClock clk(&OpenTiming::alloc_ms);
+			StageClock clk(&OpenTiming::alloc_ms);
 			pixels.resize(width * 4 * height);
 		}
 		vector<JSAMPROW> lines(height);
@@ -692,7 +692,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 			lines[i] = pixels.data() + i * width * 4;
 
 		{
-			detail::StageClock clk(&OpenTiming::decode_ms);
+			StageClock clk(&OpenTiming::decode_ms);
 			if (!decoder.call([&] { loop(&cinfo, lines.data()); }))
 				return nullptr;
 		}
@@ -712,7 +712,7 @@ open_libjpeg_turbo(
 }
 
 ImagePtr
-detail::load_jpeg(
+load_jpeg(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	if (data.size() < 2 || data[0] != 0xff || data[1] != 0xd8)
@@ -721,7 +721,7 @@ detail::load_jpeg(
 }
 
 int64_t
-detail::jpeg_sof_pixel_count(span<const uint8_t> data)
+jpeg_sof_pixel_count(span<const uint8_t> data)
 {
 	// See: https://www.w3.org/Graphics/JPEG/itu-t81.pdf
 	enum {

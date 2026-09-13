@@ -9,7 +9,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #if DAWN_WITH_LIBHEIF
 #include <libheif/heif.h>
@@ -202,7 +202,7 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 }
 
 ImagePtr
-detail::load_heif(
+load_heif(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// libheif will throw C++ exceptions on allocation failures.

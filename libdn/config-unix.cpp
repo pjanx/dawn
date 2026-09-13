@@ -8,7 +8,7 @@
 #include <dawn-config.h>
 #include <dawn-gettext.h>
 
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -24,7 +24,7 @@ namespace fs = filesystem;
 
 namespace dawn
 {
-namespace detail
+namespace ini
 {
 
 string
@@ -95,11 +95,11 @@ desktop_escape(string_view value)
 	return out;
 }
 
-IniFile
-ini_parse(string_view text)
+File
+parse(string_view text)
 {
-	IniFile ini;
-	IniGroup *group = nullptr;
+	File ini;
+	Group *group = nullptr;
 	for (size_t offset = 0; offset <= text.size();) {
 		const size_t end = text.find_first_of("\r\n", offset);
 		string line(text.substr(
@@ -130,12 +130,12 @@ ini_parse(string_view text)
 }
 
 string
-ini_serialize(const IniFile &ini)
+serialize(const File &ini)
 {
 	string out;
 	for (const string &line : ini.preamble)
 		out += line + '\n';
-	for (const IniGroup &group : ini.groups) {
+	for (const Group &group : ini.groups) {
 		out += '[' + group.name + "]\n";
 		for (const auto &[key, value] : group.keys)
 			out += key + '=' + value + '\n';
@@ -144,7 +144,7 @@ ini_serialize(const IniFile &ini)
 }
 
 string
-ini_get(const IniGroup &group, string_view key)
+get(const Group &group, string_view key)
 {
 	for (const auto &[name, value] : group.keys)
 		if (name == key)
@@ -153,7 +153,7 @@ ini_get(const IniGroup &group, string_view key)
 }
 
 void
-ini_set(IniGroup &group, string_view key, string_view value)
+set(Group &group, string_view key, string_view value)
 {
 	for (auto &[name, stored] : group.keys)
 		if (name == key) {
@@ -163,10 +163,7 @@ ini_set(IniGroup &group, string_view key, string_view value)
 	group.keys.emplace_back(key, value);
 }
 
-}  // namespace detail
-
-using detail::IniFile;
-using detail::IniGroup;
+}  // namespace ini
 
 static void
 fail(Error *error, string message)
@@ -199,7 +196,7 @@ config_path(Error *error)
 	return {};
 }
 
-static optional<IniFile>
+static optional<ini::File>
 load_ini(const fs::path &path, Error *error)
 {
 	error_code ec;
@@ -209,7 +206,7 @@ load_ini(const fs::path &path, Error *error)
 				format_message(_("cannot inspect configuration file: %s"),
 					ec.message().c_str()));
 		else
-			return IniFile{};
+			return ini::File{};
 		return nullopt;
 	}
 	ifstream input(path, ios::binary);
@@ -223,7 +220,7 @@ load_ini(const fs::path &path, Error *error)
 		fail(error, _("cannot read configuration file"));
 		return nullopt;
 	}
-	return detail::ini_parse(text);
+	return ini::parse(text);
 }
 
 optional<string>
@@ -240,15 +237,15 @@ config_get(string_view key, Error *error)
 	const fs::path path = config_path(error);
 	if (path.empty())
 		return nullopt;
-	const optional<IniFile> ini = load_ini(path, error);
+	const optional<ini::File> ini = load_ini(path, error);
 	if (!ini)
 		return nullopt;
-	for (const IniGroup &group : ini->groups) {
+	for (const ini::Group &group : ini->groups) {
 		if (group.name != parts->first)
 			continue;
 		for (const auto &[name, value] : group.keys)
 			if (name == parts->second)
-				return detail::desktop_unescape(value);
+				return ini::desktop_unescape(value);
 	}
 	return nullopt;
 }
@@ -268,12 +265,12 @@ config_set(string_view key, string_view value, Error *error)
 	if (path.empty())
 		return false;
 
-	optional<IniFile> ini = load_ini(path, error);
+	optional<ini::File> ini = load_ini(path, error);
 	if (!ini)
 		return false;
 
-	IniGroup *wanted = nullptr;
-	for (IniGroup &group : ini->groups)
+	ini::Group *wanted = nullptr;
+	for (ini::Group &group : ini->groups)
 		if (group.name == parts->first) {
 			wanted = &group;
 			break;
@@ -282,7 +279,7 @@ config_set(string_view key, string_view value, Error *error)
 		ini->groups.push_back({parts->first, {}});
 		wanted = &ini->groups.back();
 	}
-	detail::ini_set(*wanted, parts->second, detail::desktop_escape(value));
+	ini::set(*wanted, parts->second, ini::desktop_escape(value));
 
 	error_code ec;
 	fs::create_directories(path.parent_path(), ec);
@@ -293,7 +290,7 @@ config_set(string_view key, string_view value, Error *error)
 		return false;
 	}
 	const fs::path temporary = path.string() + ".new";
-	const string data = detail::ini_serialize(*ini);
+	const string data = ini::serialize(*ini);
 	{
 		ofstream output(temporary, ios::binary | ios::trunc);
 		if (!output || !output.write(data.data(), streamsize(data.size())) ||

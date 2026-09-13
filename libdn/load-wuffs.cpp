@@ -30,7 +30,7 @@
 #include <dawn-gettext.h>
 
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -534,7 +534,7 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 // --- Public entry points -----------------------------------------------------
 
 bool
-detail::inflate_raw(span<const uint8_t> src, span<uint8_t> dst)
+inflate_raw(span<const uint8_t> src, span<uint8_t> dst)
 {
 	unique_ptr<wuffs_deflate__decoder, void (*)(void *)> dec(
 		wuffs_deflate__decoder__alloc(), &free);
@@ -555,7 +555,7 @@ detail::inflate_raw(span<const uint8_t> src, span<uint8_t> dst)
 }
 
 ImagePtr
-detail::load_wuffs(
+load_wuffs(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	wuffs_base__slice_u8 prefix =
