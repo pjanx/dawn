@@ -16,7 +16,7 @@ Right now, we're close to our first milestone.  Once we declare the viewer part
 done, we'll clean up after rapid development, and move on to tackling the next
 major goals.
 
-The project comes with a maintenance guarantee.
+The project comes with a maintenance guarantee--it is actively used.
 Also see link:docs/plan.adoc[Plan],
 and a detailed link:docs/rationale.adoc[Rationale].
 
