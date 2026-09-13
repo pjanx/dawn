@@ -898,6 +898,13 @@ if (APPLE AND DAWN_WITH_WIP)
 	endforeach()
 endif()
 
+# Software centres want this, and Flatpak bundles only carry an icon
+# when an AppStream component points at one.  Every platform configures it,
+# so that the validation test always has a file to look at.
+set(dawn_metainfo "${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml")
+configure_file("${dawn_packaging}/${DAWN_NAMESPACE}.metainfo.xml.in"
+	"${dawn_metainfo}" @ONLY)
+
 # --- Tests --------------------------------------------------------------------
 
 if (BUILD_TESTING)
@@ -1020,11 +1027,7 @@ else()
 			DESTINATION "${CMAKE_INSTALL_MANDIR}/man${CMAKE_MATCH_1}")
 	endforeach()
 
-	# Software centres want this, and Flatpak bundles only carry an icon
-	# when an AppStream component points at one.
-	configure_file("${dawn_packaging}/${DAWN_NAMESPACE}.metainfo.xml.in"
-		"${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml" @ONLY)
-	install(FILES "${PROJECT_BINARY_DIR}/${DAWN_NAMESPACE}.metainfo.xml"
+	install(FILES "${dawn_metainfo}"
 		DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
 endif()
 

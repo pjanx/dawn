@@ -60,7 +60,7 @@ add_custom_command(
 add_custom_target(test-fixtures DEPENDS ${DAWN_TEST_FIXTURE_FILES})
 
 add_executable(test-channels test-channels.cpp)
-if(NOT CMAKE_CROSSCOMPILING)
+if (NOT CMAKE_CROSSCOMPILING)
 	add_dependencies(test-channels test-fixtures)
 endif()
 target_link_libraries(test-channels PRIVATE libdn)
@@ -178,7 +178,7 @@ add_test(NAME shm COMMAND test-shm)
 
 # The main desktop file has its MimeType= rewritten during the build.
 find_program(DAWN_DESKTOP_FILE_VALIDATE desktop-file-validate)
-if(DAWN_DESKTOP_FILE_VALIDATE)
+if (DAWN_DESKTOP_FILE_VALIDATE)
 	foreach(desktop
 		name.janouch.Dawn.desktop
 		name.janouch.Dawn.Browse.desktop
@@ -188,4 +188,11 @@ if(DAWN_DESKTOP_FILE_VALIDATE)
 		add_test(NAME ${desktop} COMMAND "${DAWN_DESKTOP_FILE_VALIDATE}"
 			"${PROJECT_SOURCE_DIR}/packaging/${desktop}")
 	endforeach()
+endif()
+
+# The screenshot lives in the repository, and validation must not fetch it.
+find_program(DAWN_APPSTREAMCLI appstreamcli)
+if (DAWN_APPSTREAMCLI)
+	add_test(NAME metainfo COMMAND "${DAWN_APPSTREAMCLI}"
+		validate --no-net --explain "${dawn_metainfo}")
 endif()
