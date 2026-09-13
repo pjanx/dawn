@@ -40,9 +40,8 @@ final class Launcher: NSObject, NSApplicationDelegate {
 	private func launch(_ urls: [URL]) {
 		pending += 1
 		guard let mode = Bundle.main.object(
-				forInfoDictionaryKey: "DawnMode") as? String,
-			mode == "cropjpeg" || mode == "commander" else {
-			finish("The launcher has no valid application mode.", urls)
+				forInfoDictionaryKey: "DawnMode") as? String else {
+			finish("The launcher has no application mode.", urls)
 			return
 		}
 
