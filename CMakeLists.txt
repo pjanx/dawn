@@ -1038,6 +1038,24 @@ set(CPACK_GENERATOR ZIP)
 set(CPACK_PACKAGE_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CPACK_PACKAGE_FILE_NAME
 	"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+
+if (UNIX AND NOT APPLE)
+	set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+	set(CPACK_DEBIAN_PACKAGE_SECTION graphics)
+	# Everything else dn needs is a library, and comes out of the ELF files.
+	set(CPACK_DEBIAN_PACKAGE_DEPENDS shared-mime-info)
+	set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+	# libdn is ours, and no installed package provides it to resolve against.
+	set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS
+		"${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+
+	# Directory ownership is left as it comes, and will overlap other packages.
+	set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+	set(CPACK_RPM_PACKAGE_LICENSE MPL-2.0)
+	set(CPACK_RPM_PACKAGE_REQUIRES shared-mime-info)
+	set(CPACK_RPM_PACKAGE_DESCRIPTION "${PROJECT_DESCRIPTION}")
+endif()
+
 include(CPack)
 
 # CPack's WIX generator needs the real WiX toolset (Windows or wine).
