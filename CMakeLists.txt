@@ -480,7 +480,7 @@ qt_add_executable(dn
 	dn/url.cpp
 	dn/window.cpp
 	dn/xdg.cpp
-	dn/icons.qrc
+	icons/icons.qrc
 )
 set_target_properties(dn PROPERTIES AUTORCC ON)
 
