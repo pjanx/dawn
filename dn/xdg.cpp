@@ -31,6 +31,7 @@ xdg_home_dir(const char *var, const char *default_rel)
 	const QString env = qEnvironmentVariable(var);
 	if (!env.isEmpty() && QDir::isAbsolutePath(env))
 		return QDir::cleanPath(env);
+
 	QString home = qEnvironmentVariable("HOME");
 	if (home.isEmpty())
 		home = QDir::homePath();
@@ -74,6 +75,7 @@ read_text_file(const QString &path)
 	QFile file(path);
 	if (!file.open(QIODevice::ReadOnly))
 		return {};
+
 	QString text = QString::fromUtf8(file.readAll());
 	text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
 	text.replace(u'\r', u'\n');
@@ -104,6 +106,7 @@ read_mime_subclasses(const QString &path, MimeDb &db)
 	const QString text = read_text_file(path);
 	if (text.isEmpty() && !QFileInfo::exists(path))
 		return;
+
 	for (const QString &raw : text.split(u'\n')) {
 		const QString line = raw.trimmed();
 		if (line.isEmpty() || line.startsWith(u'#'))
@@ -187,6 +190,7 @@ add_applying_transitive_closure(const QString &element,
 {
 	if (output.contains(element))
 		return;
+
 	output.insert(element);
 	// TODO(p): Iterate over all aliases of `element` in addition to
 	// any direct match (and rename this no-longer-generic function).

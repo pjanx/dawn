@@ -188,6 +188,7 @@ shortcut_accel(const ActionDef &def)
 {
 	if (def.accel)
 		return QString::fromUtf8(def.accel);
+
 	QString s;
 	for (const Accel &a : def.keys) {
 		const QString part = accel_key_label(a);
@@ -638,6 +639,7 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 		return;
 	if (dynamic_cast<Browser *>(w))
 		return;
+
 	if (w->focusable() && visible_rect(w, host).w > 0)
 		out.push_back(w);
 	const size_t n = w->child_count();
@@ -662,6 +664,7 @@ label_len(int n)
 {
 	if (n <= 0)
 		return 1;
+
 	int len = 1;
 	int cap = kNChars;
 	while (cap < n && len < 8) {
@@ -727,6 +730,7 @@ Hint::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
+
 	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
 	const float th = float(kit.text_height(QStringLiteral("Ag"), 0.f, true));
 	for (const Target &t : this->targets_) {
@@ -940,6 +944,7 @@ Hint::fire(Kit &kit, Target t)
 	}
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
 		return;
+
 	const QUrl url = browser->file_url(file_i);
 	browser->select_file(url);
 	if (browser->page_ && browser->page_->host &&
@@ -1058,6 +1063,7 @@ Page::open_app_menu(Kit &kit, bool kbd)
 	}
 	if (!this->app_menu_button)
 		return;
+
 	// Too narrow a window packs the button away into the overflow, which
 	// then anchors the menu instead.
 	Button *anchor = this->app_menu_button;

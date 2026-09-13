@@ -201,12 +201,11 @@ load_ini(const fs::path &path, Error *error)
 {
 	error_code ec;
 	if (!fs::exists(path, ec)) {
-		if (ec)
-			fail(error,
-				format_message(_("cannot inspect configuration file: %s"),
-					ec.message().c_str()));
-		else
+		if (!ec)
 			return ini::File{};
+		fail(error,
+			format_message(_("cannot inspect configuration file: %s"),
+				ec.message().c_str()));
 		return nullopt;
 	}
 	ifstream input(path, ios::binary);
@@ -237,9 +236,11 @@ config_get(string_view key, Error *error)
 	const fs::path path = config_path(error);
 	if (path.empty())
 		return nullopt;
+
 	const optional<ini::File> ini = load_ini(path, error);
 	if (!ini)
 		return nullopt;
+
 	for (const ini::Group &group : ini->groups) {
 		if (group.name != parts->first)
 			continue;

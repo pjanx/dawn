@@ -28,6 +28,7 @@ load_display_profile(QScreen *screen)
 	DisplayProfile result;
 	if (!screen)
 		return result;
+
 	auto *native = screen->nativeInterface<QNativeInterface::QCocoaScreen>();
 	NSScreen *native_screen = native ? native->nativeScreen() : nil;
 	NSNumber *number = native_screen.deviceDescription[@"NSScreenNumber"];
@@ -38,10 +39,12 @@ load_display_profile(QScreen *screen)
 		static_cast<CGDirectDisplayID>(number.unsignedIntValue));
 	if (!color_space)
 		return result;
+
 	CFDataRef data = CGColorSpaceCopyICCData(color_space);
 	CGColorSpaceRelease(color_space);
 	if (!data)
 		return result;
+
 	const auto *bytes = CFDataGetBytePtr(data);
 	const CFIndex size = CFDataGetLength(data);
 	if (bytes && size > 0)
@@ -77,6 +80,7 @@ CocoaSource::~CocoaSource()
 {
 	if (!this->observer)
 		return;
+
 	[[NSNotificationCenter defaultCenter] removeObserver:this->observer];
 	[this->observer release];
 }
@@ -87,6 +91,7 @@ CocoaSource::start(function<void()> fn)
 	this->on_change = std::move(fn);
 	if (this->observer)
 		return;
+
 	this->observer = [[[NSNotificationCenter defaultCenter]
 		addObserverForName:NSWindowDidChangeBackingPropertiesNotification
 					object:nil

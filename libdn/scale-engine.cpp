@@ -114,6 +114,7 @@ preferred_filter(VkPhysicalDevice phys)
 {
 	if (!phys)
 		return Filter::Expensive;
+
 	VkPhysicalDeviceProperties props{};
 	vkGetPhysicalDeviceProperties(phys, &props);
 	if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU)
@@ -226,6 +227,7 @@ ScaleEngine::Impl::destroy_mid()
 {
 	if (!device)
 		return;
+
 	for (VkFramebuffer fb : mid_fbs) {
 		if (fb)
 			vkDestroyFramebuffer(device, fb, nullptr);
@@ -256,6 +258,7 @@ ScaleEngine::Impl::destroy_tiles()
 {
 	if (!device)
 		return;
+
 	if (tile_view) {
 		vkDestroyImageView(device, tile_view, nullptr);
 		tile_view = VK_NULL_HANDLE;
@@ -280,6 +283,7 @@ ScaleEngine::Impl::destroy_pipeline()
 {
 	if (!device)
 		return;
+
 	auto kill = [&](VkPipeline &p) {
 		if (p) {
 			vkDestroyPipeline(device, p, nullptr);
@@ -315,6 +319,7 @@ ScaleEngine::Impl::destroy_all()
 {
 	if (!device)
 		return;
+
 	vkDeviceWaitIdle(device);
 	destroy_mid();
 	destroy_tiles();
@@ -1070,6 +1075,7 @@ ScaleEngine::Impl::visible_source_y_range(
 	uint32_t disp_w = 0, disp_h = 0;
 	orientation_display_size(
 		image_w, image_h, view.orientation, &disp_w, &disp_h);
+
 	const float kernel_scale = min(view.scale, 1.f);
 	const float radius = 1.f / kernel_scale;
 	const float centre = 0.5f * float(disp_h) + view.pan_y;
@@ -1129,6 +1135,7 @@ ScaleEngine::Impl::cmd_barrier_mid(
 {
 	if (first_layer > last_layer)
 		return;
+
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -1279,6 +1286,7 @@ ScaleEngine::set_dest_inset(
 {
 	if (!impl_)
 		return;
+
 	impl_->dest_inset_l = left;
 	impl_->dest_inset_t = top;
 	impl_->dest_inset_r = right;
@@ -1524,6 +1532,7 @@ ScaleEngine::ensure_viewport(
 	Impl &e = *impl_;
 	if (!e.ensure_mid(viewport_w, e.image_h, error))
 		return false;
+
 	e.viewport_w = viewport_w;
 	e.viewport_h = viewport_h;
 	return true;
@@ -1573,6 +1582,7 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		e.image_w, e.image_h, view.orientation, &disp_w, &disp_h);
 	if (!e.ensure_mid(viewport_w, disp_h, error))
 		return false;
+
 	const YRange need = e.visible_source_y_range(view, viewport_h);
 	const auto [first_mid, last_mid] =
 		e.cmd_fill_visible_mid(cmd, pc, need, viewport_w, disp_h);
@@ -1717,6 +1727,7 @@ ScaleEngine::destroy_offscreen(
 {
 	if (!impl_ || !impl_->device)
 		return;
+
 	VkDevice device = impl_->device;
 	if (fb && *fb) {
 		vkDestroyFramebuffer(device, *fb, nullptr);

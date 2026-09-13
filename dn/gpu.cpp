@@ -26,6 +26,7 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 	this->instance_ = instance;
 	if (!this->instance_ || !surface)
 		return false;
+
 	string err;
 	if (!dawn::vk_create_graphics_device(this->instance_, surface,
 			std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
@@ -61,6 +62,7 @@ GpuContext::supports_present(VkSurfaceKHR surface) const
 {
 	if (!this->phys_ || !surface)
 		return false;
+
 	VkBool32 present = VK_FALSE;
 	vkGetPhysicalDeviceSurfaceSupportKHR(
 		this->phys_, this->queue_family_, surface, &present);

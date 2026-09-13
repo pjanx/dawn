@@ -90,10 +90,12 @@ enum_handlers(const QString &ext, ASSOC_FILTER filter)
 	vector<Handler> out;
 	if (ext.isEmpty())
 		return out;
+
 	const wstring wext = ext.toStdWString();
 	IEnumAssocHandlers *en = nullptr;
 	if (FAILED(SHAssocEnumHandlers(wext.c_str(), filter, &en)) || !en)
 		return out;
+
 	IAssocHandler *handler = nullptr;
 	ULONG got = 0;
 	while (en->Next(1, &handler, &got) == S_OK && handler) {
@@ -112,11 +114,13 @@ find_handler(const QString &ext, const QString &id)
 {
 	if (ext.isEmpty() || id.isEmpty())
 		return nullptr;
+
 	const wstring wext = ext.toStdWString();
 	IEnumAssocHandlers *en = nullptr;
 	if (FAILED(SHAssocEnumHandlers(wext.c_str(), ASSOC_FILTER_NONE, &en)) ||
 		!en)
 		return nullptr;
+
 	IAssocHandler *found = nullptr;
 	IAssocHandler *handler = nullptr;
 	ULONG got = 0;
@@ -151,6 +155,7 @@ default_for(const QString &path)
 	const QString ext = extension_of(path);
 	if (ext.isEmpty())
 		return {};
+
 	const wstring wext = ext.toStdWString();
 	wchar_t name[MAX_PATH] = {};
 	DWORD name_n = MAX_PATH;
@@ -196,6 +201,7 @@ fallback_for(const QString &path)
 	unordered_set<QString> seen;
 	for (const Handler &a : rec)
 		seen.insert(a.id);
+
 	vector<Handler> out;
 	for (Handler &a : enum_handlers(ext, ASSOC_FILTER_NONE)) {
 		if (seen.contains(a.id))

@@ -798,6 +798,7 @@ trim_ram(Browser &b)
 	for (int i : idx) {
 		if (total <= kThumbRamBudget)
 			break;
+
 		Browser::File &f = b.files_[size_t(i)];
 		total -= ram_bytes(f);
 		// The atlas entry, if any, stays: residency is its own fact.  It
@@ -923,6 +924,7 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 		if (f.path != res.path || f.mtime != finish.mtime ||
 			f.size != finish.size)
 			continue;
+
 		matched = true;
 		if (res.failed || res.outputs.empty()) {
 			if (finish.reservation)
@@ -1375,6 +1377,7 @@ move_cursor(Browser &b, CursorDir dir)
 	int row_i = find_cursor_row(b);
 	if (row_i < 0)
 		return;
+
 	const Browser::GridRow &cur = b.rows_[size_t(row_i)];
 	const int col_i = b.cursor_ - cur.first;
 	switch (dir) {
@@ -1565,6 +1568,7 @@ draw_checkers(Kit &kit, const Rect &tile)
 {
 	if (tile.empty())
 		return;
+
 	kit.clip_to(tile);
 	const Colour bg = kit.colours_[ColourToolbarBottom];
 	const Colour fg = kit.colours_[ColourWell];
@@ -1686,12 +1690,14 @@ list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 	for (const auto &ent : filesystem::directory_iterator(dir, ec)) {
 		if (ec)
 			break;
+
 		error_code fec;
 		const string name = ent.path().filename().string();
 		if (setup.filter_files && hidden_name(name))
 			continue;
 		if (!ent.is_directory(fec) || fec)
 			continue;
+
 		DirEnt kid;
 		kid.path = ent.path().string();
 		kid.name = name;
@@ -1753,6 +1759,7 @@ next_dir_within_parents(const filesystem::path &dir, const BrowseSetup &setup)
 	const string parent = parent_dir(dir);
 	if (parent.empty())
 		return {};
+
 	const vector<string> sibs = list_subdirs(parent, setup);
 	const int i = index_of_dir(sibs, dir);
 	if (i >= 0 && i + 1 < int(sibs.size()))
@@ -1766,6 +1773,7 @@ tree_prev_dir(const filesystem::path &dir, const BrowseSetup &setup)
 	const string parent = parent_dir(dir);
 	if (parent.empty())
 		return {};
+
 	const vector<string> sibs = list_subdirs(parent, setup);
 	const int i = index_of_dir(sibs, dir);
 	if (i > 0)
@@ -2877,6 +2885,7 @@ Browser::double_click(Kit &, float x, float y, Qt::MouseButton button, unsigned)
 {
 	if (button != Qt::LeftButton)
 		return false;
+
 	activate_hit(*this, x, y);
 	return true;
 }

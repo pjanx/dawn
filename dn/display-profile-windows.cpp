@@ -117,6 +117,7 @@ Watch::open(HKEY root, const wchar_t *path)
 	if (RegOpenKeyExW(root, path, 0, KEY_NOTIFY | KEY_READ, &this->key) !=
 		ERROR_SUCCESS)
 		return false;
+
 	this->event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 	return this->event != nullptr;
 }
@@ -126,6 +127,7 @@ Watch::arm()
 {
 	if (!this->key || !this->event)
 		return false;
+
 	return RegNotifyChangeKeyValue(this->key, TRUE,
 			   REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_CHANGE_LAST_SET |
 				   REG_NOTIFY_THREAD_AGNOSTIC,
@@ -171,6 +173,7 @@ WcsSource::start(function<void()> fn)
 	this->on_change = std::move(fn);
 	if (this->system.notifier || this->user.notifier)
 		return;
+
 	if (!this->bind(this->system, HKEY_LOCAL_MACHINE, kSystemClass))
 		qWarning("Windows ICM: cannot watch system profile associations");
 	if (!this->bind(this->user, HKEY_CURRENT_USER, kUserLeaf) &&

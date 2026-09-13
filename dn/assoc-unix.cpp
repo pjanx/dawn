@@ -463,6 +463,7 @@ desktop_by_id(const QString &id)
 	static unordered_map<QString, Desktop> cache;
 	if (id.isEmpty())
 		return nullptr;
+
 	auto it = cache.find(id);
 	if (it == cache.end())
 		it = cache.insert({id, load_desktop(id)}).first;
@@ -529,6 +530,7 @@ usable_id(const QString &id, const unordered_set<QString> &removed)
 {
 	if (id.isEmpty() || self_desktop(id) || removed.contains(id))
 		return false;
+
 	const Desktop *d = desktop_by_id(id);
 	return d && listable(*d);
 }

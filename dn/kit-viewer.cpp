@@ -411,6 +411,7 @@ set_frame(Viewer &v, dawn::ImagePtr frame)
 {
 	if (!frame || frame.get() == v.frame_.get())
 		return;
+
 	v.frame_ = std::move(frame);
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
@@ -445,6 +446,7 @@ start_playback(Viewer &v)
 	stop_playback(v);
 	if (!v.image_ || !v.current_ || !v.current_->frame_next)
 		return;
+
 	v.frame_at_ = chrono::steady_clock::now();
 	if (!v.remaining_loops_) {
 		v.remaining_loops_ = v.current_->loops;
@@ -459,6 +461,7 @@ animate(Viewer &v)
 {
 	if (!v.playing_ || !v.frame_)
 		return;
+
 	const int64_t duration = display_delay_ms(v.frame_->frame_duration);
 	if (duration < 0) {
 		stop_playback(v);
@@ -547,6 +550,7 @@ stop_worker(Viewer &v)
 {
 	if (!v.worker_)
 		return;
+
 	v.load_epoch_++;
 	{
 		lock_guard<mutex> lock(v.worker_->mu);
@@ -786,6 +790,7 @@ apply_open(Viewer &v, uint64_t gen, dawn::ImagePtr image, string message)
 {
 	if (gen != v.open_gen_)
 		return;
+
 	v.opening_ = false;
 	v.open_done_ = true;
 	set_message(v, message);
@@ -833,6 +838,7 @@ apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale)
 {
 	if (!v.kit_.renderer_ || gen != v.scale_gen_)
 		return;
+
 	v.scale_job_pending_ = false;
 	if (!image || !image->width || !image->height) {
 		v.scale_failed_ = true;
@@ -851,6 +857,7 @@ apply_open_result(Viewer &v, OpenLoad result)
 {
 	if (result.epoch != v.load_epoch_)
 		return;
+
 	const string current = viewer_local_path(v);
 	if (!v.detached_ && result.key.path != current &&
 		result.key.path != v.previous_path_ && result.key.path != v.next_path_)
@@ -1184,6 +1191,7 @@ post_scale(Viewer &v)
 {
 	if (!v.worker_ || !v.current_ || !v.current_->render)
 		return;
+
 	v.scale_gen_++;
 	v.scale_job_pending_ = true;
 	v.scale_job_target_ = v.scale_;
@@ -1542,6 +1550,7 @@ frame_step(Viewer &v, int step)
 {
 	if (!v.frame_)
 		return;
+
 	stop_playback(v);
 	if (step > 0) {
 		(void) advance_frame(v);
@@ -1574,6 +1583,7 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 {
 	if (!page || page.get() == v.current_.get())
 		return;
+
 	v.current_ = std::move(page);
 	v.frame_ = v.current_;
 	v.image_width_ = v.frame_->width;
@@ -1619,6 +1629,7 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 {
 	if (!mime || im.data.empty() || !im.width || !im.height)
 		return;
+
 	const uint32_t w = im.width;
 	const uint32_t h = im.height;
 	vector<uint8_t> bgra(size_t(w) * h * 4);
@@ -1777,6 +1788,7 @@ apply_view(const Viewer &v)
 {
 	if (!v.kit_.renderer_)
 		return;
+
 	Renderer &renderer = *v.kit_.renderer_;
 	const bool have_scaled = v.page_scaled_ && v.page_scaled_->width &&
 		v.page_scaled_->height && v.vector_scale_ > 0.f;
@@ -2042,9 +2054,11 @@ Viewer::wake_ms() const
 {
 	if (!this->playing_ || !this->frame_)
 		return -1;
+
 	const int64_t duration = display_delay_ms(this->frame_->frame_duration);
 	if (duration < 0)
 		return -1;
+
 	const float elapsed = chrono::duration<float, milli>(
 		chrono::steady_clock::now() - this->frame_at_)
 							  .count();

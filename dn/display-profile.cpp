@@ -56,6 +56,7 @@ DisplayProfileWatch::notify() const
 	QObject *app = QCoreApplication::instance();
 	if (!app)
 		return;
+
 	QMetaObject::invokeMethod(
 		app,
 		[this] {

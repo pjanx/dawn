@@ -39,6 +39,7 @@ app_from_url(NSURL *url)
 	Handler a;
 	if (!url)
 		return a;
+
 	a.id = from_ns(url.path);
 	NSBundle *bundle = [NSBundle bundleWithURL:url];
 	if (bundle) {
@@ -62,6 +63,7 @@ uti_from_file(NSURL *url)
 {
 	if (!url)
 		return nil;
+
 	NSString *uti = nil;
 	[url getResourceValue:&uti forKey:NSURLTypeIdentifierKey error:nil];
 	if (uti.length)
@@ -78,6 +80,7 @@ app_url_for_bundle_id(NSString *bid)
 {
 	if (!bid.length)
 		return nil;
+
 	CFErrorRef err = nullptr;
 	CFArrayRef urls = LSCopyApplicationURLsForBundleIdentifier(
 		(__bridge CFStringRef) bid, &err);
@@ -85,6 +88,7 @@ app_url_for_bundle_id(NSString *bid)
 		CFRelease(err);
 	if (!urls)
 		return nil;
+
 	NSURL *url = nil;
 	if (CFArrayGetCount(urls) > 0)
 		url = (__bridge NSURL *) CFArrayGetValueAtIndex(urls, 0);
@@ -99,6 +103,7 @@ default_for(const QString &path)
 	NSURL *url = file_url(path);
 	if (!url)
 		return {};
+
 	CFErrorRef err = nullptr;
 	CFURLRef app = LSCopyDefaultApplicationURLForURL(
 		(__bridge CFURLRef) url, kLSRolesAll, &err);
@@ -106,6 +111,7 @@ default_for(const QString &path)
 		CFRelease(err);
 	if (!app)
 		return {};
+
 	Handler a = app_from_url((__bridge NSURL *) app);
 	CFRelease(app);
 	return a;
@@ -117,6 +123,7 @@ recommended_for(const QString &path)
 	NSString *uti = uti_from_file(url);
 	if (!uti)
 		return {};
+
 	CFArrayRef handlers = LSCopyAllRoleHandlersForContentType(
 		(__bridge CFStringRef) uti, kLSRolesAll);
 	if (!handlers)
@@ -154,6 +161,7 @@ launch(const Handler &app, const QString &path)
 {
 	if (app.id.isEmpty() || path.isEmpty())
 		return false;
+
 	NSURL *file = file_url(path);
 	if (!file)
 		return false;

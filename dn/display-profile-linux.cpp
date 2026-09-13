@@ -31,6 +31,7 @@ edid_md5_from_bytes(const vector<unsigned char> &edid)
 {
 	if (edid.empty())
 		return nullopt;
+
 	g_autofree gchar *md5 =
 		g_compute_checksum_for_data(G_CHECKSUM_MD5, edid.data(), edid.size());
 	return md5 ? optional<string>(md5) : nullopt;
@@ -43,13 +44,16 @@ edid_md5_for_connector(const string &connector)
 	for (const auto &entry : fs::directory_iterator("/sys/class/drm", error)) {
 		if (!entry.is_directory())
 			continue;
+
 		const string dirname = entry.path().filename().string();
 		const auto dash = dirname.find('-');
 		if (dash == string::npos || dirname.substr(dash + 1) != connector)
 			continue;
+
 		ifstream input(entry.path() / "edid", ios::binary);
 		if (!input)
 			continue;
+
 		vector<unsigned char> bytes(
 			(istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
 		if (auto md5 = edid_md5_from_bytes(bytes))
@@ -64,9 +68,11 @@ profile_bytes(cmsHPROFILE profile)
 	cmsUInt32Number size = 0;
 	if (!profile || !cmsSaveProfileToMem(profile, nullptr, &size) || !size)
 		return {};
+
 	vector<unsigned char> bytes(size);
 	if (!cmsSaveProfileToMem(profile, bytes.data(), &size))
 		return {};
+
 	bytes.resize(size);
 	return bytes;
 }
@@ -76,6 +82,7 @@ display_device(CdDevice *device)
 {
 	if (!device)
 		return true;
+
 	const CdDeviceKind kind = cd_device_get_kind(device);
 	return kind == CD_DEVICE_KIND_UNKNOWN || kind == CD_DEVICE_KIND_DISPLAY;
 }
@@ -194,9 +201,8 @@ static void
 on_device(CdClient *, CdDevice *device, gpointer data)
 {
 	auto *src = static_cast<ColordSource *>(data);
-	if (!display_device(device))
-		return;
-	src->notify();
+	if (display_device(device))
+		src->notify();
 }
 
 static void
@@ -228,9 +234,8 @@ static void
 on_name_appeared(GDBusConnection *, const gchar *, const gchar *, gpointer data)
 {
 	auto *src = static_cast<ColordSource *>(data);
-	if (!src->client || cd_client_get_connected(src->client))
-		return;
-	src->connect_async();
+	if (src->client && !cd_client_get_connected(src->client))
+		src->connect_async();
 }
 
 static void
@@ -264,9 +269,8 @@ ColordSource::hook_signals()
 void
 ColordSource::connect_async()
 {
-	if (!this->client || cd_client_get_connected(this->client))
-		return;
-	cd_client_connect(this->client, nullptr, on_connect_ready, this);
+	if (this->client && !cd_client_get_connected(this->client))
+		cd_client_connect(this->client, nullptr, on_connect_ready, this);
 }
 
 void
@@ -274,6 +278,7 @@ ColordSource::watch_name()
 {
 	if (this->name_watch)
 		return;
+
 	this->name_watch = g_bus_watch_name(G_BUS_TYPE_SYSTEM,
 		"org.freedesktop.ColorManager", G_BUS_NAME_WATCHER_FLAGS_NONE,
 		on_name_appeared, on_name_vanished, this, nullptr);
@@ -293,6 +298,7 @@ ColordSource::start(function<void()> fn)
 	this->on_change = std::move(fn);
 	if (this->client)
 		return;
+
 	this->client = cd_client_new();
 	g_autoptr(GError) error = nullptr;
 	if (cd_client_connect_sync(this->client, nullptr, &error)) {
