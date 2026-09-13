@@ -117,6 +117,8 @@ class Window final : public QWindow
 	float pinch_last_zoom_ = 0;
 	float pinch_last_rot_ = 0;
 	bool touch_pinch_ = false;
+	// Keep the touch sequence accepted after a pinch, until all fingers lift.
+	bool touch_multi_ = false;
 	int touch_id0_ = -1;
 	int touch_id1_ = -1;
 	float touch_x0_ = 0;

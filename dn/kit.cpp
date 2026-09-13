@@ -4661,6 +4661,9 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
 	this->mods_ = mods;
+	this->touch_x_ = x;
+	this->touch_y_ = y;
+	this->touch_panned_ = false;
 	if (button == Qt::LeftButton)
 		this->left_down_ = true;
 	if (this->root_ && this->root_->r.w <= 0) {
@@ -4669,6 +4672,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 		sync_focus();
 	}
 	this->hot_ = hit(x, y);
+	this->touch_target_ = this->hot_;
 	// A press tracks the pointer just like a hover does, so that what a menu
 	// shows as selected is what the release will activate.
 	track_popups(x, y);
@@ -4690,6 +4694,13 @@ Kit::mouse_release(float x, float y, Qt::MouseButton button)
 	this->mouse_y_ = y;
 	if (button == Qt::LeftButton)
 		this->left_down_ = false;
+	// Scrolling must not activate a click or leave a hover highlight.
+	if (this->touch_panned_) {
+		this->touch_panned_ = false;
+		this->pressed_ = nullptr;
+		this->hot_ = nullptr;
+		return true;
+	}
 	if (Popup *p = popup_for_hit(*this, hit(x, y));
 		p && p->release(*this, x, y, button)) {
 		this->pressed_ = nullptr;
@@ -4702,6 +4713,19 @@ Kit::mouse_release(float x, float y, Qt::MouseButton button)
 	}
 	this->pressed_ = nullptr;
 	return false;
+}
+
+// Release outside the window to reset widget drag state without activation.
+void
+Kit::cancel_press()
+{
+	this->left_down_ = false;
+	this->touch_panned_ = false;
+	if (Widget *w = this->pressed_) {
+		// Release handlers may check pressed_ before resetting their state.
+		w->release(*this, -1.f, -1.f, Qt::LeftButton);
+		this->pressed_ = nullptr;
+	}
 }
 
 bool
@@ -4724,7 +4748,7 @@ Kit::mouse_motion(float x, float y)
 	// dragged -- keeps it.
 	if (this->pressed_) {
 		if (!press_targets_popup(*this, this->pressed_))
-			return this->pressed_->motion(*this, x, y);
+			return this->pressed_->motion(*this, x, y) || touch_pan(x, y);
 		if (this->pressed_->motion(*this, x, y))
 			return true;
 	}
@@ -4734,7 +4758,35 @@ Kit::mouse_motion(float x, float y)
 		if (w->motion(*this, x, y))
 			return true;
 	}
-	return false;
+	return touch_pan(x, y);
+}
+
+bool
+Kit::touch_pan(float x, float y)
+{
+	if (!this->touch_press_ || !this->left_down_)
+		return false;
+
+	// Keep the press position until the threshold, preserving the first delta.
+	const float dx = x - this->touch_x_;
+	const float dy = y - this->touch_y_;
+	if (!this->touch_panned_) {
+		const float slop = float(px(kDragPts));
+		if (dx * dx + dy * dy < slop * slop)
+			return false;
+	}
+
+	// Suppress the click only if a pan handler consumes the motion.
+	if (!pan_at(this->touch_target_, x, y, dx, dy))
+		return false;
+	if (!this->touch_panned_) {
+		this->touch_panned_ = true;
+		hide_tooltip();
+	}
+
+	this->touch_x_ = x;
+	this->touch_y_ = y;
+	return true;
 }
 
 // Let the open popups, innermost first, move their selection to kit.hot_.
@@ -4782,12 +4834,17 @@ Kit::pan(float x, float y, float dx, float dy)
 	dy = float(px(dy));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
+	return pan_at(hit(x, y), x, y, dx, dy);
+}
+
+bool
+Kit::pan_at(Widget *from, float x, float y, float dx, float dy)
+{
 	if (dx == 0.f && dy == 0.f)
 		return false;
-	Widget *h = hit(x, y);
-	if (popup_open() && !owning_popup(h))
+	if (popup_open() && !owning_popup(from))
 		return true;
-	for (Widget *w = h; w; w = w->parent_) {
+	for (Widget *w = from; w; w = w->parent_) {
 		if (w->pan(*this, x, y, dx, dy))
 			return true;
 	}
@@ -4896,6 +4953,7 @@ Kit::forget_tree(Widget *tree)
 	forget(this->focus_);
 	forget(this->default_focus_);
 	forget(this->pressed_);
+	forget(this->touch_target_);
 	const bool forgot_hot = forget(this->hot_);
 	if (forget(this->tooltip_anchor_) || forgot_hot)
 		hide_tooltip();

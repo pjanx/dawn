@@ -843,6 +843,13 @@ struct Kit {
 	// Touch synthesizes mouse events; gestures that only make sense for a
 	// real pointer ask this before arming.
 	bool touch_press_ = false;
+	// Press position until scrolling starts, then the last pan position.
+	float touch_x_ = 0;
+	float touch_y_ = 0;
+	// Suppress click activation once a pan has been consumed.
+	bool touch_panned_ = false;
+	// Initial hit, even if no widget accepted the press.
+	Widget *touch_target_ = nullptr;
 	Widget *pressed_ = nullptr;
 	unsigned mods_ = 0;
 	std::vector<Popup *> popups_;
@@ -929,9 +936,15 @@ struct Kit {
 	[[nodiscard]] bool text_target(TextTarget &out) const;
 	bool mouse_press(float x, float y, Qt::MouseButton button, unsigned mods);
 	bool mouse_release(float x, float y, Qt::MouseButton button);
+	// End the widget interaction without a click when the release is lost.
+	void cancel_press();
 	bool mouse_motion(float x, float y);
+	// Scroll from the initial touch target when widget motion is unhandled.
+	bool touch_pan(float x, float y);
 	bool mouse_scroll(float x, float y, int delta);
 	bool pan(float x, float y, float dx, float dy);
+	// Bubble pan from a fixed target; coordinates and deltas are device pixels.
+	bool pan_at(Widget *from, float x, float y, float dx, float dy);
 	bool gesture(float x, float y, float scale_factor, float angle_delta);
 	bool mouse_double_click(
 		float x, float y, Qt::MouseButton button, unsigned mods);

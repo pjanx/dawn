@@ -189,8 +189,7 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 		// The release went to the drag's own grab, so the kit never saw it.
 		// Whoever started the drag must not touch its own state afterwards:
 		// the nested loop has been running the whole widget tree.
-		this->kit_.left_down_ = false;
-		this->kit_.pressed_ = nullptr;
+		this->kit_.cancel_press();
 		request_render();
 	};
 #if DN_WITH_WAYLAND
@@ -1145,7 +1144,7 @@ Window::event(QEvent *event)
 		if ((change->oldState() ^ shell()->windowState()) &
 			(Qt::WindowFullScreen | Qt::WindowMaximized)) {
 			// Double click to fullscreen may make us not receive a MouseUp.
-			this->kit_.left_down_ = false;
+			this->kit_.cancel_press();
 			request_render();
 		}
 		break;
@@ -1777,9 +1776,21 @@ Window::handle_touch(QTouchEvent *event)
 		}
 		n++;
 	}
-	if (event->type() == QEvent::TouchCancel || n < 2) {
+	const bool cancel = event->type() == QEvent::TouchCancel;
+	if (cancel || n < 2) {
 		this->touch_pinch_ = false;
+		// Leave single-finger input to Qt's mouse synthesis.  After a pinch,
+		// keep accepting events until all fingers lift to prevent stray clicks.
+		if (!cancel && !this->touch_multi_)
+			event->ignore();
+		if (n == 0)
+			this->touch_multi_ = false;
 		return n >= 2;
+	}
+	// Pinch takes over the synthesized press and suppresses its normal release.
+	if (!this->touch_multi_) {
+		this->touch_multi_ = true;
+		this->kit_.cancel_press();
 	}
 	if (!this->touch_pinch_ || this->touch_id0_ != id0 ||
 		this->touch_id1_ != id1) {

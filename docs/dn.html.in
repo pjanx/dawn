@@ -37,6 +37,10 @@ The pointer wheel zooms in the viewer and scrolls the browser. Left- or
 middle-drag pans an image; <kbd>Ctrl</kbd>&#8239;+&#8239;middle-drag zooms;
 <kbd>Alt</kbd>&#8239;+&#8239;middle-drag or a pinch gesture rotates.
 
+<p>On a touchscreen, one finger drags: the image pans, the title bar moves the
+window, and anywhere else it scrolls. Two fingers pinch to zoom and twist to
+rotate.
+
 <h2>Browser</h2>
 
 <p><i>Dawn</i> starts in a directory browser unless you open a file. The left
