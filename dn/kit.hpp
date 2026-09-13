@@ -93,6 +93,8 @@ constexpr float kFramePadY = 4.f;
 constexpr float kTooltipPadX = 8.f;
 constexpr float kGlowPts = 8.f;
 constexpr float kResizeBorderPts = 8.f;
+// How far the pointer must travel before a press becomes a drag.
+constexpr float kDragPts = 4.f;
 constexpr float kScrollBarW = 8.f;
 constexpr float kScrollStep = 32.f;
 constexpr float kScrollHideMs = 1000.f;
@@ -838,6 +840,9 @@ struct Kit {
 	float mouse_x_ = -1.f;
 	float mouse_y_ = -1.f;
 	bool left_down_ = false;
+	// Touch synthesizes mouse events; gestures that only make sense for a
+	// real pointer ask this before arming.
+	bool touch_press_ = false;
 	Widget *pressed_ = nullptr;
 	unsigned mods_ = 0;
 	std::vector<Popup *> popups_;
@@ -860,6 +865,9 @@ struct Kit {
 	std::function<void()> start_move;
 	std::function<void(Qt::Edges)> start_resize;
 	std::function<void(float, float)> start_menu;
+	// Hand a drag off to the platform: the window owns QDrag and its nested
+	// event loop, and takes the mime data with it.
+	std::function<void(QMimeData *, const QImage &)> start_drag;
 	std::chrono::steady_clock::time_point hover_at_{};
 	std::chrono::steady_clock::time_point popup_at_{};
 	float hover_x_ = 0;

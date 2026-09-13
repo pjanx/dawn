@@ -28,6 +28,7 @@
 #include <QCursor>
 #include <QDesktopServices>
 #include <QDir>
+#include <QDrag>
 #include <QDropEvent>
 #include <QEvent>
 #include <QEventPoint>
@@ -42,8 +43,10 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QNativeGestureEvent>
+#include <QPixmap>
 #include <QPlatformSurfaceEvent>
 #include <QPointer>
+#include <QPointingDevice>
 #include <QProcess>
 #include <QRectF>
 #include <QRegion>
@@ -170,6 +173,24 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 	this->kit_.start_resize = [this](Qt::Edges edges) {
 		this->system_grab_ = shell()->startSystemResize(edges);
+		request_render();
+	};
+	this->kit_.start_drag = [this](QMimeData *mime, const QImage &icon) {
+		auto *drag = new QDrag(this);
+		drag->setMimeData(mime);
+		if (!icon.isNull()) {
+			QPixmap pixmap = QPixmap::fromImage(icon);
+			pixmap.setDevicePixelRatio(qreal(host_dpr(*this)));
+			drag->setPixmap(pixmap);
+		}
+		drag->exec(
+			Qt::CopyAction | Qt::MoveAction | Qt::LinkAction, Qt::CopyAction);
+
+		// The release went to the drag's own grab, so the kit never saw it.
+		// Whoever started the drag must not touch its own state afterwards:
+		// the nested loop has been running the whole widget tree.
+		this->kit_.left_down_ = false;
+		this->kit_.pressed_ = nullptr;
 		request_render();
 	};
 #if DN_WITH_WAYLAND
@@ -1551,6 +1572,11 @@ Window::mousePressEvent(QMouseEvent *event)
 	const float x = float(pos.x());
 	const float y = float(pos.y());
 	this->alt_armed_ = false;
+
+	const QPointingDevice *device = event->pointingDevice();
+	this->kit_.touch_press_ =
+		device && device->type() == QInputDevice::DeviceType::TouchScreen;
+
 	// start_resize_at() works in pixels, like the rest of the widget tree;
 	// this call sidesteps the Kit entry points that would convert for us.
 	if (event->button() == Qt::LeftButton &&

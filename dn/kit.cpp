@@ -4019,9 +4019,6 @@ Toolbar::slot_for_more(const Button *more) const
 
 // --- Titlebar --------------------------------------------------------------
 
-// How far the pointer must travel before a titlebar press becomes a move.
-constexpr float kDragPts = 4.f;
-
 static unique_ptr<Button>
 make_title_button(Action action, const char *icon)
 {

@@ -50,6 +50,10 @@ files are hidden, and the sort order.
 Right-click a file or the directory for a context menu, including other
 applications registered for that type.
 
+<p>Dragging a thumbnail, or a sidebar entry, takes the file or the directory
+to another application. Hold <kbd>Ctrl</kbd> to copy, <kbd>Shift</kbd> to move,
+or both to link, as far as the receiving application allows.
+
 <h2>Viewer</h2>
 
 <p><kbd>Enter</kbd> returns to the browser. Files are visited in the same order

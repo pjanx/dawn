@@ -152,6 +152,11 @@ struct Browser : Widget {
 	float layout_cell_x_ = 0;
 	int layout_w_ = 0;
 	int mid_file_ = -1;
+	// What a left press landed on, and where: a press that travels far
+	// enough drags that file out instead of opening it.
+	int press_file_ = -1;
+	float press_x_ = 0;
+	float press_y_ = 0;
 
 	bool can_prev_dir_ = false;
 	bool can_next_dir_ = false;

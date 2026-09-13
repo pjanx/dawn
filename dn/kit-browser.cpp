@@ -24,6 +24,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QKeyEvent>
+#include <QMimeData>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
@@ -61,6 +62,9 @@ constexpr int kThumbSizeN = size(kThumbSizes);
 // Wide thumbnail box is 2× row height (512×256 at the default size).
 constexpr int kThumbWide = 2;
 constexpr size_t kThumbRamBudget = 2ull << 30;
+
+// Thumbnails go up to 1024 device pixels; a drag cursor wants far less.
+constexpr int kDragIconPx = 256;
 
 constexpr ToolbarSpec kItems[] = {
 	{Slot::Left, Action::Sidebar},
@@ -391,12 +395,35 @@ show_cursor_context(Browser &b, Kit &kit)
 	return true;
 }
 
+// The pointer has travelled far enough from where it went down.
+static bool
+drag_threshold(const Kit &kit, float x0, float y0, float x, float y)
+{
+	const float dx = x - x0;
+	const float dy = y - y0;
+	const float slop = float(kit.px(kDragPts));
+	return dx * dx + dy * dy >= slop * slop;
+}
+
+// A drag carries its copy/move/link verb in the drop action, so the URL list
+// is the whole payload -- none of the clipboard conventions apply here.
+static void
+start_file_drag(Kit &kit, const QUrl &url, const QImage &icon)
+{
+	auto *mime = new QMimeData;
+	mime->setUrls({url});
+	kit.start_drag(mime, icon);
+}
+
 namespace
 {
 
 struct SideRow : Button {
 	string path;
 	Browser *browser = nullptr;
+	float drag_x_ = 0.f;
+	float drag_y_ = 0.f;
+	bool drag_armed_ = false;
 
 	SideRow()
 	{
@@ -407,6 +434,7 @@ struct SideRow : Button {
 	Size measure_content(Kit &, int max_w, int) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, float x, float y) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -431,6 +459,13 @@ SideRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		kit.pressed_ = this;
 		return true;
 	}
+	// Like the titlebar, wait for the pointer to travel: the press still has
+	// to be able to mean a plain click that navigates.
+	if (button == Qt::LeftButton && !this->path.empty()) {
+		this->drag_x_ = x;
+		this->drag_y_ = y;
+		this->drag_armed_ = !kit.touch_press_ && bool(kit.start_drag);
+	}
 	return Button::press(kit, x, y, button);
 }
 
@@ -447,7 +482,25 @@ SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
 		}
 		return true;
 	}
+	this->drag_armed_ = false;
 	return Button::release(kit, x, y, button);
+}
+
+bool
+SideRow::motion(Kit &kit, float x, float y)
+{
+	// Motion also bubbles up from a plain hover, and a release can go
+	// missing -- see the fullscreen workaround in Window::event.
+	if (!this->drag_armed_ || !kit.left_down_ ||
+		!drag_threshold(kit, this->drag_x_, this->drag_y_, x, y))
+		return false;
+
+	// The window nulls kit.pressed_ once the drag is over, which is what
+	// keeps the release from navigating; the row must touch nothing of its
+	// own after a nested event loop has run the whole widget tree.
+	this->drag_armed_ = false;
+	start_file_drag(kit, url_of(this->path), {});
+	return true;
 }
 
 bool
@@ -2826,10 +2879,18 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		return true;
 	}
 	kit.set_focus(this, false);
-	if (hit_file(*this, x, y) < 0 && this->cursor_ >= 0) {
+	const int i = hit_file(*this, x, y);
+	if (i < 0 && this->cursor_ >= 0) {
 		clear_cursor(*this);
 		request_render(*this);
 	}
+
+	// A press that travels far enough drags the file out rather than
+	// opening it; until then it is still an ordinary click.
+	// XXX: We don't reset this when indexes change meaning.
+	this->press_file_ = (kit.touch_press_ || !kit.start_drag) ? -1 : i;
+	this->press_x_ = x;
+	this->press_y_ = y;
 	kit.pressed_ = this;
 	return true;
 }
@@ -2861,6 +2922,7 @@ Browser::release(Kit &kit, float x, float y, Qt::MouseButton button)
 	}
 	if (button != Qt::LeftButton)
 		return false;
+	this->press_file_ = -1;
 	if (kit.pressed_ != this)
 		return false;
 	if (this->scroll_.release(button))
@@ -2872,12 +2934,52 @@ Browser::release(Kit &kit, float x, float y, Qt::MouseButton button)
 	return true;
 }
 
+// What the pointer carries during a drag: the thumbnail as it already sits in
+// RAM, converted for the display and premultiplied like the pixmap wants.
+static QImage
+drag_thumbnail(const Browser::File &f)
+{
+	const int w = f.pixels.w;
+	const int h = f.pixels.h;
+	if (f.pixels.ram.empty() || w <= 0 || h <= 0)
+		return {};
+
+	QImage image(w, h, QImage::Format_ARGB32_Premultiplied);
+	for (int y = 0; y < h; y++) {
+		const uint16_t *src = f.pixels.ram.data() + size_t(y) * size_t(w) * 4;
+		auto *dst = reinterpret_cast<QRgb *>(image.scanLine(y));
+		for (int x = 0; x < w; x++) {
+			dst[x] = qRgba(src[2] >> 8, src[1] >> 8, src[0] >> 8, src[3] >> 8);
+			src += 4;
+		}
+	}
+	if (max(w, h) <= kDragIconPx)
+		return image;
+	return image.scaled(kDragIconPx, kDragIconPx, Qt::KeepAspectRatio,
+		Qt::SmoothTransformation);
+}
+
 bool
-Browser::motion(Kit &, float, float y)
+Browser::motion(Kit &kit, float x, float y)
 {
 	if (this->scroll_.dragging)
 		return this->scroll_.motion(y, this->r);
-	return false;
+
+	// Motion also bubbles up from a plain hover, and a release can go
+	// missing -- see the fullscreen workaround in Window::event.
+	if (this->press_file_ < 0 || !kit.left_down_ ||
+		this->press_file_ >= int(this->files_.size()) ||
+		!drag_threshold(kit, this->press_x_, this->press_y_, x, y))
+		return false;
+
+	// Everything the drag needs is read out before it runs: its nested event
+	// loop may finish thumbnails and rescan the directory, and files_ does
+	// not survive that.
+	const QUrl url = file_url(this->press_file_);
+	const QImage icon = drag_thumbnail(this->files_[size_t(this->press_file_)]);
+	this->press_file_ = -1;
+	start_file_drag(kit, url, icon);
+	return true;
 }
 
 bool
