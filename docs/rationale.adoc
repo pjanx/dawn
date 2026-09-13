@@ -227,16 +227,16 @@ here in particular), often with no effective option to turn it off.
 
 Theme colours
 -------------
-My visual system is not a fan of anything white on black (the first level is
-that imperfectly corrected eyesight makes everything blurred).  That said,
-even to me, a dark mode toggle is useful for testing out how transparent images,
-such as program icons, look on a dark background.
+My visual system is not a fan of anything white on black (the first level of
+issues is that imperfectly corrected eyesight makes everything blurred).  That
+said, even to me, a dark mode toggle is useful for testing out how transparent
+images, such as program icons, look on a dark background.
 
-What _I_ am not a fan of is deciphering text that is grey on white.  The
-implication so far is that I normally want everything to be deep black on white.
-Meanwhile, designers seem to have decided that the computer monitors of today
-have too much contrast, and just about everything requires manual adjustment
-to set it straight.  How wonderful that I can buck this miserable trend.
+What I am not a fan of personally is deciphering text that is grey on white.
+So I normally want everything to be deep black on white.  Meanwhile, designers
+of the world seem to have decided that the computer monitors of today have too
+much contrast, and just about everything requires manual adjustment to set it
+straight.  How wonderful it is that I can buck this miserable trend.
 
 Regardless, it would be a good idea to add support for full customisation,
 if only because there's no universal way of learning the system's accent colour.
