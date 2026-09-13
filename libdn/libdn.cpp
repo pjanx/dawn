@@ -1333,24 +1333,6 @@ matrix_rotate(double radians)
 
 // --- Orientation -------------------------------------------------------------
 
-void
-orientation_dimensions(
-	const Image &image, Orientation orientation, double *w, double *h)
-{
-	switch (orientation) {
-	case Orientation::Rotate90:
-	case Orientation::Mirror90:
-	case Orientation::Rotate270:
-	case Orientation::Mirror270:
-		*w = image.height;
-		*h = image.width;
-		break;
-	default:
-		*w = image.width;
-		*h = image.height;
-	}
-}
-
 Matrix
 orientation_matrix(Orientation orientation, double width, double height)
 {
@@ -1390,14 +1372,6 @@ orientation_matrix(Orientation orientation, double width, double height)
 		break;
 	}
 	return matrix;
-}
-
-Matrix
-orientation_apply(
-	const Image &image, Orientation orientation, double *width, double *height)
-{
-	orientation_dimensions(image, orientation, width, height);
-	return orientation_matrix(orientation, *width, *height);
 }
 
 Orientation

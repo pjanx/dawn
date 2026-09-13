@@ -22,22 +22,6 @@
 namespace dawn
 {
 
-/// CPU working pixmap and GPU sampling format: Wuffs BGRA_PREMUL_4X16LE —
-/// little-endian uint16 channels B,G,R,A, premultiplied. On Vulkan upload as
-/// `R16G16B16A16_UNORM` with a BGRA component swizzle (there is no native
-/// `B16G16R16A16`); same idea on other APIs. No 8-bit quantize required.
-inline constexpr uint32_t kBytesPerPixel = 8;
-
-/// Maximum width or height of a loaded / rendered pixmap (inclusive).
-inline constexpr uint32_t kMaxDimension = 65535;
-
-inline constexpr uint32_t
-fourcc(char a, char b, char c, char d)
-{
-	return uint32_t(uint8_t(a)) << 24 | uint32_t(uint8_t(b)) << 16 |
-		uint32_t(uint8_t(c)) << 8 | uint32_t(uint8_t(d));
-}
-
 // Thread safety (summary):
 // - Concurrent open()/open_from_data() of different files is OK for most
 //   codecs. TIFF loads are serialized internally (libtiff global handlers).
@@ -51,24 +35,6 @@ fourcc(char a, char b, char c, char d)
 // - After load, Image is single-writer: read-only pixel sharing is fine;
 //   do not mutate (finish/ensure/blend/render) from multiple threads.
 
-// https://www.cipa.jp/std/documents/e/DC-008-2012_E.pdf Table 6
-enum class Orientation : int {
-	Unknown = 0,
-	Rotate0 = 1,
-	Mirror0 = 2,
-	Rotate180 = 3,
-	Mirror180 = 4,
-	Mirror270 = 5,
-	Rotate90 = 6,
-	Mirror90 = 7,
-	Rotate270 = 8,
-};
-
-/// 2D affine matrix (column-vector style: x' = xx*x + xy*y + x0).
-struct Matrix {
-	double xx = 1, yx = 0, xy = 0, yy = 1, x0 = 0, y0 = 0;
-};
-
 struct Error {
 	enum class Code {
 		Ok = 0,
@@ -81,10 +47,7 @@ struct Error {
 	explicit operator bool() const { return code != Code::Ok; }
 };
 
-/// Read and write an opaque application configuration value.
-/// A missing value is not an error and returns std::nullopt.
-std::optional<std::string> config_get(std::string_view key, Error *error);
-bool config_set(std::string_view key, std::string_view value, Error *error);
+// --- Configuration -----------------------------------------------------------
 
 namespace ini
 {
@@ -107,6 +70,13 @@ std::string desktop_unescape(std::string_view value);
 std::string desktop_escape(std::string_view value);
 
 }  // namespace ini
+
+/// Read and write an opaque application configuration value.
+/// A missing value is not an error and returns std::nullopt.
+std::optional<std::string> config_get(std::string_view key, Error *error);
+bool config_set(std::string_view key, std::string_view value, Error *error);
+
+// --- Colour management -------------------------------------------------------
 
 class Cmm;
 class Profile;
@@ -142,15 +112,50 @@ struct Chromaticities {
 
 Chromaticities profile_chromaticities(const Profile *profile);
 
-/// Accumulated CPU milliseconds for one `open()` / `open_from_data()`.
-/// Zeroed by the caller; filled when `OpenContext::timing` is set.
-struct OpenTiming {
-	double file_ms = 0;
-	double decode_ms = 0;
-	double alloc_ms = 0;
-	double cms_ms = 0;
-	double widen_ms = 0;
+// --- Orientation -------------------------------------------------------------
+
+// https://www.cipa.jp/std/documents/e/DC-008-2012_E.pdf Table 6
+enum class Orientation : int {
+	Unknown = 0,
+	Rotate0 = 1,
+	Mirror0 = 2,
+	Rotate180 = 3,
+	Mirror180 = 4,
+	Mirror270 = 5,
+	Rotate90 = 6,
+	Mirror90 = 7,
+	Rotate270 = 8,
 };
+
+/// 2D affine matrix (column-vector style: x' = xx*x + xy*y + x0).
+struct Matrix {
+	double xx = 1, yx = 0, xy = 0, yy = 1, x0 = 0, y0 = 0;
+};
+
+Matrix orientation_matrix(Orientation orientation, double width, double height);
+Orientation exif_orientation(std::span<const uint8_t> exif);
+
+[[nodiscard]] Orientation orientation_or_0(Orientation orientation);
+void orientation_display_size(uint32_t src_w, uint32_t src_h,
+	Orientation orientation, uint32_t *width, uint32_t *height);
+[[nodiscard]] Orientation orientation_rotate_left(Orientation orientation);
+[[nodiscard]] Orientation orientation_rotate_right(Orientation orientation);
+[[nodiscard]] Orientation orientation_mirror(Orientation orientation);
+void orientation_map_display_to_source(Orientation orientation, uint32_t src_w,
+	uint32_t src_h, double dx, double dy, double *sx, double *sy);
+void orientation_map_source_to_display(Orientation orientation, uint32_t src_w,
+	uint32_t src_h, double sx, double sy, double *dx, double *dy);
+
+// --- Image -------------------------------------------------------------------
+
+/// CPU working pixmap and GPU sampling format: Wuffs BGRA_PREMUL_4X16LE —
+/// little-endian uint16 channels B,G,R,A, premultiplied. On Vulkan upload as
+/// `R16G16B16A16_UNORM` with a BGRA component swizzle (there is no native
+/// `B16G16R16A16`); same idea on other APIs. No 8-bit quantize required.
+inline constexpr uint32_t kBytesPerPixel = 8;
+
+/// Maximum width or height of a loaded / rendered pixmap (inclusive).
+inline constexpr uint32_t kMaxDimension = 65535;
 
 struct Image;
 using ImagePtr = std::shared_ptr<Image>;
@@ -234,6 +239,8 @@ row_u16(const Image &img, uint32_t y)
 
 /// Allocate a zeroed working-format image. Returns null on OOM / overflow.
 ImagePtr image_new(uint32_t width, uint32_t height);
+
+// --- Colour management -------------------------------------------------------
 
 class Profile
 {
@@ -320,6 +327,16 @@ public:
 
 // --- Opening -----------------------------------------------------------------
 
+/// Accumulated CPU milliseconds for one `open()` / `open_from_data()`.
+/// Zeroed by the caller; filled when `OpenContext::timing` is set.
+struct OpenTiming {
+	double file_ms = 0;
+	double decode_ms = 0;
+	double alloc_ms = 0;
+	double cms_ms = 0;
+	double widen_ms = 0;
+};
+
 struct OpenContext {
 	std::string uri;
 	std::shared_ptr<Cmm> cmm;
@@ -337,6 +354,8 @@ struct OpenContext {
 ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
+
+// --- Loaders -----------------------------------------------------------------
 
 using LoadFn = ImagePtr(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
@@ -357,23 +376,14 @@ std::span<const Loader> loaders();
 /// shared-mime-info types this build can load.  The order is stable.
 std::vector<std::string> supported_media_types();
 
-void orientation_dimensions(
-	const Image &image, Orientation orientation, double *width, double *height);
-Matrix orientation_matrix(Orientation orientation, double width, double height);
-Matrix orientation_apply(
-	const Image &image, Orientation orientation, double *width, double *height);
-Orientation exif_orientation(std::span<const uint8_t> exif);
+// --- Loader support ----------------------------------------------------------
 
-[[nodiscard]] Orientation orientation_or_0(Orientation orientation);
-void orientation_display_size(uint32_t src_w, uint32_t src_h,
-	Orientation orientation, uint32_t *width, uint32_t *height);
-[[nodiscard]] Orientation orientation_rotate_left(Orientation orientation);
-[[nodiscard]] Orientation orientation_rotate_right(Orientation orientation);
-[[nodiscard]] Orientation orientation_mirror(Orientation orientation);
-void orientation_map_display_to_source(Orientation orientation, uint32_t src_w,
-	uint32_t src_h, double dx, double dy, double *sx, double *sy);
-void orientation_map_source_to_display(Orientation orientation, uint32_t src_w,
-	uint32_t src_h, double sx, double sy, double *dx, double *dy);
+inline constexpr uint32_t
+fourcc(char a, char b, char c, char d)
+{
+	return uint32_t(uint8_t(a)) << 24 | uint32_t(uint8_t(b)) << 16 |
+		uint32_t(uint8_t(c)) << 8 | uint32_t(uint8_t(d));
+}
 
 std::shared_ptr<Cmm> cmm_or_default(const OpenContext &ctx);
 
