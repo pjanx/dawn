@@ -6,9 +6,9 @@
 //
 
 #include <dawn-config.h>
-#include <libdn/gettext.h>
 
-#include "libdn.h"
+#include "gettext.hpp"
+#include "libdn.hpp"
 
 #include <CoreFoundation/CoreFoundation.h>
 

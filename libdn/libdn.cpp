@@ -1707,7 +1707,7 @@ constexpr Loader kLoaders[] = {
 
 	{"ImageIO",
 #if DAWN_WITH_IMAGEIO
-		&detail::load_imageio, {}, {}, &detail::imageio_media_types},
+		&load_imageio, {}, {}, &imageio_media_types},
 #else
 		{}, {}, {}, {}},
 #endif
@@ -1716,7 +1716,7 @@ constexpr Loader kLoaders[] = {
 	// it, while the browser keeps filtering them out, and nothing associates.
 	{"Core Graphics PDF",
 #if DAWN_WITH_CGPDF
-		&detail::load_cgpdf,
+		&load_cgpdf,
 #else
 		{},
 #endif

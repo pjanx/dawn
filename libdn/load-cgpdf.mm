@@ -11,10 +11,10 @@
 // producing no pages at all.
 
 #include <dawn-config.h>
-#include <libdn/gettext.h>
 
+#include "gettext.hpp"
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -161,8 +161,7 @@ CGPDFRenderClosure::render_internal(
 }
 
 ImagePtr
-detail::load_cgpdf(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// The document only maps what it needs, when it needs it, and its render
 	// closures outlive this call, so it must own the bytes--the caller's are

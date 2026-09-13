@@ -10,10 +10,10 @@
 // or GdkPixbuf.
 
 #include <dawn-config.h>
-#include <libdn/gettext.h>
 
+#include "gettext.hpp"
 #include "libdn-loaders.h"
-#include "libdn.h"
+#include "libdn.hpp"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -282,8 +282,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 }
 
 ImagePtr
-detail::load_imageio(
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
+load_imageio(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	// The caller's buffer outlives this call, and ImageIO's own cache would
 	// only fight the thumbnailer's memory accounting.
@@ -318,7 +317,7 @@ detail::load_imageio(
 // --- Advertised types --------------------------------------------------------
 
 vector<string>
-detail::imageio_media_types()
+imageio_media_types()
 {
 	// What ImageIO decodes is a runtime property.
 	// The media types the API may give us don't match shared-mime-info exactly,

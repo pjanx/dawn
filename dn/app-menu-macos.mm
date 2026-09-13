@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include <libdn/gettext.h>
+#include <libdn/gettext.hpp>
 
 #include "app-menu-macos.hpp"
 
