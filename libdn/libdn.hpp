@@ -78,9 +78,6 @@ bool config_set(std::string_view key, std::string_view value, Error *error);
 
 // --- Colour management -------------------------------------------------------
 
-class Cmm;
-class Profile;
-
 /// Working-buffer TRC the scale shaders can apply. Unmatched ICC curves
 /// fall back to Srgb (`profile_transfer`).
 enum class Transfer : int32_t {
@@ -88,12 +85,6 @@ enum class Transfer : int32_t {
 	Srgb = 1,
 	AdobeRgb = 2,
 };
-
-/// Exact match of the profile TRC to Linear / sRGB / gamma 2.2. Null, missing
-/// tags, mixed channels, or any other curve → Srgb.
-Transfer profile_transfer(const Profile *profile);
-float transfer_decode(float encoded, Transfer transfer);
-float transfer_encode(float linear, Transfer transfer);
 
 enum class ColorModel : uint8_t { Unknown, Rgb, Cmyk, Gray };
 
@@ -109,6 +100,103 @@ struct Chromaticities {
 	double x[6] = {};
 	double y[6] = {};
 };
+
+class Cmm;
+
+class Profile
+{
+	friend class Cmm;
+	friend Transfer profile_transfer(const Profile *profile);
+	friend Chromaticities profile_chromaticities(const Profile *profile);
+	std::shared_ptr<Cmm> cmm_;
+	void *profile_ = nullptr;  ///< cmsHPROFILE
+	Profile(std::shared_ptr<Cmm> cmm, void *cms_profile);
+
+public:
+	~Profile();
+	Profile(const Profile &) = delete;
+	Profile &operator=(const Profile &) = delete;
+
+	std::vector<uint8_t> to_bytes() const;
+};
+
+/// Serialized ICC equality. Null equals null; lcms has no compare API.
+/// The header's creation date/time is excluded.
+bool profiles_equal(const Profile *a, const Profile *b);
+
+struct Image;
+using ImagePtr = std::shared_ptr<Image>;
+
+class Cmm : public std::enable_shared_from_this<Cmm>
+{
+	friend class Profile;
+	void *context_ = nullptr;  ///< cmsContext
+	bool broken_premul_ = false;
+
+	// Weak, because a Profile owns its Cmm: we don't want a cycle.
+	// Deduplicating profiles for as long as somebody else wants them.
+	std::weak_ptr<Profile> cached_sRGB;
+	std::weak_ptr<Profile> cached_display_p3;
+
+public:
+	Cmm();
+	~Cmm();
+	Cmm(const Cmm &) = delete;
+	Cmm &operator=(const Cmm &) = delete;
+
+	static std::shared_ptr<Cmm> get_default();
+
+	std::shared_ptr<Profile> get_profile_data(const void *data, size_t len);
+	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
+	std::shared_ptr<Profile> get_profile_sRGB();
+	std::shared_ptr<Profile> get_profile_display_p3();
+	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
+	std::shared_ptr<Profile> get_profile_parametric(
+		double gamma, double whitepoint[2], double primaries[6]);
+
+	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
+	/// AVIF/HEIF nclx). Null for code points we do not model,
+	/// including PQ (16) and HLG (18): both are HDR curves with no ICC v2
+	/// parametric equivalent, and approximating them would shift tone badly.
+	/// `matrix_coefficients` and range are deliberately not taken -- they
+	/// describe a YCbCr encoding, already undone by the time we see RGB.
+	std::shared_ptr<Profile> get_profile_cicp(
+		uint8_t color_primaries, uint8_t transfer_characteristics);
+
+	/// CMYK8 (inverted) → working-format image (opaque premul).
+	/// TODO(p): This has little reason to take an Image.
+	void convert_cmyk8(
+		Image &dst, const uint8_t *cmyk, Profile *source, Profile *target);
+
+	/// In-place colour transform on BGRA16 buffers.
+	bool transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
+		Profile *source, Profile *target, bool source_premul,
+		bool target_premul);
+
+	/// BGRA8 (straight) → BGRA16 working buffer. `dst` is `width*height`
+	/// packed BGRA16 pixels. Colour-manages when both profiles resolve.
+	bool transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst,
+		uint32_t width, uint32_t height, Profile *source, Profile *target,
+		bool target_premul);
+
+	// TODO(p): The finishers don't really belong here.
+
+	/// Expects straight (non-premultiplied) BGRA16. Colour-manages when
+	/// `target` is set, then guarantees premul output.
+	void finish_premultiply(Image &image, Profile *source, Profile *target);
+
+	void finish_page(Image &page, Profile *target);
+	ImagePtr finish(ImagePtr image, Profile *target);
+
+	bool broken_premul() const { return broken_premul_; }
+	void *context() { return context_; }
+};
+
+/// Exact match of the profile TRC to Linear / sRGB / gamma 2.2. Null, missing
+/// tags, mixed channels, or any other curve → Srgb.
+Transfer profile_transfer(const Profile *profile);
+float transfer_decode(float encoded, Transfer transfer);
+float transfer_encode(float linear, Transfer transfer);
 
 Chromaticities profile_chromaticities(const Profile *profile);
 
@@ -156,9 +244,6 @@ inline constexpr uint32_t kBytesPerPixel = 8;
 
 /// Maximum width or height of a loaded / rendered pixmap (inclusive).
 inline constexpr uint32_t kMaxDimension = 65535;
-
-struct Image;
-using ImagePtr = std::shared_ptr<Image>;
 
 /// Parametric re-render for vector formats (attached at page level).
 struct RenderClosure {
@@ -240,91 +325,6 @@ row_u16(const Image &img, uint32_t y)
 /// Allocate a zeroed working-format image. Returns null on OOM / overflow.
 ImagePtr image_new(uint32_t width, uint32_t height);
 
-// --- Colour management -------------------------------------------------------
-
-class Profile
-{
-	friend class Cmm;
-	friend Transfer profile_transfer(const Profile *profile);
-	friend Chromaticities profile_chromaticities(const Profile *profile);
-	std::shared_ptr<Cmm> cmm_;
-	void *profile_ = nullptr;  ///< cmsHPROFILE
-	Profile(std::shared_ptr<Cmm> cmm, void *cms_profile);
-
-public:
-	~Profile();
-	Profile(const Profile &) = delete;
-	Profile &operator=(const Profile &) = delete;
-
-	std::vector<uint8_t> to_bytes() const;
-};
-
-/// Serialized ICC equality. Null equals null; lcms has no compare API.
-/// The header's creation date/time is excluded.
-bool profiles_equal(const Profile *a, const Profile *b);
-
-class Cmm : public std::enable_shared_from_this<Cmm>
-{
-	friend class Profile;
-	void *context_ = nullptr;  ///< cmsContext
-	bool broken_premul_ = false;
-
-	// Weak, because a Profile owns its Cmm: we don't want a cycle.
-	// Deduplicating profiles for as long as somebody else wants them.
-	std::weak_ptr<Profile> cached_sRGB;
-	std::weak_ptr<Profile> cached_display_p3;
-
-public:
-	Cmm();
-	~Cmm();
-	Cmm(const Cmm &) = delete;
-	Cmm &operator=(const Cmm &) = delete;
-
-	static std::shared_ptr<Cmm> get_default();
-
-	std::shared_ptr<Profile> get_profile_data(const void *data, size_t len);
-	std::shared_ptr<Profile> get_profile(std::span<const uint8_t> bytes);
-	std::shared_ptr<Profile> get_profile_sRGB();
-	std::shared_ptr<Profile> get_profile_display_p3();
-	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
-	std::shared_ptr<Profile> get_profile_parametric(
-		double gamma, double whitepoint[2], double primaries[6]);
-
-	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
-	/// AVIF/HEIF nclx). Null for code points we do not model,
-	/// including PQ (16) and HLG (18): both are HDR curves with no ICC v2
-	/// parametric equivalent, and approximating them would shift tone badly.
-	/// `matrix_coefficients` and range are deliberately not taken -- they
-	/// describe a YCbCr encoding, already undone by the time we see RGB.
-	std::shared_ptr<Profile> get_profile_cicp(
-		uint8_t color_primaries, uint8_t transfer_characteristics);
-
-	/// CMYK8 (inverted) → working-format image (opaque premul).
-	void convert_cmyk8(
-		Image &dst, const uint8_t *cmyk, Profile *source, Profile *target);
-
-	/// In-place colour transform on BGRA16 buffers.
-	bool transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
-		Profile *source, Profile *target, bool source_premul,
-		bool target_premul);
-
-	/// BGRA8 (straight) → BGRA16 working buffer. `dst` is `width*height`
-	/// packed BGRA16 pixels. Colour-manages when both profiles resolve.
-	bool transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst,
-		uint32_t width, uint32_t height, Profile *source, Profile *target,
-		bool target_premul);
-
-	/// Expects straight (non-premultiplied) BGRA16. Colour-manages when
-	/// `target` is set, then guarantees premul output.
-	void finish_premultiply(Image &image, Profile *source, Profile *target);
-
-	void finish_page(Image &page, Profile *target);
-	ImagePtr finish(ImagePtr image, Profile *target);
-
-	bool broken_premul() const { return broken_premul_; }
-	void *context() { return context_; }
-};
-
 // --- Opening -----------------------------------------------------------------
 
 /// Accumulated CPU milliseconds for one `open()` / `open_from_data()`.
@@ -387,6 +387,7 @@ fourcc(char a, char b, char c, char d)
 
 std::shared_ptr<Cmm> cmm_or_default(const OpenContext &ctx);
 
+// TODO(p): What in tarnation does this mean?
 /// Bring an image to final working premul. If `source` is null and
 /// `image.icc` is non-empty, loads that profile. If `input_premul` and there
 /// is no screen profile, leaves pixels alone. If `input_premul` and CMS is
