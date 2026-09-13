@@ -6,10 +6,11 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
+
+#include <libdn/gettext.hpp>
+#include <libdn/libdn.hpp>
 
 #include "app.hpp"
-#include "libdn/libdn.hpp"
 #include "thumbnail-cache.hpp"
 #include "url.hpp"
 #include "window.hpp"

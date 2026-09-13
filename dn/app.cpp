@@ -6,11 +6,12 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
+
+#include <libdn/gettext.hpp>
+#include <libdn/vk-device.hpp>
 
 #include "app.hpp"
 
-#include "libdn/vk-device.hpp"
 #include "url.hpp"
 #include "window.hpp"
 

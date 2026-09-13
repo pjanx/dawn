@@ -1,5 +1,5 @@
 //
-// dawn-gettext.h: message translation macros
+// libdn/gettext.h: message translation macros
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0

@@ -13,8 +13,8 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
 
+#include "gettext.hpp"
 #include "libdn-loaders.h"
 #include "libdn.hpp"
 

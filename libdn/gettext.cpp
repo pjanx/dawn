@@ -6,7 +6,8 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
+
+#include "gettext.hpp"
 
 #include <clocale>
 #include <cstdarg>

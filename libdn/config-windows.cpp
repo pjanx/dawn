@@ -6,9 +6,9 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
 
-#include "libdn.h"
+#include "gettext.hpp"
+#include "libdn.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>

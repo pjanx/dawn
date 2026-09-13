@@ -5,14 +5,14 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include <dawn-gettext.h>
+#include <libdn/gettext.hpp>
+#include <libdn/libdn.hpp>
+#include <libdn/thumb-scaler.hpp>
 
 #include "kit-browser.hpp"
 
 #include "action.hpp"
 #include "kit-chrome.hpp"
-#include "libdn/libdn.hpp"
-#include "libdn/thumb-scaler.hpp"
 #include "renderer.hpp"
 #include "thumbnail-cache.hpp"
 #include "thumbnailer.hpp"

@@ -6,7 +6,7 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
+#include <libdn/gettext.h>
 
 #include "libdn.h"
 

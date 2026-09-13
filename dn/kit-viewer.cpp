@@ -6,7 +6,8 @@
 //
 
 #include <dawn-config.h>
-#include <dawn-gettext.h>
+
+#include <libdn/gettext.hpp>
 
 #include "kit-viewer.hpp"
 
