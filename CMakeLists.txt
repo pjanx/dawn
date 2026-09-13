@@ -664,13 +664,12 @@ else()
 		set(dn_icon_ico "${PROJECT_BINARY_DIR}/dn.ico")
 		icon_for_win32("${dn_icon_ico}" "${dn_icon_png_list}" "${dn_icon_png}")
 
-		set(dn_icon_rc "${PROJECT_BINARY_DIR}/dn.rc")
-		# Qt specifically looks up IDI_ICON1 and nothing else.
-		file(CONFIGURE OUTPUT "${dn_icon_rc}"
-			CONTENT "IDI_ICON1 ICON \"dn.ico\"")
-		set_property(SOURCE "${dn_icon_rc}"
-			APPEND PROPERTY OBJECT_DEPENDS ${dn_icon_ico})
-		target_sources(dn PRIVATE "${dn_icon_rc}")
+		set(dn_manifest "${PROJECT_SOURCE_DIR}/dn/dn.manifest")
+		set(dn_rc "${PROJECT_BINARY_DIR}/dn.rc")
+		configure_file("${PROJECT_SOURCE_DIR}/dn/dn.rc.in" "${dn_rc}" @ONLY)
+		set_property(SOURCE "${dn_rc}" APPEND
+			PROPERTY OBJECT_DEPENDS "${dn_icon_ico}" "${dn_manifest}")
+		target_sources(dn PRIVATE "${dn_rc}")
 	else()
 		add_custom_target(icons ALL DEPENDS ${dn_icon_png_list})
 

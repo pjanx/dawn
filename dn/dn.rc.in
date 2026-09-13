@@ -1,0 +1,45 @@
+//
+// dn.rc.in: Windows resources: manifest, icon, version information
+//
+// Copyright The Dawn Authors
+// SPDX-License-Identifier: MPL-2.0
+//
+
+#include <windows.h>
+
+// UTF-8 literals need this to precede them in any resource compiler:
+// https://devblogs.microsoft.com/oldnewthing/20190607-00/?p=102569
+#pragma code_page(65001)
+
+// Never list the manifest among target sources, CMake would pass it on:
+// https://gitlab.kitware.com/cmake/cmake/-/issues/23066
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "@dn_manifest@"
+
+// Qt specifically looks up IDI_ICON1 and nothing else.
+IDI_ICON1 ICON "dn.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION    @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
+FILETYPE       VFT_APP
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904B0"
+		BEGIN
+			VALUE "CompanyName",      "@CPACK_PACKAGE_VENDOR@"
+			VALUE "FileDescription",  "@PROJECT_DESCRIPTION@"
+			VALUE "FileVersion",      "@PROJECT_VERSION@"
+			VALUE "InternalName",     "dn"
+			VALUE "LegalCopyright",   "Copyright @CPACK_PACKAGE_VENDOR@"
+			VALUE "OriginalFilename", "dn.exe"
+			VALUE "ProductName",      "@PROJECT_NAME@"
+			VALUE "ProductVersion",   "@PROJECT_VERSION@"
+		END
+	END
+
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
+	END
+END

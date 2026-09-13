@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+	<trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+		<security>
+			<requestedPrivileges>
+				<!-- Unmanifested binaries go through installer detection,
+				     and elevation would cost us drops from Explorer. -->
+				<requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+			</requestedPrivileges>
+		</security>
+	</trustInfo>
+	<application xmlns="urn:schemas-microsoft-com:asm.v3">
+		<windowsSettings>
+			<!-- std::filesystem calls FindFirstFileW without any \\?\ prefix.
+			     The machine-wide LongPathsEnabled policy still applies.
+			     DPI awareness is deliberately absent: Qt sets it at run time,
+			     and a manifest entry would only make that call fail. -->
+			<longPathAware
+				xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings"
+				>true</longPathAware>
+		</windowsSettings>
+	</application>
+</assembly>
