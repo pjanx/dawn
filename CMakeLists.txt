@@ -556,9 +556,7 @@ else()
 	target_link_libraries(dn PRIVATE PkgConfig::COLORD)
 endif()
 
-if (NOT APPLE)
-	target_sources(dn PRIVATE dn/instance.cpp)
-endif()
+target_sources(dn PRIVATE dn/instance.cpp)
 
 # Application icon: SVG → PNG/ICO (xT) on non-Apple; Swift squircle ICNS (xM)
 # on Darwin. Qt looks up IDI_ICON1 and nothing else.

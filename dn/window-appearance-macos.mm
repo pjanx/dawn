@@ -1,5 +1,5 @@
 //
-// window-appearance-macos.mm: sync a window's native titlebar to dark mode
+// window-appearance-macos.mm: native window behaviour Qt does not cover
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -28,6 +28,18 @@ sync_macos_window_appearance(QWindow *window, bool dark)
 	view.window.appearance = dark
 		? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua]
 		: [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+}
+
+void
+raise_macos_window(QWindow *window)
+{
+	// Activation is cooperative: this only succeeds when the active
+	// application has yielded it to us, as launcher.swift does.
+	if (@available(macOS 14, *))
+		[NSApp activate];
+	else
+		[NSApp activateIgnoringOtherApps:YES];
+	window->requestActivate();
 }
 
 }  // namespace dn

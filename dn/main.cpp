@@ -8,22 +8,15 @@
 #include <dawn-config.h>
 
 #include <libdn/gettext.hpp>
+#include <libdn/ipc-instance.hpp>
 #include <libdn/libdn.hpp>
 
 #include "app.hpp"
+#include "instance.hpp"
 #include "thumbnail-cache.hpp"
 #include "url.hpp"
 #include "window.hpp"
 #include "xdg.hpp"
-
-#ifndef Q_OS_MACOS
-#include "instance.hpp"
-#include "libdn/ipc-instance.hpp"
-
-#include <cstdint>
-#include <memory>
-#include <optional>
-#endif
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -37,13 +30,15 @@
 #include <QUrl>
 #include <QtLogging>
 
+#include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 using namespace std;
 
-#ifndef Q_OS_MACOS
 #ifdef Q_OS_WIN
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -52,9 +47,10 @@ using namespace std;
 static QString
 instance_session()
 {
-#ifdef Q_OS_WIN
-	// Endpoint names are already scoped to the Windows session, so there
-	// is nothing left here for the handshake to catch.
+#if defined Q_OS_WIN || defined Q_OS_MACOS
+	// Endpoint names are already scoped to the Windows session, and a macOS
+	// user has only the one graphical session, so there is nothing left here
+	// for the handshake to catch.
 	return {};
 #else
 	QString session = qEnvironmentVariable("WAYLAND_DISPLAY");
@@ -137,8 +133,6 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 	}
 	return {};
 }
-
-#endif
 
 // Qt's own text -- the generic command-line options, the items macOS adds to
 // the application menu -- lives in its catalogues, which it will not load on
@@ -258,7 +252,7 @@ main(int argc, char **argv)
 	}
 #endif
 
-	dn::App app(argc, argv, mode);
+	dn::App app(argc, argv);
 	install_qt_translations(app);
 	QStringList raw = parser.positionalArguments();
 	const bool bare = raw.isEmpty();
@@ -270,7 +264,6 @@ main(int argc, char **argv)
 		to_open.push_back(
 			mode == dn::Mode::CropJpeg ? QUrl{} : dn::path_to_url(cwd));
 
-#ifndef Q_OS_MACOS
 	unique_ptr<dn::InstanceHost> host;
 	if (!parser.isSet(new_instance_opt)) {
 		const QString session = instance_session();
@@ -294,7 +287,6 @@ main(int argc, char **argv)
 				std::move(listen.listener), app, session, nullptr);
 		}
 	}
-#endif
 	if (!app.init())
 		return EXIT_FAILURE;
 

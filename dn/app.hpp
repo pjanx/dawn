@@ -84,9 +84,8 @@ protected:
 	bool event(QEvent *event) override;
 
 public:
-	App(int &argc, char **argv, Mode mode)
-		: QGuiApplication(argc, argv), thumbnailer(nullptr, 0),
-		  startup_mode(mode)
+	App(int &argc, char **argv)
+		: QGuiApplication(argc, argv), thumbnailer(nullptr, 0)
 	{
 	}
 
@@ -99,7 +98,6 @@ public:
 	QPointer<Window> default_window;
 	bool needs_csd = false;
 
-	const Mode startup_mode;
 	bool accepting_files = false;
 	std::vector<QUrl> pending_files;
 	void accept_files();

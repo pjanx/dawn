@@ -42,6 +42,7 @@
 
 #ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
+#include "window-appearance-macos.hpp"
 
 #include <dlfcn.h>
 #endif
@@ -346,6 +347,8 @@ Settings::notify(SettingsChange change) const
 }
 
 // Finder delivers a document to open as a QFileOpenEvent, not an argument.
+// These are always Dawn.app's own: the other modes' launchers pass theirs
+// through the instance service, whatever mode this process was started in.
 bool
 App::event(QEvent *event)
 {
@@ -356,7 +359,7 @@ App::event(QEvent *event)
 	if (event->type() == QEvent::FileOpen) {
 		const QUrl url = url_normalized(((QFileOpenEvent *) event)->url());
 		if (this->accepting_files)
-			open(url, {}, {}, this->startup_mode);
+			open(url, {}, {}, Mode::View);
 		else
 			this->pending_files.push_back(url);
 		return true;
@@ -370,7 +373,7 @@ App::accept_files()
 	this->accepting_files = true;
 	auto pending = std::move(this->pending_files);
 	for (const QUrl &url : pending)
-		open(url, {}, {}, this->startup_mode);
+		open(url, {}, {}, Mode::View);
 }
 
 bool
@@ -431,14 +434,16 @@ apply_activation_token(const QString &token)
 		qputenv("XDG_ACTIVATION_TOKEN", token.toUtf8());
 }
 
-// Windows has no token to carry: the process that asked for the window
-// hands over its foreground right first, and only then does this work.
-// See AllowSetForegroundWindow in main.cpp.
+// Windows and macOS have no token to carry: the process that asked for
+// the window hands over its foreground right first, and only then does this
+// work.  See AllowSetForegroundWindow in main.cpp, and launcher.swift.
 static void
 raise_window(Window *window)
 {
-#ifdef Q_OS_WIN
+#if defined Q_OS_WIN
 	window->requestActivate();
+#elif defined Q_OS_MACOS
+	raise_macos_window(window);
 #else
 	(void) window;
 #endif

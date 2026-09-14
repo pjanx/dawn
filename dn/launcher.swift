@@ -1,13 +1,15 @@
 //
+// launcher.swift: open documents in another mode of Dawn
+//
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
 import AppKit
 
-// The two bundles share this executable; their plists supply the launch mode.
+// The bundles share this executable; their plists supply the launch mode.
+// Dawn hands the documents to its running instance, or becomes that instance.
 final class Launcher: NSObject, NSApplicationDelegate {
-	private var pending = 0
 	private var receivedDocuments = false
 	private var submittedEmptyLaunch = false
 	private let mainApp = Bundle.main.bundleURL.deletingLastPathComponent()
@@ -38,37 +40,7 @@ final class Launcher: NSObject, NSApplicationDelegate {
 	}
 
 	private func launch(_ urls: [URL]) {
-		pending += 1
-		guard let mode = Bundle.main.object(
-				forInfoDictionaryKey: "DawnMode") as? String else {
-			finish("The launcher has no application mode.", urls)
-			return
-		}
-
-		let config = NSWorkspace.OpenConfiguration()
-		config.activates = true
-		config.createsNewApplicationInstance = true
-		config.allowsRunningApplicationSubstitution = false
-		config.arguments = ["--mode=\(mode)"]
-		let completion: (NSRunningApplication?, Error?) -> Void = { app, error in
-			let failure = error?.localizedDescription ??
-				(app == nil ? "No application was launched." : nil)
-			// NSWorkspace completion handlers may run on a concurrent queue.
-			DispatchQueue.main.async { self.finish(failure, urls) }
-		}
-		if urls.isEmpty {
-			NSWorkspace.shared.openApplication(at: mainApp,
-											   configuration: config,
-											   completionHandler: completion)
-		} else {
-			NSWorkspace.shared.open(urls, withApplicationAt: mainApp,
-									configuration: config,
-									completionHandler: completion)
-		}
-	}
-
-	private func finish(_ failure: String?, _ urls: [URL]) {
-		if let failure = failure {
+		if let failure = run(urls) {
 			let alert = NSAlert()
 			alert.messageText = "Could not open Dawn"
 			let documents = urls.map { $0.path }.joined(separator: "\n")
@@ -76,11 +48,35 @@ final class Launcher: NSObject, NSApplicationDelegate {
 			NSApp.activate(ignoringOtherApps: true)
 			alert.runModal()
 		}
-		pending -= 1
 		// Give any already queued open events a chance to join this request.
-		DispatchQueue.main.async {
-			if self.pending == 0 { NSApp.terminate(nil) }
+		DispatchQueue.main.async { NSApp.terminate(nil) }
+	}
+
+	private func run(_ urls: [URL]) -> String? {
+		guard let mode = Bundle.main.object(
+				forInfoDictionaryKey: "DawnMode") as? String else {
+			return "The launcher has no application mode."
 		}
+		guard let dawn = Bundle(url: mainApp),
+			  let executable = dawn.executableURL else {
+			return "Dawn is not installed next to this launcher."
+		}
+
+		let process = Process()
+		process.executableURL = executable
+		process.arguments = ["--mode=\(mode)", "--"] + urls.map { $0.path }
+		do {
+			try process.run()
+		} catch {
+			return error.localizedDescription
+		}
+
+		// Only the active application may pass activation on,
+		// and whichever process ends up with the window asks for it.
+		if #available(macOS 14.0, *), let id = dawn.bundleIdentifier {
+			NSApp.yieldActivation(toApplicationWithBundleIdentifier: id)
+		}
+		return nil
 	}
 }
 
