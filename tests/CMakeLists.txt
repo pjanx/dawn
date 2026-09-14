@@ -16,6 +16,8 @@ endif()
 
 set(DAWN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
 set(DAWN_TEST_FIXTURE_FILES
+	"${DAWN_TEST_FIXTURES_DIR}/quads420.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/quads420-progressive.jpg"
 	"${DAWN_TEST_FIXTURES_DIR}/black.png"
 	"${DAWN_TEST_FIXTURES_DIR}/cmyk-lab.icc"
 	"${DAWN_TEST_FIXTURES_DIR}/blue.bmp"
@@ -88,6 +90,13 @@ if (APPLE AND DAWN_WITH_IMAGEIO)
 	)
 	add_test(NAME imageio COMMAND test-imageio)
 endif()
+
+add_executable(test-jpeg-crop test-jpeg-crop.cpp)
+add_dependencies(test-jpeg-crop test-fixtures)
+target_link_libraries(test-jpeg-crop PRIVATE libdn)
+target_compile_definitions(test-jpeg-crop PRIVATE
+	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
+add_test(NAME jpeg_crop COMMAND test-jpeg-crop)
 
 add_executable(test-icns test-icns.cpp)
 target_link_libraries(test-icns PRIVATE libdn)

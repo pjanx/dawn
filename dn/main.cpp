@@ -250,7 +250,7 @@ main(int argc, char **argv)
 		mode = *parsed;
 	}
 #if !DAWN_WITH_WIP
-	if (!dn::viewer_mode(mode)) {
+	if (mode == dn::Mode::Commander) {
 		qWarning("%s",
 			qUtf8Printable(QString::fromUtf8(_("unsupported mode: %1"))
 					.arg(QLatin1String(dn::mode_def(mode).name))));

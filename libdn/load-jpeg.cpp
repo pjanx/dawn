@@ -12,6 +12,7 @@
 #include "libdn.hpp"
 
 #include <jpeglib.h>
+#include <turbojpeg.h>
 #if DAWN_WITH_JPEG_QS
 #include <libjpegqs.h>
 #endif
@@ -801,6 +802,91 @@ jpeg_sof_pixel_count(span<const uint8_t> data)
 		}
 	}
 	return width * height;
+}
+
+// --- Lossless transforms -----------------------------------------------------
+
+// TODO(p): See if it makes sense to have this here.
+// dn can just as well link to libjpeg-turbo directly for this.
+// The only problem is with tests, which need something to link to..
+
+bool
+jpeg_grid(span<const uint8_t> data, JpegGrid *out, Error *error)
+{
+	auto handle = tj3Init(TJINIT_TRANSFORM);
+	bool ok = handle && !tj3DecompressHeader(handle, data.data(), data.size());
+	if (!ok) {
+		if (error)
+			*error = {Error::Code::Open, tj3GetErrorStr(handle)};
+	} else {
+		int sampling = tj3Get(handle, TJPARAM_SUBSAMP);
+		if (sampling < 0 || sampling >= TJ_NUMSAMP) {
+			ok = false;
+			if (error)
+				*error = {
+					Error::Code::Open, _("Unsupported chroma subsampling")};
+		} else if (out) {
+			*out = {uint32_t(tj3Get(handle, TJPARAM_JPEGWIDTH)),
+				uint32_t(tj3Get(handle, TJPARAM_JPEGHEIGHT)),
+				uint32_t(tjMCUWidth[sampling]),
+				uint32_t(tjMCUHeight[sampling])};
+		}
+	}
+	if (handle)
+		tj3Destroy(handle);
+	return ok;
+}
+
+vector<uint8_t>
+jpeg_transform(span<const uint8_t> data, Orientation op, uint32_t x, uint32_t y,
+	uint32_t w, uint32_t h, Error *error)
+{
+	JpegGrid grid;
+	if (!jpeg_grid(data, &grid, error))
+		return {};
+
+	// Exif order, deliberately indexed by the existing orientation vocabulary.
+	constexpr int ops[] = {TJXOP_NONE, TJXOP_NONE, TJXOP_HFLIP, TJXOP_ROT180,
+		TJXOP_VFLIP, TJXOP_TRANSPOSE, TJXOP_ROT90, TJXOP_TRANSVERSE,
+		TJXOP_ROT270};
+	op = orientation_or_0(op);
+	if (int(op) >= 5) {
+		swap(grid.width, grid.height);
+		swap(grid.mcu_width, grid.mcu_height);
+	}
+	if (!grid.width || !grid.height || x >= grid.width || y >= grid.height ||
+		x % grid.mcu_width || y % grid.mcu_height || w > grid.width - x ||
+		h > grid.height - y) {
+		if (error)
+			*error = {Error::Code::Open, _("Invalid lossless JPEG crop")};
+		return {};
+	}
+
+	tjtransform transform{};
+	transform.op = ops[int(op)];
+	transform.options = TJXOPT_PERFECT;
+	if (x || y || w || h) {
+		transform.options |= TJXOPT_CROP;
+		transform.r = {int(x), int(y), int(w), int(h)};
+	}
+
+	// Reading the header on this handle also retains progressive/arithmetic
+	// coding, rather than applying the transform handle's baseline defaults.
+	auto handle = tj3Init(TJINIT_TRANSFORM);
+	unsigned char *output = nullptr;
+	size_t length = 0;
+	vector<uint8_t> result;
+	if (!handle || tj3DecompressHeader(handle, data.data(), data.size()) ||
+		tj3Transform(handle, data.data(), data.size(), 1, &output, &length,
+			&transform)) {
+		if (error)
+			*error = {Error::Code::Open, tj3GetErrorStr(handle)};
+	} else
+		result.assign(output, output + length);
+	tj3Free(output);
+	if (handle)
+		tj3Destroy(handle);
+	return result;
 }
 
 }  // namespace dawn

@@ -93,6 +93,7 @@ if (DN_WITH_WAYLAND)
 endif()
 
 pkg_check_modules(JPEG REQUIRED IMPORTED_TARGET libjpeg)
+pkg_check_modules(TURBOJPEG REQUIRED IMPORTED_TARGET libturbojpeg>=3.0)
 pkg_check_modules(WEBP REQUIRED IMPORTED_TARGET libwebp)
 pkg_check_modules(WEBPDEMUX REQUIRED IMPORTED_TARGET libwebpdemux)
 pkg_check_modules(WEBPMUX REQUIRED IMPORTED_TARGET libwebpmux)
@@ -294,6 +295,7 @@ target_link_libraries(libdn
 	PRIVATE
 		Threads::Threads
 		PkgConfig::JPEG
+		PkgConfig::TURBOJPEG
 		PkgConfig::RESVG
 		PkgConfig::WEBP
 		PkgConfig::WEBPDEMUX
@@ -703,10 +705,10 @@ else()
 		endif()
 
 		set(desktops "${desktop}"
-			"${dawn_packaging}/${DAWN_NAMESPACE}.Browse.desktop")
+			"${dawn_packaging}/${DAWN_NAMESPACE}.Browse.desktop"
+			"${dawn_packaging}/${DAWN_NAMESPACE}.CropJpeg.desktop")
 		if (DAWN_WITH_WIP)
 			list(APPEND desktops
-				"${dawn_packaging}/${DAWN_NAMESPACE}.CropJpeg.desktop"
 				"${dawn_packaging}/${DAWN_NAMESPACE}.Commander.desktop")
 		endif()
 
@@ -834,7 +836,7 @@ endif()
 # AppKit-only identities beside Dawn.app.  Compile with swiftc directly so that
 # this also works with Makefile generators, without enabling CMake's
 # Swift language.
-if (APPLE AND DAWN_WITH_WIP)
+if (APPLE)
 	find_program(DN_SWIFTC_EXECUTABLE swiftc REQUIRED)
 	find_program(DN_LIPO_EXECUTABLE lipo REQUIRED)
 
@@ -869,7 +871,11 @@ if (APPLE AND DAWN_WITH_WIP)
 			-create ${dn_launcher_slices} -output "${dn_launcher}"
 		DEPENDS ${dn_launcher_slices} VERBATIM)
 
-	foreach (dn_launch_id IN ITEMS CropJpeg Commander)
+	set(dn_launch_ids CropJpeg)
+	if (DAWN_WITH_WIP)
+		list(APPEND dn_launch_ids Commander)
+	endif()
+	foreach (dn_launch_id IN LISTS dn_launch_ids)
 		if (dn_launch_id STREQUAL CropJpeg)
 			set(DN_LAUNCH_NAME "Dawn Lossless JPEG Cropper")
 			set(DN_LAUNCH_MODE cropjpeg)

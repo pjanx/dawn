@@ -1337,8 +1337,7 @@ Window::open_any(const QUrl &input)
 		if (!url.isEmpty() &&
 			(url_to_path(url).isEmpty() || QFileInfo(url_to_path(url)).isDir()))
 			return;
-		this->cropper_->jpeg_url_ =
-			url.isEmpty() ? QUrl{} : url_normalized(url);
+		this->cropper_->open(url.isEmpty() ? QUrl{} : url_normalized(url));
 		sync_title();
 		request_render();
 		return;
@@ -1448,9 +1447,6 @@ Window::keyPressEvent(QKeyEvent *event)
 			request_render();
 			return;
 		}
-		if (this->mode_ == Mode::Browse)
-			return;
-		begin_close();
 	}
 }
 

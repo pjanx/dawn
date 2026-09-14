@@ -54,10 +54,10 @@
 					WorkingDirectory='INSTALLDIR'
 					Arguments='"%USERPROFILE%"'
 					Icon='dn.ico' />
-				<?if @DAWN_MSI_WIP@ = ON ?>
 				<Shortcut Id='CropJpegShortcut' Name='Dawn Lossless JPEG Cropper'
 					Target='[INSTALLDIR]\dn.exe' WorkingDirectory='INSTALLDIR'
 					Arguments='--mode=cropjpeg' Icon='dn.ico' />
+				<?if @DAWN_MSI_WIP@ = ON ?>
 				<Shortcut Id='CommanderShortcut' Name='Dawn Commander'
 					Target='[INSTALLDIR]\dn.exe' WorkingDirectory='INSTALLDIR'
 					Arguments='--mode=commander "%USERPROFILE%"' Icon='dn.ico' />

@@ -313,6 +313,7 @@ Renderer::ensure_engine(VkFormat dest_format, VkImageLayout dest_layout)
 {
 	if (!this->device_)
 		return;
+
 	string error;
 	if (!this->engine_.init(this->phys_, this->device_, this->queue_,
 			this->queue_family_, dest_format, dest_layout, &error))
@@ -337,8 +338,6 @@ Renderer::create_swapchain()
 										   : this->want_extent_.height);
 	if (capabilities.currentExtent.width != UINT32_MAX)
 		this->extent_ = capabilities.currentExtent;
-	if (this->extent_.width == 0 || this->extent_.height == 0)
-		return;
 
 	uint32_t format_count = 0;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(
@@ -372,6 +371,11 @@ Renderer::create_swapchain()
 	if (this->format_ != old_format || !this->engine_.dest_render_pass())
 		this->engine_.destroy();
 	ensure_engine(dest_format, dest_layout);
+
+	// A window that isn't shown yet has no extent, but pages may already
+	// be handing it images, and those need the engine.
+	if (this->extent_.width == 0 || this->extent_.height == 0)
+		return;
 
 	uint32_t image_count = capabilities.minImageCount + 1;
 	if (capabilities.maxImageCount > 0 &&

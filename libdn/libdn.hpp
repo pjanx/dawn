@@ -355,6 +355,23 @@ ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
+// --- JPEG --------------------------------------------------------------------
+
+/// Stored dimensions and the grid on which a lossless crop must start.
+struct JpegGrid {
+	uint32_t width = 0, height = 0;
+	uint32_t mcu_width = 0, mcu_height = 0;
+};
+bool jpeg_grid(std::span<const uint8_t> data, JpegGrid *out, Error *error);
+
+/// Turns stored pixels, then crops in the rotated image's MCU grid.  Zero width
+/// or height means to the edge.  Rotations that cannot preserve every block
+/// fail.  All markers are copied unchanged, including Exif orientation and
+/// dimensions.  Returns empty on failure.
+std::vector<uint8_t> jpeg_transform(std::span<const uint8_t> data,
+	Orientation op, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+	Error *error);
+
 // --- Loaders -----------------------------------------------------------------
 
 using LoadFn = ImagePtr(

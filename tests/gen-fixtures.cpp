@@ -494,6 +494,13 @@ main(int argc, char **argv)
 	write_tiff16_rgb(out / "blue.tif", 0, 0, 65535);
 
 	write_svgs(out);
+	string quads = (out / "rgbw_2x2.png").string();
+	string jpeg = (out / "quads420.jpg").string();
+	run_magick({quads.c_str(), "-filter", "point", "-resize", "64x48!",
+		"-sampling-factor", "2x2", "-quality", "100", jpeg.c_str()});
+
+	string progressive = (out / "quads420-progressive.jpg").string();
+	run_magick({jpeg.c_str(), "-interlace", "Plane", progressive.c_str()});
 
 	for (const char *name : {"red", "green", "blue"}) {
 		string src = (out / (string(name) + ".png")).string();

@@ -70,6 +70,13 @@ struct SettingsDraft {
 	std::vector<Loader> loaders;
 };
 
+std::unique_ptr<Panel> make_banner(
+	Label **out, std::function<void(Kit &)> on_dismiss);
+
+/// Empty result means written; otherwise keep the dialog open with the message.
+void dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
+	std::function<QString(const QString &)> on_save);
+
 void dialog_about(Kit &kit, Dialog &dialog);
 void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
 	std::span<const Action> keys);

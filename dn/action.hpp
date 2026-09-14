@@ -116,6 +116,11 @@ enum class Action : uint8_t {
 	Trash,
 	Reload,
 
+	// Cropper
+	SaveAs,
+	CropReset,
+	CropRegion,
+
 	Count,
 };
 

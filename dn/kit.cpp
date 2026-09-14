@@ -1224,6 +1224,7 @@ Label::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
+
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const QString shown = label_shown(kit, *this);
 	int tx = this->r.x + pad_x;

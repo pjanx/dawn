@@ -187,7 +187,7 @@ static QString
 shortcut_accel(const ActionDef &def)
 {
 	if (def.accel)
-		return QString::fromUtf8(def.accel);
+		return QString::fromUtf8(_(def.accel));
 
 	QString s;
 	for (const Accel &a : def.keys) {
@@ -245,6 +245,82 @@ dialog_about(Kit &kit, Dialog &dialog)
 					   false, true),
 		size_t(-1));
 	dialog.show(kit, std::move(col), 360.f, dialog_close_action(dialog));
+}
+
+unique_ptr<Panel>
+make_banner(Label **out, function<void(Kit &)> on_dismiss)
+{
+	auto row = make_unique<Row>();
+	row->gap = 2.f;
+	row->pad_x = 4.f;
+	row->pad_y = 2.f;
+	row->grow = true;
+
+	auto lab = make_unique<Label>();
+	lab->grow = true;
+	lab->wrap = true;
+	lab->valign = Align::Center;
+	*out = lab.get();
+
+	auto dismiss = make_unique<Button>();
+	dismiss->flat = true;
+	dismiss->tip_text = QString::fromUtf8(_("Dismiss"));
+	dismiss->icon = "x-symbolic";
+	dismiss->on_click = std::move(on_dismiss);
+
+	row->add_child(std::move(lab), size_t(-1));
+	row->add_child(std::move(dismiss), size_t(-1));
+
+	auto err = make_unique<Panel>();
+	err->fill = Fill::Panel;
+	err->stroke = Stroke::Bottom;
+	err->grow = true;
+	err->hittable = true;
+	err->clip = true;
+	err->visible = false;
+	err->add_child(std::move(row), size_t(-1));
+	return err;
+}
+
+void
+dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
+	function<QString(const QString &)> on_save)
+{
+	auto col = make_unique<Column>();
+	col->gap = 8.f;
+	col->add_child(dialog_label(N_("Save As"), true), size_t(-1));
+
+	auto entry = make_unique<Entry>();
+	Entry *field = entry.get();
+	field->text = suggested;
+	// TODO(p): Place the caret at the end, properly.
+	col->add_child(std::move(entry), size_t(-1));
+	auto warning = make_unique<Label>();
+	Label *message = warning.get();
+	message->wrap = true;
+	message->visible = false;
+	col->add_child(std::move(warning), size_t(-1));
+	function<void(Kit &)> submit =
+		[field, message, &dialog, on_save = std::move(on_save)](Kit &inner) {
+			QString result = on_save(field->text);
+			if (result.isEmpty())
+				dialog.close(inner);
+			else {
+				message->set_text(result);
+				message->set_visible(true);
+			}
+		};
+	field->on_submit = submit;
+	field->on_cancel = [&dialog](Kit &inner) { dialog.close(inner); };
+
+	auto actions = make_unique<Row>();
+	// FIXME: Arbitrary gap.
+	actions->gap = 8.f;
+	actions->add_child(dialog_action(N_("_Save"), submit), size_t(-1));
+	actions->add_child(dialog_action(N_("_Cancel"),
+						   [&dialog](Kit &inner) { dialog.close(inner); }),
+		size_t(-1));
+	dialog.show(kit, std::move(col), 480.f, std::move(actions));
 }
 
 void

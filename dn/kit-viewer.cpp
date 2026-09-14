@@ -100,8 +100,8 @@ constexpr ToolbarSpec kItems[] = {
 	{Slot::Middle, Action::Checkerboard},
 	{Slot::Middle, Action::None},
 #if 0
-	{Slot::Middle, Action::None},
-	{Slot::Middle, Action::None},
+	{Slot::Middle, Action::Print},
+	{Slot::Middle, Action::SaveAs},
 #endif
 	{Slot::Middle, Action::Information},
 	{Slot::Middle, Action::None},
@@ -570,38 +570,6 @@ stop_worker(Viewer &v)
 			preload.join();
 	}
 	v.worker_.reset();
-}
-
-static unique_ptr<Panel>
-make_error(Viewer &v)
-{
-	auto row = make_unique<Row>();
-	row->gap = kItemGap;
-	row->pad_x = kWinPadX;
-	row->pad_y = kWinPadY;
-	row->grow = true;
-	auto lab = make_unique<Label>();
-	lab->grow = true;
-	lab->wrap = true;
-	lab->valign = Align::Center;
-	auto dismiss = make_unique<Button>();
-	dismiss->flat = true;
-	dismiss->tip_text = "Dismiss";
-	dismiss->icon = "x-symbolic";
-	dismiss->on_click = [&v](Kit &) { v.message_dismissed_ = true; };
-	v.error_label_ = lab.get();
-	row->add_child(std::move(lab), size_t(-1));
-	row->add_child(std::move(dismiss), size_t(-1));
-	auto err = make_unique<Panel>();
-	err->fill = Fill::Panel;
-	err->stroke = Stroke::Bottom;
-	err->grow = true;
-	err->hittable = true;
-	err->clip = true;
-	err->visible = false;
-	err->add_child(std::move(row), size_t(-1));
-	v.error_ = err.get();
-	return err;
 }
 
 static unique_ptr<Sidebar>
@@ -1898,7 +1866,10 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	auto content = make_unique<Viewer>(kit);
 	Viewer *v = content.get();
 	v->init();
-	auto error = make_error(*v);
+	auto error = make_banner(
+		&v->error_label_, [v](Kit &) { v->message_dismissed_ = true; });
+	v->error_ = error.get();
+
 	PageSetup setup;
 	setup.mode = Mode::View;
 	setup.toolbar = make_toolbar(
@@ -1910,6 +1881,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 		[v](Action a) { return spec_enabled(*v, a); },
 		[v](Action a) { return spec_active(*v, a); });
 	setup.content = std::move(content);
+
 	auto page = make_page(kit, host, std::move(setup));
 	page->set_banner(std::move(error));
 	if (out)

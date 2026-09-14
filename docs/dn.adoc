@@ -29,7 +29,8 @@ Options
 	Select the application to open.  View and Browse are the image browser's
 	two faces; Browse preselects files in their directory, used to implement
 	the "Open Containing Folder" feature of certain applications.
-	JPEG Cropper and Commander are unimplemented.
+	CropJpeg opens JPEGs for lossless cropping and rotation.
+	The Commander mode is unimplemented.
 
 *--new-instance*::
 	Start an independent isolated process.

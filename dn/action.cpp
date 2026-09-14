@@ -200,6 +200,12 @@ constexpr ActionDef kDefs[] = {
 	{0, {N_("Move to _Trash")}, {}, {{Qt::Key_Delete}}, {}},
 	{kMenu, {N_("_Reload")}, {"arrows-circle-symbolic"},
 		{{Qt::Key_F5}, {Qt::Key_R}, {Qt::Key_R, kCtrl}}, {}},
+
+	// Cropper
+	{kMenu, {N_("Save _As...")}, {"document-save-as-symbolic"},
+		{{Qt::Key_S, kCtrl}}, {}},
+	{kMenu, {N_("Reset _Crop")}, {}, {}, {}},
+	{0, {N_("Crop _Region")}, {}, {}, N_("Left/Right mouse button")},
 };
 // clang-format on
 
@@ -311,10 +317,36 @@ constexpr Action kViewerKeys[] = {
 	Action::Context,
 };
 
+constexpr Action kCropJpegKeys[] = {
+	Action::SaveAs,
+	Action::CropReset,
+	Action::RotateLeft,
+	Action::Mirror,
+	Action::RotateRight,
+	Action::ZoomIn,
+	Action::ZoomOut,
+	Action::Zoom1,
+};
+
 // clang-format off
 const MenuNode kFileMenu = MenuNode::group(N_("_File"), {
 	MenuNode::item(Action::NewWindow),
 	MenuNode::item(Action::CloseWindow),
+	{},
+	MenuNode::item(Action::Reload),
+	{},
+	MenuNode::item(Action::Settings),
+	{},
+	MenuNode::item(Action::Quit),
+});
+
+static const MenuNode kCropJpegFileMenu = MenuNode::group(N_("_File"), {
+	MenuNode::item(Action::NewWindow),
+	MenuNode::item(Action::CloseWindow),
+	{},
+	// FIXME: This is extremely wrong, but we don't have an open dialog yet.
+	MenuNode::item(Action::Location),
+	MenuNode::item(Action::SaveAs),
 	{},
 	MenuNode::item(Action::Reload),
 	{},
@@ -416,6 +448,34 @@ const MenuNode kViewerMenu[] = {
 	}),
 	kHelpMenu,
 };
+
+static const MenuNode kCropJpegMenu[] = {
+	kCropJpegFileMenu,
+	MenuNode::group(N_("_View"),
+		{
+			MenuNode::item(Action::ZoomIn),
+			MenuNode::item(Action::ZoomOut),
+			MenuNode::item(Action::Zoom1),
+			{},
+			MenuNode::item(Action::Hint),
+			MenuNode::item(Action::DarkMode),
+			MenuNode::item(Action::Fullscreen),
+		}),
+	MenuNode::group(N_("_Image"),
+		{
+			MenuNode::item(Action::CropReset),
+			{},
+			MenuNode::item(Action::RotateLeft),
+			MenuNode::item(Action::Mirror),
+			MenuNode::item(Action::RotateRight),
+		}),
+	kHelpMenu,
+};
+
+static const MenuNode kCommanderMenu[] = {
+	kFileMenu,
+	kHelpMenu,
+};
 // clang-format on
 
 MenuNode
@@ -472,7 +532,7 @@ QString
 accel_label(const ActionDef &def)
 {
 	if (def.accel) {
-		QString s = QString::fromUtf8(def.accel);
+		QString s = QString::fromUtf8(_(def.accel));
 		s.replace(QLatin1Char('-'), QChar(0x2212));
 		return s;
 	}
@@ -536,16 +596,14 @@ action_accel(const ActionDef &def)
 	return accel_label(def);
 }
 
-static const MenuNode kCropJpegMenu[] = {kFileMenu, kHelpMenu};
-static const MenuNode kCommanderMenu[] = {kFileMenu, kHelpMenu};
-
 static constexpr ModeDef kModes[] = {
 	// TRANSLATORS: The application's name, in window titles.  Transliterate
 	// it if that is what your script does with foreign names; do not
 	// translate the word.
 	{"view", N_("Dawn"), kViewerMenu, kViewerKeys},
 	{"browse", N_("Dawn"), kBrowserMenu, kBrowserKeys},
-	{"cropjpeg", N_("Dawn Lassless JPEG Cropper"), kCropJpegMenu, {}},
+	{"cropjpeg", N_("Dawn Lossless JPEG Cropper"), kCropJpegMenu,
+		kCropJpegKeys},
 	{"commander", N_("Dawn Commander"), kCommanderMenu, {}},
 };
 static_assert(size(kModes) == size_t(Mode::Count));

@@ -63,18 +63,12 @@ do cat <<END
 				</RegistryKey>
 END
 done)
-$(if [ "$wip" = ON ]; then
-cat <<'END'
+$(cat <<'END'
 				<RegistryKey Root='HKCR' Key='dawn.cropjpeg'>
 					<RegistryValue Type='string' Value='Dawn JPEG Cropper' />
 					<RegistryValue Type='string' Key='DefaultIcon' Value='[INSTALLDIR]dn.ico' />
 					<RegistryValue Type='string' Key='shell\open\command'
 						Value='"[INSTALLDIR]dn.exe" --mode=cropjpeg "%1"' />
-				</RegistryKey>
-				<RegistryKey Root='HKCR' Key='Directory\shell\Dawn Commander'>
-					<RegistryValue Type='string' Value='Open in Dawn Commander' />
-					<RegistryValue Type='string' Key='command'
-						Value='"[INSTALLDIR]dn.exe" --mode=commander "%1"' />
 				</RegistryKey>
 END
 for ext in .jpg .jpe .jpeg; do
@@ -83,7 +77,15 @@ cat <<END
 					<RegistryValue Type='string' Name='dawn.cropjpeg' Value='' />
 				</RegistryKey>
 END
-done
+done)
+$(if [ "$wip" = ON ]; then
+cat <<'END'
+				<RegistryKey Root='HKCR' Key='Directory\shell\Dawn Commander'>
+					<RegistryValue Type='string' Value='Open in Dawn Commander' />
+					<RegistryValue Type='string' Key='command'
+						Value='"[INSTALLDIR]dn.exe" --mode=commander "%1"' />
+				</RegistryKey>
+END
 fi)
 			</Component>
 		</DirectoryRef>

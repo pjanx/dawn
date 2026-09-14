@@ -7,6 +7,7 @@ dn/app.cpp
 dn/kit-browser.cpp
 dn/kit-chrome.cpp
 dn/kit-cie-diagram.cpp
+dn/kit-crop-jpeg.cpp
 dn/kit-viewer.cpp
 dn/main.cpp
 dn/volumes-unix.cpp
