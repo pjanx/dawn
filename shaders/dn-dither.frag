@@ -1,5 +1,5 @@
 //
-// dither.frag: ordered dither from 16-bit compose to 8-bit swapchain
+// dn-dither.frag: ordered dither from the 16-bit compose to a chosen depth
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -9,6 +9,10 @@
 
 layout(set = 0, binding = 0) uniform sampler2D u_compose;
 layout(location = 0) out vec4 out_color;
+
+layout(push_constant) uniform Push {
+	float levels;  // 2^bpc - 1
+} pc;
 
 float
 bayer8(vec2 p)
@@ -25,6 +29,6 @@ void
 main()
 {
 	vec4 c = texelFetch(u_compose, ivec2(gl_FragCoord.xy), 0);
-	c.rgb += (bayer8(gl_FragCoord.xy) - 0.5) / 255.0;
+	c.rgb = floor(c.rgb * pc.levels + bayer8(gl_FragCoord.xy)) / pc.levels;
 	out_color = vec4(c.rgb, c.a);
 }

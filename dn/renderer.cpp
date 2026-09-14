@@ -79,16 +79,17 @@ vk_colorspace_name(VkColorSpaceKHR cs)
 	}
 }
 
+// Bits per component, zero for formats we do not expect to present on.
 static int
-format_depth_score(VkFormat f)
+format_bits(VkFormat f)
 {
 	if (f == VK_FORMAT_R16G16B16A16_UNORM)
-		return 3;
+		return 16;
 	if (f == VK_FORMAT_A2B10G10R10_UNORM_PACK32 ||
 		f == VK_FORMAT_A2R10G10B10_UNORM_PACK32)
-		return 2;
+		return 10;
 	if (f == VK_FORMAT_B8G8R8A8_UNORM || f == VK_FORMAT_R8G8B8A8_UNORM)
-		return 1;
+		return 8;
 	return 0;
 }
 
@@ -105,13 +106,18 @@ colorspace_score(VkColorSpaceKHR cs)
 static int
 surface_format_score(const VkSurfaceFormatKHR &sf)
 {
-	return colorspace_score(sf.colorSpace) * 10 + format_depth_score(sf.format);
+	return colorspace_score(sf.colorSpace) * 100 + format_bits(sf.format);
 }
 
-static bool
-is_unorm8(VkFormat f)
+// The dither target, which DN_BPC overrides no matter what we present on.
+static int
+dither_bits(VkFormat format)
 {
-	return f == VK_FORMAT_B8G8R8A8_UNORM || f == VK_FORMAT_R8G8B8A8_UNORM;
+	static const char *env = getenv("DN_BPC");
+	static const int forced = env ? atoi(env) : 0;
+	if (forced)
+		return forced;
+	return format_bits(format);
 }
 
 static VkSurfaceFormatKHR
@@ -298,7 +304,8 @@ Renderer::destroy()
 bool
 Renderer::dithering() const
 {
-	return this->dither_enabled_ && is_unorm8(this->format_);
+	const int bits = dither_bits(this->format_);
+	return this->dither_enabled_ && bits > 0 && bits <= 8;
 }
 
 void
@@ -348,8 +355,10 @@ Renderer::create_swapchain()
 	this->format_ = picked.format;
 	this->color_space_ = picked.colorSpace;
 	if (this->format_ != old_format || this->color_space_ != old_color_space) {
-		qInfo("swapchain: %s + %s", vk_format_name(this->format_),
-			vk_colorspace_name(this->color_space_));
+		qInfo("swapchain: %s + %s (dither: %d bpc)",
+			vk_format_name(this->format_),
+			vk_colorspace_name(this->color_space_),
+			dithering() ? dither_bits(this->format_) : 0);
 		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT)
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
@@ -909,10 +918,17 @@ Renderer::create_dither()
 	CALL_VK(CreateShaderModule, " dither frag", this->device_, &frag_info,
 		nullptr, &this->dither_frag_);
 
+	VkPushConstantRange push{
+		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.offset = 0,
+		.size = sizeof(float),
+	};
 	VkPipelineLayoutCreateInfo layout_info{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
 		.pSetLayouts = &this->dither_set_layout_,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &push,
 	};
 	CALL_VK(CreatePipelineLayout, " dither", this->device_, &layout_info,
 		nullptr, &this->dither_layout_);
@@ -986,6 +1002,9 @@ Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->dither_pipe_);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		this->dither_layout_, 0, 1, &this->dither_set_, 0, nullptr);
+	const float levels = float((1 << dither_bits(this->format_)) - 1);
+	vkCmdPushConstants(cmd, this->dither_layout_, VK_SHADER_STAGE_FRAGMENT_BIT,
+		0, sizeof levels, &levels);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
