@@ -92,7 +92,9 @@ if (APPLE AND DAWN_WITH_IMAGEIO)
 endif()
 
 add_executable(test-jpeg-crop test-jpeg-crop.cpp)
-add_dependencies(test-jpeg-crop test-fixtures)
+if (NOT CMAKE_CROSSCOMPILING)
+	add_dependencies(test-jpeg-crop test-fixtures)
+endif()
 target_link_libraries(test-jpeg-crop PRIVATE libdn)
 target_compile_definitions(test-jpeg-crop PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
