@@ -15,7 +15,6 @@
 
 #include <QEvent>
 #include <QGuiApplication>
-#include <QPointer>
 #include <QString>
 #include <QUrl>
 #include <QVulkanInstance>
@@ -94,13 +93,7 @@ public:
 	Thumbnailer thumbnailer;
 	DisplayProfileWatch display_profiles;
 	Settings settings;
-	// macOS may open us blank before passing us association-opened files.
-	QPointer<Window> default_window;
 	bool needs_csd = false;
-
-	bool accepting_files = false;
-	std::vector<QUrl> pending_files;
-	void accept_files();
 
 	bool init();
 	OpenResult open(const QUrl &url, const QString &activation_token,

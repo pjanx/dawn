@@ -357,23 +357,11 @@ App::event(QEvent *event)
 		return true;
 	}
 	if (event->type() == QEvent::FileOpen) {
-		const QUrl url = url_normalized(((QFileOpenEvent *) event)->url());
-		if (this->accepting_files)
-			open(url, {}, {}, Mode::View);
-		else
-			this->pending_files.push_back(url);
+		open(url_normalized(((QFileOpenEvent *) event)->url()), {}, {},
+			Mode::View);
 		return true;
 	}
 	return QGuiApplication::event(event);
-}
-
-void
-App::accept_files()
-{
-	this->accepting_files = true;
-	auto pending = std::move(this->pending_files);
-	for (const QUrl &url : pending)
-		open(url, {}, {}, Mode::View);
 }
 
 bool
@@ -489,19 +477,6 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 		}
 		resolved = path_to_url(info.absoluteFilePath());
 	}
-	if (Window *target = this->default_window) {
-		this->default_window.clear();
-		if (target->application() == application_mode(mode)) {
-			if (mode == Mode::Browse)
-				target->reveal_file(resolved);
-			else
-				target->open_any(resolved);
-			apply_activation_token(activation_token);
-			raise_window(target);
-			return OpenResult::Ok;
-		}
-	}
-
 #if DN_WITH_WAYLAND
 	if (QGuiApplication::platformName() == QStringLiteral("wayland")) {
 		auto window = make_unique<WaylandWindow>(this);

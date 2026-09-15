@@ -167,11 +167,6 @@ InstanceHost::Impl::on_request(
 		return;
 	}
 
-	// default_window exists so Finder's first document can replace the
-	// window dn guessed at startup. A hand-off is not that: it is another
-	// invocation with its own arguments, and gets its own window.
-	this->app_.default_window.clear();
-
 	const QString token = QString::fromUtf8(open_body->open.activation_token);
 	const auto mode = parse_mode(open_body->open.mode);
 	if (!mode || open_body->open.urls.empty()) {

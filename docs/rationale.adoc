@@ -190,6 +190,9 @@ problems anyway, such as:
    CSD menu on right click.  Pointless machinery: Qt makes Wayland needlessly
    miserable.
 
+ - On macOS, we don't get good access to the application delegate,
+   and setting the Dock menu must be done through hacks.
+
  - We can't get true alpha maps for our glyph cache.  Thus text is likely
    to be composited wrongly.  (Improvable with private APIs.)
 

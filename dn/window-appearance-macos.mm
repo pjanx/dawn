@@ -11,6 +11,8 @@
 
 #import <AppKit/AppKit.h>
 
+using namespace std;
+
 namespace dn
 {
 
@@ -40,6 +42,29 @@ raise_macos_window(QWindow *window)
 	else
 		[NSApp activateIgnoringOtherApps:YES];
 	window->requestActivate();
+}
+
+void
+on_macos_launched(function<void()> fn)
+{
+	if (NSRunningApplication.currentApplication.finishedLaunching) {
+		fn();
+		return;
+	}
+
+	// AppKit hands over the launch's documents before posting this.
+	// Its NSApplicationLaunchIsDefaultLaunchKey cannot tell whether there
+	// were any: it has been seen to say NO for a plain open-application event.
+	NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
+	__block id observer = nil;
+	observer = [center
+		addObserverForName:NSApplicationDidFinishLaunchingNotification
+					object:nil
+					 queue:nil
+				usingBlock:^(NSNotification *) {
+					[center removeObserver:observer];
+					fn();
+				}];
 }
 
 }  // namespace dn

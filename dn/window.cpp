@@ -364,7 +364,6 @@ void
 Window::bind_host()
 {
 	this->host_.apply = [this](Action a) {
-		this->app_->default_window.clear();
 		switch (a) {
 		case Action::CloseWindow:
 			begin_close();
@@ -491,11 +490,6 @@ Window::bind_host()
 	this->host_.new_window = [this](QUrl url) {
 		if (url.isEmpty())
 			url = current_url();
-
-		// As in InstanceHost: the window dn guessed at startup is there for
-		// Finder's first document to replace, and asking for a new window is
-		// not that -- without this, the first request would land in it.
-		this->app_->default_window.clear();
 
 		BrowseSetup setup;
 		if (this->browser_)
@@ -1111,18 +1105,6 @@ Window::go_forward()
 bool
 Window::event(QEvent *event)
 {
-	switch (event->type()) {
-	case QEvent::MouseButtonPress:
-	case QEvent::KeyPress:
-	case QEvent::Wheel:
-	case QEvent::TouchBegin:
-	case QEvent::Drop:
-		// Whatever dn guessed at startup has now been used; see new_window.
-		this->app_->default_window.clear();
-		break;
-	default:
-		break;
-	}
 	switch (event->type()) {
 	case QEvent::NativeGesture:
 		return handle_native_gesture((QNativeGestureEvent *) event);

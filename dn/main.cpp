@@ -18,6 +18,10 @@
 #include "window.hpp"
 #include "xdg.hpp"
 
+#ifdef Q_OS_MACOS
+#include "window-appearance-macos.hpp"
+#endif
+
 #include <QCommandLineOption>
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -290,15 +294,23 @@ main(int argc, char **argv)
 	if (!app.init())
 		return EXIT_FAILURE;
 
+#ifdef Q_OS_MACOS
+	// Finder's documents only arrive once the event loop runs, and have been
+	// opened by the time AppKit finishes launching.  No window by then means
+	// that there were none, or that none of them could be opened.
+	if (bare) {
+		dn::on_macos_launched([&app, url = to_open.front(), mode] {
+			if (!app.key_window() &&
+				app.open(url, {}, {}, mode) != dn::OpenResult::Ok)
+				app.exit(EXIT_FAILURE);
+		});
+		to_open.clear();
+	}
+#endif
 	for (const QUrl &url : to_open) {
 		if (app.open(url, {}, {}, mode) != dn::OpenResult::Ok)
 			return EXIT_FAILURE;
 	}
-
-	// Finder may replace an untouched window from a documentless launch.
-	if (bare)
-		app.default_window = app.key_window();
-	app.accept_files();
 
 	return app.exec();
 }
