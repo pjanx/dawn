@@ -38,7 +38,7 @@ Cropper::load_working(const vector<uint8_t> &data)
 	dawn::ImagePtr image;
 	if (dawn::jpeg_grid(data, &grid, &error)) {
 		dawn::OpenContext ctx;
-		ctx.uri = this->jpeg_url_.toString().toStdString();
+		ctx.uri = this->jpeg_url_.toEncoded().toStdString();
 		ctx.cmm = this->cmm_;
 		ctx.screen_profile = this->screen_profile_;
 		ctx.first_frame_only = true;

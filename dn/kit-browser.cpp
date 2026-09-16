@@ -596,7 +596,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	}
 
 	dawn::OpenContext ctx;
-	ctx.uri = job.path;
+	ctx.uri = dawn::path_to_uri(job.path);
 	ctx.cmm = cmm;
 	ctx.screen_profile = job.cacheable ? cmm->get_profile_display_p3() : screen;
 	ctx.first_frame_only = true;

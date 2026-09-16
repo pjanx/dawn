@@ -458,7 +458,12 @@ void set_error(Error *error, std::string message);
 
 bool read_file(
 	const std::string &path, std::vector<uint8_t> *out, Error *error);
-std::string uri_to_path(const std::string &uri);
+
+/// Convert a `file://` URI (RFC 8089) to a filesystem path.  Fails on any
+/// other scheme, and on escapes that cannot be part of one.
+std::optional<std::string> uri_to_path(const std::string &uri);
+/// The inverse, for an absolute path.
+std::string path_to_uri(const std::string &path);
 
 // --- TO BE MOVED TO DNTHUMBD -------------------------------------------------
 

@@ -35,7 +35,8 @@ load(const char *name, const vector<string> &loaders, shared_ptr<dawn::Cmm> cmm,
 	shared_ptr<dawn::Profile> screen)
 {
 	dawn::OpenContext ctx;
-	ctx.uri = (fs::path(DAWN_TEST_FIXTURES_DIR) / name).string();
+	ctx.uri = dawn::path_to_uri(
+		(fs::path(DAWN_TEST_FIXTURES_DIR) / name).string());
 	ctx.cmm = cmm;
 	ctx.screen_profile = screen;
 	ctx.first_frame_only = true;

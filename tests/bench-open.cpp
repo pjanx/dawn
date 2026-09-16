@@ -45,7 +45,7 @@ bench_one(const char *path, bool cms, int repeats, dawn::ScaleScaler *scaler)
 	dawn::OpenContext ctx;
 	ctx.cmm = cmm;
 	ctx.first_frame_only = true;
-	ctx.uri = path;
+	ctx.uri = dawn::path_to_uri(path);
 	if (cms) {
 		auto srgb = cmm->get_profile_sRGB();
 		if (!srgb) {

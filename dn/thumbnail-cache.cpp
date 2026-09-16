@@ -14,7 +14,6 @@
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QStandardPaths>
-#include <QUrl>
 #include <QtLogging>
 
 #include <webp/decode.h>
@@ -221,7 +220,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 		return hit;
 
 	dawn::OpenContext ctx;
-	ctx.uri = path.toStdString();
+	ctx.uri = dawn::path_to_uri(path.toStdString());
 	ctx.cmm = cmm;
 	ctx.first_frame_only = true;
 	dawn::Error error;
@@ -311,7 +310,12 @@ thumbnail_source(const QString &path, int64_t mtime_ms, uint64_t size)
 {
 	ThumbnailSource source;
 	source.path = QDir::cleanPath(QFileInfo(path).absoluteFilePath());
-	source.uri = QUrl::fromLocalFile(source.path).toEncoded(QUrl::FullyEncoded);
+	// The Thumbnail Managing Standard keys on the escaped source URI, and
+	// the shared cache spells it per RFC 2396, where `;` starts a path
+	// parameter.  QUrl::FullyEncoded follows RFC 3986, which admits `;`
+	// into a segment -- the one character the two disagree on.
+	source.uri =
+		QByteArray::fromStdString(dawn::path_to_uri(source.path.toStdString()));
 	source.hash =
 		QCryptographicHash::hash(source.uri, QCryptographicHash::Md5).toHex();
 	source.mtime = mtime_ms / 1000;
@@ -513,12 +517,12 @@ thumbnail_cache_invalidate_one(const QString &path)
 		remove_thumbnail(path, QStringLiteral("URI checksum mismatch"));
 		return;
 	}
-	const QUrl url = QUrl::fromEncoded(uri);
-	if (!url.isLocalFile()) {
+	const auto target_path = dawn::uri_to_path(*uri_text);
+	if (!target_path) {
 		qWarning("%s: cannot verify non-local URI", qUtf8Printable(path));
 		return;
 	}
-	const QFileInfo target(url.toLocalFile());
+	const QFileInfo target(QString::fromStdString(*target_path));
 	if (!target.exists()) {
 		remove_thumbnail(path, QStringLiteral("source no longer exists"));
 		return;

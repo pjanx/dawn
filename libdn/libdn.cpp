@@ -470,15 +470,103 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 	return true;
 }
 
-string
+// --- URLs --------------------------------------------------------------------
+
+static int
+hex_digit(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+optional<string>
 uri_to_path(const string &uri)
 {
 	constexpr string_view prefix = "file://";
-	if (uri.starts_with(prefix)) {
-		string path = uri.substr(prefix.size());
-		if (path.starts_with("localhost/"))
-			path = path.substr(string_view("localhost").size());
-		return path;
+	if (!uri.starts_with(prefix))
+		return {};
+
+	string_view rest = string_view(uri).substr(prefix.size());
+	if (rest.starts_with("localhost/"))
+		rest = rest.substr(string_view("localhost").size());
+
+	string path;
+	path.reserve(rest.size());
+	for (size_t i = 0; i < rest.size(); i++) {
+		if (rest[i] != '%') {
+			path += rest[i];
+			continue;
+		}
+
+		// A partial or invalid escape is not a URI (RFC 3986 section 2.1).
+		int hi = 0, lo = 0;
+		if (i + 2 >= rest.size() || (hi = hex_digit(rest[i + 1])) < 0 ||
+			(lo = hex_digit(rest[i + 2])) < 0)
+			return {};
+
+		// Decoding these would change what the path is, rather than what
+		// it says: a separator would fabricate a segment boundary (RFC
+		// 3986 section 2.2), and no filename can contain a NUL.
+		char c = char(hi << 4 | lo);
+		if (!c || c == '/')
+			return {};
+
+		path += c;
+		i += 2;
+	}
+
+#ifdef _WIN32
+	// RFC 8089 appendix E.2: a drive letter follows the root slash, and
+	// older producers spell its colon as a vertical line.
+	char drive = path.size() > 2 ? path[1] : 0;
+	if (path[0] == '/' &&
+		((drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z'))) {
+		if (path[2] == '|')
+			path[2] = ':';
+		if (path[2] == ':')
+			path.erase(0, 1);
+	}
+	for (char &c : path)
+		if (c == '/')
+			c = '\\';
+#endif
+	return path;
+}
+
+string
+path_to_uri(const string &path)
+{
+	// RFC 2396 `pchar` (`unreserved` includes `mark`), plus the separator.
+	// RFC 3986 obsoletes that grammar, but only by admitting `;`, which
+	// RFC 2396 reserved to introduce a path parameter -- and the shared
+	// thumbnail cache is keyed on URIs escaped the older way.  (Cator to it.)
+	constexpr string_view allowed = "!$&'()*+,-./:=@_~";
+	constexpr string_view hex = "0123456789ABCDEF";
+
+	string uri = "file://";
+	if (!path.starts_with("/"))
+		uri += '/';
+
+	for (char ch : path) {
+#ifdef _WIN32
+		if (ch == '\\')
+			ch = '/';
+#endif
+		if ((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= 'a' && ch <= 'z') || allowed.find(ch) != allowed.npos) {
+			uri += ch;
+			continue;
+		}
+
+		uint8_t c = uint8_t(ch);
+		uri += '%';
+		uri += hex[c >> 4];
+		uri += hex[c & 15];
 	}
 	return uri;
 }
@@ -1870,7 +1958,12 @@ open(const OpenContext &ctx, Error *error)
 	vector<uint8_t> data;
 	{
 		StageClock clk(&OpenTiming::file_ms);
-		if (!read_file(uri_to_path(ctx.uri), &data, error))
+		auto path = uri_to_path(ctx.uri);
+		if (!path) {
+			set_error(error, _("invalid URI"));
+			return nullptr;
+		}
+		if (!read_file(*path, &data, error))
 			return nullptr;
 	}
 	return open_from_data(data, ctx, error);

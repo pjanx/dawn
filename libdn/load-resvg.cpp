@@ -127,9 +127,9 @@ load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	resvg_options *opt = resvg_options_create();
 	resvg_options_load_system_fonts(opt);
 
-	string path = uri_to_path(ctx.uri);
-	if (!path.empty()) {
-		fs::path parent = fs::path(path).parent_path();
+	auto path = uri_to_path(ctx.uri);
+	if (path) {
+		fs::path parent = fs::path(*path).parent_path();
 		if (!parent.empty())
 			resvg_options_set_resources_dir(opt, parent.string().c_str());
 	}

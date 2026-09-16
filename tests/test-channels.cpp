@@ -74,7 +74,7 @@ load_fixture(const string &name)
 {
 	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / name;
 	dawn::OpenContext ctx;
-	ctx.uri = path.string();
+	ctx.uri = dawn::path_to_uri(path.string());
 	ctx.first_frame_only = true;
 	dawn::Error error;
 	dawn::ImagePtr img = dawn::open(ctx, &error);
@@ -209,7 +209,8 @@ test_jpeg_cms_8_to_16()
 	ctx.cmm = cmm;
 	ctx.screen_profile = srgb;
 	ctx.first_frame_only = true;
-	ctx.uri = (fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg").string();
+	ctx.uri = dawn::path_to_uri(
+		(fs::path(DAWN_TEST_FIXTURES_DIR) / "blue.jpg").string());
 	dawn::Error error;
 	dawn::ImagePtr img = dawn::open(ctx, &error);
 	if (!img) {
@@ -353,7 +354,7 @@ test_large_icc_and_p3_red()
 	CHECK(target != nullptr);
 
 	dawn::OpenContext context;
-	context.uri = path.string();
+	context.uri = dawn::path_to_uri(path.string());
 	context.cmm = cmm;
 	context.screen_profile = target;
 	context.first_frame_only = true;
@@ -497,7 +498,7 @@ test_chromaticities()
 		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
 	if (!bytes.empty()) {
 		dawn::OpenContext ctx;
-		ctx.uri = p3.string();
+		ctx.uri = dawn::path_to_uri(p3.string());
 		ctx.cmm = cmm;
 		ctx.first_frame_only = true;
 		dawn::Error error;
@@ -525,7 +526,7 @@ test_png_text_after_idat()
 	CHECK(!bytes.empty());
 
 	dawn::OpenContext ctx;
-	ctx.uri = path.string();
+	ctx.uri = dawn::path_to_uri(path.string());
 	ctx.first_frame_only = false;
 	dawn::Error error;
 	dawn::ImagePtr image = dawn::open_from_data(bytes, ctx, &error);
