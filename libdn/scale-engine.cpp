@@ -1530,9 +1530,6 @@ ScaleEngine::ensure_viewport(
 		return false;
 	}
 	Impl &e = *impl_;
-	if (!e.ensure_mid(viewport_w, e.image_h, error))
-		return false;
-
 	e.viewport_w = viewport_w;
 	e.viewport_h = viewport_h;
 	return true;
@@ -1571,18 +1568,23 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		e.pipe_2d = e.pipeline_2d_nohalo;
 	else
 		e.pipe_2d = e.pipeline_2d_bilinear;
-	const PushConstants pc =
-		e.make_push(view, viewport_w, viewport_h, clear_rgba);
 	if (!use_separable(view)) {
+		const PushConstants pc =
+			e.make_push(view, viewport_w, viewport_h, clear_rgba);
 		e.cmd_2d_pass(cmd, pc, dest_fb, viewport_w, viewport_h, clear_rgba);
 		return true;
 	}
+
+	// make_push() snapshots the mid geometry, so the buffer has to be sized
+	// for this view's display height first; a rotation changes it.
 	uint32_t disp_w = 0, disp_h = 0;
 	orientation_display_size(
 		e.image_w, e.image_h, view.orientation, &disp_w, &disp_h);
 	if (!e.ensure_mid(viewport_w, disp_h, error))
 		return false;
 
+	const PushConstants pc =
+		e.make_push(view, viewport_w, viewport_h, clear_rgba);
 	const YRange need = e.visible_source_y_range(view, viewport_h);
 	const auto [first_mid, last_mid] =
 		e.cmd_fill_visible_mid(cmd, pc, need, viewport_w, disp_h);
