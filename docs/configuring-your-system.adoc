@@ -38,7 +38,7 @@ $ colormgr device-add-profile xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d289
 $ colormgr device-make-profile-default xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
 ```
 
-'Dawn' will eventually get a manual override option as a cheap alternative.
+Alternatively, you can enforce an ICC profile in the settings.
 
 *nix/X11
 --------

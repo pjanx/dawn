@@ -49,7 +49,7 @@ Servers:
  - *dndbd:* Database service
  - *dntagd:* ML tagging service
  - *dnvfsd:* Virtual File System service
- - *dnimaged:* Image decoding service (if separation becomes desirable)
+ - *dnimaged:* Image decoding service (if process separation becomes desirable)
 
 User interfaces:
 

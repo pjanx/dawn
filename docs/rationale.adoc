@@ -99,10 +99,21 @@ for.  Deployment is challenging:
  - Windows is the easiest OS to package for, disappointingly.  At least it has
    a decent market share.
 
+Architecture
+------------
+The ultimate aim is to split the application into multiple services with
+separate concerns.  This may be regarded as overengineering, though it's
+necessary for resilience.  As a corollary of Myrphy's law: anything that can
+crash will crash.  We don't want image loading or ML models to bring down the
+entire application.
+
+Achieving this across operating systems and modes of operation (standalone,
+installed) is certainly a challenge.  As is keeping overhead at bay.
+
 Language
 --------
-In principle, the project consists of several parts that may be heterogeneous,
-communicating over IPC protocols.
+In theory, the parts the project consists of may be heterogeneous, with IPC
+protocols providing a common communications language.
 
 In practice, most good libraries for reuse have either a C or *C++* API,
 and additional layers are undesirable.  I'm not too happy here.
@@ -203,21 +214,38 @@ Actual toolkit
 --------------
 So, Qt GUI doesn't do that much by itself.  Initially, I had the idea of
 combining it with Dear ImGui, but its design assumptions fought me:
-most importantly, an image viewer is not a game, and while we're fine doing full
-frame renders, we do _not_ want to do this 60 or more times a second.
-Eventually, the immediate mode paradigm went out entirely, as it became
-an unmaintainable mess of interspersed state.
+most importantly, an image viewer is not a game, and while we're fine doing
+full-frame renders, we do _not_ want to do them 60 or more times a second.
+Eventually, the immediate-mode paradigm went out entirely, as code became
+an unmaintainable mess of interwoven state.
 
-And so there is a *hand-rolled retained mode UI*.
-Like in https://github.com/skyjake/lagrange[Lagrange].  I've always wanted
-Vimperator-like hints outside a browser, and I trivially received them.
-In general, keyboard navigation is
+And so there is a *hand-rolled retained-mode UI*.
+Like in https://github.com/skyjake/lagrange[Lagrange].
+This opens up many possibilities, at the cost of not necessarily fitting in.
+
+As of this writing, no effort has been made to have true popup windows, so we're
+somewhat modern GTK style, and it might not actually be much of a problem.
+
+What we're going for
+~~~~~~~~~~~~~~~~~~~~
+Some modern GUIs almost make me weep.  I pay
+https://p.janouch.name/text/human-interface-guidelines.html[proper attention]
+to *how the gold standards of GTK 2, AppKit, and Win32 work*.  When people make
+their own toolkits, besides often lacking visual taste, they also tend to miss
+important details, and I don't want to propagate this kind of misery
+any further.
+
+Yes, Dawn has hamburger menus (outside macOS, which has its own global menu
+mechanism) in order to save some screen real estate.  But they support
+hold-and-release semantics, and they should provide a more or less complete,
+organised listing of available actions.
+
+Keyboard navigation is
 https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
-
-As of writing, no effort has been made to have true popup windows, so we're
-somewhat modern GTK style, and it might actually not be much of a problem.
-
-// TODO(p): Talk more about particular user interface choices.
+I've also added Vimperator-like hints, which I always wanted outside a browser.
+There are also applications for getting this on a system-wide level--e.g.,
+macOS has Homerow/Vimium-native--so it might make more sense to simply implement
+the right accessibility APIs.
 
 Why no animations
 ~~~~~~~~~~~~~~~~~
@@ -297,7 +325,7 @@ Extension on Microsoft Store uses LibRaw, interestingly).
 
 I don't especially care about niche formats, despite already supporting a lot.
 If it ever becomes desirable, there is an obscure project called
-https://snisurset.net/code/abydos/about.html[ Abydos] which gets quite
+https://snisurset.net/code/abydos/about.html[Abydos] which gets quite
 exhaustive in that regard.
 
 Ultimately, loaders are a zoo, which is why you can disable or reorder them.
@@ -305,8 +333,8 @@ Ultimately, loaders are a zoo, which is why you can disable or reorder them.
 Scaling
 -------
 Initially, I naïvely thought bicubic or Lanczos upscaling would be
-an improvement over bilinear, though all of the halo-prone algorithms turn out
-to be the last thing you would want in a '`high fidelity`' image viewer.
+an improvement over bilinear.  However, all of the halo-prone algorithms turn
+out to be the last thing you would want in a '`high fidelity`' image viewer.
 Luckily, I knew of GIMP's special
 https://dl.acm.org/doi/pdf/10.1145/1557626.1557657[*NoHalo algorithm*],
 and I now believe it has no real competition--it's reasonably fast, smooths out
