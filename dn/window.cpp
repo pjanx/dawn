@@ -1312,14 +1312,15 @@ Window::current_url() const
 void
 Window::open_any(const QUrl &input)
 {
-	QUrl url = input;
-	if (url.isEmpty() && !this->cropper_)
-		url = path_to_url(QDir::currentPath());
+	// The last place a location is made absolute: App::open only makes windows.
+	const QUrl url = input.isEmpty() && !this->cropper_
+		? path_to_url(QDir::currentPath())
+		: url_normalized(input);
 	if (this->cropper_) {
 		if (!url.isEmpty() &&
 			(url_to_path(url).isEmpty() || QFileInfo(url_to_path(url)).isDir()))
 			return;
-		this->cropper_->open(url.isEmpty() ? QUrl{} : url_normalized(url));
+		this->cropper_->open(url);
 		sync_title();
 		request_render();
 		return;
@@ -1367,7 +1368,8 @@ Window::reveal_file(const QUrl &input)
 	if (!this->browser_)
 		return;
 
-	const QUrl url = input.isEmpty() ? path_to_url(QDir::currentPath()) : input;
+	const QUrl url = input.isEmpty() ? path_to_url(QDir::currentPath())
+									 : url_normalized(input);
 	const QFileInfo info(url_to_path(url));
 	this->browser_->open_dir(
 		info.isDir() ? url : path_to_url(info.absolutePath()), true);

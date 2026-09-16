@@ -22,9 +22,7 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
-#include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QMetaObject>
@@ -426,7 +424,7 @@ apply_activation_token(const QString &token)
 // the window hands over its foreground right first, and only then does this
 // work.  See AllowSetForegroundWindow in main.cpp, and launcher.swift.
 static void
-raise_window(Window *window)
+raise_window(QWindow *window)
 {
 #if defined Q_OS_WIN
 	window->requestActivate();
@@ -437,61 +435,26 @@ raise_window(Window *window)
 #endif
 }
 
-OpenResult
+bool
 App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 	Mode mode)
 {
-	if (size_t(mode) >= size_t(Mode::Count))
-		return OpenResult::InvalidArgument;
-
-	QUrl resolved = url;
-	if (resolved.isEmpty() && mode != Mode::CropJpeg)
-		resolved = path_to_url(QDir::currentPath());
-
-	if (!resolved.isEmpty()) {
-		const QString path = url_to_path(resolved);
-		if (path.isEmpty()) {
-			qWarning("%s: unsupported location",
-				qUtf8Printable(resolved.toString()));
-			return OpenResult::InvalidArgument;
-		}
-
-		QFileInfo info(path);
-		if (mode == Mode::CropJpeg) {
-			if (info.isDir())
-				return OpenResult::InvalidArgument;
-		} else {
-			if (mode == Mode::Commander && !info.isDir())
-				info = QFileInfo(info.absolutePath());
-			if (!info.exists()) {
-				qWarning("%s: not found", qUtf8Printable(info.filePath()));
-				return OpenResult::NotFound;
-			}
-			if (!info.isReadable()) {
-				qWarning(
-					"%s: permission denied", qUtf8Printable(info.filePath()));
-				return OpenResult::PermissionDenied;
-			}
-			if (mode == Mode::Commander && !info.isDir())
-				return OpenResult::InvalidArgument;
-		}
-		resolved = path_to_url(info.absoluteFilePath());
-	}
+	unique_ptr<QWindow> window;
 #if DN_WITH_WAYLAND
 	if (QGuiApplication::platformName() == QStringLiteral("wayland")) {
-		auto window = make_unique<WaylandWindow>(this);
-		if (!window->initialize(resolved, setup, mode))
-			return OpenResult::Internal;
-		apply_activation_token(activation_token);
-		window->show();
-		this->windows_.push_back(std::move(window));
-		return OpenResult::Ok;
-	}
+		auto shell = make_unique<WaylandWindow>(this);
+		if (!shell->initialize(url, setup, mode))
+			return false;
+		window = std::move(shell);
+	} else
 #endif
+	{
+		auto content = make_unique<Window>(this, nullptr);
+		if (!content->initialize(url, setup, mode))
+			return false;
+		window = std::move(content);
+	}
 
-	auto window = make_unique<Window>(this, nullptr);
-	if (!window->initialize(resolved, setup, mode))
-		return OpenResult::Internal;
 	apply_activation_token(activation_token);
 	window->show();
 	raise_window(window.get());
@@ -499,7 +462,7 @@ App::open(const QUrl &url, const QString &activation_token, BrowseSetup setup,
 #ifdef Q_OS_MACOS
 	sync_macos_app_menu(this);
 #endif
-	return OpenResult::Ok;
+	return true;
 }
 
 void

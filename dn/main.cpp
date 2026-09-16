@@ -300,17 +300,15 @@ main(int argc, char **argv)
 	// that there were none, or that none of them could be opened.
 	if (bare) {
 		dn::on_macos_launched([&app, url = to_open.front(), mode] {
-			if (!app.key_window() &&
-				app.open(url, {}, {}, mode) != dn::OpenResult::Ok)
+			if (!app.key_window() && !app.open(url, {}, {}, mode))
 				app.exit(EXIT_FAILURE);
 		});
 		to_open.clear();
 	}
 #endif
 	for (const QUrl &url : to_open) {
-		if (app.open(url, {}, {}, mode) != dn::OpenResult::Ok)
+		if (!app.open(url, {}, {}, mode))
 			return EXIT_FAILURE;
 	}
-
 	return app.exec();
 }

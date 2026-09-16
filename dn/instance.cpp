@@ -52,23 +52,6 @@ make_watch(dawn::ipc::Waitable w, bool write, QObject *parent)
 }
 #endif
 
-static dawn::ipc::ErrorCode
-map_open_error(OpenResult r)
-{
-	switch (r) {
-	case OpenResult::NotFound:
-		return dawn::ipc::ErrorCode::NotFound;
-	case OpenResult::PermissionDenied:
-		return dawn::ipc::ErrorCode::PermissionDenied;
-	case OpenResult::InvalidArgument:
-		return dawn::ipc::ErrorCode::InvalidArgument;
-	case OpenResult::Ok:
-	case OpenResult::Internal:
-		break;
-	}
-	return dawn::ipc::ErrorCode::Internal;
-}
-
 struct InstanceHost::Impl {
 	Impl(dawn::ipc::Listener listener, App &app, const QString &session,
 		InstanceHost *host);
@@ -175,11 +158,9 @@ InstanceHost::Impl::on_request(
 		return;
 	}
 	for (const string_view url : open_body->open.urls) {
-		const OpenResult r = this->app_.open(
-			QUrl::fromEncoded(QByteArray(url.data(), qsizetype(url.size()))),
-			token, {}, *mode);
-		if (r != OpenResult::Ok) {
-			call.fail(map_open_error(r), {});
+		const QByteArray encoded(url.data(), qsizetype(url.size()));
+		if (!this->app_.open(QUrl::fromEncoded(encoded), token, {}, *mode)) {
+			call.fail(dawn::ipc::ErrorCode::Internal, {});
 			return;
 		}
 	}

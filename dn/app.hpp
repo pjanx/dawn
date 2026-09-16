@@ -32,14 +32,6 @@ namespace dn
 
 class Window;
 
-enum class OpenResult : uint8_t {
-	Ok,
-	NotFound,
-	PermissionDenied,
-	InvalidArgument,
-	Internal
-};
-
 enum class SettingsChange : uint8_t { Bookmarks, Preferences };
 
 /// Process-wide user settings and categorized change notification.
@@ -96,7 +88,8 @@ public:
 	bool needs_csd = false;
 
 	bool init();
-	OpenResult open(const QUrl &url, const QString &activation_token,
+	/// Returns whether the window could be created.
+	bool open(const QUrl &url, const QString &activation_token,
 		BrowseSetup setup, Mode mode);
 	void close(const QWindow *top);
 	void close_later(const QWindow *top);
