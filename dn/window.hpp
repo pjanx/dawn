@@ -27,6 +27,7 @@
 #include <span>
 #include <string>
 
+class QAccessibleInterface;
 class QCloseEvent;
 class QExposeEvent;
 class QInputMethodEvent;
@@ -88,7 +89,6 @@ class Window final : public QWindow
 		const TextTarget &target, Qt::InputMethodQuery q) const;
 	void sync_input_method();
 	[[nodiscard]] Extent pixel_size() const;
-	[[nodiscard]] QWindow *shell();
 
 	App *app_ = nullptr;
 	Renderer renderer_;
@@ -157,6 +157,13 @@ public:
 	Mode application() const { return application_mode(mode_); }
 	[[nodiscard]] QUrl current_url() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }
+	// What the accessibility adapters need of a window, and no more: where
+	// the semantic root lives, and the widget tree hanging off it.
+	[[nodiscard]] QWindow *shell();
+	// Qt's application interface lists top-level windows through this, which
+	// QWindow itself leaves null.  The factory decides shell vs client.
+	QAccessibleInterface *accessibleRoot() const override;
+	[[nodiscard]] Kit &kit() { return this->kit_; }
 	[[nodiscard]] Page *active_page() { return active_ui(); }
 	[[nodiscard]] const Actor *active_actor() const;
 	[[nodiscard]] std::span<const MenuNode> active_menu() const;

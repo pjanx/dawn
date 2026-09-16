@@ -159,7 +159,7 @@ struct Page : Composite {
 
 	Page(std::unique_ptr<Toolbar> tb, std::unique_ptr<Sidebar> sb, Side side,
 		std::unique_ptr<Widget> body);
-	void set_banner(std::unique_ptr<Widget> w);
+	void set_banner(Kit &kit, std::unique_ptr<Widget> w);
 	void open_app_menu(Kit &kit, bool kbd);
 	void sync_app_menu();
 	void bind_actions(Kit &kit);

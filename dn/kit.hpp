@@ -74,6 +74,9 @@ struct Rect {
 	}
 	[[nodiscard]] bool empty() const { return this->w <= 0 || this->h <= 0; }
 	[[nodiscard]] Rect inset(int px, int py) const;
+	// The overlap, or an empty rectangle where there is none.  Never
+	// negative: a miss is {x, y, 0, 0}, not a rectangle inside out.
+	[[nodiscard]] Rect intersect(Rect other) const;
 	bool operator==(const Rect &) const = default;
 };
 
@@ -261,6 +264,12 @@ struct Widget {
 	void paint_children(Kit &kit) const;
 };
 
+// The part of w that is really on screen: clipped by host and by every
+// clipping ancestor, and empty when anything in the chain is hidden.  The
+// hint overlay and the accessibility adapters both ask this, and the two
+// must not disagree about what a user can see.
+[[nodiscard]] Rect visible_rect(const Widget *w, Rect host);
+
 struct Composite : Widget {
 	std::vector<std::unique_ptr<Widget>> kids;
 
@@ -351,6 +360,14 @@ struct Label : Widget {
 	QString tip_key() const override { return this->tip_accel; }
 };
 
+// UTF-16 offsets that sit on a grapheme cluster: a surrogate pair or a
+// combining mark is never split.  before/after walk to the neighbouring
+// cluster; at_or_* stay put when already on a boundary.
+int grapheme_before(const QString &text, int at);
+int grapheme_after(const QString &text, int at);
+int grapheme_at_or_before(const QString &text, int at);
+int grapheme_at_or_after(const QString &text, int at);
+
 // A single-line text field.  There is no selection: the caret is the whole
 // of the state, and a click just places it.
 struct Entry : Widget {
@@ -389,12 +406,23 @@ struct Entry : Widget {
 	bool text_target(const Kit &kit, TextTarget &out) const override;
 	[[nodiscard]] int wake_ms() const override;
 
+	// Every committed edit ends up in splice(): it clamps the span to whole
+	// grapheme clusters, leaves the caret after what went in, tells the host
+	// and then runs on_change.  replace() is that plus what a finished edit
+	// owes the platform -- the preedit is over, and the input method has to
+	// hear about it.  The input method itself uses splice() directly, since
+	// it has a new preedit to set before saying anything.
+	void splice(Kit &kit, int start, int end, const QString &with);
+	void replace(Kit &kit, int start, int end, const QString &with);
+	// Whole-value assignment, which leaves the caret at the end.
 	void set_text(Kit &kit, const QString &next);
 	void move_caret(Kit &kit, int to);
 	// Resets the blink, and re-scrolls to keep the caret in view.
 	void touch_caret(const Kit &kit);
 	// Just the scroll: arranging the field must not restart its blink.
 	void rescroll(const Kit &kit);
+	// Bring [start, end] into view without moving the caret.
+	void reveal(const Kit &kit, int start, int end);
 	[[nodiscard]] int inner_w(const Kit &kit) const;
 	// The text as painted: the placeholder stands in when empty.
 	[[nodiscard]] QString painted() const;
@@ -799,6 +827,23 @@ struct Titlebar : Panel {
 		unsigned mods) override;
 };
 
+// Why the host is being told about a widget.  These are the distinctions an
+// accessibility adapter has to make, and no more: the kit does not know what
+// the platform calls any of them, nor that anyone is listening at all.
+enum class Change : uint8_t {
+	// The keyboard focus moved to the widget, or away from it when null.
+	Focus,
+	// The widget and everything below it is about to stop existing.
+	Retired,
+	// After layout: enabled, checked, expanded, names, and which popups
+	// are on the stack.  Null widget, because this is a sweep of what
+	// the last frame committed rather than one mutation.
+	State,
+	// Committed text and caret of the widget, already applied.  Preedit is
+	// not this: it is not the Value a client reads back.
+	Text,
+};
+
 struct Kit {
 	using Packed = Sheet::Packed;
 	struct Glyph {
@@ -862,6 +907,10 @@ struct Kit {
 	// The focused Entry changed, or moved its caret: the platform has to
 	// re-query the input method state.
 	std::function<void()> input_method_changed;
+	// Semantic changes, for whoever exposes this tree to the outside.  A
+	// separate channel from the one above on purpose: the input method has
+	// its own needs, and must not have them overwritten by a second listener.
+	std::function<void(Change, Widget *)> notify;
 	bool fullscreen_ = false;
 	bool maximized_ = false;
 	bool active_ = true;
@@ -920,6 +969,11 @@ struct Kit {
 	// focus, or focus with no ring.  Re-seating the same focus across a tree
 	// rebuild is not a focus change, and leaves the ring as it found it.
 	void set_focus(Widget *w, bool ring);
+	// Focus carried over to the successor of a widget that has just been
+	// rebuilt away.  The ring is whatever it already was, because nothing
+	// about how the user got here has changed -- but the object that has
+	// the focus has, and that much is still worth saying out loud.
+	void reseat_focus(Widget *w);
 	// What a mnemonic, a hint chip and a buddy label all mean by "use this":
 	// the widget's default action if it has one, and the keyboard otherwise.
 	bool activate(Widget *w);

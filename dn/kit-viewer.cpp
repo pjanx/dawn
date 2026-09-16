@@ -1883,7 +1883,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	setup.content = std::move(content);
 
 	auto page = make_page(kit, host, std::move(setup));
-	page->set_banner(std::move(error));
+	page->set_banner(kit, std::move(error));
 	if (out)
 		*out = v;
 	return page;

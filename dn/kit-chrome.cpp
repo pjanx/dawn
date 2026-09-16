@@ -297,12 +297,13 @@ dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(N_("Save As"), true), size_t(-1));
-
+	auto title = dialog_label(N_("Save As"), true);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
 	field->text = suggested;
+	title->buddy = field;
 	// TODO(p): Place the caret at the end, properly.
+	col->add_child(std::move(title), size_t(-1));
 	col->add_child(std::move(entry), size_t(-1));
 	auto warning = make_unique<Label>();
 	Label *message = warning.get();
@@ -338,10 +339,11 @@ dialog_location(
 {
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(N_("Enter location"), true), size_t(-1));
-
+	auto title = dialog_label(N_("Enter location"), true);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
+	title->buddy = field;
+	col->add_child(std::move(title), size_t(-1));
 	col->add_child(std::move(entry), size_t(-1));
 
 	function<void(Kit &)> submit =
@@ -688,30 +690,6 @@ col(const Colour &c, float alpha = 1.f)
 	return {c.r, c.g, c.b, c.a * alpha};
 }
 
-static Rect
-intersection(Rect a, Rect b)
-{
-	const int x = max(a.x, b.x);
-	const int y = max(a.y, b.y);
-	return {x, y, max(0, min(a.right(), b.right()) - x),
-		max(0, min(a.bottom(), b.bottom()) - y)};
-}
-
-static Rect
-visible_rect(const Widget *w, Rect host)
-{
-	if (!w || !w->shown() || w->r.empty())
-		return {};
-	Rect visible = intersection(w->r, host);
-	for (const Widget *p = w->parent_; p; p = p->parent_) {
-		if (!p->shown())
-			return {};
-		if (p->clips_children())
-			visible = intersection(visible, p->r);
-	}
-	return visible;
-}
-
 // Anything the keyboard can reach is worth a hint, so this asks focusable()
 // rather than testing for a type: a widget opts in by being reachable at all.
 // The exception is a container that is focusable as a whole -- one chip over
@@ -946,7 +924,7 @@ Hint::collect(Widget *scope)
 		if (f.tile.empty())
 			continue;
 
-		const Rect clipped = intersection(f.tile, well);
+		const Rect clipped = f.tile.intersect(well);
 		if (clipped.empty())
 			continue;
 
@@ -985,7 +963,7 @@ Hint::refresh_rects()
 			t.file_i >= int(t.browser->files_.size()))
 			continue;
 		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
-		const Rect clipped = intersection(f.tile, t.browser->r);
+		const Rect clipped = f.tile.intersect(t.browser->r);
 		if (clipped.empty())
 			continue;
 		t.at = clipped;
@@ -1030,11 +1008,7 @@ Hint::fire(Kit &kit, Target t)
 	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
 		return;
 
-	const QUrl url = browser->file_url(file_i);
-	browser->select_file(url);
-	if (browser->page_ && browser->page_->host &&
-		browser->page_->host->activate)
-		browser->page_->host->activate(url);
+	browser->activate_file(browser->file_url(file_i));
 }
 
 // --- Page -------------------------------------------------------------------
@@ -1089,7 +1063,11 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		app->flat = true;
 		app->focus_on_press = false;
 		app->icon = "open-menu-symbolic";
-		app->tip_text = "Menu";
+		// The action table already names this, and says what opens it from
+		// the keyboard; it is also what an icon-only control is read out as.
+		const ActionDef &def = action_def(Action::Menu);
+		app->tip_text = action_tip(def, false);
+		app->tip_accel = action_accel(def);
 		app->activate_on_press = true;
 		app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
 		this->app_menu_button = app.get();
@@ -1170,11 +1148,16 @@ Page::sync_app_menu()
 }
 
 void
-Page::set_banner(unique_ptr<Widget> w)
+Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 {
 	invalidate_measure();
-	if (this->banner)
+	if (this->banner) {
+		// The assignment below destroys it, and the registry the host keeps
+		// is keyed by live widget pointers: every destruction path has to
+		// go through here first, while the subtree is still whole.
+		kit.forget_tree(this->banner);
 		this->banner->parent_ = nullptr;
+	}
 	this->banner = w.get();
 	if (this->banner)
 		this->banner->parent_ = this;

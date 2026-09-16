@@ -5,11 +5,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include "wayland-window.hpp"
 
 #include "app.hpp"
 #include "wayland-color-bridge.hpp"
 #include "xdg-shell-client-protocol.h"
+
+#if DAWN_WITH_ACCESSIBILITY
+#include <QAccessible>
+#endif
 
 #include <QByteArray>
 #include <QCloseEvent>
@@ -95,6 +101,17 @@ WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		return false;
 	attach_color_management(true);
 	return true;
+}
+
+QAccessibleInterface *
+WaylandWindow::accessibleRoot() const
+{
+#if DAWN_WITH_ACCESSIBILITY
+	return QAccessible::queryAccessibleInterface(
+		const_cast<WaylandWindow *>(this));
+#else
+	return nullptr;
+#endif
 }
 
 void

@@ -701,6 +701,15 @@ Rect::inset(int px, int py) const
 	return {this->x + px, this->y + py, nw > 0 ? nw : 0, nh > 0 ? nh : 0};
 }
 
+Rect
+Rect::intersect(Rect other) const
+{
+	const int nx = max(this->x, other.x);
+	const int ny = max(this->y, other.y);
+	return {nx, ny, max(0, min(right(), other.right()) - nx),
+		max(0, min(bottom(), other.bottom()) - ny)};
+}
+
 // --- Widget ------------------------------------------------------------------
 
 void
@@ -869,6 +878,22 @@ bool
 Widget::double_click(Kit &, float, float, Qt::MouseButton, unsigned)
 {
 	return false;
+}
+
+Rect
+visible_rect(const Widget *w, Rect host)
+{
+	if (!w || !w->shown() || w->r.empty())
+		return {};
+
+	Rect visible = w->r.intersect(host);
+	for (const Widget *p = w->parent_; p; p = p->parent_) {
+		if (!p->shown())
+			return {};
+		if (p->clips_children())
+			visible = visible.intersect(p->r);
+	}
+	return visible;
 }
 
 // --- Button ------------------------------------------------------------------
@@ -1284,7 +1309,7 @@ constexpr float kEntryPadY = 3.f;
 
 // Both walk whole grapheme clusters, so that combining marks and surrogate
 // pairs never get split down the middle.
-static int
+int
 grapheme_before(const QString &text, int at)
 {
 	if (at <= 0)
@@ -1295,7 +1320,7 @@ grapheme_before(const QString &text, int at)
 	return prev < 0 ? 0 : int(prev);
 }
 
-static int
+int
 grapheme_after(const QString &text, int at)
 {
 	const int end = int(text.size());
@@ -1305,6 +1330,28 @@ grapheme_after(const QString &text, int at)
 	finder.setPosition(max(at, 0));
 	const auto next = finder.toNextBoundary();
 	return next < 0 ? end : int(next);
+}
+
+int
+grapheme_at_or_before(const QString &text, int at)
+{
+	at = clamp(at, 0, int(text.size()));
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(at);
+	if (finder.isAtBoundary())
+		return at;
+	return grapheme_before(text, at);
+}
+
+int
+grapheme_at_or_after(const QString &text, int at)
+{
+	at = clamp(at, 0, int(text.size()));
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(at);
+	if (finder.isAtBoundary())
+		return at;
+	return grapheme_after(text, at);
 }
 
 // Qt hands us the control codes as text too; none of them are insertable.
@@ -1375,9 +1422,99 @@ Entry::rescroll(const Kit &kit)
 }
 
 void
+Entry::reveal(const Kit &kit, int start, int end)
+{
+	const int n = int(this->text.size());
+	start = grapheme_at_or_before(this->text, clamp(start, 0, n));
+	end = grapheme_at_or_after(this->text, clamp(end, 0, n));
+	if (end < start) {
+		const int tmp = start;
+		start = end;
+		end = tmp;
+	}
+
+	const float text_w =
+		float(this->text_cache_.text_width(kit, this->text, false));
+	const float view = float(inner_w(kit));
+	if (text_w <= view) {
+		this->scroll_ = 0.f;
+		return;
+	}
+
+	const float left =
+		float(this->text_cache_.caret_x(kit, this->text, start, false));
+	const float right =
+		float(this->text_cache_.caret_x(kit, this->text, end, false));
+	const float from = min(left, right);
+	const float to = max(left, right);
+	if (to - from >= view) {
+		this->scroll_ = clamp(from, 0.f, text_w - view);
+		return;
+	}
+	if (from < this->scroll_)
+		this->scroll_ = from;
+	else if (to > this->scroll_ + view)
+		this->scroll_ = to - view;
+	this->scroll_ = clamp(this->scroll_, 0.f, text_w - view);
+}
+
+void
 Entry::move_caret(Kit &kit, int to)
 {
-	this->caret = clamp(to, 0, int(this->text.size()));
+	this->caret =
+		grapheme_at_or_before(this->text, clamp(to, 0, int(this->text.size())));
+	touch_caret(kit);
+	if (kit.input_method_changed)
+		kit.input_method_changed();
+	if (kit.notify)
+		kit.notify(Change::Text, this);
+}
+
+void
+Entry::splice(Kit &kit, int start, int end, const QString &with)
+{
+	const int n = int(this->text.size());
+	start = clamp(start, 0, n);
+	end = clamp(end, 0, n);
+	if (end < start)
+		swap(start, end);
+
+	// An empty range is an insertion point, and goes to a cluster boundary.
+	// A span grows to whole clusters, so that a surrogate pair or a
+	// combining mark is never half-removed.
+	if (start == end) {
+		start = end = grapheme_at_or_before(this->text, start);
+	} else {
+		start = grapheme_at_or_before(this->text, start);
+		end = grapheme_at_or_after(this->text, end);
+	}
+
+	// Taking nothing out and putting nothing in is not an edit: Delete at
+	// the end of the text would otherwise re-run on_change, and with it the
+	// listing the field filters, on every keypress.
+	if (start == end && with.isEmpty())
+		return;
+
+	this->text.replace(start, end - start, with);
+	this->caret = start + int(with.size());
+
+	// Tell the host before on_change, which may rebuild the listing around
+	// this field: the old string is still on the adapter, the new one here.
+	if (kit.notify)
+		kit.notify(Change::Text, this);
+	if (this->on_change)
+		this->on_change(kit);
+}
+
+void
+Entry::replace(Kit &kit, int start, int end, const QString &with)
+{
+	// Committed text ends whatever composed it, which is why the input
+	// method does not come through here: it has a preedit to put back, and
+	// tells the platform once, after it has.
+	this->preedit.clear();
+	this->preedit_caret = 0;
+	splice(kit, start, end, with);
 	touch_caret(kit);
 	if (kit.input_method_changed)
 		kit.input_method_changed();
@@ -1386,15 +1523,7 @@ Entry::move_caret(Kit &kit, int to)
 void
 Entry::set_text(Kit &kit, const QString &next)
 {
-	this->text = next;
-	this->caret = clamp(this->caret, 0, int(this->text.size()));
-	this->preedit.clear();
-	this->preedit_caret = 0;
-	touch_caret(kit);
-	if (this->on_change)
-		this->on_change(kit);
-	if (kit.input_method_changed)
-		kit.input_method_changed();
+	replace(kit, 0, int(this->text.size()), next);
 }
 
 Size
@@ -1560,25 +1689,14 @@ Entry::key(Kit &kit, const Key &ev)
 	case Qt::Key_End:
 		move_caret(kit, int(this->text.size()));
 		return true;
-	case Qt::Key_Backspace: {
-		if (this->caret <= 0)
-			return true;
-		const int from = grapheme_before(this->text, this->caret);
-		QString next = this->text;
-		next.remove(from, this->caret - from);
-		this->caret = from;
-		set_text(kit, next);
+	case Qt::Key_Backspace:
+		if (this->caret > 0)
+			replace(
+				kit, grapheme_before(this->text, this->caret), this->caret, {});
 		return true;
-	}
-	case Qt::Key_Delete: {
-		const int to = grapheme_after(this->text, this->caret);
-		if (to <= this->caret)
-			return true;
-		QString next = this->text;
-		next.remove(this->caret, to - this->caret);
-		set_text(kit, next);
+	case Qt::Key_Delete:
+		replace(kit, this->caret, grapheme_after(this->text, this->caret), {});
 		return true;
-	}
 	case Qt::Key_Return:
 	case Qt::Key_Enter:
 		if (this->on_submit) {
@@ -1600,10 +1718,7 @@ Entry::key(Kit &kit, const Key &ev)
 	const QString insert = printable_only(ev.text);
 	if (insert.isEmpty())
 		return false;
-	QString next = this->text;
-	next.insert(this->caret, insert);
-	this->caret += int(insert.size());
-	set_text(kit, next);
+	replace(kit, this->caret, this->caret, insert);
 	return true;
 }
 
@@ -1611,19 +1726,12 @@ bool
 Entry::input_method(
 	Kit &kit, const QString &commit, const QString &pre, int pre_caret)
 {
-	if (!commit.isEmpty()) {
-		QString next = this->text;
-		const QString insert = printable_only(commit);
-		next.insert(this->caret, insert);
-		this->caret += int(insert.size());
-		this->text = next;
-	}
+	if (const QString insert = printable_only(commit); !insert.isEmpty())
+		splice(kit, this->caret, this->caret, insert);
 	this->preedit = pre;
 	this->preedit_caret = clamp(pre_caret, 0, int(pre.size()));
 	this->caret = clamp(this->caret, 0, int(this->text.size()));
 	touch_caret(kit);
-	if (!commit.isEmpty() && this->on_change)
-		this->on_change(kit);
 	if (kit.input_method_changed)
 		kit.input_method_changed();
 	return true;
@@ -3107,9 +3215,18 @@ Menu::clear(Kit &kit)
 {
 	// A sub is on the popup stack for as long as it is open, so dropping it
 	// here would leave kit.popups_ walking freed memory every frame.
+	// Closing takes down whatever it opened above it, but that settles the
+	// stack alone: the items are destroyed below without anything being
+	// told, which is what forgetting is for.  It has to go a level at a
+	// time, because a popup roots its own parent chain -- an item two menus
+	// down is no descendant of this one, and forgetting this tree would
+	// walk straight past it.
 	for (auto &sub : this->subs_) {
-		if (sub)
-			sub->close(kit);
+		if (!sub)
+			continue;
+		sub->close(kit);
+		sub->clear(kit);
+		kit.forget_tree(sub.get());
 	}
 	this->subs_.clear();
 	if (this->col)
@@ -4483,7 +4600,8 @@ Kit::sync_focus()
 void
 Kit::set_focus(Widget *w, bool ring)
 {
-	if (this->focus_ != w) {
+	const bool moved = this->focus_ != w;
+	if (moved) {
 		for (Widget *p = w; p; p = p->parent_) {
 			if (auto *column = dynamic_cast<ScrollColumn *>(p);
 				column && column->follow_focus)
@@ -4492,6 +4610,25 @@ Kit::set_focus(Widget *w, bool ring)
 	}
 	this->focus_ = w;
 	this->focus_visible_ = ring;
+	// Re-seating the same focus is not a focus change, and saying it was
+	// would have a screen reader read the control out a second time.
+	if (moved && this->notify)
+		this->notify(Change::Focus, w);
+}
+
+void
+Kit::reseat_focus(Widget *w)
+{
+	// The ring is left alone on purpose: the focus did not move because
+	// anybody asked it to, but because the widget that held it was rebuilt
+	// and this is its successor.  Whoever is listening still has to hear
+	// it -- from the outside a different object has the keyboard than a
+	// moment ago, and forget_tree() has already said the old one is gone.
+	if (this->focus_ == w)
+		return;
+	this->focus_ = w;
+	if (this->notify)
+		this->notify(Change::Focus, w);
 }
 
 bool
@@ -4926,6 +5063,12 @@ Kit::destroy()
 void
 Kit::forget_tree(Widget *tree)
 {
+	// First of all, while the subtree is still whole and still reachable
+	// from its parent: whoever exposed it has to retire it in that order,
+	// and callers forget a subtree before dropping it, never after.
+	if (this->notify)
+		this->notify(Change::Retired, tree);
+
 	auto forget = [tree](auto &target) {
 		for (auto *w = target; w; w = w->parent_) {
 			if (w == tree) {
@@ -5476,6 +5619,8 @@ Kit::frame_ui(Widget &ui, const function<void()> &placed)
 	sync_focus();
 	ui.prepare(*this);
 	prepare_popups();
+	if (this->notify)
+		this->notify(Change::State, nullptr);
 	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
 	tooltip(this->hot_);
 	prepare_tooltip(*this);

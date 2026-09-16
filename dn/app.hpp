@@ -32,6 +32,11 @@ namespace dn
 
 class Window;
 
+// A Wayland shell carries the viewer as a child window; elsewhere the
+// top-level is the viewer itself. Nothing here has Q_OBJECT, so qobject_cast
+// and findChild() would fall back to QWindow and match anything.
+Window *content_window(QObject *window);
+
 enum class SettingsChange : uint8_t { Bookmarks, Preferences };
 
 /// Process-wide user settings and categorized change notification.

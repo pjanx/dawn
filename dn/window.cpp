@@ -11,6 +11,7 @@
 
 #include "window.hpp"
 
+#include "accessible.hpp"
 #include "action.hpp"
 #include "app-menu-macos.hpp"
 #include "app.hpp"
@@ -22,6 +23,9 @@
 #include "wayland-window.hpp"
 #endif
 
+#if DAWN_WITH_ACCESSIBILITY
+#include <QAccessible>
+#endif
 #include <QByteArray>
 #include <QCloseEvent>
 #include <QCoreApplication>
@@ -167,6 +171,9 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	this->kit_.post = std::move(post);
 	this->kit_.request_render = [this] { request_render(); };
 	this->kit_.input_method_changed = [this] { sync_input_method(); };
+	this->kit_.notify = [this](Change what, Widget *w) {
+		accessible_changed(this, what, w);
+	};
 	this->kit_.start_move = [this] {
 		this->system_grab_ = shell()->startSystemMove();
 		request_render();
@@ -219,6 +226,10 @@ Window::~Window()
 	if (QGuiApplication *app = qGuiApp)
 		app->removeEventFilter(this);
 	shutdown();
+	// After shutdown(), which drops the pages and with them everything that
+	// was exposed; the kit is still to come, and has nobody left to tell.
+	this->kit_.notify = nullptr;
+	accessible_forget_window(this);
 }
 
 Extent
@@ -333,6 +344,10 @@ Window::drop_frames()
 	this->cropper_ = nullptr;
 	this->commander_ = nullptr;
 	this->awaiting_view_ = false;
+	// Last, and not first: closing popups and settling focus above is
+	// ordinary toolkit work that may expose a control all over again.  The
+	// page trees are still whole here, which is what retirement needs.
+	accessible_retire_page(this);
 	for (auto &page : this->pages_)
 		page.reset();
 }
@@ -663,8 +678,11 @@ Window::sync_title()
 		? app
 		: url_parse_name(url) + QStringLiteral(" \u2014 ") + app;
 	QWindow *w = shell();
-	if (w->title() != title)
+	if (w->title() != title) {
 		w->setTitle(title);
+		// This runs every frame, and only here has the name really changed.
+		accessible_renamed(this);
+	}
 	if (this != w && this->title() != title)
 		setTitle(title);
 	auto set_bar = [&](Page *ui) {
@@ -788,6 +806,16 @@ Window::shell()
 	if (QWindow *parent_window = parent())
 		return parent_window;
 	return this;
+}
+
+QAccessibleInterface *
+Window::accessibleRoot() const
+{
+#if DAWN_WITH_ACCESSIBILITY
+	return QAccessible::queryAccessibleInterface(const_cast<Window *>(this));
+#else
+	return nullptr;
+#endif
 }
 
 void
@@ -1193,6 +1221,7 @@ void
 Window::focus_gained()
 {
 	sync_macos_app_menu(this->app_);
+	accessible_activated(this);
 	request_render();
 }
 
@@ -1210,6 +1239,9 @@ Window::focus_lost()
 
 	this->alt_armed_ = false;
 	this->kit_.close_transient_popups();
+	// Past the guard above, so that the hand-off it describes stays what it
+	// is: one window, and nothing for a screen reader to read out twice.
+	accessible_activated(this);
 	request_render();
 }
 

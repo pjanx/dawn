@@ -553,8 +553,8 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 	PageSetup setup;
 	setup.mode = Mode::CropJpeg;
 	setup.content = std::move(content);
-	setup.toolbar =
-		make_toolbar(kItems, [c](const ToolbarSpec &spec) -> unique_ptr<Widget> {
+	setup.toolbar = make_toolbar(
+		kItems, [c](const ToolbarSpec &spec) -> unique_ptr<Widget> {
 			if (spec.action == Action::CropReset) {
 				auto button = make_unique<Button>();
 				button->flat = true;
@@ -593,7 +593,7 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 	auto banner = make_banner(
 		&c->error_label_, [c](Kit &) { c->message_dismissed_ = true; });
 	c->error_ = banner.get();
-	page->set_banner(std::move(banner));
+	page->set_banner(kit, std::move(banner));
 	return page;
 }
 

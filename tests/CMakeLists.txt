@@ -176,6 +176,74 @@ if (MSGFMT_EXECUTABLE)
 		gettext_plural gettext_library PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
+# Accessibility is only ever proven from the outside, over the same bus and
+# through the same client library a screen reader uses.  libatspi is a test
+# dependency and nothing else: dn links none of it.
+option(DAWN_WITH_ACCESSIBILITY_TESTS
+	"Require what the external accessibility test needs" OFF)
+if (DAWN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
+	pkg_check_modules(ATSPI IMPORTED_TARGET atspi-2)
+	# Every object libatspi hands out is a GObject, but atspi-2.pc requires
+	# only glib, so referencing and unreferencing them needs this as well.
+	pkg_check_modules(GOBJECT IMPORTED_TARGET gobject-2.0)
+
+	# Overflow coverage resizes the window through Weston, because Qt's
+	# AT-SPI Component.SetSize is a stub and a production Value interface on
+	# the frame is not a resize API.  The test asserts that resize, so this
+	# is not optional to it: without the plugin there is no test to run.
+	# weston.pc carries the release, and libweston is versioned by its major.
+	pkg_check_modules(WESTON IMPORTED_TARGET weston)
+	if (WESTON_FOUND)
+		string(REGEX MATCH "^[0-9]+" WESTON_ABI "${WESTON_VERSION}")
+		pkg_check_modules(LIBWESTON IMPORTED_TARGET "libweston-${WESTON_ABI}")
+	endif()
+	pkg_check_modules(WAYLAND_SERVER IMPORTED_TARGET wayland-server)
+
+	if (ATSPI_FOUND AND GOBJECT_FOUND AND WESTON_FOUND AND LIBWESTON_FOUND
+			AND WAYLAND_SERVER_FOUND)
+		add_executable(test-accessible test-accessible.cpp)
+		target_include_directories(test-accessible PRIVATE
+			"${PROJECT_BINARY_DIR}")
+		target_link_libraries(test-accessible PRIVATE
+			PkgConfig::ATSPI
+			PkgConfig::GOBJECT)
+		add_dependencies(test-accessible dn)
+		if (NOT CMAKE_CROSSCOMPILING)
+			add_dependencies(test-accessible test-fixtures)
+		endif()
+
+		add_library(weston-a11y-resize MODULE weston-a11y-resize.c)
+		target_link_libraries(weston-a11y-resize PRIVATE
+			PkgConfig::WESTON
+			PkgConfig::LIBWESTON
+			PkgConfig::WAYLAND_SERVER)
+		set_target_properties(weston-a11y-resize PROPERTIES
+			PREFIX ""
+			C_STANDARD 11
+			C_STANDARD_REQUIRED ON)
+		add_dependencies(test-accessible weston-a11y-resize)
+
+		add_test(NAME accessible
+			COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run-accessible.sh"
+				"$<TARGET_FILE:test-accessible>"
+				"$<TARGET_FILE:dn>"
+				"${DAWN_TEST_FIXTURES_DIR}")
+		# The launcher skips when the session it needs cannot be built; once
+		# dn is up, anything going wrong at all is a failure.
+		set_tests_properties(accessible PROPERTIES SKIP_RETURN_CODE 77)
+		if (DAWN_WITH_ACCESSIBILITY_TESTS)
+			set_tests_properties(accessible PROPERTIES
+				ENVIRONMENT "DN_A11Y_STRICT=1")
+		endif()
+	elseif (DAWN_WITH_ACCESSIBILITY_TESTS)
+		message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY_TESTS=ON but atspi-2, "
+			"gobject-2.0, or the weston plugin headers were not found")
+	endif()
+elseif (DAWN_WITH_ACCESSIBILITY_TESTS)
+	message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY_TESTS=ON without a Linux "
+		"accessibility build")
+endif()
+
 add_executable(test-lxdr test-lxdr.cpp)
 target_link_libraries(test-lxdr PRIVATE libdn)
 add_test(NAME lxdr COMMAND test-lxdr)

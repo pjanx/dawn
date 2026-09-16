@@ -499,12 +499,12 @@ App::shutdown()
 		Qt::QueuedConnection);
 }
 
-// A Wayland shell carries the viewer as a child window; elsewhere the
-// top-level is the viewer itself. Nothing here has Q_OBJECT, so qobject_cast
-// and findChild() would fall back to QWindow and match anything.
-static Window *
+Window *
 content_window(QObject *window)
 {
+	// Null during teardown, where a shell may outlive its content by a hair.
+	if (!window)
+		return nullptr;
 	if (auto *win = dynamic_cast<Window *>(window))
 		return win;
 	for (QObject *child : window->children())

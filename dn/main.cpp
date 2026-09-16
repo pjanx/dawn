@@ -11,6 +11,7 @@
 #include <libdn/ipc-instance.hpp>
 #include <libdn/libdn.hpp>
 
+#include "accessible.hpp"
 #include "app.hpp"
 #include "instance.hpp"
 #include "thumbnail-cache.hpp"
@@ -257,6 +258,7 @@ main(int argc, char **argv)
 #endif
 
 	dn::App app(argc, argv);
+	dn::accessible_init();
 	install_qt_translations(app);
 	QStringList raw = parser.positionalArguments();
 	const bool bare = raw.isEmpty();

@@ -1644,6 +1644,7 @@ static int
 hit_file(const Browser &b, float x, float y)
 {
 	for (int i = 0; i < int(b.files_.size()); i++) {
+		// This is not supposed to test the cell, that would make no sense!
 		if (b.files_[size_t(i)].tile.contains(x, y))
 			return i;
 	}
@@ -1886,6 +1887,7 @@ scan_dir(Browser &b)
 	b.places_dirty_ = true;
 	if (b.dir_url_.isEmpty()) {
 		clear_cursor(b);
+		b.set_files({});
 		return;
 	}
 
@@ -1975,15 +1977,13 @@ scan_dir(Browser &b)
 		if (!o.gpu.empty())
 			b.sheet_.release(o.gpu);
 	}
-	b.files_ = std::move(files);
+	b.set_files(std::move(files));
 	clear_cursor(b);
 	if (!keep.empty()) {
-		for (int i = 0; i < int(b.files_.size()); i++) {
-			if (b.files_[size_t(i)].path == keep) {
-				b.cursor_ = i;
-				remember_cursor_x(b);
-				break;
-			}
+		if (const auto it = b.file_by_path_.find(keep);
+			it != b.file_by_path_.end()) {
+			b.cursor_ = it->second;
+			remember_cursor_x(b);
 		}
 	}
 
@@ -2263,9 +2263,9 @@ fill_places(Browser &b)
 	if (!list)
 		return;
 
-	// Rebuilding the sidebar is not a focus change: erase_children drops the
-	// pointer into the dying rows, and this puts it back on their successor,
-	// leaving whatever decided the ring in the first place alone.
+	// Rebuilding the sidebar is not the user moving the focus: erase_children
+	// drops the pointer into the dying rows, and this puts it back on their
+	// successor, leaving whatever decided the ring in the first place alone.
 	string restore_path;
 	for (const auto &item : b.place_items_) {
 		if (item.button == b.kit_.focus_) {
@@ -2304,7 +2304,7 @@ fill_places(Browser &b)
 		for (size_t i = b.place_items_.size(); i--;) {
 			const auto &item = b.place_items_.at(i);
 			if (item.path == restore_path) {
-				b.kit_.focus_ = item.button;
+				b.kit_.reseat_focus(item.button);
 				break;
 			}
 		}
@@ -2431,9 +2431,8 @@ apply_action(Browser &b, Action action)
 		request_render(b);
 		return true;
 	case Action::Activate:
-		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()) && b.page_ &&
-			b.page_->host && b.page_->host->activate)
-			b.page_->host->activate(b.file_url(b.cursor_));
+		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()))
+			b.activate_file(b.file_url(b.cursor_));
 		return true;
 	case Action::Reload:
 		if (!b.dir_url_.isEmpty()) {
@@ -2519,22 +2518,53 @@ Browser::tip() const
 void
 Browser::select_file(const QUrl &url)
 {
-	clear_cursor(*this);
-	const string path = url_to_path(url).toStdString();
-	if (!path.empty()) {
-		for (int i = 0; i < int(this->files_.size()); i++) {
-			if (this->files_[size_t(i)].path == path) {
-				this->cursor_ = i;
-				remember_cursor_x(*this);
-				// This won't quite work if the browser
-				// is not currently visible.
-				if (const int ri = find_cursor_row(*this); ri >= 0)
-					scroll_to_row(*this, this->rows_[size_t(ri)]);
-				break;
-			}
-		}
+	this->select_index(this->file_index(url_to_path(url).toStdString()), true);
+}
+
+void
+Browser::set_files(vector<File> files)
+{
+	this->files_ = std::move(files);
+	this->file_by_path_.clear();
+	this->file_by_path_.reserve(this->files_.size());
+	for (int i = 0; i < int(this->files_.size()); i++)
+		this->file_by_path_.emplace(this->files_[size_t(i)].path, i);
+	this->file_rev_++;
+}
+
+int
+Browser::file_index(const string &path) const
+{
+	if (path.empty())
+		return -1;
+	const auto it = this->file_by_path_.find(path);
+	return it == this->file_by_path_.end() ? -1 : it->second;
+}
+
+void
+Browser::select_index(int index, bool reveal)
+{
+	if (index < 0 || index >= int(this->files_.size())) {
+		clear_cursor(*this);
+		request_render(*this);
+		return;
+	}
+	this->cursor_ = index;
+	remember_cursor_x(*this);
+	// Scrolling needs a laid-out row; a hidden browser has none yet.
+	if (reveal) {
+		if (const int ri = find_cursor_row(*this); ri >= 0)
+			scroll_to_row(*this, this->rows_[size_t(ri)]);
 	}
 	request_render(*this);
+}
+
+void
+Browser::activate_file(const QUrl &url)
+{
+	this->select_file(url);
+	if (this->page_ && this->page_->host && this->page_->host->activate)
+		this->page_->host->activate(url);
 }
 
 void
@@ -2683,7 +2713,7 @@ Browser::destroy()
 	}
 	this->thumb_inflight_.clear();
 	clear_gpu(*this);
-	this->files_.clear();
+	this->set_files({});
 	this->side_dirs_.clear();
 	this->places_ = nullptr;
 	this->place_items_.clear();

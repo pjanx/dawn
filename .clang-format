@@ -15,3 +15,5 @@ AlignOperands: DontAlign
 SpacesBeforeTrailingComments: 2
 AttributeMacros: ['DAWN_FORMAT']
 WhitespaceSensitiveMacros: ['G_DEFINE_QUARK']
+ForEachMacros: [
+  'wl_list_for_each', 'wl_list_for_each_safe', 'wl_list_for_each_reverse']

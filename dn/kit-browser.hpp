@@ -161,7 +161,14 @@ struct Browser : Widget {
 	bool can_prev_dir_ = false;
 	bool can_next_dir_ = false;
 	bool can_parent_dir_ = false;
+	// Only ever replaced through set_files(), which owns the two below.
 	std::vector<File> files_;
+	// Path to current row, rebuilt with the listing so a query does not
+	// walk files_ for every accessible child.
+	std::unordered_map<std::string, int> file_by_path_;
+	// Bumped only when the listing is replaced, so accessibility can skip
+	// membership work on ordinary frames.
+	uint64_t file_rev_ = 0;
 	std::vector<DirRow> side_dirs_;
 	std::unordered_map<std::string, CachedSize> size_cache_;
 	std::unordered_map<std::string, ThumbInflight> thumb_inflight_;
@@ -197,8 +204,13 @@ struct Browser : Widget {
 	void hist_clear_forward();
 	[[nodiscard]] bool hist_can_back() const;
 	[[nodiscard]] bool hist_can_forward() const;
+	// The listing, its path index and its revision, which only move as one.
+	void set_files(std::vector<File> files);
 	void select_file(const QUrl &url);
+	void select_index(int index, bool reveal);
+	void activate_file(const QUrl &url);
 	void file_gone(const QUrl &url);
+	[[nodiscard]] int file_index(const std::string &path) const;
 	[[nodiscard]] QUrl file_url(int index) const;
 	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
 	void screen_changed(

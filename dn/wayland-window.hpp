@@ -13,6 +13,7 @@
 
 #include <memory>
 
+class QAccessibleInterface;
 class QCloseEvent;
 class QKeyEvent;
 class QPaintEvent;
@@ -55,6 +56,7 @@ public:
 	~WaylandWindow() override;
 
 	bool initialize(const QUrl &url, BrowseSetup setup, Mode mode);
+	QAccessibleInterface *accessibleRoot() const override;
 };
 
 // What Qt's own CSD does on titlebar right-click, in shell-local coordinates.

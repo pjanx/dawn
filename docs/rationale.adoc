@@ -243,9 +243,9 @@ organised listing of available actions.
 Keyboard navigation is
 https://ckardaris.com/blog/2026/08/28/keyboard-driven-guis.html[first-class].
 I've also added Vimperator-like hints, which I always wanted outside a browser.
-There are also applications for getting this on a system-wide level--e.g.,
-macOS has Homerow/Vimium-native--so it might make more sense to simply implement
-the right accessibility APIs.
+Given that there are applications for getting this on a system-wide level--macOS
+has Shortcat/Homerow, Windows has Fluent Search--it might make more sense to
+leave it to accessibility APIs, though it's a very cheap feature to implement.
 
 Why no animations
 ~~~~~~~~~~~~~~~~~

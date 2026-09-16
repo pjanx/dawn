@@ -237,6 +237,34 @@ endif()
 
 option(DAWN_WITH_WIP "Expose unfinished subapplications" OFF)
 
+# Qt states its features in a generated header rather than in its CMake package.
+include(CheckCXXSourceCompiles)
+block()
+	set(CMAKE_REQUIRED_LIBRARIES Qt6::Gui)
+	check_cxx_source_compiles([[
+		#include <QtGui/qtguiglobal.h>
+		#if !QT_CONFIG(accessibility)
+		#error Qt has no accessibility support
+		#endif
+		#if defined Q_OS_UNIX && !defined Q_OS_MACOS
+		#if !QT_CONFIG(accessibility_atspi_bridge)
+		#error Qt has no AT-SPI bridge
+		#endif
+		#endif
+		int main() { return 0; }
+	]] dawn_qt_accessibility)
+endblock()
+
+option(DAWN_WITH_ACCESSIBILITY "Expose the UI to assistive technologies"
+	"${dawn_qt_accessibility}")
+if (DAWN_WITH_ACCESSIBILITY AND NOT dawn_qt_accessibility)
+	message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY=ON but this Qt build lacks "
+		"accessibility support (on Linux it also needs the AT-SPI bridge)")
+elseif (NOT DAWN_WITH_ACCESSIBILITY)
+	message(WARNING "Building without accessibility: screen readers and "
+		"external UI tests will see nothing of dn's interface")
+endif()
+
 # --- Build configuration ------------------------------------------------------
 
 # CMAKE_INSTALL_FULL_LOCALEDIR goes into dawn-config.h.
@@ -464,6 +492,7 @@ add_executable(dnthumbd dnthumbd/main.cpp)
 target_link_libraries(dnthumbd PRIVATE libdn)
 
 qt_add_executable(dn
+	dn/accessible.cpp
 	dn/action.cpp
 	dn/app.cpp
 	dn/display-profile.cpp
