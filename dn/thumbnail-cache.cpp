@@ -330,6 +330,7 @@ thumbnail_cache_contains(const QString &path)
 		return true;
 	// TODO(p): Also plainly look for a "/.cache/thumbnails/" substring.
 #else
+	// Never thumbnail thumbnails, this is intentionally wide!
 	const QStringList parts =
 		QDir::fromNativeSeparators(clean).split(u'/', Qt::SkipEmptyParts);
 	for (const QString &part : parts)
