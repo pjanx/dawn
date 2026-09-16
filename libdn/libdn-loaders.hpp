@@ -62,6 +62,12 @@ LoadFn load_poppler;
 /// implemented in load-wuffs.cpp, so ZIP-based loaders borrow it from there.
 bool inflate_raw(std::span<const uint8_t> src, std::span<uint8_t> dst);
 
+/// Strip the four-byte big-endian offset to the TIFF header that ISO base
+/// media containers (HEIF, JPEG XL) put in front of their Exif payloads, and
+/// which the Exif parser would otherwise read as a byte order mark.
+/// Returns nothing when the offset does not fit the payload.
+std::vector<uint8_t> iso_exif_payload(std::span<const uint8_t> payload);
+
 /// MIME types compiled into the in-tree Rust decoder.
 std::vector<std::string> dnrs_media_types();
 

@@ -141,23 +141,6 @@ expand_box(JxlLoadContext &ctx)
 		ctx.dec, ctx.box.data() + used, ctx.box.size() - used);
 }
 
-// Unlike the raw metadata blocks other containers hand out, an Exif box's
-// payload starts with a four-byte big-endian offset to the TIFF header
-// (ISO/IEC 18181-2). Left in place, the Exif parser would read that offset
-// as the byte order mark and reject the whole block.
-static vector<uint8_t>
-exif_payload(const vector<uint8_t> &box)
-{
-	if (box.size() < 4)
-		return {};
-
-	size_t offset = size_t(box[0]) << 24 | size_t(box[1]) << 16 |
-		size_t(box[2]) << 8 | size_t(box[3]);
-	if (offset > box.size() - 4)
-		return {};
-	return vector<uint8_t>(box.begin() + ptrdiff_t(4 + offset), box.end());
-}
-
 // --- Frame decoding ----------------------------------------------------------
 
 // The profile the returned pixels are actually in. We do no conversion here;
@@ -323,11 +306,11 @@ load_jxl(span<const uint8_t> data, const OpenContext &octx, Error *error)
 		return nullptr;
 	}
 
-	// The codestream orientation is authoritative per the specification, but
-	// open_from_data() prefers Exif when it parses; encoders are expected to
-	// keep the two in agreement.
+	// The codestream orientation is authoritative per the specification
+	// (ISO/IEC 18181-2), and it has already been set on the image; Exif is
+	// expected to agree, and open_from_data() no longer consults it.
 	if (!ctx.meta_exif.empty())
-		ctx.result->exif = exif_payload(ctx.meta_exif);
+		ctx.result->exif = iso_exif_payload(ctx.meta_exif);
 	if (!ctx.meta_xmp.empty())
 		ctx.result->xmp = std::move(ctx.meta_xmp);
 

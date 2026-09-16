@@ -13,6 +13,11 @@
 
 #if DAWN_WITH_LIBHEIF
 #include <libheif/heif.h>
+// Not pulled in by heif.h, and only present since the item property API.
+#if __has_include(<libheif/heif_properties.h>)
+#include <libheif/heif_properties.h>
+#define DAWN_HEIF_PROPERTIES
+#endif
 
 #include <algorithm>
 #include <cstdint>
@@ -23,12 +28,31 @@ using namespace std;
 namespace dawn
 {
 
+// Whether libheif bakes an orientation into the item's decoded pixels.
+static bool
+heif_image_is_oriented(heif_context *hctx, heif_item_id id)
+{
+#ifdef DAWN_HEIF_PROPERTIES
+	// A "clap" crop is transformative as well, but it is not an orientation,
+	// so it must not suppress the Exif fallback.
+	return heif_item_get_properties_of_type(hctx, id,
+			   heif_item_property_type_transform_rotation, nullptr, 0) > 0 ||
+		heif_item_get_properties_of_type(
+			hctx, id, heif_item_property_type_transform_mirror, nullptr, 0) > 0;
+#else
+	// Too old to ask: assume the usual phone file, which carries a transform
+	// property and a matching Exif tag, and never rotate twice.
+	return true;
+#endif
+}
+
 // Decodes a single image handle (either a top-level image, or an auxiliary
 // image such as a depth map) into one working-format page, extracting Exif
 // and an embedded ICC profile, if present, and bringing it to final working
 // premul before returning.
 static ImagePtr
-load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
+load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
+	const OpenContext &ctx, Error *error)
 {
 	int has_alpha = heif_image_handle_has_alpha_channel(handle);
 	int bit_depth = heif_image_handle_get_luma_bits_per_pixel(handle);
@@ -104,6 +128,13 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 	bool bitstream_premul =
 		has_alpha && heif_image_handle_is_premultiplied_alpha(handle);
 
+	// libheif applies transformative properties (irot, imir) while decoding,
+	// and ISO/IEC 23008-12 gives those the final say, so the Exif orientation
+	// below must not rotate the pixels a second time.  Without them, Exif is
+	// the only orientation the file has, and open_from_data() fills it in.
+	if (heif_image_is_oriented(hctx, id))
+		result->orientation = Orientation::Rotate0;
+
 	heif_item_id exif_id = 0;
 	if (heif_image_handle_get_list_of_metadata_block_IDs(
 			handle, "Exif", &exif_id, 1)) {
@@ -114,7 +145,7 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 		if (e.code)
 			add_warning(ctx, e.message);
 		else
-			result->exif = std::move(exif);
+			result->exif = iso_exif_payload(exif);
 	}
 
 	// https://loc.gov/preservation/digital/formats/fdd/fdd000526.shtml#factors
@@ -168,8 +199,8 @@ load_heif_image(heif_image_handle *handle, const OpenContext &ctx, Error *error)
 // as further pages. We have no special processing for them yet,
 // so they are included mainly to not lose them silently.
 static void
-load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
-	ImagePtr &head, ImagePtr &tail)
+load_heif_aux_images(const OpenContext &ctx, heif_context *hctx,
+	heif_image_handle *top, ImagePtr &head, ImagePtr &tail)
 {
 	// Include the depth image, we have no special processing for it now.
 	int filter = LIBHEIF_AUX_IMAGE_FILTER_OMIT_ALPHA;
@@ -191,7 +222,8 @@ load_heif_aux_images(const OpenContext &ctx, heif_image_handle *top,
 		}
 
 		Error suberror;
-		ImagePtr aux = load_heif_image(handle, ctx, &suberror);
+		ImagePtr aux =
+			load_heif_image(hctx, ids[size_t(i)], handle, ctx, &suberror);
 		if (aux)
 			append_page(head, tail, std::move(aux));
 		else
@@ -234,7 +266,8 @@ load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		}
 
 		Error suberror;
-		ImagePtr page = load_heif_image(handle, ctx, &suberror);
+		ImagePtr page =
+			load_heif_image(hctx, ids[size_t(i)], handle, ctx, &suberror);
 		if (page)
 			append_page(head, tail, std::move(page));
 		else
@@ -242,7 +275,7 @@ load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 		// TODO(p): Possibly add thumbnail images as well.
 		if (!ctx.first_frame_only)
-			load_heif_aux_images(ctx, handle, head, tail);
+			load_heif_aux_images(ctx, hctx, handle, head, tail);
 
 		heif_image_handle_release(handle);
 		if (ctx.first_frame_only)

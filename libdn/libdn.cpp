@@ -1551,6 +1551,20 @@ orientation_map_source_to_display(Orientation orientation, uint32_t src_w,
 	}
 }
 
+vector<uint8_t>
+iso_exif_payload(span<const uint8_t> payload)
+{
+	if (payload.size() < 4)
+		return {};
+
+	size_t offset = size_t(payload[0]) << 24 | size_t(payload[1]) << 16 |
+		size_t(payload[2]) << 8 | size_t(payload[3]);
+	if (offset > payload.size() - 4)
+		return {};
+	return vector<uint8_t>(
+		payload.begin() + ptrdiff_t(4 + offset), payload.end());
+}
+
 Orientation
 exif_orientation(span<const uint8_t> exif)
 {
@@ -1832,15 +1846,15 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	// JPEG MPF follow-ups and HEIF auxiliary images may each carry their
-	// own Exif.
+	// Exif only fills the gap: a loader that has already established the
+	// orientation, from the codestream or from container properties it has
+	// itself applied to the pixels, keeps the final say.  JPEG MPF
+	// follow-ups and HEIF auxiliary images may each carry their own Exif.
 	for (Image *page = image.get(); page; page = page->page_next.get()) {
-		if (page->exif.empty())
+		if (page->orientation != Orientation::Unknown || page->exif.empty())
 			continue;
 
-		const Orientation o = exif_orientation(page->exif);
-		if (o != Orientation::Unknown)
-			page->orientation = o;
+		page->orientation = exif_orientation(page->exif);
 	}
 	return image;
 }
