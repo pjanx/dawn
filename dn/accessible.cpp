@@ -2879,7 +2879,9 @@ notify_active(Window *window)
 	if (QAccessibleInterface *shell = shell_interface(window)) {
 		QAccessible::State changed;
 		changed.active = 1;
-		QAccessibleStateChangeEvent event(shell, changed);
+		// Qt 6.11's interface constructor stores both the QObject and the
+		// interface ID, which uniqueId() then mistakes for a child index.
+		QAccessibleStateChangeEvent event(shell->object(), changed);
 		notify(&event);
 	}
 }
@@ -2984,7 +2986,7 @@ accessible_renamed(Window *window)
 		return;
 
 	if (QAccessibleInterface *iface = shell_interface(window)) {
-		QAccessibleEvent event(iface, QAccessible::NameChanged);
+		QAccessibleEvent event(iface->object(), QAccessible::NameChanged);
 		notify(&event);
 	}
 }
