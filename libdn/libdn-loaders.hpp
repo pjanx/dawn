@@ -58,6 +58,13 @@ LoadFn load_imageio;
 LoadFn load_cgpdf;
 LoadFn load_poppler;
 
+/// Turn a vector backend's floating-point render size into pixel dimensions:
+/// both are rounded up, and non-finite, non-positive, or over-large sizes are
+/// rejected with the usual error, leaving the outputs untouched. Allocates
+/// nothing--this is what runs before a backend commits to memory.
+bool render_dimensions(double width, double height, uint32_t *out_width,
+	uint32_t *out_height, Error *error);
+
 /// Inflate a raw DEFLATE stream into an exactly sized buffer.  Wuffs is only
 /// implemented in load-wuffs.cpp, so ZIP-based loaders borrow it from there.
 bool inflate_raw(std::span<const uint8_t> src, std::span<uint8_t> dst);

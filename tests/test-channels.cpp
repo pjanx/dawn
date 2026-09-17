@@ -19,6 +19,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -633,6 +634,170 @@ test_svg()
 	}
 }
 
+static vector<uint8_t>
+read_fixture(const string &name)
+{
+	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / name;
+	ifstream input(path, ios::binary);
+	vector<uint8_t> bytes(
+		(istreambuf_iterator<char>(input)), istreambuf_iterator<char>{});
+	if (bytes.empty())
+		test::fail("%s: cannot read", path.string().c_str());
+	return bytes;
+}
+
+static void
+test_render_dimensions()
+{
+	const double nan = numeric_limits<double>::quiet_NaN();
+	const double infinity = numeric_limits<double>::infinity();
+	const double limit = double(dawn::kMaxDimension);
+
+	struct Rejected {
+		const char *label;
+		double width, height;
+	} rejected[] = {
+		{"NaN width", nan, 1},
+		{"NaN height", 1, nan},
+		{"infinite width", infinity, 1},
+		{"infinite height", 1, infinity},
+		{"negative infinity", -infinity, 1},
+		{"zero", 0, 1},
+		{"negative", -1, 1},
+		{"over the limit", limit + 1, 1},
+		{"a fraction over the limit", 1, limit + 0.5},
+	};
+
+	uint32_t width = 123, height = 456;
+	for (const Rejected &entry : rejected) {
+		dawn::Error error;
+		if (dawn::render_dimensions(
+				entry.width, entry.height, &width, &height, &error))
+			test::fail("render_dimensions: %s accepted", entry.label);
+		else
+			CHECK(!error.message.empty());
+	}
+
+	// Nothing is written on failure, and no error is required either.
+	CHECK(width == 123 && height == 456);
+
+	CHECK(dawn::render_dimensions(0.25, limit, &width, &height, nullptr));
+	CHECK(width == 1 && height == uint32_t(limit));
+	CHECK(dawn::render_dimensions(64., 32.5, &width, &height, nullptr));
+	CHECK(width == 64 && height == 33);
+}
+
+// Loads one vector document with a named backend, then checks that its
+// closure rounds fractional sizes up and refuses impossible scales.
+static void
+test_rerender(const char *label, dawn::LoadFn *load, span<const uint8_t> data,
+	const dawn::OpenContext &ctx)
+{
+	dawn::Error error;
+	dawn::ImagePtr image = load(data, ctx, &error);
+	if (!image || !image->render) {
+		test::fail("%s: %s", label, error.message.c_str());
+		return;
+	}
+
+	const uint32_t w = image->width, h = image->height;
+	dawn::ImagePtr scaled = image->render->render(ctx, 1.5, &error);
+	if (!scaled) {
+		test::fail("%s: 1.5x: %s", label, error.message.c_str());
+	} else if (scaled->width != uint32_t(ceil(w * 1.5)) ||
+		scaled->height != uint32_t(ceil(h * 1.5))) {
+		test::fail("%s: 1.5x of %ux%u gave %ux%u", label, w, h, scaled->width,
+			scaled->height);
+	}
+
+	for (double scale : {0., -1., 1e9, numeric_limits<double>::infinity(),
+			 numeric_limits<double>::quiet_NaN()}) {
+		dawn::Error rejected;
+		if (image->render->render(ctx, scale, &rejected))
+			test::fail("%s: scale %g accepted", label, scale);
+		else
+			CHECK(!rejected.message.empty());
+	}
+}
+
+// A one-page PDF, assembled rather than spelled out, so that its
+// cross-reference offsets cannot drift away from what they point at.
+static string
+minimal_pdf()
+{
+	const string objects[] = {
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 32]\n"
+		"   /Contents 4 0 R /Resources << >> >>",
+		"<< /Length 24 >>\nstream\n1 0 0 rg 0 0 64 32 re f\nendstream",
+	};
+
+	string pdf = "%PDF-1.4\n";
+	vector<size_t> offsets;
+	int number = 0;
+	for (const string &object : objects) {
+		offsets.push_back(pdf.size());
+		pdf += to_string(++number) + " 0 obj\n" + object + "\nendobj\n";
+	}
+
+	const string size = to_string(offsets.size() + 1);
+	const size_t xref = pdf.size();
+	pdf += "xref\n0 " + size + "\n0000000000 65535 f \n";
+	for (size_t offset : offsets) {
+		// Entries are exactly twenty bytes, hence the trailing space.
+		char entry[32] = "";
+		snprintf(entry, sizeof entry, "%010zu 00000 n \n", offset);
+		pdf += entry;
+	}
+	pdf += "trailer\n<< /Size " + size + " /Root 1 0 R >>\nstartxref\n" +
+		to_string(xref) + "\n%%EOF\n";
+	return pdf;
+}
+
+static void
+test_vector_rerender()
+{
+	const vector<uint8_t> svg = read_fixture("red.svg");
+	if (svg.empty())
+		return;
+
+	// Go through each backend directly: loader fallback would otherwise
+	// let a broken one hide behind the next.
+	dawn::OpenContext svg_ctx;
+	svg_ctx.uri = dawn::path_to_uri(
+		(fs::path(DAWN_TEST_FIXTURES_DIR) / "red.svg").string());
+	test_rerender("resvg", &dawn::load_resvg, svg, svg_ctx);
+#if DAWN_WITH_LIBRSVG
+	test_rerender("librsvg", &dawn::load_librsvg, svg, svg_ctx);
+#endif
+
+#if DAWN_WITH_LIBWMF
+	// A 64x32 placeable metafile at 72 units per inch, drawing one rectangle.
+	static const uint8_t kWmf[] = {0xd7, 0xcd, 0xc6, 0x9a, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x40, 0x00, 0x20, 0x00, 0x48, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x39, 0x57, 0x01, 0x00, 0x09, 0x00, 0x00, 0x03, 0x1d, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00,
+		0x00, 0x0b, 0x02, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x0c,
+		0x02, 0x20, 0x00, 0x40, 0x00, 0x07, 0x00, 0x00, 0x00, 0x1b, 0x04, 0x20,
+		0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00,
+		0x00};
+
+	dawn::OpenContext wmf_ctx;
+	test_rerender("libwmf", &dawn::load_libwmf, kWmf, wmf_ctx);
+#endif
+
+#if DAWN_WITH_POPPLER
+	const string pdf = minimal_pdf();
+	dawn::OpenContext pdf_ctx;
+	// One PDF unit per pixel, so that the page's own size comes back.
+	pdf_ctx.screen_dpi = 72;
+	pdf_ctx.first_frame_only = true;
+	test_rerender("Poppler", &dawn::load_poppler,
+		{(const uint8_t *) pdf.data(), pdf.size()}, pdf_ctx);
+#endif
+}
+
 static void
 near_xy(const char *label, double x, double y, double xe, double ye, double tol)
 {
@@ -778,6 +943,8 @@ main()
 		{"premultiplied alpha", test_premul_alpha},
 		{"large ICC profile", test_large_icc_and_p3_red},
 		{"SVG rendering", test_svg},
+		{"render dimensions", test_render_dimensions},
+		{"vector rerendering", test_vector_rerender},
 		{"chromaticities", test_chromaticities},
 		{"PNG text", test_png_text_after_idat},
 		{"profile transfer", test_profile_transfer},

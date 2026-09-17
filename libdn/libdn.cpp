@@ -110,6 +110,22 @@ pixel_at(const Image &img, uint32_t x, uint32_t y)
 
 // --- Image -------------------------------------------------------------------
 
+bool
+render_dimensions(double width, double height, uint32_t *out_width,
+	uint32_t *out_height, Error *error)
+{
+	// NaN fails the first comparison, infinity the second.
+	double w = ceil(width), h = ceil(height);
+	if (!(w >= 1) || !(h >= 1) || w > kMaxDimension || h > kMaxDimension) {
+		set_error(error, _("image dimensions overflow"));
+		return false;
+	}
+
+	*out_width = uint32_t(w);
+	*out_height = uint32_t(h);
+	return true;
+}
+
 ImagePtr
 image_new(uint32_t width, uint32_t height)
 {

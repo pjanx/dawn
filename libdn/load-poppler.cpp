@@ -86,9 +86,10 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 
 		// Splash rounds where we would ceil(), so this errs on the safe side
 		// of image_new(), and fails before Poppler allocates gigabytes.
-		double cw = ceil(w), ch = ceil(h);
-		if (!(w > 0 && h > 0) || cw > kMaxDimension || ch > kMaxDimension ||
-			cw * kBytesPerPixel * ch > UINT32_MAX) {
+		uint32_t cw = 0, ch = 0;
+		if (!render_dimensions(w, h, &cw, &ch, error))
+			return nullptr;
+		if (uint64_t(cw) * kBytesPerPixel * ch > UINT32_MAX) {
 			set_error(error, _("image dimensions overflow"));
 			return nullptr;
 		}

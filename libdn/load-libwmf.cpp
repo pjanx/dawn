@@ -12,7 +12,6 @@
 #include <libwmf/api.h>
 #include <libwmf/gd.h>
 
-#include <cmath>
 #include <cstring>
 #include <memory>
 
@@ -190,13 +189,11 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 ImagePtr
 WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
-	double w = ceil(width_ * scale), h = ceil(height_ * scale);
-	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
-		set_error(error, _("image dimensions overflow"));
+	uint32_t width = 0, height = 0;
+	if (!render_dimensions(
+			width_ * scale, height_ * scale, &width, &height, error))
 		return nullptr;
-	}
 
-	auto width = uint32_t(w), height = uint32_t(h);
 	return render_wmf(data_, &width, &height, ctx, error);
 }
 

@@ -19,7 +19,6 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 
-#include <cmath>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -83,11 +82,9 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 
 	double pw = 0, ph = 0;
 	cgpdf_page_size(page, &pw, &ph);
-	double w = ceil(pw * zoom), h = ceil(ph * zoom);
-	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
-		set_error(error, _("image dimensions overflow"));
+	uint32_t uw = 0, uh = 0;
+	if (!render_dimensions(pw * zoom, ph * zoom, &uw, &uh, error))
 		return nullptr;
-	}
 
 	// Core Graphics composes each operation in its own colour space, so there
 	// is no source profile to hand over as with bitmaps--let it convert to
@@ -98,7 +95,6 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 		return nullptr;
 	}
 
-	auto uw = uint32_t(w), uh = uint32_t(h);
 	size_t stride = size_t(uw) * 4;
 	vector<uint8_t> pixels(stride * uh);
 	CGContextRef context = CGBitmapContextCreate(pixels.data(), uw, uh, 8,
@@ -116,7 +112,7 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	// A page is paper: it has no background of its own, and text on
 	// transparency would be illegible over the viewer's own backdrop.
 	CGContextSetRGBFillColor(context, 1., 1., 1., 1.);
-	CGContextFillRect(context, CGRectMake(0, 0, w, h));
+	CGContextFillRect(context, CGRectMake(0, 0, uw, uh));
 	CGContextScaleCTM(context, zoom, zoom);
 	CGContextConcatCTM(context,
 		CGPDFPageGetDrawingTransform(

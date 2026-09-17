@@ -11,7 +11,6 @@
 
 #include <resvg.h>
 
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -24,9 +23,6 @@ namespace dawn
 {
 
 namespace fs = filesystem;
-
-// resvg documents share the project pixmap dimension limit.
-constexpr double kMaxRenderDimension = double(dawn::kMaxDimension);
 
 static const char *
 resvg_error_string(int32_t err)
@@ -78,13 +74,10 @@ public:
 ImagePtr
 ResvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
-	double w = ceil(width_ * scale), h = ceil(height_ * scale);
-	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
-		set_error(error, _("image dimensions overflow"));
+	uint32_t uw = 0, uh = 0;
+	if (!render_dimensions(width_ * scale, height_ * scale, &uw, &uh, error))
 		return nullptr;
-	}
 
-	auto uw = uint32_t(w), uh = uint32_t(h);
 	vector<uint8_t> pixmap(size_t(uw) * uh * 4, 0);
 
 	resvg_transform transform = resvg_transform_identity();

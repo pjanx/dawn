@@ -14,7 +14,6 @@
 #include <glib.h>
 #include <librsvg/rsvg.h>
 
-#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -23,9 +22,6 @@ using namespace std;
 
 namespace dawn
 {
-
-// librsvg/Cairo rendering is capped at the project pixmap limit.
-constexpr double kMaxRenderDimension = double(dawn::kMaxDimension);
 
 // Cairo's ARGB32 is a native-endian 0xAARRGGBB word, always premultiplied--
 // exactly the layout pack_argb32_words_to_bgra16() expects, association
@@ -70,13 +66,12 @@ LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	RsvgRectangle viewport = {
 		.x = 0, .y = 0, .width = width_ * scale, .height = height_ * scale};
-	double w = ceil(viewport.width), h = ceil(viewport.height);
-	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
-		set_error(error, _("image dimensions overflow"));
+	// The viewport stays fractional: librsvg scales the document into it,
+	// and only the surface is whole pixels.
+	uint32_t uw = 0, uh = 0;
+	if (!render_dimensions(viewport.width, viewport.height, &uw, &uh, error))
 		return nullptr;
-	}
 
-	auto uw = uint32_t(w), uh = uint32_t(h);
 	cairo_surface_t *surface =
 		cairo_image_surface_create(CAIRO_FORMAT_ARGB32, int(uw), int(uh));
 	if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
