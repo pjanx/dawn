@@ -218,6 +218,16 @@ for_leaves(span<const MenuNode> nodes, auto &&fn)
 	}
 }
 
+// Names here are not a menu: an underline would be leftover from the label.
+static unique_ptr<Label>
+plain_label(const char *text, bool bold)
+{
+	auto label = make_unique<Label>();
+	label->text = menu_label(text, nullptr);
+	label->bold = bold;
+	return label;
+}
+
 static unique_ptr<Row>
 shortcut_row(const ActionDef &def, float accel_w)
 {
@@ -227,9 +237,8 @@ shortcut_row(const ActionDef &def, float accel_w)
 	accel->text = shortcut_accel(def);
 	accel->min_w = accel_w;
 	accel->dim = true;
-	auto name = dialog_label(def.label[0]);
 	row->add_child(std::move(accel), size_t(-1));
-	row->add_child(std::move(name), size_t(-1));
+	row->add_child(plain_label(def.label[0], false), size_t(-1));
 	return row;
 }
 
@@ -389,7 +398,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 	auto col = make_unique<Column>();
 	col->gap = 2.f;
-	col->add_child(dialog_label(N_("Keyboard Shortcuts"), true), size_t(-1));
+	col->add_child(plain_label(N_("Keyboard Shortcuts"), true), size_t(-1));
 	for (const MenuNode &section : tree) {
 		if (section.items.empty())
 			continue;
@@ -400,7 +409,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		});
 		if (!any)
 			continue;
-		col->add_child(dialog_label(section.title, true), size_t(-1));
+		col->add_child(plain_label(section.title, true), size_t(-1));
 		for_leaves(section.items, [&](Action action) {
 			const ActionDef &def = action_def(action);
 			if (!has_shortcut(def))
@@ -418,7 +427,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 		if ((def.flags & ActionInMenu) || !has_shortcut(def))
 			return;
 		if (!other) {
-			col->add_child(dialog_label(N_("Other"), true), size_t(-1));
+			col->add_child(plain_label(N_("Other"), true), size_t(-1));
 			other = true;
 		}
 		seen[i] = true;
