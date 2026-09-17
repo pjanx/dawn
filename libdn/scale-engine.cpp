@@ -109,6 +109,9 @@ check_vk(VkResult r, const char *what, string *error)
 	return true;
 }
 
+#define CALL_VK(name, suffix, ...)                                             \
+	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
+
 Filter
 preferred_filter(VkPhysicalDevice phys)
 {
@@ -362,8 +365,7 @@ ScaleEngine::Impl::make_shader(
 		.pCode = words,
 	};
 	VkShaderModule mod = VK_NULL_HANDLE;
-	if (!check_vk(vkCreateShaderModule(device, &ci, nullptr, &mod),
-			"vkCreateShaderModule", error))
+	if (!CALL_VK(CreateShaderModule, "", device, &ci, nullptr, &mod))
 		return VK_NULL_HANDLE;
 	return mod;
 }
@@ -411,8 +413,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			.dependencyCount = 1,
 			.pDependencies = &dep,
 		};
-		return check_vk(vkCreateRenderPass(device, &rpci, nullptr, out),
-			"vkCreateRenderPass", error);
+		return CALL_VK(CreateRenderPass, "", device, &rpci, nullptr, out);
 	};
 
 	if (!make_rp(dest_format, dest_final_layout, &dest_render_pass) ||
@@ -434,8 +435,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			.pushConstantRangeCount = 1,
 			.pPushConstantRanges = &pcr,
 		};
-		return check_vk(vkCreatePipelineLayout(device, &plci, nullptr, out),
-			"vkCreatePipelineLayout", error);
+		return CALL_VK(CreatePipelineLayout, "", device, &plci, nullptr, out);
 	};
 	if (!make_layout(dset_layout_tiles, &pipeline_layout_tiles) ||
 		!make_layout(dset_layout_horiz, &pipeline_layout_horiz))
@@ -482,9 +482,8 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			.renderPass = rp,
 			.subpass = 0,
 		};
-		return check_vk(vkCreateGraphicsPipelines(
-							device, VK_NULL_HANDLE, 1, &gpci, nullptr, out),
-			"vkCreateGraphicsPipelines", error);
+		return CALL_VK(CreateGraphicsPipelines, "", device, VK_NULL_HANDLE, 1,
+			&gpci, nullptr, out);
 	};
 
 	const struct {
@@ -563,28 +562,25 @@ ScaleEngine::Impl::split_grid(
 bool
 ScaleEngine::Impl::submit_upload(auto &&record, string *error)
 {
-	if (!check_vk(
-			vkResetCommandBuffer(upload_cmd, 0), "vkResetCommandBuffer", error))
+	if (!CALL_VK(ResetCommandBuffer, "", upload_cmd, 0))
 		return false;
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 	};
-	if (!check_vk(vkBeginCommandBuffer(upload_cmd, &begin),
-			"vkBeginCommandBuffer", error))
+	if (!CALL_VK(BeginCommandBuffer, "", upload_cmd, &begin))
 		return false;
 	record();
-	if (!check_vk(vkEndCommandBuffer(upload_cmd), "vkEndCommandBuffer", error))
+	if (!CALL_VK(EndCommandBuffer, "", upload_cmd))
 		return false;
 	VkSubmitInfo submit{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &upload_cmd,
 	};
-	if (!check_vk(vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE),
-			"vkQueueSubmit", error))
+	if (!CALL_VK(QueueSubmit, "", queue, 1, &submit, VK_NULL_HANDLE))
 		return false;
-	return check_vk(vkQueueWaitIdle(queue), "vkQueueWaitIdle", error);
+	return CALL_VK(QueueWaitIdle, "", queue);
 }
 
 bool
@@ -651,8 +647,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	if (!check_vk(vkCreateImage(device, &ici, nullptr, &tile_image),
-			"vkCreateImage tiles", error))
+	if (!CALL_VK(CreateImage, " tiles", device, &ici, nullptr, &tile_image))
 		return false;
 
 	VkMemoryRequirements mr{};
@@ -666,11 +661,9 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		.allocationSize = mr.size,
 		.memoryTypeIndex = mem_type,
 	};
-	if (!check_vk(vkAllocateMemory(device, &mai, nullptr, &tile_memory),
-			"vkAllocateMemory tiles", error))
+	if (!CALL_VK(AllocateMemory, " tiles", device, &mai, nullptr, &tile_memory))
 		return false;
-	if (!check_vk(vkBindImageMemory(device, tile_image, tile_memory, 0),
-			"vkBindImageMemory tiles", error))
+	if (!CALL_VK(BindImageMemory, " tiles", device, tile_image, tile_memory, 0))
 		return false;
 
 	VkImageViewCreateInfo vi{
@@ -692,8 +685,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 				.layerCount = tile_count,
 			},
 	};
-	if (!check_vk(vkCreateImageView(device, &vi, nullptr, &tile_view),
-			"vkCreateImageView tiles", error))
+	if (!CALL_VK(CreateImageView, " tiles", device, &vi, nullptr, &tile_view))
 		return false;
 
 	const VkDeviceSize staging_bytes =
@@ -707,8 +699,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
-	if (!check_vk(vkCreateBuffer(device, &bci, nullptr, &staging),
-			"vkCreateBuffer staging", error))
+	if (!CALL_VK(CreateBuffer, " staging", device, &bci, nullptr, &staging))
 		return false;
 
 	VkMemoryRequirements smr{};
@@ -726,22 +717,21 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		.allocationSize = smr.size,
 		.memoryTypeIndex = mem_type,
 	};
-	if (!check_vk(vkAllocateMemory(device, &smai, nullptr, &staging_mem),
-			"vkAllocateMemory staging", error)) {
+	if (!CALL_VK(
+			AllocateMemory, " staging", device, &smai, nullptr, &staging_mem)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		return false;
 	}
-	if (!check_vk(vkBindBufferMemory(device, staging, staging_mem, 0),
-			"vkBindBufferMemory staging", error)) {
+	if (!CALL_VK(
+			BindBufferMemory, " staging", device, staging, staging_mem, 0)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
 	}
 
 	uint8_t *mapped = nullptr;
-	if (!check_vk(vkMapMemory(device, staging_mem, 0, staging_bytes, 0,
-					  (void **) &mapped),
-			"vkMapMemory staging", error)) {
+	if (!CALL_VK(MapMemory, " staging", device, staging_mem, 0, staging_bytes,
+			0, (void **) &mapped)) {
 		vkDestroyBuffer(device, staging, nullptr);
 		vkFreeMemory(device, staging_mem, nullptr);
 		return false;
@@ -930,8 +920,7 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	if (!check_vk(vkCreateImage(device, &ici, nullptr, &mid_image),
-			"vkCreateImage mid", error))
+	if (!CALL_VK(CreateImage, " mid", device, &ici, nullptr, &mid_image))
 		return false;
 
 	VkMemoryRequirements mr{};
@@ -945,11 +934,9 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 		.allocationSize = mr.size,
 		.memoryTypeIndex = mem_type,
 	};
-	if (!check_vk(vkAllocateMemory(device, &mai, nullptr, &mid_memory),
-			"vkAllocateMemory mid", error))
+	if (!CALL_VK(AllocateMemory, " mid", device, &mai, nullptr, &mid_memory))
 		return false;
-	if (!check_vk(vkBindImageMemory(device, mid_image, mid_memory, 0),
-			"vkBindImageMemory mid", error))
+	if (!CALL_VK(BindImageMemory, " mid", device, mid_image, mid_memory, 0))
 		return false;
 
 	VkImageViewCreateInfo avi{
@@ -964,8 +951,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 				.layerCount = mid_layers,
 			},
 	};
-	if (!check_vk(vkCreateImageView(device, &avi, nullptr, &mid_array_view),
-			"vkCreateImageView mid array", error))
+	if (!CALL_VK(CreateImageView, " mid array", device, &avi, nullptr,
+			&mid_array_view))
 		return false;
 
 	mid_layer_views.resize(mid_layers);
@@ -984,9 +971,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 					.layerCount = 1,
 				},
 		};
-		if (!check_vk(
-				vkCreateImageView(device, &lvi, nullptr, &mid_layer_views[i]),
-				"vkCreateImageView mid layer", error))
+		if (!CALL_VK(CreateImageView, " mid layer", device, &lvi, nullptr,
+				&mid_layer_views[i]))
 			return false;
 		VkFramebufferCreateInfo fbi{
 			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -997,8 +983,8 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 			.height = mid_pad_h,
 			.layers = 1,
 		};
-		if (!check_vk(vkCreateFramebuffer(device, &fbi, nullptr, &mid_fbs[i]),
-				"vkCreateFramebuffer mid", error))
+		if (!CALL_VK(
+				CreateFramebuffer, " mid", device, &fbi, nullptr, &mid_fbs[i]))
 			return false;
 	}
 
@@ -1354,8 +1340,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = queue_family,
 	};
-	if (!check_vk(vkCreateCommandPool(device, &pci, nullptr, &e.upload_pool),
-			"vkCreateCommandPool", error)) {
+	if (!CALL_VK(
+			CreateCommandPool, "", device, &pci, nullptr, &e.upload_pool)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1365,8 +1351,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = 1,
 	};
-	if (!check_vk(vkAllocateCommandBuffers(device, &cai, &e.upload_cmd),
-			"vkAllocateCommandBuffers", error)) {
+	if (!CALL_VK(AllocateCommandBuffers, "", device, &cai, &e.upload_cmd)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1381,8 +1366,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.maxLod = 0.f,
 	};
-	if (!check_vk(vkCreateSampler(device, &samp, nullptr, &e.sampler),
-			"vkCreateSampler", error)) {
+	if (!CALL_VK(CreateSampler, "", device, &samp, nullptr, &e.sampler)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1398,12 +1382,10 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.bindingCount = 1,
 		.pBindings = &binding,
 	};
-	if (!check_vk(vkCreateDescriptorSetLayout(
-					  device, &dlci, nullptr, &e.dset_layout_tiles),
-			"vkCreateDescriptorSetLayout tiles", error) ||
-		!check_vk(vkCreateDescriptorSetLayout(
-					  device, &dlci, nullptr, &e.dset_layout_horiz),
-			"vkCreateDescriptorSetLayout horiz", error)) {
+	if (!CALL_VK(CreateDescriptorSetLayout, " tiles", device, &dlci, nullptr,
+			&e.dset_layout_tiles) ||
+		!CALL_VK(CreateDescriptorSetLayout, " horiz", device, &dlci, nullptr,
+			&e.dset_layout_horiz)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1418,8 +1400,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.poolSizeCount = 1,
 		.pPoolSizes = &pool_size,
 	};
-	if (!check_vk(vkCreateDescriptorPool(device, &dpci, nullptr, &e.dset_pool),
-			"vkCreateDescriptorPool", error)) {
+	if (!CALL_VK(
+			CreateDescriptorPool, "", device, &dpci, nullptr, &e.dset_pool)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1429,8 +1411,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.descriptorSetCount = 1,
 		.pSetLayouts = &e.dset_layout_tiles,
 	};
-	if (!check_vk(vkAllocateDescriptorSets(device, &tiles_ai, &e.dset_tiles),
-			"vkAllocateDescriptorSets tiles", error)) {
+	if (!CALL_VK(AllocateDescriptorSets, " tiles", device, &tiles_ai,
+			&e.dset_tiles)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1440,8 +1422,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.descriptorSetCount = 1,
 		.pSetLayouts = &e.dset_layout_horiz,
 	};
-	if (!check_vk(vkAllocateDescriptorSets(device, &horiz_ai, &e.dset_horiz),
-			"vkAllocateDescriptorSets horiz", error)) {
+	if (!CALL_VK(AllocateDescriptorSets, " horiz", device, &horiz_ai,
+			&e.dset_horiz)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1660,8 +1642,7 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	if (!check_vk(vkCreateImage(e.device, &ici, nullptr, image),
-			"vkCreateImage offscreen", error))
+	if (!CALL_VK(CreateImage, " offscreen", e.device, &ici, nullptr, image))
 		return false;
 
 	VkMemoryRequirements mr{};
@@ -1677,13 +1658,11 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 		.allocationSize = mr.size,
 		.memoryTypeIndex = mem_type,
 	};
-	if (!check_vk(vkAllocateMemory(e.device, &mai, nullptr, mem),
-			"vkAllocateMemory offscreen", error)) {
+	if (!CALL_VK(AllocateMemory, " offscreen", e.device, &mai, nullptr, mem)) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;
 	}
-	if (!check_vk(vkBindImageMemory(e.device, *image, *mem, 0),
-			"vkBindImageMemory offscreen", error)) {
+	if (!CALL_VK(BindImageMemory, " offscreen", e.device, *image, *mem, 0)) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;
 	}
@@ -1700,8 +1679,7 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 				.layerCount = 1,
 			},
 	};
-	if (!check_vk(vkCreateImageView(e.device, &vi, nullptr, view),
-			"vkCreateImageView offscreen", error)) {
+	if (!CALL_VK(CreateImageView, " offscreen", e.device, &vi, nullptr, view)) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;
 	}
@@ -1715,8 +1693,8 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 		.height = h,
 		.layers = 1,
 	};
-	if (!check_vk(vkCreateFramebuffer(e.device, &fbi, nullptr, fb),
-			"vkCreateFramebuffer offscreen", error)) {
+	if (!CALL_VK(
+			CreateFramebuffer, " offscreen", e.device, &fbi, nullptr, fb)) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;
 	}

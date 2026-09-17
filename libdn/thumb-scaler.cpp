@@ -72,6 +72,9 @@ check_vk(VkResult r, const char *what, string *error)
 	return false;
 }
 
+#define CALL_VK(name, suffix, ...)                                             \
+	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
+
 namespace
 {
 
@@ -114,8 +117,7 @@ make_shader(
 		.codeSize = size_t(words) * sizeof(uint32_t),
 		.pCode = code};
 	VkShaderModule shader = VK_NULL_HANDLE;
-	if (!check_vk(vkCreateShaderModule(device, &ci, nullptr, &shader),
-			"vkCreateShaderModule thumbs", error))
+	if (!CALL_VK(CreateShaderModule, " thumbs", device, &ci, nullptr, &shader))
 		return VK_NULL_HANDLE;
 	return shader;
 }
@@ -336,8 +338,7 @@ ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
 		.size = bytes,
 		.usage = usage,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE};
-	if (!check_vk(vkCreateBuffer(device, &ci, nullptr, &b.handle),
-			"vkCreateBuffer thumbs", error))
+	if (!CALL_VK(CreateBuffer, " thumbs", device, &ci, nullptr, &b.handle))
 		return false;
 	VkMemoryRequirements mr{};
 	vkGetBufferMemoryRequirements(device, b.handle, &mr);
@@ -352,10 +353,8 @@ ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
 	VkMemoryAllocateInfo ai{.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.allocationSize = mr.size,
 		.memoryTypeIndex = type.index};
-	if (!check_vk(vkAllocateMemory(device, &ai, nullptr, &b.memory),
-			"vkAllocateMemory thumbs", error) ||
-		!check_vk(vkBindBufferMemory(device, b.handle, b.memory, 0),
-			"vkBindBufferMemory thumbs", error)) {
+	if (!CALL_VK(AllocateMemory, " thumbs", device, &ai, nullptr, &b.memory) ||
+		!CALL_VK(BindBufferMemory, " thumbs", device, b.handle, b.memory, 0)) {
 		destroy_buffer(b);
 		return false;
 	}
@@ -363,9 +362,8 @@ ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
 	b.allocation_size = mr.size;
 	b.coherent = type.flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	if (map &&
-		!check_vk(
-			vkMapMemory(device, b.memory, 0, b.allocation_size, 0, &b.mapped),
-			"vkMapMemory thumbs", error)) {
+		!CALL_VK(MapMemory, " thumbs", device, b.memory, 0, b.allocation_size,
+			0, &b.mapped)) {
 		destroy_buffer(b);
 		return false;
 	}
@@ -459,9 +457,8 @@ ThumbScaler::Impl::make_pipeline(
 		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 		.stage = stage,
 		.layout = pipeline_layout};
-	const bool ok = check_vk(
-		vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &ci, nullptr, out),
-		"vkCreateComputePipelines thumbs", error);
+	const bool ok = CALL_VK(CreateComputePipelines, " thumbs", device,
+		VK_NULL_HANDLE, 1, &ci, nullptr, out);
 	vkDestroyShaderModule(device, shader, nullptr);
 	return ok;
 }
@@ -614,9 +611,8 @@ ThumbScaler::Impl::make_descriptor_pool(Batch &b, string *error)
 		.maxSets = kMaxDescriptorSets,
 		.poolSizeCount = 1,
 		.pPoolSizes = &size};
-	return check_vk(
-		vkCreateDescriptorPool(device, &ci, nullptr, &b.descriptors),
-		"vkCreateDescriptorPool thumbs", error);
+	return CALL_VK(
+		CreateDescriptorPool, " thumbs", device, &ci, nullptr, &b.descriptors);
 }
 
 VkDescriptorSet
@@ -637,8 +633,7 @@ ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
 		.descriptorPool = b.descriptors,
 		.descriptorSetCount = 1,
 		.pSetLayouts = &descriptor_layout};
-	if (!check_vk(vkAllocateDescriptorSets(device, &ai, &set),
-			"vkAllocateDescriptorSets thumbs", error))
+	if (!CALL_VK(AllocateDescriptorSets, " thumbs", device, &ai, &set))
 		return VK_NULL_HANDLE;
 
 	VkDescriptorBufferInfo info[2] = {
@@ -922,22 +917,19 @@ ThumbScaler::Impl::build_batch(
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
 		!ensure_buffer(b.pong, scratch_bytes, storage,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!check_vk(vkResetDescriptorPool(device, b.descriptors, 0),
-			"vkResetDescriptorPool thumbs", error)) {
+		!CALL_VK(ResetDescriptorPool, " thumbs", device, b.descriptors, 0)) {
 		fail_items(b);
 		return false;
 	}
 
-	if (!check_vk(vkResetCommandBuffer(b.cmd, 0), "vkResetCommandBuffer thumbs",
-			error)) {
+	if (!CALL_VK(ResetCommandBuffer, " thumbs", b.cmd, 0)) {
 		fail_items(b);
 		return false;
 	}
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
-	if (!check_vk(vkBeginCommandBuffer(b.cmd, &begin),
-			"vkBeginCommandBuffer thumbs", error)) {
+	if (!CALL_VK(BeginCommandBuffer, " thumbs", b.cmd, &begin)) {
 		fail_items(b);
 		return false;
 	}
@@ -995,8 +987,7 @@ ThumbScaler::Impl::build_batch(
 		barrier(b.cmd, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
 			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
 	}
-	if (!check_vk(
-			vkEndCommandBuffer(b.cmd), "vkEndCommandBuffer thumbs", error)) {
+	if (!CALL_VK(EndCommandBuffer, " thumbs", b.cmd)) {
 		fail_items(b);
 		return false;
 	}
@@ -1053,8 +1044,8 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = family};
-	if (!check_vk(vkCreateCommandPool(device, &pci, nullptr, &e.command_pool),
-			"vkCreateCommandPool thumbs", error)) {
+	if (!CALL_VK(CreateCommandPool, " thumbs", device, &pci, nullptr,
+			&e.command_pool)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1064,16 +1055,15 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.commandPool = e.command_pool,
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = kBatchSlots};
-	if (!check_vk(vkAllocateCommandBuffers(device, &cai, commands),
-			"vkAllocateCommandBuffers thumbs", error)) {
+	if (!CALL_VK(AllocateCommandBuffers, " thumbs", device, &cai, commands)) {
 		e.destroy_all();
 		return false;
 	}
 	for (uint32_t i = 0; i < kBatchSlots; i++) {
 		e.batches[i].cmd = commands[i];
 		VkFenceCreateInfo fi{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-		if (!check_vk(vkCreateFence(device, &fi, nullptr, &e.batches[i].fence),
-				"vkCreateFence thumbs", error) ||
+		if (!CALL_VK(CreateFence, " thumbs", device, &fi, nullptr,
+				&e.batches[i].fence) ||
 			!e.make_descriptor_pool(e.batches[i], error)) {
 			e.destroy_all();
 			return false;
@@ -1090,9 +1080,8 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
 		.bindingCount = 2,
 		.pBindings = bindings};
-	if (!check_vk(vkCreateDescriptorSetLayout(
-					  device, &dlci, nullptr, &e.descriptor_layout),
-			"vkCreateDescriptorSetLayout thumbs", error)) {
+	if (!CALL_VK(CreateDescriptorSetLayout, " thumbs", device, &dlci, nullptr,
+			&e.descriptor_layout)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1104,9 +1093,8 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.pSetLayouts = &e.descriptor_layout,
 		.pushConstantRangeCount = 1,
 		.pPushConstantRanges = &pcr};
-	if (!check_vk(
-			vkCreatePipelineLayout(device, &plci, nullptr, &e.pipeline_layout),
-			"vkCreatePipelineLayout thumbs", error) ||
+	if (!CALL_VK(CreatePipelineLayout, " thumbs", device, &plci, nullptr,
+			&e.pipeline_layout) ||
 		!e.make_pipeline(
 			thumb_scale_h, thumb_scale_h_words, &e.scale_h, error) ||
 		!e.make_pipeline(

@@ -54,6 +54,9 @@ check_vk(VkResult r, const char *what, string *error)
 	return false;
 }
 
+#define CALL_VK(name, suffix, ...)                                             \
+	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
+
 static bool
 can_present(VkPhysicalDevice phys, uint32_t family, VkSurfaceKHR surface,
 	const function<bool(VkPhysicalDevice, uint32_t)> &present)
@@ -101,8 +104,8 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	VkDevice *device, VkQueue *queue, uint32_t *queue_family, string *error)
 {
 	uint32_t pd_count = 0;
-	if (!check_vk(vkEnumeratePhysicalDevices(instance, &pd_count, nullptr),
-			"vkEnumeratePhysicalDevices count", error))
+	if (!CALL_VK(
+			EnumeratePhysicalDevices, " count", instance, &pd_count, nullptr))
 		return false;
 	if (pd_count == 0) {
 		if (error)
@@ -110,8 +113,7 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 		return false;
 	}
 	vector<VkPhysicalDevice> pds(pd_count);
-	if (!check_vk(vkEnumeratePhysicalDevices(instance, &pd_count, pds.data()),
-			"vkEnumeratePhysicalDevices", error))
+	if (!CALL_VK(EnumeratePhysicalDevices, "", instance, &pd_count, pds.data()))
 		return false;
 
 	VkPhysicalDevice best = VK_NULL_HANDLE;
@@ -174,8 +176,7 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 		.ppEnabledExtensionNames = exts.data(),
 	};
 	VkDevice dev = VK_NULL_HANDLE;
-	if (!check_vk(
-			vkCreateDevice(best, &dci, nullptr, &dev), "vkCreateDevice", error))
+	if (!CALL_VK(CreateDevice, "", best, &dci, nullptr, &dev))
 		return false;
 	*phys = best;
 	*device = dev;
