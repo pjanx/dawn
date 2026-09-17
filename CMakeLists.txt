@@ -296,6 +296,7 @@ endif()
 # --- libdn --------------------------------------------------------------------
 
 add_library(libdn SHARED
+	libdn/cmm.cpp
 	libdn/gettext.cpp
 	libdn/ipc.cpp
 	libdn/ipc-instance.cpp

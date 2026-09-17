@@ -163,10 +163,10 @@ public:
 	std::shared_ptr<Profile> get_profile_cicp(
 		uint8_t color_primaries, uint8_t transfer_characteristics);
 
-	/// CMYK8 (inverted) → working-format image (opaque premul).
-	/// TODO(p): This has little reason to take an Image.
-	void convert_cmyk8(
-		Image &dst, const uint8_t *cmyk, Profile *source, Profile *target);
+	/// CMYK8 (inverted) → working-format BGRA16 (opaque premul).
+	/// Both buffers are tightly packed `width * height` pixels.
+	void convert_cmyk8(const uint8_t *src, uint8_t *dst, uint32_t width,
+		uint32_t height, Profile *source, Profile *target);
 
 	/// In-place colour transform on BGRA16 buffers.
 	bool transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,

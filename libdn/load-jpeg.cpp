@@ -577,8 +577,8 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 			}
 			cmyk8 = quantized.data();
 		}
-		cmm->convert_cmyk8(
-			*image, cmyk8, source.get(), ctx.screen_profile.get());
+		cmm->convert_cmyk8(cmyk8, image->data.data(), image->width,
+			image->height, source.get(), ctx.screen_profile.get());
 	} else if (bits == 8) {
 		Profile *target = ctx.screen_profile.get();
 		bool converted = false;

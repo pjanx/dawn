@@ -471,8 +471,8 @@ load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	if (h.color_mode == kColorCmyk) {
 		// convert_cmyk8() colour-manages all the way to working premul.
 		vector<uint8_t> cmyk = compose_cmyk8(planes, h);
-		cmm->convert_cmyk8(
-			*image, cmyk.data(), source.get(), ctx.screen_profile.get());
+		cmm->convert_cmyk8(cmyk.data(), image->data.data(), image->width,
+			image->height, source.get(), ctx.screen_profile.get());
 	} else {
 		compose_rgb(*image, planes, h);
 		finish_image(*image, ctx, source.get(), /*input_premul=*/false);

@@ -447,7 +447,8 @@ test_cmyk_cms_opaque()
 	dawn::ImagePtr img = dawn::image_new(1, 1);
 	CHECK(img != nullptr);
 	const uint8_t cmyk[4] = {0, 255, 255, 0};
-	cmm->convert_cmyk8(*img, cmyk, src.get(), srgb.get());
+	cmm->convert_cmyk8(
+		cmyk, img->data.data(), img->width, img->height, src.get(), srgb.get());
 	Pixel p = pixel0(*img);
 	CHECK(p.a == 65535);
 	CHECK(unsigned(p.b) + p.g + p.r != 0);
