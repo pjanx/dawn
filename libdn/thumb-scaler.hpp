@@ -23,12 +23,11 @@ namespace dawn
 /// Worker-fed, GUI-submitted thumbnail scaler. Job pixels are copied into a
 /// bounded staging ring before queue() returns; Vulkan work stays on the GUI
 /// thread in flush()/poll().
-class ThumbScaler
+struct ThumbScaler
 {
 	struct Impl;
 	Impl *impl_ = nullptr;
 
-public:
 	enum class Priority : uint8_t {
 		Interactive,
 		Prefetch,

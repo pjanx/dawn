@@ -38,6 +38,8 @@ constexpr uint32_t kMaxBatchReqs = 64;
 constexpr uint32_t kMaxDescriptorSets = kMaxBatchReqs * 31;
 constexpr uint64_t kReducedBudget = 256ull << 20;
 
+// --- Helpers -----------------------------------------------------------------
+
 static uint64_t
 align_up(uint64_t v, uint64_t a)
 {
@@ -141,6 +143,8 @@ job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 	const uint64_t needed = uint64_t(job.stride) * (job.src_h - 1) + row_bytes;
 	return *bytes <= SIZE_MAX && needed <= available;
 }
+
+// --- State -------------------------------------------------------------------
 
 namespace
 {
@@ -280,76 +284,30 @@ struct ThumbScaler::Impl {
 	vector<Result> failed_results;
 	array<Batch, kBatchSlots> batches;
 	unordered_map<uint32_t, unique_ptr<Session>> sessions;
-
-	bool claim(size_t bytes, uint64_t user, Priority priority, Slot *slot);
-	bool enqueue(const Request &req);
-	bool choose_k(uint32_t w, uint32_t h, uint32_t *k) const;
-	bool plan_tiles(
-		uint32_t w, uint32_t h, uint32_t k, vector<Tile> *tiles) const;
-	bool begin_session(const SessionInfo &info, uint32_t *id);
-	void end_session(uint32_t id);
-	bool queue_full(const Job &job);
-
-	void destroy_buffer(Buffer &b);
-	bool create_buffer(Buffer &b, VkDeviceSize bytes, VkBufferUsageFlags usage,
-		VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred,
-		bool map, string *error);
-	bool ensure_buffer(Buffer &b, VkDeviceSize bytes, VkBufferUsageFlags usage,
-		VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred,
-		bool map, string *error);
-	void destroy_batch(Batch &b);
-	void destroy_all();
-	bool make_pipeline(
-		const uint32_t *code, uint32_t words, VkPipeline *out, string *error);
-	bool alloc_range(uint64_t bytes, Slot *slot);
-	void release_range(uint32_t id);
-	Session *session(uint32_t id);
-	void fail_result(const Request &req);
-	void fail_session(Session &s);
-	uint64_t reduced_budget() const
-	{
-		return min({kReducedBudget, max_storage_range, kMaxDeviceBytes});
-	}
-	bool choose_k_impl(uint32_t w, uint32_t h, uint32_t *out) const;
-	bool plan_tiles_impl(
-		uint32_t sw, uint32_t sh, uint32_t k, vector<Tile> *tiles) const;
-	bool ensure_reduced(Session &s, string *error);
-	bool make_descriptor_pool(Batch &b, string *error);
-	VkDescriptorSet descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
-		VkDeviceSize in_size, const Buffer &out, VkDeviceSize out_off,
-		VkDeviceSize out_size, string *error);
-	void barrier(VkCommandBuffer cmd, VkAccessFlags src, VkAccessFlags dst,
-		VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage);
-	void dispatch(VkCommandBuffer cmd, VkPipeline pipeline, VkDescriptorSet set,
-		const void *push, uint32_t push_size, uint32_t w, uint32_t h);
-	bool record_reduce(Batch &b, Item &item, Session &s, string *error);
-	bool record_h(Batch &b, Item &item, string *error);
-	bool record_v(Batch &b, Item &item, string *error);
-	void fail_items(Batch &b);
-	bool build_batch(
-		Batch &b, vector<Pending> jobs, vector<uint32_t> fits, string *error);
 };
 
-void
-ThumbScaler::Impl::destroy_buffer(Buffer &b)
+// --- Vulkan objects ----------------------------------------------------------
+
+static void
+destroy_buffer(ThumbScaler::Impl &e, Buffer &b)
 {
-	if (!device)
+	if (!e.device)
 		return;
 	if (b.mapped)
-		vkUnmapMemory(device, b.memory);
+		vkUnmapMemory(e.device, b.memory);
 	if (b.handle)
-		vkDestroyBuffer(device, b.handle, nullptr);
+		vkDestroyBuffer(e.device, b.handle, nullptr);
 	if (b.memory)
-		vkFreeMemory(device, b.memory, nullptr);
+		vkFreeMemory(e.device, b.memory, nullptr);
 	b = {};
 }
 
-bool
-ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
+static bool
+create_buffer(ThumbScaler::Impl &e, Buffer &b, VkDeviceSize bytes,
 	VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
 	VkMemoryPropertyFlags preferred, bool map, string *error)
 {
-	destroy_buffer(b);
+	destroy_buffer(e, b);
 	if (!bytes)
 		return true;
 
@@ -357,114 +315,116 @@ ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
 		.size = bytes,
 		.usage = usage,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE};
-	if (!CALL_VK(CreateBuffer, " thumbs", device, &ci, nullptr, &b.handle))
+	if (!CALL_VK(CreateBuffer, " thumbs", e.device, &ci, nullptr, &b.handle))
 		return false;
 
 	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(device, b.handle, &mr);
+	vkGetBufferMemoryRequirements(e.device, b.handle, &mr);
 	const MemoryType type =
-		pick_memory(phys, mr.memoryTypeBits, required, preferred);
+		pick_memory(e.phys, mr.memoryTypeBits, required, preferred);
 	if (type.index == UINT32_MAX) {
 		if (error)
 			*error = "no suitable thumbnail buffer memory";
-		destroy_buffer(b);
+		destroy_buffer(e, b);
 		return false;
 	}
 	VkMemoryAllocateInfo ai{.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.allocationSize = mr.size,
 		.memoryTypeIndex = type.index};
-	if (!CALL_VK(AllocateMemory, " thumbs", device, &ai, nullptr, &b.memory) ||
-		!CALL_VK(BindBufferMemory, " thumbs", device, b.handle, b.memory, 0)) {
-		destroy_buffer(b);
+	if (!CALL_VK(
+			AllocateMemory, " thumbs", e.device, &ai, nullptr, &b.memory) ||
+		!CALL_VK(
+			BindBufferMemory, " thumbs", e.device, b.handle, b.memory, 0)) {
+		destroy_buffer(e, b);
 		return false;
 	}
 	b.size = bytes;
 	b.allocation_size = mr.size;
 	b.coherent = type.flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	if (map &&
-		!CALL_VK(MapMemory, " thumbs", device, b.memory, 0, b.allocation_size,
+		!CALL_VK(MapMemory, " thumbs", e.device, b.memory, 0, b.allocation_size,
 			0, &b.mapped)) {
-		destroy_buffer(b);
+		destroy_buffer(e, b);
 		return false;
 	}
 	return true;
 }
 
-bool
-ThumbScaler::Impl::ensure_buffer(Buffer &b, VkDeviceSize bytes,
+static bool
+ensure_buffer(ThumbScaler::Impl &e, Buffer &b, VkDeviceSize bytes,
 	VkBufferUsageFlags usage, VkMemoryPropertyFlags required,
 	VkMemoryPropertyFlags preferred, bool map, string *error)
 {
 	if (!bytes || (b.handle && b.size >= bytes))
 		return true;
-	return create_buffer(b, bytes, usage, required, preferred, map, error);
+	return create_buffer(e, b, bytes, usage, required, preferred, map, error);
 }
 
-void
-ThumbScaler::Impl::destroy_batch(Batch &b)
+static void
+destroy_batch(ThumbScaler::Impl &e, Batch &b)
 {
 	b.items.clear();
-	destroy_buffer(b.source);
-	destroy_buffer(b.mid);
-	destroy_buffer(b.output);
-	destroy_buffer(b.readback);
-	destroy_buffer(b.ping);
-	destroy_buffer(b.pong);
+	destroy_buffer(e, b.source);
+	destroy_buffer(e, b.mid);
+	destroy_buffer(e, b.output);
+	destroy_buffer(e, b.readback);
+	destroy_buffer(e, b.ping);
+	destroy_buffer(e, b.pong);
 	if (b.descriptors)
-		vkDestroyDescriptorPool(device, b.descriptors, nullptr);
+		vkDestroyDescriptorPool(e.device, b.descriptors, nullptr);
 	b.descriptors = VK_NULL_HANDLE;
 }
 
-void
-ThumbScaler::Impl::destroy_all()
+static void
+destroy_all(ThumbScaler::Impl &e)
 {
-	stop = true;
-	cv.notify_all();
-	if (!device)
+	e.stop = true;
+	e.cv.notify_all();
+	if (!e.device)
 		return;
-	vkDeviceWaitIdle(device);
-	for (Batch &b : batches) {
-		destroy_batch(b);
+	vkDeviceWaitIdle(e.device);
+	for (Batch &b : e.batches) {
+		destroy_batch(e, b);
 		if (b.fence)
-			vkDestroyFence(device, b.fence, nullptr);
+			vkDestroyFence(e.device, b.fence, nullptr);
 		b = {};
 	}
-	for (auto &entry : sessions)
-		destroy_buffer(entry.second->reduced);
-	sessions.clear();
-	destroy_buffer(ring);
-	for (VkPipeline *p : {&scale_h, &scale_v, &reduce}) {
+	for (auto &entry : e.sessions)
+		destroy_buffer(e, entry.second->reduced);
+	e.sessions.clear();
+	destroy_buffer(e, e.ring);
+	for (VkPipeline *p : {&e.scale_h, &e.scale_v, &e.reduce}) {
 		if (*p)
-			vkDestroyPipeline(device, *p, nullptr);
+			vkDestroyPipeline(e.device, *p, nullptr);
 		*p = VK_NULL_HANDLE;
 	}
-	if (pipeline_layout)
-		vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
-	if (descriptor_layout)
-		vkDestroyDescriptorSetLayout(device, descriptor_layout, nullptr);
-	if (command_pool)
-		vkDestroyCommandPool(device, command_pool, nullptr);
-	pipeline_layout = VK_NULL_HANDLE;
-	descriptor_layout = VK_NULL_HANDLE;
-	command_pool = VK_NULL_HANDLE;
-	phys = VK_NULL_HANDLE;
-	device = VK_NULL_HANDLE;
-	queue = VK_NULL_HANDLE;
-	ring_bytes = 0;
-	free_ranges.clear();
-	live.clear();
-	waiters.clear();
-	priority_overrides.clear();
-	pending.clear();
-	failed_results.clear();
-	ready = false;
+	if (e.pipeline_layout)
+		vkDestroyPipelineLayout(e.device, e.pipeline_layout, nullptr);
+	if (e.descriptor_layout)
+		vkDestroyDescriptorSetLayout(e.device, e.descriptor_layout, nullptr);
+	if (e.command_pool)
+		vkDestroyCommandPool(e.device, e.command_pool, nullptr);
+	e.pipeline_layout = VK_NULL_HANDLE;
+	e.descriptor_layout = VK_NULL_HANDLE;
+	e.command_pool = VK_NULL_HANDLE;
+	e.phys = VK_NULL_HANDLE;
+	e.device = VK_NULL_HANDLE;
+	e.queue = VK_NULL_HANDLE;
+	e.ring_bytes = 0;
+	e.free_ranges.clear();
+	e.live.clear();
+	e.waiters.clear();
+	e.priority_overrides.clear();
+	e.pending.clear();
+	e.failed_results.clear();
+	e.ready = false;
 }
 
-bool
-ThumbScaler::Impl::make_pipeline(
-	const uint32_t *code, uint32_t words, VkPipeline *out, string *error)
+static bool
+make_pipeline(ThumbScaler::Impl &e, const uint32_t *code, uint32_t words,
+	VkPipeline *out, string *error)
 {
-	VkShaderModule shader = make_shader(device, code, words, error);
+	VkShaderModule shader = make_shader(e.device, code, words, error);
 	if (!shader)
 		return false;
 
@@ -476,102 +436,174 @@ ThumbScaler::Impl::make_pipeline(
 	VkComputePipelineCreateInfo ci{
 		.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
 		.stage = stage,
-		.layout = pipeline_layout};
-	const bool ok = CALL_VK(CreateComputePipelines, " thumbs", device,
+		.layout = e.pipeline_layout};
+	const bool ok = CALL_VK(CreateComputePipelines, " thumbs", e.device,
 		VK_NULL_HANDLE, 1, &ci, nullptr, out);
-	vkDestroyShaderModule(device, shader, nullptr);
+	vkDestroyShaderModule(e.device, shader, nullptr);
 	return ok;
 }
 
-bool
-ThumbScaler::Impl::alloc_range(uint64_t bytes, Slot *slot)
+static bool
+make_descriptor_pool(ThumbScaler::Impl &e, Batch &b, string *error)
 {
-	bytes = align_up(bytes, alignment);
-	for (size_t i = 0; i < free_ranges.size(); i++) {
-		Range &r = free_ranges[i];
+	VkDescriptorPoolSize size{
+		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kMaxDescriptorSets * 2};
+	VkDescriptorPoolCreateInfo ci{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.maxSets = kMaxDescriptorSets,
+		.poolSizeCount = 1,
+		.pPoolSizes = &size};
+	return CALL_VK(CreateDescriptorPool, " thumbs", e.device, &ci, nullptr,
+		&b.descriptors);
+}
+
+// --- Staging ring ------------------------------------------------------------
+
+static bool
+alloc_range(ThumbScaler::Impl &e, uint64_t bytes, Slot *slot)
+{
+	bytes = align_up(bytes, e.alignment);
+	for (size_t i = 0; i < e.free_ranges.size(); i++) {
+		Range &r = e.free_ranges[i];
 		if (r.size < bytes)
 			continue;
-		const uint32_t id = next_slot++;
-		if (!next_slot)
-			next_slot = 1;
+		const uint32_t id = e.next_slot++;
+		if (!e.next_slot)
+			e.next_slot = 1;
 		const Range used{r.off, bytes};
 		r.off += bytes;
 		r.size -= bytes;
 		if (!r.size)
-			free_ranges.erase(free_ranges.begin() + ptrdiff_t(i));
-		live[id] = used;
+			e.free_ranges.erase(e.free_ranges.begin() + ptrdiff_t(i));
+		e.live[id] = used;
 		slot->id = id;
-		slot->mapped = static_cast<uint8_t *>(ring.mapped) + used.off;
+		slot->mapped = static_cast<uint8_t *>(e.ring.mapped) + used.off;
 		return true;
 	}
 	return false;
 }
 
-void
-ThumbScaler::Impl::release_range(uint32_t id)
+static void
+release_range(ThumbScaler::Impl &e, uint32_t id)
 {
-	auto found = live.find(id);
-	if (found == live.end())
+	auto found = e.live.find(id);
+	if (found == e.live.end())
 		return;
 
-	free_ranges.push_back(found->second);
-	live.erase(found);
-	sort(free_ranges.begin(), free_ranges.end(),
+	e.free_ranges.push_back(found->second);
+	e.live.erase(found);
+	sort(e.free_ranges.begin(), e.free_ranges.end(),
 		[](const Range &a, const Range &b) { return a.off < b.off; });
 	vector<Range> merged;
-	for (const Range &r : free_ranges) {
+	for (const Range &r : e.free_ranges) {
 		if (!merged.empty() && merged.back().off + merged.back().size == r.off)
 			merged.back().size += r.size;
 		else
 			merged.push_back(r);
 	}
-	free_ranges = std::move(merged);
-	cv.notify_all();
+	e.free_ranges = std::move(merged);
+	e.cv.notify_all();
 }
 
-Session *
-ThumbScaler::Impl::session(uint32_t id)
+static bool
+claim(ThumbScaler::Impl &e, size_t bytes, uint64_t user,
+	ThumbScaler::Priority priority, Slot *slot)
 {
-	auto it = sessions.find(id);
-	return it == sessions.end() ? nullptr : it->second.get();
+	if (!slot)
+		return false;
+
+	*slot = {};
+	if (!e.ready || !bytes || align_up(bytes, e.alignment) > e.ring_bytes)
+		return false;
+
+	unique_lock lock(e.mu);
+	if (e.canceled.contains(user))
+		return false;
+
+	if (auto found = e.priority_overrides.find(user);
+		found != e.priority_overrides.end())
+		priority = found->second;
+	Waiter waiter{user, priority, e.next_waiter++, bytes};
+	if (!e.next_waiter)
+		e.next_waiter = 1;
+	e.waiters.push_back(&waiter);
+	while (!e.stop) {
+		if (e.canceled.contains(user)) {
+			erase(e.waiters, &waiter);
+			e.cv.notify_all();
+			return false;
+		}
+		if (auto found = e.priority_overrides.find(user);
+			found != e.priority_overrides.end())
+			waiter.priority = found->second;
+		Waiter *first = nullptr;
+		for (Waiter *candidate : e.waiters)
+			if (!first || higher(candidate->priority, first->priority) ||
+				(candidate->priority == first->priority &&
+					candidate->sequence < first->sequence))
+				first = candidate;
+		if (first == &waiter && alloc_range(e, bytes, slot)) {
+			erase(e.waiters, &waiter);
+			e.cv.notify_all();
+			return true;
+		}
+		e.cv.wait(lock);
+	}
+	erase(e.waiters, &waiter);
+	return false;
 }
 
-void
-ThumbScaler::Impl::fail_result(const Request &req)
+// --- Sessions ----------------------------------------------------------------
+
+static Session *
+session(ThumbScaler::Impl &e, uint32_t id)
 {
-	Result r;
+	auto it = e.sessions.find(id);
+	return it == e.sessions.end() ? nullptr : it->second.get();
+}
+
+static void
+fail_result(ThumbScaler::Impl &e, const Request &req)
+{
+	ThumbScaler::Result r;
 	r.user = req.user;
 	r.path = req.path;
 	r.failed = true;
-	failed_results.push_back(std::move(r));
+	e.failed_results.push_back(std::move(r));
 }
 
-void
-ThumbScaler::Impl::fail_session(Session &s)
+static void
+fail_session(ThumbScaler::Impl &e, Session &s)
 {
 	s.failed = true;
 	if (s.emitted)
 		return;
 
 	s.emitted = true;
-	Result r;
+	ThumbScaler::Result r;
 	r.user = s.info.user;
 	r.path = s.info.path;
 	r.failed = true;
-	failed_results.push_back(std::move(r));
+	e.failed_results.push_back(std::move(r));
 }
 
-bool
-ThumbScaler::Impl::choose_k_impl(uint32_t w, uint32_t h, uint32_t *out) const
+static uint64_t
+reduced_budget(const ThumbScaler::Impl &e)
 {
-	if (!w || !h || !out || !max_image_dim)
+	return min({kReducedBudget, e.max_storage_range, kMaxDeviceBytes});
+}
+
+static bool
+choose_k_impl(const ThumbScaler::Impl &e, uint32_t w, uint32_t h, uint32_t *out)
+{
+	if (!w || !h || !out || !e.max_image_dim)
 		return false;
 
 	for (uint32_t k = 0; k < 32; k++) {
 		const uint32_t rw = reduced_dim(w, k), rh = reduced_dim(h, k);
 		const uint64_t bytes = uint64_t(rw) * rh * kBytesPerPixel;
-		if (rw <= max_image_dim && rh <= max_image_dim &&
-			bytes <= reduced_budget()) {
+		if (rw <= e.max_image_dim && rh <= e.max_image_dim &&
+			bytes <= reduced_budget(e)) {
 			*out = k;
 			return true;
 		}
@@ -579,9 +611,15 @@ ThumbScaler::Impl::choose_k_impl(uint32_t w, uint32_t h, uint32_t *out) const
 	return false;
 }
 
-bool
-ThumbScaler::Impl::plan_tiles_impl(
-	uint32_t sw, uint32_t sh, uint32_t k, vector<Tile> *tiles) const
+static bool
+choose_k(const ThumbScaler::Impl &e, uint32_t w, uint32_t h, uint32_t *k)
+{
+	return e.ready && choose_k_impl(e, w, h, k);
+}
+
+static bool
+plan_tiles_impl(const ThumbScaler::Impl &e, uint32_t sw, uint32_t sh,
+	uint32_t k, vector<Tile> *tiles)
 {
 	if (!sw || !sh || !tiles || k > 31)
 		return false;
@@ -589,10 +627,10 @@ ThumbScaler::Impl::plan_tiles_impl(
 	tiles->clear();
 	const uint32_t cell = k ? 1u << k : 1u;
 	const uint64_t max_pixels =
-		min<uint64_t>(ring_bytes, max_storage_range) / kBytesPerPixel;
+		min<uint64_t>(e.ring_bytes, e.max_storage_range) / kBytesPerPixel;
 	auto aligned = [&](uint32_t n) { return n / cell * cell; };
 
-	uint32_t tw = min(sw, max_image_dim);
+	uint32_t tw = min(sw, e.max_image_dim);
 	tw = tw < sw ? aligned(tw) : tw;
 	while (tw && uint64_t(tw) > max_pixels)
 		tw = aligned(tw / 2);
@@ -600,7 +638,7 @@ ThumbScaler::Impl::plan_tiles_impl(
 		return false;
 
 	uint32_t th = uint32_t(
-		min<uint64_t>(min<uint64_t>(sh, max_image_dim), max_pixels / tw));
+		min<uint64_t>(min<uint64_t>(sh, e.max_image_dim), max_pixels / tw));
 	th = th < sh ? aligned(th) : th;
 	if (!th)
 		return false;
@@ -617,42 +655,77 @@ ThumbScaler::Impl::plan_tiles_impl(
 	return !tiles->empty();
 }
 
-bool
-ThumbScaler::Impl::ensure_reduced(Session &s, string *error)
+static bool
+plan_tiles(const ThumbScaler::Impl &e, uint32_t w, uint32_t h, uint32_t k,
+	vector<Tile> *tiles)
+{
+	return e.ready && plan_tiles_impl(e, w, h, k, tiles);
+}
+
+static bool
+ensure_reduced(ThumbScaler::Impl &e, Session &s, string *error)
 {
 	if (s.reduced.handle)
 		return true;
 
-	return create_buffer(s.reduced,
+	return create_buffer(e, s.reduced,
 		VkDeviceSize(s.reduced_w) * s.reduced_h * kBytesPerPixel,
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		0, false, error);
 }
 
-bool
-ThumbScaler::Impl::make_descriptor_pool(Batch &b, string *error)
+static bool
+begin_session(ThumbScaler::Impl &e, const SessionInfo &info, uint32_t *id)
 {
-	VkDescriptorPoolSize size{
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, kMaxDescriptorSets * 2};
-	VkDescriptorPoolCreateInfo ci{
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-		.maxSets = kMaxDescriptorSets,
-		.poolSizeCount = 1,
-		.pPoolSizes = &size};
-	return CALL_VK(
-		CreateDescriptorPool, " thumbs", device, &ci, nullptr, &b.descriptors);
+	if (!e.ready || !id || !info.src_w || !info.src_h || info.outputs.empty() ||
+		!info.tile_count)
+		return false;
+
+	auto s = make_unique<Session>();
+	s->info = info;
+	s->reduced_w = reduced_dim(info.src_w, info.k);
+	s->reduced_h = reduced_dim(info.src_h, info.k);
+	if (uint64_t(s->reduced_w) * s->reduced_h * kBytesPerPixel >
+		reduced_budget(e))
+		return false;
+
+	lock_guard lock(e.mu);
+	if (auto priority = e.priority_overrides.find(info.user);
+		priority != e.priority_overrides.end())
+		s->info.priority = priority->second;
+	s->id = e.next_session++;
+	if (!e.next_session)
+		e.next_session = 1;
+	*id = s->id;
+	e.sessions[*id] = std::move(s);
+	return true;
 }
 
-VkDescriptorSet
-ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
-	VkDeviceSize in_size, const Buffer &out, VkDeviceSize out_off,
-	VkDeviceSize out_size, string *error)
+static void
+end_session(ThumbScaler::Impl &e, uint32_t id)
+{
+	lock_guard lock(e.mu);
+	Session *s = session(e, id);
+	if (!s)
+		return;
+
+	s->ended = true;
+	if (s->enqueued != s->info.tile_count)
+		fail_session(e, *s);
+}
+
+// --- Recording ---------------------------------------------------------------
+
+static VkDescriptorSet
+descriptor(ThumbScaler::Impl &e, Batch &b, const Buffer &in,
+	VkDeviceSize in_off, VkDeviceSize in_size, const Buffer &out,
+	VkDeviceSize out_off, VkDeviceSize out_size, string *error)
 {
 	if (!in.handle || !out.handle || !in_size || !out_size ||
-		in_size > max_storage_range || out_size > max_storage_range ||
+		in_size > e.max_storage_range || out_size > e.max_storage_range ||
 		in_off + in_size > in.size || out_off + out_size > out.size) {
 		if (error)
-			*error = "thumbnail storage-buffer range exceeds device limits";
+			*error = "thumbnail storage-buffer range exceeds e.device limits";
 		return VK_NULL_HANDLE;
 	}
 	VkDescriptorSet set = VK_NULL_HANDLE;
@@ -660,8 +733,8 @@ ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = b.descriptors,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &descriptor_layout};
-	if (!CALL_VK(AllocateDescriptorSets, " thumbs", device, &ai, &set))
+		.pSetLayouts = &e.descriptor_layout};
+	if (!CALL_VK(AllocateDescriptorSets, " thumbs", e.device, &ai, &set))
 		return VK_NULL_HANDLE;
 
 	VkDescriptorBufferInfo info[2] = {
@@ -675,14 +748,13 @@ ThumbScaler::Impl::descriptor(Batch &b, const Buffer &in, VkDeviceSize in_off,
 		writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		writes[i].pBufferInfo = &info[i];
 	}
-	vkUpdateDescriptorSets(device, 2, writes, 0, nullptr);
+	vkUpdateDescriptorSets(e.device, 2, writes, 0, nullptr);
 	return set;
 }
 
-void
-ThumbScaler::Impl::barrier(VkCommandBuffer cmd, VkAccessFlags src,
-	VkAccessFlags dst, VkPipelineStageFlags src_stage,
-	VkPipelineStageFlags dst_stage)
+static void
+barrier(VkCommandBuffer cmd, VkAccessFlags src, VkAccessFlags dst,
+	VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
 {
 	VkMemoryBarrier b{.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
 		.srcAccessMask = src,
@@ -691,22 +763,22 @@ ThumbScaler::Impl::barrier(VkCommandBuffer cmd, VkAccessFlags src,
 		cmd, src_stage, dst_stage, 0, 1, &b, 0, nullptr, 0, nullptr);
 }
 
-void
-ThumbScaler::Impl::dispatch(VkCommandBuffer cmd, VkPipeline pipeline,
+static void
+dispatch(ThumbScaler::Impl &e, VkCommandBuffer cmd, VkPipeline pipeline,
 	VkDescriptorSet set, const void *push, uint32_t push_size, uint32_t w,
 	uint32_t h)
 {
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-		pipeline_layout, 0, 1, &set, 0, nullptr);
-	vkCmdPushConstants(
-		cmd, pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, push_size, push);
+		e.pipeline_layout, 0, 1, &set, 0, nullptr);
+	vkCmdPushConstants(cmd, e.pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+		push_size, push);
 	vkCmdDispatch(cmd, ceil_div(w, 16), ceil_div(h, 16), 1);
 }
 
-bool
-ThumbScaler::Impl::record_reduce(
-	Batch &b, Item &item, Session &s, string *error)
+static bool
+record_reduce(
+	ThumbScaler::Impl &e, Batch &b, Item &item, Session &s, string *error)
 {
 	uint32_t sw = item.req.tile_w, sh = item.req.tile_h;
 	const Buffer *input = &b.source;
@@ -719,8 +791,8 @@ ThumbScaler::Impl::record_reduce(
 		const VkDeviceSize input_bytes = VkDeviceSize(sw) * sh * kBytesPerPixel;
 		const VkDeviceSize output_bytes =
 			last ? s.reduced.size : VkDeviceSize(dw) * dh * kBytesPerPixel;
-		VkDescriptorSet set = descriptor(
-			b, *input, input_off, input_bytes, *output, 0, output_bytes, error);
+		VkDescriptorSet set = descriptor(e, b, *input, input_off, input_bytes,
+			*output, 0, output_bytes, error);
 		if (!set)
 			return false;
 
@@ -728,7 +800,7 @@ ThumbScaler::Impl::record_reduce(
 			last ? item.req.tile_ox >> s.info.k : 0,
 			last ? item.req.tile_oy >> s.info.k : 0, uint32_t(s.info.transfer),
 			s.info.opaque ? 1u : 0u, linear ? 1u : 0u};
-		dispatch(b.cmd, reduce, set, &push, sizeof push, dw, dh);
+		dispatch(e, b.cmd, e.reduce, set, &push, sizeof push, dw, dh);
 		barrier(b.cmd, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -742,8 +814,8 @@ ThumbScaler::Impl::record_reduce(
 	return true;
 }
 
-bool
-ThumbScaler::Impl::record_h(Batch &b, Item &item, string *error)
+static bool
+record_h(ThumbScaler::Impl &e, Batch &b, Item &item, string *error)
 {
 	const Buffer *input = &b.source;
 	VkDeviceSize input_off = item.source_off;
@@ -761,8 +833,8 @@ ThumbScaler::Impl::record_h(Batch &b, Item &item, string *error)
 	}
 	const VkDeviceSize mid_bytes =
 		VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-	VkDescriptorSet set = descriptor(b, *input, input_off, input_bytes, b.mid,
-		item.mid_off, mid_bytes, error);
+	VkDescriptorSet set = descriptor(e, b, *input, input_off, input_bytes,
+		b.mid, item.mid_off, mid_bytes, error);
 	if (!set)
 		return false;
 
@@ -771,19 +843,19 @@ ThumbScaler::Impl::record_h(Batch &b, Item &item, string *error)
 		uint32_t(orientation_or_0(item.req.orientation)),
 		uint32_t(item.req.transfer), item.req.opaque ? 1u : 0u,
 		linear ? 1u : 0u};
-	dispatch(b.cmd, scale_h, set, &push, sizeof push, item.req.out_w,
+	dispatch(e, b.cmd, e.scale_h, set, &push, sizeof push, item.req.out_w,
 		item.display_h);
 	return true;
 }
 
-bool
-ThumbScaler::Impl::record_v(Batch &b, Item &item, string *error)
+static bool
+record_v(ThumbScaler::Impl &e, Batch &b, Item &item, string *error)
 {
 	const VkDeviceSize mid_bytes =
 		VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
 	const VkDeviceSize out_bytes =
 		VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
-	VkDescriptorSet set = descriptor(b, b.mid, item.mid_off, mid_bytes,
+	VkDescriptorSet set = descriptor(e, b, b.mid, item.mid_off, mid_bytes,
 		b.output, item.output_off, out_bytes, error);
 	if (!set)
 		return false;
@@ -792,35 +864,35 @@ ThumbScaler::Impl::record_v(Batch &b, Item &item, string *error)
 		item.req.out_h, item.req.out_w, item.req.out_w,
 		uint32_t(orientation_or_0(item.req.orientation)),
 		uint32_t(item.req.transfer), item.req.opaque ? 1u : 0u, 0};
-	dispatch(b.cmd, scale_v, set, &push, sizeof push, item.req.out_w,
+	dispatch(e, b.cmd, e.scale_v, set, &push, sizeof push, item.req.out_w,
 		item.req.out_h);
 	return true;
 }
 
-void
-ThumbScaler::Impl::fail_items(Batch &b)
+static void
+fail_items(ThumbScaler::Impl &e, Batch &b)
 {
-	lock_guard lock(mu);
+	lock_guard lock(e.mu);
 	for (const Item &item : b.items) {
 		if (item.slot)
-			release_range(item.slot);
+			release_range(e, item.slot);
 		if (item.kind == Item::Kind::Full && item.slot)
-			fail_result(item.req);
-		else if (Session *s = session(item.session))
-			fail_session(*s);
+			fail_result(e, item.req);
+		else if (Session *s = session(e, item.session))
+			fail_session(e, *s);
 	}
 }
 
-bool
-ThumbScaler::Impl::build_batch(
-	Batch &b, vector<Pending> jobs, vector<uint32_t> fits, string *error)
+static bool
+build_batch(ThumbScaler::Impl &e, Batch &b, vector<Pending> jobs,
+	vector<uint32_t> fits, string *error)
 {
 	b.items.clear();
 	VkDeviceSize source_bytes = 0, mid_bytes = 0, output_bytes = 0;
 	VkDeviceSize readback_bytes = 0, scratch_bytes = 0;
 	for (Pending &job : jobs) {
 		Request request = std::move(job.req);
-		const VkDeviceSize source_off = align_up(source_bytes, alignment);
+		const VkDeviceSize source_off = align_up(source_bytes, e.alignment);
 		source_bytes = source_off + job.ring.size;
 		if (request.session) {
 			Item item;
@@ -832,19 +904,19 @@ ThumbScaler::Impl::build_batch(
 			item.session = item.req.session;
 			Session *s = nullptr;
 			{
-				lock_guard lock(mu);
-				s = session(item.session);
+				lock_guard lock(e.mu);
+				s = session(e, item.session);
 				if (!s || s->failed) {
-					release_range(item.slot);
+					release_range(e, item.slot);
 					if (s)
-						fail_session(*s);
+						fail_session(e, *s);
 					continue;
 				}
 			}
-			if (!ensure_reduced(*s, error)) {
-				lock_guard lock(mu);
-				release_range(item.slot);
-				fail_session(*s);
+			if (!ensure_reduced(e, *s, error)) {
+				lock_guard lock(e.mu);
+				release_range(e, item.slot);
+				fail_session(e, *s);
 				continue;
 			}
 			item.owner = s;
@@ -857,7 +929,7 @@ ThumbScaler::Impl::build_batch(
 		}
 
 		bool owns_slot = true;
-		for (const Job::Output &output : request.outputs) {
+		for (const ThumbScaler::Job::Output &output : request.outputs) {
 			Item item;
 			item.req = request;
 			item.req.outputs.clear();
@@ -871,11 +943,11 @@ ThumbScaler::Impl::build_batch(
 			item.kind = Item::Kind::Full;
 			orientation_display_size(item.req.src_w, item.req.src_h,
 				item.req.orientation, &item.display_w, &item.display_h);
-			item.mid_off = align_up(mid_bytes, alignment);
+			item.mid_off = align_up(mid_bytes, e.alignment);
 			mid_bytes = item.mid_off +
 				VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-			item.output_off = align_up(output_bytes, alignment);
-			item.readback_off = align_up(readback_bytes, alignment);
+			item.output_off = align_up(output_bytes, e.alignment);
+			item.readback_off = align_up(readback_bytes, e.alignment);
 			const VkDeviceSize n =
 				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
 			output_bytes = item.output_off + n;
@@ -886,15 +958,15 @@ ThumbScaler::Impl::build_batch(
 	for (uint32_t id : fits) {
 		Session *s = nullptr;
 		{
-			lock_guard lock(mu);
-			s = session(id);
+			lock_guard lock(e.mu);
+			s = session(e, id);
 			if (!s || s->failed)
 				continue;
 		}
-		if (!ensure_reduced(*s, error))
+		if (!ensure_reduced(e, *s, error))
 			continue;
 
-		for (const Job::Output &output : s->info.outputs) {
+		for (const ThumbScaler::Job::Output &output : s->info.outputs) {
 			Item item;
 			item.kind = Item::Kind::Fit;
 			item.session = id;
@@ -911,11 +983,11 @@ ThumbScaler::Impl::build_batch(
 			item.req.opaque = s->info.opaque;
 			orientation_display_size(item.req.src_w, item.req.src_h,
 				item.req.orientation, &item.display_w, &item.display_h);
-			item.mid_off = align_up(mid_bytes, alignment);
+			item.mid_off = align_up(mid_bytes, e.alignment);
 			mid_bytes = item.mid_off +
 				VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-			item.output_off = align_up(output_bytes, alignment);
-			item.readback_off = align_up(readback_bytes, alignment);
+			item.output_off = align_up(output_bytes, e.alignment);
+			item.readback_off = align_up(readback_bytes, e.alignment);
 			const VkDeviceSize n =
 				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
 			output_bytes = item.output_off + n;
@@ -927,45 +999,45 @@ ThumbScaler::Impl::build_batch(
 		return false;
 
 	const auto storage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-	if (!ensure_buffer(b.source, source_bytes,
+	if (!ensure_buffer(e, b.source, source_bytes,
 			storage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!ensure_buffer(b.mid, mid_bytes, storage,
+		!ensure_buffer(e, b.mid, mid_bytes, storage,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!ensure_buffer(b.output, output_bytes,
+		!ensure_buffer(e, b.output, output_bytes,
 			storage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!ensure_buffer(b.readback, readback_bytes,
+		!ensure_buffer(e, b.readback, readback_bytes,
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
 			VK_MEMORY_PROPERTY_HOST_CACHED_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 			true, error) ||
-		!ensure_buffer(b.ping, scratch_bytes, storage,
+		!ensure_buffer(e, b.ping, scratch_bytes, storage,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!ensure_buffer(b.pong, scratch_bytes, storage,
+		!ensure_buffer(e, b.pong, scratch_bytes, storage,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, false, error) ||
-		!CALL_VK(ResetDescriptorPool, " thumbs", device, b.descriptors, 0)) {
-		fail_items(b);
+		!CALL_VK(ResetDescriptorPool, " thumbs", e.device, b.descriptors, 0)) {
+		fail_items(e, b);
 		return false;
 	}
 
 	if (!CALL_VK(ResetCommandBuffer, " thumbs", b.cmd, 0)) {
-		fail_items(b);
+		fail_items(e, b);
 		return false;
 	}
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
 	if (!CALL_VK(BeginCommandBuffer, " thumbs", b.cmd, &begin)) {
-		fail_items(b);
+		fail_items(e, b);
 		return false;
 	}
 	for (const Item &item : b.items) {
 		if (!item.slot)
 			continue;
 		VkBufferCopy copy{item.ring.off, item.source_off, item.ring.size};
-		vkCmdCopyBuffer(b.cmd, ring.handle, b.source.handle, 1, &copy);
+		vkCmdCopyBuffer(b.cmd, e.ring.handle, b.source.handle, 1, &copy);
 	}
 	if (source_bytes)
 		barrier(b.cmd, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
@@ -974,17 +1046,17 @@ ThumbScaler::Impl::build_batch(
 	for (Item &item : b.items) {
 		if (item.kind != Item::Kind::Tile)
 			continue;
-		Session *s = session(item.session);
-		if (!s || !record_reduce(b, item, *s, error)) {
+		Session *s = session(e, item.session);
+		if (!s || !record_reduce(e, b, item, *s, error)) {
 			vkEndCommandBuffer(b.cmd);
-			fail_items(b);
+			fail_items(e, b);
 			return false;
 		}
 	}
 	for (Item &item : b.items) {
-		if (item.kind != Item::Kind::Tile && !record_h(b, item, error)) {
+		if (item.kind != Item::Kind::Tile && !record_h(e, b, item, error)) {
 			vkEndCommandBuffer(b.cmd);
-			fail_items(b);
+			fail_items(e, b);
 			return false;
 		}
 	}
@@ -993,9 +1065,9 @@ ThumbScaler::Impl::build_batch(
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 			VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 	for (Item &item : b.items) {
-		if (item.kind != Item::Kind::Tile && !record_v(b, item, error)) {
+		if (item.kind != Item::Kind::Tile && !record_v(e, b, item, error)) {
 			vkEndCommandBuffer(b.cmd);
-			fail_items(b);
+			fail_items(e, b);
 			return false;
 		}
 	}
@@ -1016,269 +1088,50 @@ ThumbScaler::Impl::build_batch(
 			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
 	}
 	if (!CALL_VK(EndCommandBuffer, " thumbs", b.cmd)) {
-		fail_items(b);
+		fail_items(e, b);
 		return false;
 	}
 	return true;
 }
 
-ThumbScaler::ThumbScaler() = default;
-ThumbScaler::~ThumbScaler()
+// --- Queueing ----------------------------------------------------------------
+
+static bool
+enqueue(ThumbScaler::Impl &e, const Request &req)
 {
-	destroy();
-}
-
-void
-ThumbScaler::destroy()
-{
-	if (!impl_)
-		return;
-
-	impl_->destroy_all();
-	delete impl_;
-	impl_ = nullptr;
-}
-
-bool
-ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-	uint32_t family, uint64_t ring_bytes, string *error)
-{
-	if (!phys || !device || !queue || ring_bytes < kBytesPerPixel)
-		return false;
-
-	if (!impl_)
-		impl_ = new Impl();
-	Impl &e = *impl_;
-	if (e.ready)
-		return true;
-
-	e.stop = false;
-	e.phys = phys;
-	e.device = device;
-	e.queue = queue;
-	e.queue_family = family;
-	VkPhysicalDeviceProperties props{};
-	vkGetPhysicalDeviceProperties(phys, &props);
-	e.max_image_dim = props.limits.maxImageDimension2D;
-	e.max_storage_range = props.limits.maxStorageBufferRange;
-	e.alignment = max<uint64_t>({256, props.limits.nonCoherentAtomSize,
-		props.limits.minStorageBufferOffsetAlignment});
-	if (sizeof(ReducePush) > props.limits.maxPushConstantsSize) {
-		if (error)
-			*error = "thumbnail push constants exceed device limit";
-		e.destroy_all();
-		return false;
-	}
-	const uint64_t actual_ring =
-		min<uint64_t>(ring_bytes, props.limits.maxStorageBufferRange);
-	VkCommandPoolCreateInfo pci{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-		.queueFamilyIndex = family};
-	if (!CALL_VK(CreateCommandPool, " thumbs", device, &pci, nullptr,
-			&e.command_pool)) {
-		e.destroy_all();
-		return false;
-	}
-	VkCommandBuffer commands[kBatchSlots]{};
-	VkCommandBufferAllocateInfo cai{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.commandPool = e.command_pool,
-		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-		.commandBufferCount = kBatchSlots};
-	if (!CALL_VK(AllocateCommandBuffers, " thumbs", device, &cai, commands)) {
-		e.destroy_all();
-		return false;
-	}
-	for (uint32_t i = 0; i < kBatchSlots; i++) {
-		e.batches[i].cmd = commands[i];
-		VkFenceCreateInfo fi{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-		if (!CALL_VK(CreateFence, " thumbs", device, &fi, nullptr,
-				&e.batches[i].fence) ||
-			!e.make_descriptor_pool(e.batches[i], error)) {
-			e.destroy_all();
-			return false;
-		}
-	}
-	VkDescriptorSetLayoutBinding bindings[2]{};
-	for (uint32_t i = 0; i < 2; i++) {
-		bindings[i].binding = i;
-		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		bindings[i].descriptorCount = 1;
-		bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-	}
-	VkDescriptorSetLayoutCreateInfo dlci{
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 2,
-		.pBindings = bindings};
-	if (!CALL_VK(CreateDescriptorSetLayout, " thumbs", device, &dlci, nullptr,
-			&e.descriptor_layout)) {
-		e.destroy_all();
-		return false;
-	}
-	VkPushConstantRange pcr{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-		.size = sizeof(ReducePush)};
-	VkPipelineLayoutCreateInfo plci{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &e.descriptor_layout,
-		.pushConstantRangeCount = 1,
-		.pPushConstantRanges = &pcr};
-	if (!CALL_VK(CreatePipelineLayout, " thumbs", device, &plci, nullptr,
-			&e.pipeline_layout) ||
-		!e.make_pipeline(
-			thumb_scale_h, thumb_scale_h_words, &e.scale_h, error) ||
-		!e.make_pipeline(
-			thumb_scale_v, thumb_scale_v_words, &e.scale_v, error) ||
-		!e.make_pipeline(thumb_reduce, thumb_reduce_words, &e.reduce, error) ||
-		!e.create_buffer(e.ring, actual_ring, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, true, error)) {
-		e.destroy_all();
-		return false;
-	}
-	e.ring_bytes = actual_ring;
-	e.free_ranges = {{0, actual_ring}};
-	e.ready = true;
-	return true;
-}
-
-bool
-ThumbScaler::Impl::claim(
-	size_t bytes, uint64_t user, Priority priority, Slot *slot)
-{
-	if (!slot)
-		return false;
-
-	*slot = {};
-	if (!ready || !bytes || align_up(bytes, alignment) > ring_bytes)
-		return false;
-
-	unique_lock lock(mu);
-	if (canceled.contains(user))
-		return false;
-
-	if (auto found = priority_overrides.find(user);
-		found != priority_overrides.end())
-		priority = found->second;
-	Waiter waiter{user, priority, next_waiter++, bytes};
-	if (!next_waiter)
-		next_waiter = 1;
-	waiters.push_back(&waiter);
-	while (!stop) {
-		if (canceled.contains(user)) {
-			erase(waiters, &waiter);
-			cv.notify_all();
-			return false;
-		}
-		if (auto found = priority_overrides.find(user);
-			found != priority_overrides.end())
-			waiter.priority = found->second;
-		Waiter *first = nullptr;
-		for (Waiter *candidate : waiters)
-			if (!first || higher(candidate->priority, first->priority) ||
-				(candidate->priority == first->priority &&
-					candidate->sequence < first->sequence))
-				first = candidate;
-		if (first == &waiter && alloc_range(bytes, slot)) {
-			erase(waiters, &waiter);
-			cv.notify_all();
-			return true;
-		}
-		cv.wait(lock);
-	}
-	erase(waiters, &waiter);
-	return false;
-}
-
-bool
-ThumbScaler::Impl::enqueue(const Request &req)
-{
-	lock_guard lock(mu);
-	auto found = live.find(req.slot);
-	if (!ready || stop || found == live.end() || !req.src_w || !req.src_h ||
-		(!req.session && req.outputs.empty()) || canceled.contains(req.user)) {
-		release_range(req.slot);
+	lock_guard lock(e.mu);
+	auto found = e.live.find(req.slot);
+	if (!e.ready || e.stop || found == e.live.end() || !req.src_w ||
+		!req.src_h || (!req.session && req.outputs.empty()) ||
+		e.canceled.contains(req.user)) {
+		release_range(e, req.slot);
 		return false;
 	}
 	if (req.session) {
-		Session *s = session(req.session);
+		Session *s = session(e, req.session);
 		if (!s || s->ended || s->failed || !req.tile_w || !req.tile_h) {
-			release_range(req.slot);
+			release_range(e, req.slot);
 			return false;
 		}
 		s->enqueued++;
 	}
 	Request queued = req;
-	if (auto priority = priority_overrides.find(req.user);
-		priority != priority_overrides.end())
+	if (auto priority = e.priority_overrides.find(req.user);
+		priority != e.priority_overrides.end())
 		queued.priority = priority->second;
-	pending.push_back({std::move(queued), found->second});
+	e.pending.push_back({std::move(queued), found->second});
 	return true;
 }
 
-bool
-ThumbScaler::Impl::choose_k(uint32_t w, uint32_t h, uint32_t *k) const
-{
-	return ready && choose_k_impl(w, h, k);
-}
-
-bool
-ThumbScaler::Impl::plan_tiles(
-	uint32_t w, uint32_t h, uint32_t k, vector<Tile> *tiles) const
-{
-	return ready && plan_tiles_impl(w, h, k, tiles);
-}
-
-bool
-ThumbScaler::Impl::begin_session(const SessionInfo &info, uint32_t *id)
-{
-	if (!ready || !id || !info.src_w || !info.src_h || info.outputs.empty() ||
-		!info.tile_count)
-		return false;
-
-	auto s = make_unique<Session>();
-	s->info = info;
-	s->reduced_w = reduced_dim(info.src_w, info.k);
-	s->reduced_h = reduced_dim(info.src_h, info.k);
-	if (uint64_t(s->reduced_w) * s->reduced_h * kBytesPerPixel >
-		reduced_budget())
-		return false;
-
-	lock_guard lock(mu);
-	if (auto priority = priority_overrides.find(info.user);
-		priority != priority_overrides.end())
-		s->info.priority = priority->second;
-	s->id = next_session++;
-	if (!next_session)
-		next_session = 1;
-	*id = s->id;
-	sessions[*id] = std::move(s);
-	return true;
-}
-
-void
-ThumbScaler::Impl::end_session(uint32_t id)
-{
-	lock_guard lock(mu);
-	Session *s = session(id);
-	if (!s)
-		return;
-
-	s->ended = true;
-	if (s->enqueued != s->info.tile_count)
-		fail_session(*s);
-}
-
-bool
-ThumbScaler::Impl::queue_full(const Job &job)
+static bool
+queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 {
 	uint64_t row_bytes = 0, bytes = 0;
 	if (!job_size(job, &row_bytes, &bytes))
 		return false;
 
 	Slot slot;
-	if (!claim(size_t(bytes), job.user, job.priority, &slot))
+	if (!claim(e, size_t(bytes), job.user, job.priority, &slot))
 		return false;
 
 	bool opaque = true;
@@ -1310,7 +1163,130 @@ ThumbScaler::Impl::queue_full(const Job &job)
 	req.user = job.user;
 	req.priority = job.priority;
 	req.path = job.path;
-	return enqueue(req);
+	return enqueue(e, req);
+}
+
+// --- Interface ---------------------------------------------------------------
+
+ThumbScaler::ThumbScaler() = default;
+ThumbScaler::~ThumbScaler()
+{
+	destroy();
+}
+
+void
+ThumbScaler::destroy()
+{
+	if (!impl_)
+		return;
+
+	destroy_all(*impl_);
+	delete impl_;
+	impl_ = nullptr;
+}
+
+bool
+ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
+	uint32_t family, uint64_t ring_bytes, string *error)
+{
+	if (!phys || !device || !queue || ring_bytes < kBytesPerPixel)
+		return false;
+
+	if (!impl_)
+		impl_ = new Impl();
+	Impl &e = *impl_;
+	if (e.ready)
+		return true;
+
+	e.stop = false;
+	e.phys = phys;
+	e.device = device;
+	e.queue = queue;
+	e.queue_family = family;
+	VkPhysicalDeviceProperties props{};
+	vkGetPhysicalDeviceProperties(phys, &props);
+	e.max_image_dim = props.limits.maxImageDimension2D;
+	e.max_storage_range = props.limits.maxStorageBufferRange;
+	e.alignment = max<uint64_t>({256, props.limits.nonCoherentAtomSize,
+		props.limits.minStorageBufferOffsetAlignment});
+	if (sizeof(ReducePush) > props.limits.maxPushConstantsSize) {
+		if (error)
+			*error = "thumbnail push constants exceed device limit";
+		destroy_all(e);
+		return false;
+	}
+	const uint64_t actual_ring =
+		min<uint64_t>(ring_bytes, props.limits.maxStorageBufferRange);
+	VkCommandPoolCreateInfo pci{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+		.queueFamilyIndex = family};
+	if (!CALL_VK(CreateCommandPool, " thumbs", device, &pci, nullptr,
+			&e.command_pool)) {
+		destroy_all(e);
+		return false;
+	}
+	VkCommandBuffer commands[kBatchSlots]{};
+	VkCommandBufferAllocateInfo cai{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = e.command_pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = kBatchSlots};
+	if (!CALL_VK(AllocateCommandBuffers, " thumbs", device, &cai, commands)) {
+		destroy_all(e);
+		return false;
+	}
+	for (uint32_t i = 0; i < kBatchSlots; i++) {
+		e.batches[i].cmd = commands[i];
+		VkFenceCreateInfo fi{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+		if (!CALL_VK(CreateFence, " thumbs", device, &fi, nullptr,
+				&e.batches[i].fence) ||
+			!make_descriptor_pool(e, e.batches[i], error)) {
+			destroy_all(e);
+			return false;
+		}
+	}
+	VkDescriptorSetLayoutBinding bindings[2]{};
+	for (uint32_t i = 0; i < 2; i++) {
+		bindings[i].binding = i;
+		bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		bindings[i].descriptorCount = 1;
+		bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	VkDescriptorSetLayoutCreateInfo dlci{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 2,
+		.pBindings = bindings};
+	if (!CALL_VK(CreateDescriptorSetLayout, " thumbs", device, &dlci, nullptr,
+			&e.descriptor_layout)) {
+		destroy_all(e);
+		return false;
+	}
+	VkPushConstantRange pcr{
+		.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT, .size = sizeof(ReducePush)};
+	VkPipelineLayoutCreateInfo plci{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &e.descriptor_layout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &pcr};
+	if (!CALL_VK(CreatePipelineLayout, " thumbs", device, &plci, nullptr,
+			&e.pipeline_layout) ||
+		!make_pipeline(
+			e, thumb_scale_h, thumb_scale_h_words, &e.scale_h, error) ||
+		!make_pipeline(
+			e, thumb_scale_v, thumb_scale_v_words, &e.scale_v, error) ||
+		!make_pipeline(e, thumb_reduce, thumb_reduce_words, &e.reduce, error) ||
+		!create_buffer(e, e.ring, actual_ring, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, true, error)) {
+		destroy_all(e);
+		return false;
+	}
+	e.ring_bytes = actual_ring;
+	e.free_ranges = {{0, actual_ring}};
+	e.ready = true;
+	return true;
 }
 
 bool
@@ -1329,15 +1305,15 @@ ThumbScaler::queue(const Job &job)
 		return fail();
 	if (bytes <= e.ring_bytes && job.src_w <= e.max_image_dim &&
 		job.src_h <= e.max_image_dim) {
-		if (e.queue_full(job))
+		if (queue_full(e, job))
 			return true;
 		return fail();
 	}
 
 	uint32_t k = 0;
 	vector<Tile> tiles;
-	if (!e.choose_k(job.src_w, job.src_h, &k) ||
-		!e.plan_tiles(job.src_w, job.src_h, k, &tiles) || tiles.empty())
+	if (!choose_k(e, job.src_w, job.src_h, &k) ||
+		!plan_tiles(e, job.src_w, job.src_h, k, &tiles) || tiles.empty())
 		return fail();
 
 	SessionInfo info;
@@ -1355,14 +1331,14 @@ ThumbScaler::queue(const Job &job)
 	// full pass over gigantic sources.
 	info.opaque = false;
 	uint32_t session = 0;
-	if (!e.begin_session(info, &session))
+	if (!begin_session(e, info, &session))
 		return fail();
 
 	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
 	for (const Tile &tile : tiles) {
 		Slot slot;
 		const size_t tile_row = size_t(tile.w) * kBytesPerPixel;
-		if (!e.claim(tile_row * tile.h, job.user, job.priority, &slot))
+		if (!claim(e, tile_row * tile.h, job.user, job.priority, &slot))
 			break;
 
 		auto *dst = static_cast<uint8_t *>(slot.mapped);
@@ -1388,10 +1364,10 @@ ThumbScaler::queue(const Job &job)
 		req.tile_oy = tile.oy;
 		req.tile_w = tile.w;
 		req.tile_h = tile.h;
-		if (!e.enqueue(req))
+		if (!enqueue(e, req))
 			break;
 	}
-	e.end_session(session);
+	end_session(e, session);
 	return true;
 }
 
@@ -1444,7 +1420,7 @@ ThumbScaler::cancel(uint64_t user)
 			continue;
 		}
 		found = true;
-		e.release_range(it->req.slot);
+		release_range(e, it->req.slot);
 		it = e.pending.erase(it);
 	}
 	for (auto &[id, session] : e.sessions) {
@@ -1521,7 +1497,7 @@ ThumbScaler::flush()
 		return;
 
 	string error;
-	if (!e.build_batch(*batch, std::move(jobs), fits, &error))
+	if (!build_batch(e, *batch, std::move(jobs), fits, &error))
 		return;
 
 	if (!e.ring.coherent) {
@@ -1531,19 +1507,19 @@ ThumbScaler::flush()
 			.offset = 0,
 			.size = VK_WHOLE_SIZE};
 		if (vkFlushMappedMemoryRanges(e.device, 1, &range) != VK_SUCCESS) {
-			e.fail_items(*batch);
+			fail_items(e, *batch);
 			return;
 		}
 	}
 	if (vkResetFences(e.device, 1, &batch->fence) != VK_SUCCESS) {
-		e.fail_items(*batch);
+		fail_items(e, *batch);
 		return;
 	}
 	VkSubmitInfo submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &batch->cmd};
 	if (vkQueueSubmit(e.queue, 1, &submit, batch->fence) != VK_SUCCESS) {
-		e.fail_items(*batch);
+		fail_items(e, *batch);
 		return;
 	}
 	batch->in_flight = true;
@@ -1567,7 +1543,7 @@ ThumbScaler::poll(vector<Result> *done)
 		if (status == VK_NOT_READY)
 			continue;
 		if (status != VK_SUCCESS) {
-			e.fail_items(batch);
+			fail_items(e, batch);
 			batch.in_flight = false;
 			continue;
 		}
@@ -1585,7 +1561,7 @@ ThumbScaler::poll(vector<Result> *done)
 		for (const Item &item : batch.items) {
 			if (item.kind == Item::Kind::Tile) {
 				lock_guard lock(e.mu);
-				if (Session *s = e.session(item.session))
+				if (Session *s = session(e, item.session))
 					s->done++;
 				continue;
 			}
@@ -1614,7 +1590,7 @@ ThumbScaler::poll(vector<Result> *done)
 			batch_results[index].outputs.push_back(std::move(output));
 			if (item.kind == Item::Kind::Fit) {
 				lock_guard lock(e.mu);
-				if (Session *s = e.session(item.session)) {
+				if (Session *s = session(e, item.session)) {
 					s->emitted = true;
 					if (find(finished.begin(), finished.end(), s->id) ==
 						finished.end())
@@ -1634,7 +1610,7 @@ ThumbScaler::poll(vector<Result> *done)
 			lock_guard lock(e.mu);
 			for (const Item &item : batch.items)
 				if (item.slot)
-					e.release_range(item.slot);
+					release_range(e, item.slot);
 		}
 		batch.items.clear();
 		batch.in_flight = false;
@@ -1643,7 +1619,7 @@ ThumbScaler::poll(vector<Result> *done)
 			for (uint32_t id : finished) {
 				auto it = e.sessions.find(id);
 				if (it != e.sessions.end()) {
-					e.destroy_buffer(it->second->reduced);
+					destroy_buffer(e, it->second->reduced);
 					e.sessions.erase(it);
 				}
 			}
@@ -1669,7 +1645,7 @@ ThumbScaler::poll(vector<Result> *done)
 				erase.push_back(entry.first);
 		}
 		for (uint32_t id : erase) {
-			e.destroy_buffer(e.sessions[id]->reduced);
+			destroy_buffer(e, e.sessions[id]->reduced);
 			e.sessions.erase(id);
 		}
 	}
