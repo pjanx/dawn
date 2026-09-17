@@ -795,7 +795,8 @@ jpeg_sof_pixel_count(span<const uint8_t> data)
 		case SOF13:
 		case SOF14:
 		case SOF15:
-			if (length >= 5) {
+			// The fixed part of a frame header is Lf, P, Y, X, Nf.
+			if (length >= 8) {
 				width = (payload[3] << 8) + payload[4];
 				height = (payload[1] << 8) + payload[2];
 			}
