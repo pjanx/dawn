@@ -69,23 +69,14 @@ public:
 	ResvgRenderClosure(const ResvgRenderClosure &) = delete;
 	ResvgRenderClosure &operator=(const ResvgRenderClosure &) = delete;
 
-	ImagePtr render(Cmm *cmm, Profile *target, double scale) override;
-	ImagePtr render_internal(
-		double scale, Cmm *cmm, Profile *target, Error *error);
+	ImagePtr render(
+		const OpenContext &ctx, double scale, Error *error) override;
 };
 
 }  // namespace
 
 ImagePtr
-ResvgRenderClosure::render(Cmm *cmm, Profile *target, double scale)
-{
-	Error ignored;
-	return render_internal(scale, cmm, target, &ignored);
-}
-
-ImagePtr
-ResvgRenderClosure::render_internal(
-	double scale, Cmm *cmm, Profile *target, Error *error)
+ResvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	double w = ceil(width_ * scale), h = ceil(height_ * scale);
 	if (w < 1 || h < 1 || w > kMaxRenderDimension || h > kMaxRenderDimension) {
@@ -111,13 +102,7 @@ ResvgRenderClosure::render_internal(
 	// into working-format BGRA16, leaving the association untouched.
 	pack_rgba8_to_bgra16(*image, pixmap.data(), size_t(uw) * 4);
 
-	OpenContext finish_ctx;
-	if (cmm)
-		finish_ctx.cmm = cmm->shared_from_this();
-	if (target)
-		finish_ctx.screen_profile =
-			shared_ptr<Profile>(shared_ptr<Profile>(), target);
-	finish_image(*image, finish_ctx, nullptr, /*input_premul=*/true);
+	finish_image(*image, ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
 
@@ -149,8 +134,7 @@ load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	auto closure =
 		make_unique<ResvgRenderClosure>(tree, size.width, size.height);
 
-	ImagePtr image = closure->render_internal(
-		1., ctx.cmm.get(), ctx.screen_profile.get(), error);
+	ImagePtr image = closure->render(ctx, 1., error);
 	if (!image)
 		return nullptr;
 

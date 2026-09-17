@@ -622,8 +622,7 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 		}
 		const double scale = min(double(ow) / double(result.geometry_w),
 			double(oh) / double(result.geometry_h));
-		if (dawn::ImagePtr raster = image->render->render(
-				cmm.get(), ctx.screen_profile.get(), scale))
+		if (dawn::ImagePtr raster = image->render->render(ctx, scale, nullptr))
 			image = std::move(raster);
 		else
 			return {};

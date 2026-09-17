@@ -35,9 +35,8 @@ public:
 	{
 	}
 
-	ImagePtr render(Cmm *cmm, Profile *target, double scale) override;
-	ImagePtr render_internal(
-		double scale, Cmm *cmm, Profile *target, Error *error);
+	ImagePtr render(
+		const OpenContext &ctx, double scale, Error *error) override;
 };
 
 /// Everything libwmf hands out has to go back, on every exit path.
@@ -189,26 +188,13 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 }
 
 ImagePtr
-WmfRenderClosure::render(Cmm *cmm, Profile *target, double scale)
-{
-	Error ignored;
-	return render_internal(scale, cmm, target, &ignored);
-}
-
-ImagePtr
-WmfRenderClosure::render_internal(
-	double scale, Cmm *cmm, Profile *target, Error *error)
+WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	double w = ceil(width_ * scale), h = ceil(height_ * scale);
 	if (w < 1 || h < 1 || w > kMaxDimension || h > kMaxDimension) {
 		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
-	OpenContext ctx;
-	if (cmm)
-		ctx.cmm = cmm->shared_from_this();
-	if (target)
-		ctx.screen_profile = shared_ptr<Profile>(shared_ptr<Profile>(), target);
 
 	auto width = uint32_t(w), height = uint32_t(h);
 	return render_wmf(data_, &width, &height, ctx, error);

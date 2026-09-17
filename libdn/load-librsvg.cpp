@@ -59,23 +59,14 @@ public:
 	LibrsvgRenderClosure(const LibrsvgRenderClosure &) = delete;
 	LibrsvgRenderClosure &operator=(const LibrsvgRenderClosure &) = delete;
 
-	ImagePtr render(Cmm *cmm, Profile *target, double scale) override;
-	ImagePtr render_internal(
-		double scale, Cmm *cmm, Profile *target, Error *error);
+	ImagePtr render(
+		const OpenContext &ctx, double scale, Error *error) override;
 };
 
 }  // namespace
 
 ImagePtr
-LibrsvgRenderClosure::render(Cmm *cmm, Profile *target, double scale)
-{
-	Error ignored;
-	return render_internal(scale, cmm, target, &ignored);
-}
-
-ImagePtr
-LibrsvgRenderClosure::render_internal(
-	double scale, Cmm *cmm, Profile *target, Error *error)
+LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	RsvgRectangle viewport = {
 		.x = 0, .y = 0, .width = width_ * scale, .height = height_ * scale};
@@ -125,13 +116,7 @@ LibrsvgRenderClosure::render_internal(
 
 	// Cairo ARGB32 is premultiplied. finish_image() with input_premul=true
 	// is a no-op when there is no screen profile.
-	OpenContext finish_ctx;
-	if (cmm)
-		finish_ctx.cmm = cmm->shared_from_this();
-	if (target)
-		finish_ctx.screen_profile =
-			shared_ptr<Profile>(shared_ptr<Profile>(), target);
-	finish_image(*image, finish_ctx, nullptr, /*input_premul=*/true);
+	finish_image(*image, ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
 
@@ -179,8 +164,7 @@ load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// RsvgHandle itself is retained in the render closure instead.
 	auto closure = make_unique<LibrsvgRenderClosure>(handle, w, h);
 
-	ImagePtr image = closure->render_internal(
-		1., ctx.cmm.get(), ctx.screen_profile.get(), error);
+	ImagePtr image = closure->render(ctx, 1., error);
 	if (!image)
 		return nullptr;
 

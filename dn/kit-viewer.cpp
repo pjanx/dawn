@@ -983,11 +983,13 @@ worker_loop(Viewer &v, bool foreground)
 		} else if (have_scale) {
 			dawn::ImagePtr image;
 			if (scale.page && scale.page->render) {
-				shared_ptr<dawn::Profile> profile;
+				dawn::OpenContext ctx;
+				ctx.cmm = cmm;
 				if (scale.enable_cms)
-					profile = profile_from_icc(*cmm, scale.screen_icc);
+					ctx.screen_profile =
+						profile_from_icc(*cmm, scale.screen_icc);
 				image = scale.page->render->render(
-					cmm.get(), profile.get(), double(scale.scale));
+					ctx, double(scale.scale), nullptr);
 			}
 			const uint64_t gen = scale.gen;
 			const float job_scale = scale.scale;

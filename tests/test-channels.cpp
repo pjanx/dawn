@@ -567,7 +567,8 @@ test_svg_solid(const char *path, uint16_t b, uint16_t g, uint16_t r)
 	constexpr uint16_t tol = 257;
 	expect_bgra(path, pixel_at(*img, x, y), b, g, r, 65535, tol);
 
-	dawn::ImagePtr scaled = img->render->render(nullptr, nullptr, 2.0);
+	dawn::OpenContext ctx;
+	dawn::ImagePtr scaled = img->render->render(ctx, 2.0, nullptr);
 	if (!scaled) {
 		test::fail("%s: render(scale=2) failed", path);
 		return;
@@ -598,6 +599,26 @@ test_svg()
 			"svg rgbw[0,1]", pixel_at(*rgbw, 0, 1), 65535, 0, 0, 65535, tol);
 		expect_bgra("svg rgbw[1,1]", pixel_at(*rgbw, 1, 1), 65535, 65535, 65535,
 			65535, tol);
+	}
+
+	// Rerendering colour-manages as the context asks: sRGB red lands well
+	// inside Display P3, where it is no longer a primary.
+	dawn::ImagePtr red = load_fixture("red.svg");
+	if (red && red->render) {
+		auto cmm = dawn::Cmm::get_default();
+		dawn::OpenContext ctx;
+		ctx.cmm = cmm;
+		ctx.screen_profile = cmm->get_profile_display_p3();
+		dawn::Error error;
+		dawn::ImagePtr p3 = red->render->render(ctx, 1.0, &error);
+		if (!p3) {
+			test::fail("red.svg: P3 render: %s", error.message.c_str());
+		} else {
+			Pixel px = pixel_at(*p3, p3->width / 2, p3->height / 2);
+			CHECK(px.r < 63000);
+			CHECK(px.g > 2000);
+			CHECK(px.a == 65535);
+		}
 	}
 
 	dawn::ImagePtr half = load_fixture("red_a128.svg");

@@ -61,29 +61,14 @@ public:
 	{
 	}
 
-	ImagePtr render(Cmm *cmm, Profile *target, double scale) override;
-	ImagePtr render_internal(
-		double scale, const OpenContext &ctx, Error *error);
+	ImagePtr render(
+		const OpenContext &ctx, double scale, Error *error) override;
 };
 
 }  // namespace
 
 ImagePtr
-CGPDFRenderClosure::render(Cmm *cmm, Profile *target, double scale)
-{
-	OpenContext ctx;
-	if (cmm)
-		ctx.cmm = cmm->shared_from_this();
-	if (target)
-		ctx.screen_profile = shared_ptr<Profile>(shared_ptr<Profile>(), target);
-
-	Error ignored;
-	return render_internal(scale, ctx, &ignored);
-}
-
-ImagePtr
-CGPDFRenderClosure::render_internal(
-	double scale, const OpenContext &ctx, Error *error)
+CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	CGPDFPageRef page = CGPDFDocumentGetPage(document_.get(), page_);
 	if (!page) {
@@ -208,7 +193,7 @@ load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		auto closure = make_unique<CGPDFRenderClosure>(document, i, dpi);
 
 		Error suberror;
-		ImagePtr image = closure->render_internal(1., ctx, &suberror);
+		ImagePtr image = closure->render(ctx, 1., &suberror);
 		if (!image) {
 			if (!head) {
 				set_error(error, std::move(suberror.message));

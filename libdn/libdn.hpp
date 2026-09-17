@@ -236,10 +236,16 @@ inline constexpr uint32_t kBytesPerPixel = 8;
 /// Maximum width or height of a loaded / rendered pixmap (inclusive).
 inline constexpr uint32_t kMaxDimension = 65535;
 
+struct OpenContext;
+
 /// Parametric re-render for vector formats (attached at page level).
 struct RenderClosure {
 	virtual ~RenderClosure() = default;
-	virtual ImagePtr render(Cmm *cmm, Profile *target, double scale) = 0;
+
+	/// Rasterize anew at `scale`, finishing the pixels as `ctx` asks for.
+	/// The context is only borrowed for the call.
+	virtual ImagePtr render(
+		const OpenContext &ctx, double scale, Error *error) = 0;
 };
 
 struct Image {
