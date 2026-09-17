@@ -216,8 +216,10 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 	if (!CALL_VK(QueueWaitIdle, " readback", s.queue))
 		return false;
 
-	if (!CALL_VK(MapMemory, " readback", s.device, staging->memory, 0, bytes, 0,
-			&staging->mapped))
+	// Map the whole allocation, so that the VK_WHOLE_SIZE invalidation below
+	// may end at the allocation, which need not be atom-aligned.
+	if (!CALL_VK(MapMemory, " readback", s.device, staging->memory, 0,
+			VK_WHOLE_SIZE, 0, &staging->mapped))
 		return false;
 
 	// HOST_CACHED memory need not be HOST_COHERENT, and then the GPU's writes
