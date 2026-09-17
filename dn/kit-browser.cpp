@@ -1641,14 +1641,22 @@ draw_checkers(Kit &kit, const Rect &tile)
 }
 
 static int
-hit_file(const Browser &b, float x, float y)
+hit_cell(const Browser &b, float x, float y)
 {
 	for (int i = 0; i < int(b.files_.size()); i++) {
-		// This is not supposed to test the cell, that would make no sense!
-		if (b.files_[size_t(i)].tile.contains(x, y))
+		if (b.files_[size_t(i)].cell.contains(x, y))
 			return i;
 	}
 	return -1;
+}
+
+// The cell also covers the caption and the padding around the thumbnail,
+// which merely select the file; the tile is what opens it.
+static int
+hit_file(const Browser &b, float x, float y)
+{
+	const int i = hit_cell(b, x, y);
+	return i >= 0 && b.files_[size_t(i)].tile.contains(x, y) ? i : -1;
 }
 
 static bool
@@ -2909,11 +2917,16 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		return true;
 	}
 	kit.set_focus(this, false);
-	const int i = hit_file(*this, x, y);
-	if (i < 0 && this->cursor_ >= 0) {
+	if (const int cell = hit_cell(*this, x, y); cell >= 0) {
+		this->cursor_ = cell;
+		remember_cursor_x_at(*this, x);
+		request_render(*this);
+	} else if (this->cursor_ >= 0) {
 		clear_cursor(*this);
 		request_render(*this);
 	}
+
+	const int i = hit_file(*this, x, y);
 
 	// A press that travels far enough drags the file out rather than
 	// opening it; until then it is still an ordinary click.
