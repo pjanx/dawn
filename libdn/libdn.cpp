@@ -229,7 +229,7 @@ image_new(uint32_t width, uint32_t height)
 		return nullptr;
 
 	uint32_t stride = width * kBytesPerPixel;
-	if (height > UINT32_MAX / stride)
+	if (height > SIZE_MAX / stride)
 		return nullptr;
 
 	auto image = make_shared<Image>();
