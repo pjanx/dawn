@@ -685,7 +685,7 @@ sync_ui(Viewer &v, Page &ui)
 			? QString::fromUtf8(basename)
 			: QStringLiteral("-");
 		v.name_label_->set_text(name);
-		v.loader_label_->set_text(v.image_->loader
+		v.loader_label_->set_text(v.image_ && v.image_->loader
 				? QString::fromUtf8(v.image_->loader)
 				: QStringLiteral("-"));
 		v.width_label_->set_text(dim_text(v.image_width_));
@@ -745,6 +745,7 @@ clear_image(Viewer &v)
 	v.current_.reset();
 	v.frame_.reset();
 	v.page_scaled_.reset();
+	v.info_text_src_ = nullptr;
 	v.image_width_ = 0;
 	v.image_height_ = 0;
 	v.vector_scale_ = 0;
