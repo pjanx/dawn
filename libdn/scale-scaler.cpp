@@ -257,6 +257,22 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 		return false;
 	}
 
+	// HOST_CACHED memory need not be HOST_COHERENT, and then the GPU's writes
+	// are not in the CPU's caches yet.
+	VkMappedMemoryRange range{
+		.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+		.memory = staging_mem,
+		.offset = 0,
+		.size = VK_WHOLE_SIZE,
+	};
+	if (!check_vk(vkInvalidateMappedMemoryRanges(device, 1, &range),
+			"vkInvalidateMappedMemoryRanges readback", error)) {
+		vkUnmapMemory(device, staging_mem);
+		vkDestroyBuffer(device, staging, nullptr);
+		vkFreeMemory(device, staging_mem, nullptr);
+		return false;
+	}
+
 	try {
 		result->width = out_w;
 		result->height = out_h;
