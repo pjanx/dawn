@@ -142,100 +142,118 @@ job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 	return *bytes <= SIZE_MAX && needed <= available;
 }
 
-struct ThumbScaler::Impl {
-	struct Slot {
-		void *mapped = nullptr;
-		uint32_t id = 0;
-	};
-	struct Request {
-		uint32_t slot = 0;
-		uint32_t src_w = 0, src_h = 0;
-		Orientation orientation = Orientation::Rotate0;
-		Transfer transfer = Transfer::Srgb;
-		bool opaque = true;
-		uint32_t out_w = 0, out_h = 0;
-		int output_tag = 0;
-		vector<Job::Output> outputs;
-		uint64_t user = 0;
-		Priority priority = Priority::Maintenance;
-		string path;
-		uint32_t session = 0;
-		uint32_t tile_ox = 0, tile_oy = 0, tile_w = 0, tile_h = 0;
-	};
-	struct Tile {
-		uint32_t ox = 0, oy = 0, w = 0, h = 0;
-	};
-	struct SessionInfo {
-		string path;
-		uint64_t user = 0;
-		Priority priority = Priority::Maintenance;
-		uint32_t src_w = 0, src_h = 0;
-		vector<Job::Output> outputs;
-		uint32_t k = 0, tile_count = 0;
-		Orientation orientation = Orientation::Rotate0;
-		Transfer transfer = Transfer::Srgb;
-		bool opaque = true;
-	};
-	struct Buffer {
-		VkBuffer handle = VK_NULL_HANDLE;
-		VkDeviceMemory memory = VK_NULL_HANDLE;
-		void *mapped = nullptr;
-		VkDeviceSize size = 0, allocation_size = 0;
-		bool coherent = false;
-	};
-	struct Range {
-		uint64_t off = 0, size = 0;
-	};
-	struct Pending {
-		Request req;
-		Range ring;
-	};
-	struct Waiter {
-		uint64_t user = 0;
-		Priority priority = Priority::Maintenance;
-		uint64_t sequence = 0;
-		size_t bytes = 0;
-	};
-	struct Session {
-		uint32_t id = 0;
-		SessionInfo info;
-		uint32_t reduced_w = 0, reduced_h = 0;
-		uint32_t enqueued = 0, done = 0;
-		bool ended = false, failed = false;
-		bool fitted = false, emitted = false;
-		Buffer reduced;
-	};
-	struct Item {
-		enum class Kind : uint8_t { Full, Tile, Fit } kind = Kind::Full;
-		Request req;
-		uint32_t session = 0, slot = 0;
-		Session *owner = nullptr;
-		Range ring;
-		VkDeviceSize source_off = 0, mid_off = 0;
-		VkDeviceSize output_off = 0, readback_off = 0;
-		uint32_t display_w = 0, display_h = 0;
-	};
-	struct Batch {
-		VkCommandBuffer cmd = VK_NULL_HANDLE;
-		VkFence fence = VK_NULL_HANDLE;
-		bool in_flight = false;
-		vector<Item> items;
-		Buffer source, mid, output, readback, ping, pong;
-		VkDescriptorPool descriptors = VK_NULL_HANDLE;
-	};
-	struct ScalePush {
-		uint32_t src_w, src_h, dst_w, dst_h;
-		uint32_t src_stride, dst_stride, orientation, transfer;
-		uint32_t opaque, linear_source;
-	};
-	struct ReducePush {
-		uint32_t src_w, src_h, dst_w, dst_h;
-		uint32_t src_stride, dst_stride, dst_x, dst_y;
-		uint32_t transfer, opaque, linear_source;
-	};
-	static_assert(sizeof(ScalePush) == 40);
-	static_assert(sizeof(ReducePush) == 44);
+namespace
+{
 
+struct Slot {
+	void *mapped = nullptr;
+	uint32_t id = 0;
+};
+
+struct Request {
+	uint32_t slot = 0;
+	uint32_t src_w = 0, src_h = 0;
+	Orientation orientation = Orientation::Rotate0;
+	Transfer transfer = Transfer::Srgb;
+	bool opaque = true;
+	uint32_t out_w = 0, out_h = 0;
+	int output_tag = 0;
+	vector<ThumbScaler::Job::Output> outputs;
+	uint64_t user = 0;
+	ThumbScaler::Priority priority = ThumbScaler::Priority::Maintenance;
+	string path;
+	uint32_t session = 0;
+	uint32_t tile_ox = 0, tile_oy = 0, tile_w = 0, tile_h = 0;
+};
+
+struct Tile {
+	uint32_t ox = 0, oy = 0, w = 0, h = 0;
+};
+
+struct SessionInfo {
+	string path;
+	uint64_t user = 0;
+	ThumbScaler::Priority priority = ThumbScaler::Priority::Maintenance;
+	uint32_t src_w = 0, src_h = 0;
+	vector<ThumbScaler::Job::Output> outputs;
+	uint32_t k = 0, tile_count = 0;
+	Orientation orientation = Orientation::Rotate0;
+	Transfer transfer = Transfer::Srgb;
+	bool opaque = true;
+};
+
+struct Buffer {
+	VkBuffer handle = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	void *mapped = nullptr;
+	VkDeviceSize size = 0, allocation_size = 0;
+	bool coherent = false;
+};
+
+struct Range {
+	uint64_t off = 0, size = 0;
+};
+
+struct Pending {
+	Request req;
+	Range ring;
+};
+
+struct Waiter {
+	uint64_t user = 0;
+	ThumbScaler::Priority priority = ThumbScaler::Priority::Maintenance;
+	uint64_t sequence = 0;
+	size_t bytes = 0;
+};
+
+struct Session {
+	uint32_t id = 0;
+	SessionInfo info;
+	uint32_t reduced_w = 0, reduced_h = 0;
+	uint32_t enqueued = 0, done = 0;
+	bool ended = false, failed = false;
+	bool fitted = false, emitted = false;
+	Buffer reduced;
+};
+
+struct Item {
+	enum class Kind : uint8_t { Full, Tile, Fit } kind = Kind::Full;
+	Request req;
+	uint32_t session = 0, slot = 0;
+	Session *owner = nullptr;
+	Range ring;
+	VkDeviceSize source_off = 0, mid_off = 0;
+	VkDeviceSize output_off = 0, readback_off = 0;
+	uint32_t display_w = 0, display_h = 0;
+};
+
+struct Batch {
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkFence fence = VK_NULL_HANDLE;
+	bool in_flight = false;
+	vector<Item> items;
+	Buffer source, mid, output, readback, ping, pong;
+	VkDescriptorPool descriptors = VK_NULL_HANDLE;
+};
+
+struct ScalePush {
+	uint32_t src_w, src_h, dst_w, dst_h;
+	uint32_t src_stride, dst_stride, orientation, transfer;
+	uint32_t opaque, linear_source;
+};
+
+struct ReducePush {
+	uint32_t src_w, src_h, dst_w, dst_h;
+	uint32_t src_stride, dst_stride, dst_x, dst_y;
+	uint32_t transfer, opaque, linear_source;
+};
+
+static_assert(sizeof(ScalePush) == 40);
+static_assert(sizeof(ReducePush) == 44);
+
+}  // namespace
+
+struct ThumbScaler::Impl {
 	mutex mu;
 	condition_variable cv;
 	bool stop = false, ready = false;
@@ -334,12 +352,14 @@ ThumbScaler::Impl::create_buffer(Buffer &b, VkDeviceSize bytes,
 	destroy_buffer(b);
 	if (!bytes)
 		return true;
+
 	VkBufferCreateInfo ci{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = bytes,
 		.usage = usage,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE};
 	if (!CALL_VK(CreateBuffer, " thumbs", device, &ci, nullptr, &b.handle))
 		return false;
+
 	VkMemoryRequirements mr{};
 	vkGetBufferMemoryRequirements(device, b.handle, &mr);
 	const MemoryType type =
@@ -493,6 +513,7 @@ ThumbScaler::Impl::release_range(uint32_t id)
 	auto found = live.find(id);
 	if (found == live.end())
 		return;
+
 	free_ranges.push_back(found->second);
 	live.erase(found);
 	sort(free_ranges.begin(), free_ranges.end(),
@@ -508,7 +529,7 @@ ThumbScaler::Impl::release_range(uint32_t id)
 	cv.notify_all();
 }
 
-ThumbScaler::Impl::Session *
+Session *
 ThumbScaler::Impl::session(uint32_t id)
 {
 	auto it = sessions.find(id);
@@ -531,6 +552,7 @@ ThumbScaler::Impl::fail_session(Session &s)
 	s.failed = true;
 	if (s.emitted)
 		return;
+
 	s.emitted = true;
 	Result r;
 	r.user = s.info.user;
@@ -544,6 +566,7 @@ ThumbScaler::Impl::choose_k_impl(uint32_t w, uint32_t h, uint32_t *out) const
 {
 	if (!w || !h || !out || !max_image_dim)
 		return false;
+
 	for (uint32_t k = 0; k < 32; k++) {
 		const uint32_t rw = reduced_dim(w, k), rh = reduced_dim(h, k);
 		const uint64_t bytes = uint64_t(rw) * rh * kBytesPerPixel;
@@ -562,22 +585,26 @@ ThumbScaler::Impl::plan_tiles_impl(
 {
 	if (!sw || !sh || !tiles || k > 31)
 		return false;
+
 	tiles->clear();
 	const uint32_t cell = k ? 1u << k : 1u;
 	const uint64_t max_pixels =
 		min<uint64_t>(ring_bytes, max_storage_range) / kBytesPerPixel;
 	auto aligned = [&](uint32_t n) { return n / cell * cell; };
+
 	uint32_t tw = min(sw, max_image_dim);
 	tw = tw < sw ? aligned(tw) : tw;
 	while (tw && uint64_t(tw) > max_pixels)
 		tw = aligned(tw / 2);
 	if (!tw)
 		return false;
+
 	uint32_t th = uint32_t(
 		min<uint64_t>(min<uint64_t>(sh, max_image_dim), max_pixels / tw));
 	th = th < sh ? aligned(th) : th;
 	if (!th)
 		return false;
+
 	for (uint32_t y = 0; y < sh;) {
 		const uint32_t h = min(th, sh - y);
 		for (uint32_t x = 0; x < sw;) {
@@ -595,6 +622,7 @@ ThumbScaler::Impl::ensure_reduced(Session &s, string *error)
 {
 	if (s.reduced.handle)
 		return true;
+
 	return create_buffer(s.reduced,
 		VkDeviceSize(s.reduced_w) * s.reduced_h * kBytesPerPixel,
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1005,6 +1033,7 @@ ThumbScaler::destroy()
 {
 	if (!impl_)
 		return;
+
 	impl_->destroy_all();
 	delete impl_;
 	impl_ = nullptr;
@@ -1016,11 +1045,13 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 {
 	if (!phys || !device || !queue || ring_bytes < kBytesPerPixel)
 		return false;
+
 	if (!impl_)
 		impl_ = new Impl();
 	Impl &e = *impl_;
 	if (e.ready)
 		return true;
+
 	e.stop = false;
 	e.phys = phys;
 	e.device = device;
@@ -1032,7 +1063,7 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	e.max_storage_range = props.limits.maxStorageBufferRange;
 	e.alignment = max<uint64_t>({256, props.limits.nonCoherentAtomSize,
 		props.limits.minStorageBufferOffsetAlignment});
-	if (sizeof(Impl::ReducePush) > props.limits.maxPushConstantsSize) {
+	if (sizeof(ReducePush) > props.limits.maxPushConstantsSize) {
 		if (error)
 			*error = "thumbnail push constants exceed device limit";
 		e.destroy_all();
@@ -1086,7 +1117,7 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		return false;
 	}
 	VkPushConstantRange pcr{.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-		.size = sizeof(Impl::ReducePush)};
+		.size = sizeof(ReducePush)};
 	VkPipelineLayoutCreateInfo plci{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
@@ -1118,12 +1149,15 @@ ThumbScaler::Impl::claim(
 {
 	if (!slot)
 		return false;
+
 	*slot = {};
 	if (!ready || !bytes || align_up(bytes, alignment) > ring_bytes)
 		return false;
+
 	unique_lock lock(mu);
 	if (canceled.contains(user))
 		return false;
+
 	if (auto found = priority_overrides.find(user);
 		found != priority_overrides.end())
 		priority = found->second;
@@ -1210,6 +1244,7 @@ ThumbScaler::Impl::begin_session(const SessionInfo &info, uint32_t *id)
 	if (uint64_t(s->reduced_w) * s->reduced_h * kBytesPerPixel >
 		reduced_budget())
 		return false;
+
 	lock_guard lock(mu);
 	if (auto priority = priority_overrides.find(info.user);
 		priority != priority_overrides.end())
@@ -1229,6 +1264,7 @@ ThumbScaler::Impl::end_session(uint32_t id)
 	Session *s = session(id);
 	if (!s)
 		return;
+
 	s->ended = true;
 	if (s->enqueued != s->info.tile_count)
 		fail_session(*s);
@@ -1299,11 +1335,12 @@ ThumbScaler::queue(const Job &job)
 	}
 
 	uint32_t k = 0;
-	vector<Impl::Tile> tiles;
+	vector<Tile> tiles;
 	if (!e.choose_k(job.src_w, job.src_h, &k) ||
 		!e.plan_tiles(job.src_w, job.src_h, k, &tiles) || tiles.empty())
 		return fail();
-	Impl::SessionInfo info;
+
+	SessionInfo info;
 	info.path = job.path;
 	info.user = job.user;
 	info.priority = job.priority;
@@ -1322,11 +1359,12 @@ ThumbScaler::queue(const Job &job)
 		return fail();
 
 	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
-	for (const Impl::Tile &tile : tiles) {
-		Impl::Slot slot;
+	for (const Tile &tile : tiles) {
+		Slot slot;
 		const size_t tile_row = size_t(tile.w) * kBytesPerPixel;
 		if (!e.claim(tile_row * tile.h, job.user, job.priority, &slot))
 			break;
+
 		auto *dst = static_cast<uint8_t *>(slot.mapped);
 		for (uint32_t y = 0; y < tile.h; y++) {
 			const uint8_t *src = base + size_t(tile.oy + y) * job.stride +
@@ -1334,7 +1372,8 @@ ThumbScaler::queue(const Job &job)
 			memcpy(dst, src, tile_row);
 			dst += tile_row;
 		}
-		Impl::Request req;
+
+		Request req;
 		req.slot = slot.id;
 		req.src_w = tile.w;
 		req.src_h = tile.h;
@@ -1361,17 +1400,18 @@ ThumbScaler::reprioritize(uint64_t user, Priority priority)
 {
 	if (!impl_ || !user)
 		return false;
+
 	Impl &e = *impl_;
 	lock_guard lock(e.mu);
 	bool found = false;
 	e.priority_overrides[user] = priority;
-	for (Impl::Waiter *waiter : e.waiters) {
+	for (Waiter *waiter : e.waiters) {
 		if (waiter->user == user) {
 			found = true;
 			waiter->priority = priority;
 		}
 	}
-	for (Impl::Pending &pending : e.pending) {
+	for (Pending &pending : e.pending) {
 		if (pending.req.user == user) {
 			found = true;
 			pending.req.priority = priority;
@@ -1393,6 +1433,7 @@ ThumbScaler::cancel(uint64_t user)
 {
 	if (!impl_ || !user)
 		return false;
+
 	Impl &e = *impl_;
 	lock_guard lock(e.mu);
 	bool found = false;
@@ -1414,7 +1455,7 @@ ThumbScaler::cancel(uint64_t user)
 		session->failed = true;
 		session->emitted = true;
 	}
-	for (Impl::Waiter *waiter : e.waiters)
+	for (Waiter *waiter : e.waiters)
 		found |= waiter->user == user;
 	e.priority_overrides.erase(user);
 	e.cv.notify_all();
@@ -1426,13 +1467,14 @@ ThumbScaler::flush()
 {
 	if (!impl_ || !impl_->ready)
 		return;
+
 	Impl &e = *impl_;
-	Impl::Batch *batch = nullptr;
-	vector<Impl::Pending> jobs;
+	Batch *batch = nullptr;
+	vector<Pending> jobs;
 	vector<uint32_t> fits;
 	{
 		lock_guard lock(e.mu);
-		for (Impl::Batch &candidate : e.batches)
+		for (Batch &candidate : e.batches)
 			if (!candidate.in_flight) {
 				batch = &candidate;
 				break;
@@ -1440,12 +1482,12 @@ ThumbScaler::flush()
 		if (!batch)
 			return;
 		optional<Priority> selected;
-		for (const Impl::Pending &pending : e.pending)
+		for (const Pending &pending : e.pending)
 			if (!selected || higher(pending.req.priority, *selected))
 				selected = pending.req.priority;
 		for (const auto &[id, session] : e.sessions) {
 			(void) id;
-			const Impl::Session &s = *session;
+			const Session &s = *session;
 			if (s.ended && !s.failed && !s.fitted &&
 				s.done == s.info.tile_count &&
 				(!selected || higher(s.info.priority, *selected)))
@@ -1465,7 +1507,7 @@ ThumbScaler::flush()
 			}
 		}
 		for (auto &entry : e.sessions) {
-			Impl::Session &s = *entry.second;
+			Session &s = *entry.second;
 			const size_t cost = s.info.outputs.size();
 			if (cost <= item_room && s.ended && !s.failed && !s.fitted &&
 				s.done == s.info.tile_count && s.info.priority == *selected) {
@@ -1477,9 +1519,11 @@ ThumbScaler::flush()
 	}
 	if (jobs.empty() && fits.empty())
 		return;
+
 	string error;
 	if (!e.build_batch(*batch, std::move(jobs), fits, &error))
 		return;
+
 	if (!e.ring.coherent) {
 		VkMappedMemoryRange range{
 			.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
@@ -1510,11 +1554,13 @@ ThumbScaler::poll(vector<Result> *done)
 {
 	if (!done)
 		return;
+
 	done->clear();
 	if (!impl_ || !impl_->ready)
 		return;
+
 	Impl &e = *impl_;
-	for (Impl::Batch &batch : e.batches) {
+	for (Batch &batch : e.batches) {
 		if (!batch.in_flight)
 			continue;
 		const VkResult status = vkGetFenceStatus(e.device, batch.fence);
@@ -1536,10 +1582,10 @@ ThumbScaler::poll(vector<Result> *done)
 		vector<uint32_t> finished;
 		vector<Result> batch_results;
 		unordered_map<uint64_t, size_t> result_index;
-		for (const Impl::Item &item : batch.items) {
-			if (item.kind == Impl::Item::Kind::Tile) {
+		for (const Item &item : batch.items) {
+			if (item.kind == Item::Kind::Tile) {
 				lock_guard lock(e.mu);
-				if (Impl::Session *s = e.session(item.session))
+				if (Session *s = e.session(item.session))
 					s->done++;
 				continue;
 			}
@@ -1566,9 +1612,9 @@ ThumbScaler::poll(vector<Result> *done)
 					item.readback_off,
 				values * sizeof(uint16_t));
 			batch_results[index].outputs.push_back(std::move(output));
-			if (item.kind == Impl::Item::Kind::Fit) {
+			if (item.kind == Item::Kind::Fit) {
 				lock_guard lock(e.mu);
-				if (Impl::Session *s = e.session(item.session)) {
+				if (Session *s = e.session(item.session)) {
 					s->emitted = true;
 					if (find(finished.begin(), finished.end(), s->id) ==
 						finished.end())
@@ -1586,7 +1632,7 @@ ThumbScaler::poll(vector<Result> *done)
 			done->push_back(std::move(result));
 		{
 			lock_guard lock(e.mu);
-			for (const Impl::Item &item : batch.items)
+			for (const Item &item : batch.items)
 				if (item.slot)
 					e.release_range(item.slot);
 		}
@@ -1616,8 +1662,8 @@ ThumbScaler::poll(vector<Result> *done)
 			if (!entry.second->emitted)
 				continue;
 			bool referenced = false;
-			for (const Impl::Batch &batch : e.batches)
-				for (const Impl::Item &item : batch.items)
+			for (const Batch &batch : e.batches)
+				for (const Item &item : batch.items)
 					referenced |= item.session == entry.first;
 			if (!referenced)
 				erase.push_back(entry.first);
@@ -1634,6 +1680,7 @@ ThumbScaler::shutdown()
 {
 	if (!impl_)
 		return;
+
 	lock_guard lock(impl_->mu);
 	impl_->stop = true;
 	impl_->cv.notify_all();
@@ -1644,11 +1691,12 @@ ThumbScaler::busy() const
 {
 	if (!impl_)
 		return false;
+
 	lock_guard lock(impl_->mu);
 	if (!impl_->pending.empty() || !impl_->live.empty() ||
 		!impl_->failed_results.empty())
 		return true;
-	for (const Impl::Batch &batch : impl_->batches)
+	for (const Batch &batch : impl_->batches)
 		if (batch.in_flight)
 			return true;
 	for (const auto &entry : impl_->sessions)
