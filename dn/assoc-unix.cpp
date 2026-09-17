@@ -326,6 +326,7 @@ struct Desktop {
 	QString icon;
 	QString exec;
 	QString try_exec;
+	vector<QString> mime_types;
 	vector<QString> only_show_in;
 	vector<QString> not_show_in;
 	bool hidden = false;
@@ -450,6 +451,7 @@ load_desktop(const QString &id)
 	d.try_exec = QString::fromStdString(dawn::ini::desktop_unescape(
 		dawn::ini::get(*entry, "TryExec")));
 	d.hidden = parse_bool(dawn::ini::get(*entry, "Hidden"));
+	d.mime_types = split_semicolons(dawn::ini::get(*entry, "MimeType"));
 	d.only_show_in =
 		split_semicolons(dawn::ini::get(*entry, "OnlyShowIn"));
 	d.not_show_in =
@@ -533,6 +535,20 @@ usable_id(const QString &id, const unordered_set<QString> &removed)
 
 	const Desktop *d = desktop_by_id(id);
 	return d && listable(*d);
+}
+
+// A default only counts when the application is associated with the type,
+// either through its own MimeType= or through [Added Associations].
+static bool
+associated_id(const QString &id, const QString &type, const AssocSets &acc)
+{
+	if (find(acc.added.begin(), acc.added.end(), id) != acc.added.end())
+		return true;
+
+	const Desktop *d = desktop_by_id(id);
+	return d &&
+		find(d->mime_types.begin(), d->mime_types.end(), type) !=
+		d->mime_types.end();
 }
 
 static vector<QString>
@@ -670,11 +686,17 @@ Handler
 default_for(const QString &path)
 {
 	const QString type = db().mimeTypeForFile(path).name();
-	const AssocSets acc = associations_for_type(type);
-	for (const QString &id : acc.defaults) {
-		if (!usable_id(id, acc.removed))
-			continue;
-		return to_app(*desktop_by_id(id));
+	vector<QString> types = ancestor_types(type);
+	types.insert(types.begin(), type);
+
+	// The lookup is repeated from the most specific type to the least.
+	for (const QString &t : types) {
+		const AssocSets acc = associations_for_type(t);
+		for (const QString &id : acc.defaults) {
+			if (!usable_id(id, acc.removed) || !associated_id(id, t, acc))
+				continue;
+			return to_app(*desktop_by_id(id));
+		}
 	}
 	return {};
 }
