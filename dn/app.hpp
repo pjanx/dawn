@@ -80,6 +80,12 @@ public:
 	{
 	}
 
+	~App() override
+	{
+		// Destroy windows before tearing down the GpuContext.
+		windows_.clear();
+	}
+
 	QVulkanInstance vulkan_instance;
 	GpuContext gpu;
 	Thumbnailer thumbnailer;
