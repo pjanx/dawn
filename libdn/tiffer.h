@@ -124,6 +124,12 @@ tiffer_init(struct tiffer *self, const uint8_t *tiff, size_t len)
 	return true;
 }
 
+static size_t
+tiffer_length(const struct tiffer *self)
+{
+	return self->begin > self->end ? 0 : size_t(self->end - self->begin);
+}
+
 /// Read the next IFD in a sequence.
 static bool
 tiffer_next_ifd(struct tiffer *self)
@@ -142,14 +148,11 @@ tiffer_next_ifd(struct tiffer *self)
 
 	// Note that TIFF 6.0 requires there to be at least one entry,
 	// but there is no need for us to check it.
+	if (tiffer_length(self) < ifd_offset)
+		return false;
+
 	self->p = self->begin + ifd_offset;
 	return tiffer_u16(self, &self->remaining_fields);
-}
-
-static size_t
-tiffer_length(const struct tiffer *self)
-{
-	return self->begin > self->end ? 0 : size_t(self->end - self->begin);
 }
 
 /// Initialize a derived TIFF reader for a subIFD at the given location.
