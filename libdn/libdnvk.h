@@ -34,14 +34,13 @@ struct ScaleOutput {
 };
 
 /// Headless Vulkan H→V scaler. `scale()` is internally mutex-serialized.
-class ScaleScaler
+struct ScaleScaler
 {
 	struct Impl;
 	Impl *impl_ = nullptr;
 
-public:
-	ScaleScaler();
-	~ScaleScaler();
+	ScaleScaler() = default;
+	~ScaleScaler() { destroy(); }
 
 	ScaleScaler(const ScaleScaler &) = delete;
 	ScaleScaler &operator=(const ScaleScaler &) = delete;

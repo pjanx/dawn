@@ -32,6 +32,9 @@ check_vk(VkResult r, const char *what, string *error)
 	return true;
 }
 
+#define CALL_VK(name, suffix, ...)                                             \
+	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
+
 static uint8_t
 unpremul_channel8(uint8_t a, uint8_t x)
 {
@@ -98,47 +101,52 @@ struct ScaleScaler::Impl {
 
 	ScaleEngine engine;
 	bool device_ready = false;
-
-	void destroy_device();
-	bool readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
-		ScaleOutput *result, string *error);
 };
 
-void
-ScaleScaler::Impl::destroy_device()
+static void
+destroy_device(ScaleScaler::Impl &s)
 {
-	if (!device)
+	if (!s.device)
 		return;
 
-	vkDeviceWaitIdle(device);
-	engine.destroy();
-	if (fence) {
-		vkDestroyFence(device, fence, nullptr);
-		fence = VK_NULL_HANDLE;
+	vkDeviceWaitIdle(s.device);
+	s.engine.destroy();
+	if (s.fence) {
+		vkDestroyFence(s.device, s.fence, nullptr);
+		s.fence = VK_NULL_HANDLE;
 	}
-	if (cmd_pool) {
-		vkDestroyCommandPool(device, cmd_pool, nullptr);
-		cmd_pool = VK_NULL_HANDLE;
-		cmd = VK_NULL_HANDLE;
+	if (s.cmd_pool) {
+		vkDestroyCommandPool(s.device, s.cmd_pool, nullptr);
+		s.cmd_pool = VK_NULL_HANDLE;
+		s.cmd = VK_NULL_HANDLE;
 	}
-	vkDestroyDevice(device, nullptr);
-	device = VK_NULL_HANDLE;
-	queue = VK_NULL_HANDLE;
-	phys = VK_NULL_HANDLE;
-	if (instance) {
-		vkDestroyInstance(instance, nullptr);
-		instance = VK_NULL_HANDLE;
+	vkDestroyDevice(s.device, nullptr);
+	s.device = VK_NULL_HANDLE;
+	s.queue = VK_NULL_HANDLE;
+	s.phys = VK_NULL_HANDLE;
+	if (s.instance) {
+		vkDestroyInstance(s.instance, nullptr);
+		s.instance = VK_NULL_HANDLE;
 	}
-	device_ready = false;
+	s.device_ready = false;
 }
 
-bool
-ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
-	ScaleOutput *result, string *error)
+namespace
+{
+
+struct Staging {
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	void *mapped = nullptr;
+};
+
+}  // namespace
+
+static bool
+readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
+	uint32_t out_h, Staging *staging, ScaleOutput *result, string *error)
 {
 	const VkDeviceSize bytes = VkDeviceSize(out_w) * out_h * 4;
-	VkBuffer staging = VK_NULL_HANDLE;
-	VkDeviceMemory staging_mem = VK_NULL_HANDLE;
 
 	VkBufferCreateInfo bci{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
@@ -146,53 +154,40 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
-	if (!check_vk(vkCreateBuffer(device, &bci, nullptr, &staging),
-			"vkCreateBuffer readback", error))
+	if (!CALL_VK(CreateBuffer, " readback", s.device, &bci, nullptr,
+			&staging->buffer))
 		return false;
 
 	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(device, staging, &mr);
-	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
+	vkGetBufferMemoryRequirements(s.device, staging->buffer, &mr);
+	uint32_t mem_type = vk_memory_type(s.phys, mr.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
 		error, nullptr);
-	if (mem_type == UINT32_MAX) {
-		vkDestroyBuffer(device, staging, nullptr);
+	if (mem_type == UINT32_MAX)
 		return false;
-	}
+
 	VkMemoryAllocateInfo mai{
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.allocationSize = mr.size,
 		.memoryTypeIndex = mem_type,
 	};
-	if (!check_vk(vkAllocateMemory(device, &mai, nullptr, &staging_mem),
-			"vkAllocateMemory readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
+	if (!CALL_VK(AllocateMemory, " readback", s.device, &mai, nullptr,
+			&staging->memory))
 		return false;
-	}
-	if (!check_vk(vkBindBufferMemory(device, staging, staging_mem, 0),
-			"vkBindBufferMemory readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(BindBufferMemory, " readback", s.device, staging->buffer,
+			staging->memory, 0))
 		return false;
-	}
 
-	if (!check_vk(vkResetCommandBuffer(cmd, 0), "vkResetCommandBuffer readback",
-			error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(ResetCommandBuffer, " readback", s.cmd, 0))
 		return false;
-	}
+
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 	};
-	if (!check_vk(vkBeginCommandBuffer(cmd, &begin),
-			"vkBeginCommandBuffer readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(BeginCommandBuffer, " readback", s.cmd, &begin))
 		return false;
-	}
 
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -210,7 +205,7 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 				.layerCount = 1,
 			},
 	};
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	vkCmdPipelineBarrier(s.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
 	VkBufferImageCopy copy{
@@ -224,89 +219,70 @@ ScaleScaler::Impl::readback_dest(VkImage image, uint32_t out_w, uint32_t out_h,
 			},
 		.imageExtent = {out_w, out_h, 1},
 	};
-	vkCmdCopyImageToBuffer(
-		cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging, 1, &copy);
-	if (!check_vk(
-			vkEndCommandBuffer(cmd), "vkEndCommandBuffer readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	vkCmdCopyImageToBuffer(s.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		staging->buffer, 1, &copy);
+	if (!CALL_VK(EndCommandBuffer, " readback", s.cmd))
 		return false;
-	}
+
 	VkSubmitInfo submit{
 		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
-		.pCommandBuffers = &cmd,
+		.pCommandBuffers = &s.cmd,
 	};
-	if (!check_vk(vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE),
-			"vkQueueSubmit readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(QueueSubmit, " readback", s.queue, 1, &submit, VK_NULL_HANDLE))
 		return false;
-	}
-	if (!check_vk(vkQueueWaitIdle(queue), "vkQueueWaitIdle readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(QueueWaitIdle, " readback", s.queue))
 		return false;
-	}
 
-	void *mapped = nullptr;
-	if (!check_vk(vkMapMemory(device, staging_mem, 0, bytes, 0, &mapped),
-			"vkMapMemory readback", error)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(MapMemory, " readback", s.device, staging->memory, 0, bytes, 0,
+			&staging->mapped))
 		return false;
-	}
 
 	// HOST_CACHED memory need not be HOST_COHERENT, and then the GPU's writes
 	// are not in the CPU's caches yet.
 	VkMappedMemoryRange range{
 		.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-		.memory = staging_mem,
+		.memory = staging->memory,
 		.offset = 0,
 		.size = VK_WHOLE_SIZE,
 	};
-	if (!check_vk(vkInvalidateMappedMemoryRanges(device, 1, &range),
-			"vkInvalidateMappedMemoryRanges readback", error)) {
-		vkUnmapMemory(device, staging_mem);
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
+	if (!CALL_VK(
+			InvalidateMappedMemoryRanges, " readback", s.device, 1, &range))
 		return false;
-	}
 
 	try {
 		result->width = out_w;
 		result->height = out_h;
 		result->rgba8.assign(size_t(bytes), 0);
-		memcpy(result->rgba8.data(), mapped, size_t(bytes));
+		memcpy(result->rgba8.data(), staging->mapped, size_t(bytes));
 	} catch (const bad_alloc &) {
-		vkUnmapMemory(device, staging_mem);
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
 		if (error)
 			*error = "out of memory";
 		return false;
 	}
 
-	vkUnmapMemory(device, staging_mem);
-	vkDestroyBuffer(device, staging, nullptr);
-	vkFreeMemory(device, staging_mem, nullptr);
-
 	unpremul_rgba8(result->rgba8.data(), out_w, out_h);
 	return true;
 }
 
-ScaleScaler::ScaleScaler() = default;
-
-ScaleScaler::~ScaleScaler()
+static bool
+readback_dest(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
+	uint32_t out_h, ScaleOutput *result, string *error)
 {
-	destroy();
+	Staging staging{};
+	bool ok = readback_staging(s, image, out_w, out_h, &staging, result, error);
+	if (staging.mapped)
+		vkUnmapMemory(s.device, staging.memory);
+	vkDestroyBuffer(s.device, staging.buffer, nullptr);
+	vkFreeMemory(s.device, staging.memory, nullptr);
+	return ok;
 }
 
 void
 ScaleScaler::destroy()
 {
 	if (impl_) {
-		impl_->destroy_device();
+		destroy_device(*impl_);
 		delete impl_;
 		impl_ = nullptr;
 	}
@@ -327,7 +303,7 @@ ScaleScaler::init(string *error)
 	if (s.device_ready)
 		return true;
 
-	s.destroy_device();
+	destroy_device(s);
 
 	// Before the first call that makes the loader scan for drivers.
 	vk_add_bundled_driver_files();
@@ -352,13 +328,12 @@ ScaleScaler::init(string *error)
 		.enabledExtensionCount = uint32_t(inst_exts.size()),
 		.ppEnabledExtensionNames = inst_exts.data(),
 	};
-	if (!check_vk(vkCreateInstance(&ici, nullptr, &s.instance),
-			"vkCreateInstance", error))
+	if (!CALL_VK(CreateInstance, "", &ici, nullptr, &s.instance))
 		return false;
 
 	if (!vk_create_graphics_device(s.instance, VK_NULL_HANDLE, nullptr, {},
 			&s.phys, &s.device, &s.queue, &s.queue_family, error)) {
-		s.destroy_device();
+		destroy_device(s);
 		return false;
 	}
 
@@ -367,9 +342,8 @@ ScaleScaler::init(string *error)
 		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = s.queue_family,
 	};
-	if (!check_vk(vkCreateCommandPool(s.device, &pci, nullptr, &s.cmd_pool),
-			"vkCreateCommandPool", error)) {
-		s.destroy_device();
+	if (!CALL_VK(CreateCommandPool, "", s.device, &pci, nullptr, &s.cmd_pool)) {
+		destroy_device(s);
 		return false;
 	}
 	VkCommandBufferAllocateInfo cai{
@@ -378,9 +352,8 @@ ScaleScaler::init(string *error)
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = 1,
 	};
-	if (!check_vk(vkAllocateCommandBuffers(s.device, &cai, &s.cmd),
-			"vkAllocateCommandBuffers", error)) {
-		s.destroy_device();
+	if (!CALL_VK(AllocateCommandBuffers, "", s.device, &cai, &s.cmd)) {
+		destroy_device(s);
 		return false;
 	}
 
@@ -388,16 +361,15 @@ ScaleScaler::init(string *error)
 		.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
 		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
 	};
-	if (!check_vk(vkCreateFence(s.device, &fci, nullptr, &s.fence),
-			"vkCreateFence", error)) {
-		s.destroy_device();
+	if (!CALL_VK(CreateFence, "", s.device, &fci, nullptr, &s.fence)) {
+		destroy_device(s);
 		return false;
 	}
 
 	if (!s.engine.init(s.phys, s.device, s.queue, s.queue_family,
 			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			error)) {
-		s.destroy_device();
+		destroy_device(s);
 		return false;
 	}
 
@@ -477,20 +449,18 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 			&dest_mem, &dest_view, &dest_fb, error))
 		return false;
 
-	if (!check_vk(vkWaitForFences(s.device, 1, &s.fence, VK_TRUE, UINT64_MAX),
-			"vkWaitForFences", error)) {
+	if (!CALL_VK(
+			WaitForFences, "", s.device, 1, &s.fence, VK_TRUE, UINT64_MAX)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
 	}
-	if (!check_vk(
-			vkResetFences(s.device, 1, &s.fence), "vkResetFences", error)) {
+	if (!CALL_VK(ResetFences, "", s.device, 1, &s.fence)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
 	}
-	if (!check_vk(
-			vkResetCommandBuffer(s.cmd, 0), "vkResetCommandBuffer", error)) {
+	if (!CALL_VK(ResetCommandBuffer, "", s.cmd, 0)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
@@ -498,8 +468,7 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	if (!check_vk(vkBeginCommandBuffer(s.cmd, &begin), "vkBeginCommandBuffer",
-			error)) {
+	if (!CALL_VK(BeginCommandBuffer, "", s.cmd, &begin)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
@@ -519,7 +488,7 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 		return false;
 	}
 
-	if (!check_vk(vkEndCommandBuffer(s.cmd), "vkEndCommandBuffer", error)) {
+	if (!CALL_VK(EndCommandBuffer, "", s.cmd)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
@@ -530,20 +499,19 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &s.cmd,
 	};
-	if (!check_vk(vkQueueSubmit(s.queue, 1, &submit, s.fence), "vkQueueSubmit",
-			error)) {
+	if (!CALL_VK(QueueSubmit, "", s.queue, 1, &submit, s.fence)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
 	}
-	if (!check_vk(vkWaitForFences(s.device, 1, &s.fence, VK_TRUE, UINT64_MAX),
-			"vkWaitForFences render", error)) {
+	if (!CALL_VK(WaitForFences, " render", s.device, 1, &s.fence, VK_TRUE,
+			UINT64_MAX)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
 	}
 
-	if (!s.readback_dest(dest_image, want_out_w, want_out_h, out, error)) {
+	if (!readback_dest(s, dest_image, want_out_w, want_out_h, out, error)) {
 		s.engine.destroy_offscreen(
 			&dest_image, &dest_mem, &dest_view, &dest_fb);
 		return false;
