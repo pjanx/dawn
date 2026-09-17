@@ -6,7 +6,7 @@
 //
 
 #include "libdn/libdn.hpp"
-#include "libdn/libdnvk.h"
+#include "libdn/scale-scaler.hpp"
 
 #include <getopt.h>
 

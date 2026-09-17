@@ -7,7 +7,7 @@
 
 #include "thumb-scaler.hpp"
 
-#include "libdnvk.h"
+#include "libdnvk.hpp"
 #include "thumb-reduce-spv.h"
 #include "thumb-scale-h-spv.h"
 #include "thumb-scale-v-spv.h"
@@ -47,12 +47,6 @@ align_up(uint64_t v, uint64_t a)
 }
 
 static uint32_t
-ceil_div(uint32_t a, uint32_t b)
-{
-	return b ? (a + b - 1) / b : 0;
-}
-
-static uint32_t
 reduced_dim(uint32_t n, uint32_t k)
 {
 	return k >= 32 ? 1 : ceil_div(n, 1u << k);
@@ -63,19 +57,6 @@ higher(ThumbScaler::Priority a, ThumbScaler::Priority b)
 {
 	return uint8_t(a) < uint8_t(b);
 }
-
-static bool
-check_vk(VkResult r, const char *what, string *error)
-{
-	if (r == VK_SUCCESS)
-		return true;
-	if (error)
-		*error = string(what) + " failed: VkResult " + to_string(int(r));
-	return false;
-}
-
-#define CALL_VK(name, suffix, ...)                                             \
-	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
 
 namespace
 {
@@ -108,20 +89,6 @@ pick_memory(VkPhysicalDevice phys, uint32_t bits,
 		}
 	}
 	return best;
-}
-
-static VkShaderModule
-make_shader(
-	VkDevice device, const uint32_t *code, uint32_t words, string *error)
-{
-	VkShaderModuleCreateInfo ci{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = size_t(words) * sizeof(uint32_t),
-		.pCode = code};
-	VkShaderModule shader = VK_NULL_HANDLE;
-	if (!CALL_VK(CreateShaderModule, " thumbs", device, &ci, nullptr, &shader))
-		return VK_NULL_HANDLE;
-	return shader;
 }
 
 static bool

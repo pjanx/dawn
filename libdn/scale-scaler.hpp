@@ -1,5 +1,5 @@
 //
-// libdnvk.h: Vulkan scaler API
+// scale-scaler.hpp: headless Vulkan scaler
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -7,21 +7,12 @@
 
 #pragma once
 
+#include "scale-engine.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
-
-namespace dawn
-{
-
-/// Soft cap on device-local bytes for one scale() (tiles + mid + dest).
-/// Tweak in source; no CLI yet.
-inline constexpr uint64_t kMaxDeviceBytes = 4ull << 30;
-
-}  // namespace dawn
-
-#include "scale-engine.hpp"
 
 namespace dawn
 {

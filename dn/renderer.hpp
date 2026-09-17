@@ -12,7 +12,7 @@
 #include "types.hpp"
 
 #include <libdn/libdn.hpp>
-#include <libdn/libdnvk.h>
+#include <libdn/scale-engine.hpp>
 
 #include <vulkan/vulkan.h>
 

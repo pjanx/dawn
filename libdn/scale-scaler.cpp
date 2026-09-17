@@ -5,7 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdnvk.h"
+#include "scale-scaler.hpp"
+
+#include "libdnvk.hpp"
 #include "vk-device.hpp"
 
 #include <vulkan/vulkan.h>
@@ -20,20 +22,6 @@ using namespace std;
 
 namespace dawn
 {
-
-static bool
-check_vk(VkResult r, const char *what, string *error)
-{
-	if (r != VK_SUCCESS) {
-		if (error)
-			*error = string(what) + " failed: VkResult " + to_string(int(r));
-		return false;
-	}
-	return true;
-}
-
-#define CALL_VK(name, suffix, ...)                                             \
-	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
 
 static uint8_t
 unpremul_channel8(uint8_t a, uint8_t x)
@@ -78,12 +66,6 @@ instance_has_extension(const char *name)
 			return true;
 	}
 	return false;
-}
-
-static uint32_t
-ceil_div(uint32_t a, uint32_t b)
-{
-	return b == 0 ? 0 : (a + b - 1) / b;
 }
 
 struct ScaleScaler::Impl {

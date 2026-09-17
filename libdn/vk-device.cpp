@@ -7,6 +7,8 @@
 
 #include "vk-device.hpp"
 
+#include "libdnvk.hpp"
+
 #include <cstring>
 #include <limits>
 #include <vector>
@@ -42,20 +44,6 @@ type_rank(VkPhysicalDeviceType type)
 		return 3;
 	}
 }
-
-static bool
-check_vk(VkResult r, const char *what, string *error)
-{
-	if (r == VK_SUCCESS)
-		return true;
-	if (error)
-		*error = string(what) + " failed: VkResult " +
-			to_string(static_cast<int>(r));
-	return false;
-}
-
-#define CALL_VK(name, suffix, ...)                                             \
-	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
 
 static bool
 can_present(VkPhysicalDevice phys, uint32_t family, VkSurfaceKHR surface,

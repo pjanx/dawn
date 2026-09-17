@@ -5,9 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdnvk.h"
+#include "scale-engine.hpp"
 
 #include "fullscreen-vert-spv.h"
+#include "libdnvk.hpp"
 #include "scale-2d-bilinear-spv.h"
 #include "scale-2d-nearest-spv.h"
 #include "scale-2d-nohalo-spv.h"
@@ -91,26 +92,6 @@ use_separable(const ScaleView &view)
 		return true;
 	return view.filter == Filter::Expensive && view.scale < 1.f;
 }
-
-static uint32_t
-ceil_div(uint32_t a, uint32_t b)
-{
-	return b == 0 ? 0 : (a + b - 1) / b;
-}
-
-static bool
-check_vk(VkResult r, const char *what, string *error)
-{
-	if (r != VK_SUCCESS) {
-		if (error)
-			*error = string(what) + " failed: VkResult " + to_string(int(r));
-		return false;
-	}
-	return true;
-}
-
-#define CALL_VK(name, suffix, ...)                                             \
-	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix, error)
 
 Filter
 preferred_filter(VkPhysicalDevice phys)
@@ -198,8 +179,6 @@ struct ScaleEngine::Impl {
 	void destroy_tiles();
 	void destroy_pipeline();
 	void destroy_all();
-	VkShaderModule make_shader(
-		const uint32_t *words, uint32_t word_count, string *error);
 	bool create_pipeline_objects(string *error);
 	static vector<TileRect> split_grid(
 		uint32_t w, uint32_t h, uint32_t cols, uint32_t rows, string *error);
@@ -355,21 +334,6 @@ ScaleEngine::Impl::destroy_all()
 	ready = false;
 }
 
-VkShaderModule
-ScaleEngine::Impl::make_shader(
-	const uint32_t *words, uint32_t word_count, string *error)
-{
-	VkShaderModuleCreateInfo ci{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = word_count * sizeof(uint32_t),
-		.pCode = words,
-	};
-	VkShaderModule mod = VK_NULL_HANDLE;
-	if (!CALL_VK(CreateShaderModule, "", device, &ci, nullptr, &mod))
-		return VK_NULL_HANDLE;
-	return mod;
-}
-
 bool
 ScaleEngine::Impl::create_pipeline_objects(string *error)
 {
@@ -442,7 +406,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		return false;
 
 	VkShaderModule vert =
-		make_shader(fullscreen_vert, fullscreen_vert_words, error);
+		make_shader(device, fullscreen_vert, fullscreen_vert_words, error);
 	if (!vert)
 		return false;
 
@@ -508,7 +472,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 
 	bool ok = true;
 	for (const auto &v : variants) {
-		VkShaderModule frag = make_shader(v.code, v.words, error);
+		VkShaderModule frag = make_shader(device, v.code, v.words, error);
 		if (!frag) {
 			ok = false;
 			break;
