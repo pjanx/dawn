@@ -6,8 +6,9 @@ notes like these in the source code.
 
 Test environments
 -----------------
-At minimum, run the tests pre-release.  UI automation will need considerable
-work.  Also see link:configuring-your-system.adoc[about configuring a system].
+At minimum, run the tests pre-release.  UI automation needs more work;
+the most viable way is through accessibility APIs.
+Also see link:configuring-your-system.adoc[about configuring a system].
 
  - Wayland: headless Weston
     * Use for automated tests.

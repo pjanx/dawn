@@ -81,7 +81,7 @@ ships ExifTool; elsewhere it must be on the search path.
 
 <h2>Thumbnails</h2>
 
-<!-- TODO(p): The path is slighlty different on macOS and Windows. -->
+<!-- TODO(p): The path is slightly different on macOS and Windows. -->
 
 <p><i>Dawn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
 cache, typically <i>~/.cache/thumbnails</i>. To drop entries that no longer
@@ -99,8 +99,7 @@ profile on the display in macOS System Settings. Assign the profile that
 matches the monitor if colours look wrong.
 
 <p>Per-window View toggles such as Dark Mode and Colour Management apply for
-the session. Command-line options, including
-<code>--new-instance</code> on Linux, are listed by <code>dn --help</code>.
+the session. Command-line options are listed by <code>dn --help</code>.
 
 <script>
 var toc = '', all = document.querySelectorAll('h2')

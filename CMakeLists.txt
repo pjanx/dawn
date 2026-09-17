@@ -25,9 +25,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/bin")
 
+if (WIN32)
+	# Installation still won't work because it's tailored to msys2-configure.sh.
+	set(DAWN_MSYS2_PREFIX "$ENV{MSYSTEM_PREFIX}" CACHE PATH "MSYS2 prefix")
+endif()
 if (WIN32 AND CMAKE_CROSSCOMPILING)
-	# XXX: Building from within MSYS2 might need to have DAWN_MSYS2_PREFIX
-	# preset in the cache.
 	set(DAWN_MSYS2_PREFIX "${PROJECT_BINARY_DIR}/ucrt64")
 	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
 	list(APPEND CMAKE_FIND_ROOT_PATH "${DAWN_MSYS2_PREFIX}")

@@ -169,6 +169,13 @@ shift
 mkdir -p "$builddir/ucrt64"
 cd "$builddir/ucrt64"
 
+# Direct MSYS2 for development purposes:
+#   $pkg-cmake $pkg-glslang $pkg-rsvg $pkg-icoutils $pkg-rust $pkg-cargo-c
+#   (cd crates/c-api && cargo cinstall --prefix=... --library-type=cdylib)
+#   # libwmf triggers an MSYS2 CMake bug, it's easiest to simply turn it off:
+#   cmake ... -DDAWN_WITH_LIBWMF=OFF -DCMAKE_PREFIX_PATH=...
+#   cp .../bin/resvg.dll .../{msvcp140,vcruntime140,vcruntime140_1}.dll bin
+#   # $pkg-qt-creator can open CMakeLists.txt, take the build, and run it.
 dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \

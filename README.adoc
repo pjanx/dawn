@@ -45,7 +45,7 @@ Do it yourself
 Rejected
 ~~~~~~~~
  - Image editing: GIMP works well enough already.
- - UI animations are seen as distracting, frustrating, and even irritating.
+   Though we include a lossless JPEG cropper utility.
 
 Packages
 --------

@@ -76,7 +76,7 @@ on hand, and I cannot be denied service.  That said, resolution of blackouts and
 Internet outages may require physical presence, and a proper failover would be
 beyond my budget, so this arrangement is far from set in stone.
 
-GitHub is a passable backup or complementary solution--we're alreardy using its
+GitHub is a passable backup or complementary solution--we're already using its
 GitHub Actions for free macOS machines.  If only the system wasn't designed
 wrong, and didn't force us to check in tangential CI configuration.
 
@@ -103,7 +103,7 @@ Architecture
 ------------
 The ultimate aim is to split the application into multiple services with
 separate concerns.  This may be regarded as overengineering, though it's
-necessary for resilience.  As a corollary of Myrphy's law: anything that can
+necessary for resilience.  As a corollary of Murphy's law: anything that can
 crash will crash.  We don't want image loading or ML models to bring down the
 entire application.
 
