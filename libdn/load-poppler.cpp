@@ -140,7 +140,7 @@ PopplerRenderClosure::render_internal(
 	// Poppler also composes each operation in its own colour space,
 	// and lacking a display profile, it converts to sRGB.
 	image->effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
-	ensure_working_premul(*image, ctx, image->effective_profile.get(),
+	finish_image(*image, ctx, image->effective_profile.get(),
 		/*input_premul=*/true);
 	return image;
 }

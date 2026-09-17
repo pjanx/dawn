@@ -1623,7 +1623,7 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 			d += 4;
 		}
 	}
-	dawn::unpremultiply_bgra8(bgra.data(), w, h, size_t(w) * 4);
+	dawn::unpremultiply_xxxa8(bgra.data(), w, h, size_t(w) * 4);
 	QImage image(int(w), int(h), QImage::Format_ARGB32);
 	for (uint32_t y = 0; y < h; y++) {
 		const uint8_t *s = bgra.data() + size_t(y) * w * 4;

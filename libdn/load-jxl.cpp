@@ -227,7 +227,7 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 	if (ctx.info.have_animation)
 		image->loops = ctx.info.animation.num_loops;
 
-	ensure_working_premul_pages(*image, *ctx.octx, nullptr,
+	finish_frames(*image, *ctx.octx, nullptr,
 		ctx.info.alpha_bits && ctx.info.alpha_premultiplied);
 	append_frame(ctx.result, ctx.result_tail, std::move(image));
 	return true;

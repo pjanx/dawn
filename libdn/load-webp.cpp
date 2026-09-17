@@ -50,7 +50,7 @@ webp_status_string(VP8StatusCode err)
 // already be filled in by WebPGetFeatures(). Alpha is decoded either
 // premultiplied directly (fast path, taken when no colour management needs
 // to happen afterwards), or straight--in which case it is left for
-// ensure_working_premul() to colour-manage and premultiply in one go.
+// finish_image() to colour-manage and premultiply in one go.
 // In either case, widen_bgra8_to_bgra16() merely widens the bytes libwebp
 // produced, without touching alpha association.
 static ImagePtr
@@ -243,8 +243,8 @@ load_webp(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	// Decoding straight to premultiplied pixels is only correct when there
 	// is no further colour management to perform; otherwise, alpha needs to
-	// stay straight until ensure_working_premul_pages() gets a chance to
-	// colour-manage and premultiply it as a single step.
+	// stay straight until finish_frames() gets a chance to colour-manage
+	// and premultiply it as a single step.
 	bool premultiply = !ctx.screen_profile;
 
 	ImagePtr image = config.input.has_animation
@@ -261,7 +261,7 @@ load_webp(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// and whether that was because no colour management was needed, so it
 	// doubles as `input_premul` here: with no screen profile this is a no-op,
 	// otherwise the (straight) frames are colour-managed and premultiplied.
-	ensure_working_premul_pages(
+	finish_frames(
 		*image, ctx, /*source=*/nullptr, /*input_premul=*/premultiply);
 	return image;
 }

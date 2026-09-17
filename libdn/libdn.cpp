@@ -606,25 +606,43 @@ unpremultiply_bgra16(Image &image)
 }
 
 void
-unpremultiply_bgra8(
+unpremultiply_xxxa8(
 	uint8_t *data, uint32_t width, uint32_t height, size_t stride)
 {
 	for (uint32_t y = 0; y < height; y++) {
 		uint8_t *p = data + y * stride;
 		for (uint32_t x = 0; x < width; x++) {
-			uint8_t b = p[0], g = p[1], r = p[2], a = p[3];
-			p[0] = unpremultiply8(a, b);
-			p[1] = unpremultiply8(a, g);
-			p[2] = unpremultiply8(a, r);
-			p[3] = a;
+			uint8_t a = p[3];
+			p[0] = unpremultiply8(a, p[0]);
+			p[1] = unpremultiply8(a, p[1]);
+			p[2] = unpremultiply8(a, p[2]);
 			p += 4;
 		}
 	}
 }
 
-void
-ensure_working_premul(
-	Image &image, const OpenContext &ctx, Profile *source, bool input_premul)
+// Takes straight BGRA16, always leaves it premultiplied, colour-managed on
+// the way when there is a target.
+static void
+finish_premultiply(Cmm &cmm, Image &image, Profile *source, Profile *target)
+{
+	if (!target || cmm.broken_premul()) {
+		if (target)
+			(void) cmm.transform_bgra16(image.data.data(), image.width,
+				image.height, source, target, false, false);
+		premultiply_bgra16(image);
+		return;
+	}
+	if (!cmm.transform_bgra16(image.data.data(), image.width, image.height,
+			source, target, false, true))
+		premultiply_bgra16(image);
+}
+
+// Loads the embedded profile when the loader named none, resolving `source`,
+// and records what the pixels are to be described as coming from. The
+// returned owning reference keeps `source` alive through the conversion.
+static shared_ptr<Profile>
+resolve_source(Image &image, const OpenContext &ctx, Profile *&source)
 {
 	shared_ptr<Profile> owned;
 	if (!source && !image.icc.empty()) {
@@ -639,41 +657,36 @@ ensure_working_premul(
 			image.profile_assumed = true;
 		}
 	}
+	return owned;
+}
 
+void
+finish_image(
+	Image &image, const OpenContext &ctx, Profile *source, bool input_premul)
+{
+	shared_ptr<Profile> owned = resolve_source(image, ctx, source);
 	Profile *target = ctx.screen_profile.get();
 	if (input_premul && !target)
 		return;
 	if (input_premul)
 		unpremultiply_bgra16(image);
-	cmm_or_default(ctx)->finish_premultiply(image, source, target);
+	finish_premultiply(*cmm_or_default(ctx), image, source, target);
 }
 
 void
-ensure_working_premul_pages(
+finish_frames(
 	Image &page, const OpenContext &ctx, Profile *source, bool input_premul)
 {
 	// Resolve ICC once from the page head so animation frames without their
 	// own profile still colour-manage against the page embedding.
-	shared_ptr<Profile> owned;
-	if (!source && !page.icc.empty()) {
-		owned = cmm_or_default(ctx)->get_profile(page.icc);
-		source = owned.get();
-	}
-	if (!page.effective_profile) {
-		if (owned)
-			page.effective_profile = owned;
-		else if (!source) {
-			page.effective_profile = cmm_or_default(ctx)->get_profile_sRGB();
-			page.profile_assumed = true;
-		}
-	}
+	shared_ptr<Profile> owned = resolve_source(page, ctx, source);
 	for (Image *frame = &page; frame != nullptr;
 		frame = frame->frame_next.get()) {
 		if (!frame->effective_profile) {
 			frame->effective_profile = page.effective_profile;
 			frame->profile_assumed = page.profile_assumed;
 		}
-		ensure_working_premul(*frame, ctx, source, input_premul);
+		finish_image(*frame, ctx, source, input_premul);
 	}
 }
 
@@ -1317,56 +1330,6 @@ Cmm::convert_cmyk8(
 		out[3] = 65535;
 		out += 4;
 	}
-}
-
-void
-Cmm::finish_premultiply(Image &image, Profile *source, Profile *target)
-{
-	if (!target || broken_premul_) {
-		if (target)
-			(void) transform_bgra16(image.data.data(), image.width,
-				image.height, source, target, false, false);
-		premultiply_bgra16(image);
-		return;
-	}
-	if (!transform_bgra16(image.data.data(), image.width, image.height, source,
-			target, false, true)) {
-		premultiply_bgra16(image);
-	}
-}
-
-void
-Cmm::finish_page(Image &page, Profile *target)
-{
-	shared_ptr<Profile> source;
-	if (!page.icc.empty())
-		source = get_profile(page.icc);
-	if (!page.effective_profile) {
-		if (source)
-			page.effective_profile = source;
-		else {
-			page.effective_profile = get_profile_sRGB();
-			page.profile_assumed = true;
-		}
-	}
-	for (Image *frame = &page; frame != nullptr;
-		frame = frame->frame_next.get()) {
-		if (!frame->effective_profile) {
-			frame->effective_profile = page.effective_profile;
-			frame->profile_assumed = page.profile_assumed;
-		}
-		// Expects straight BGRA16; always leaves premul (CMS when target set).
-		finish_premultiply(*frame, source.get(), target);
-	}
-}
-
-ImagePtr
-Cmm::finish(ImagePtr image, Profile *target)
-{
-	for (Image *page = image.get(); page != nullptr;
-		page = page->page_next.get())
-		finish_page(*page, target);
-	return image;
 }
 
 // --- Matrix ------------------------------------------------------------------

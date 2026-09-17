@@ -156,7 +156,7 @@ CGPDFRenderClosure::render_internal(
 		CFRelease(icc);
 	}
 
-	ensure_working_premul(*image, ctx, nullptr, /*input_premul=*/true);
+	finish_image(*image, ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
 

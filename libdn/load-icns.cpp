@@ -535,8 +535,7 @@ load_icns(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 	for (Image *page = head.get(); page; page = page->page_next.get())
 		if (!page->effective_profile)
-			ensure_working_premul_pages(
-				*page, ctx, nullptr, /*input_premul=*/false);
+			finish_frames(*page, ctx, nullptr, /*input_premul=*/false);
 	return head;
 }
 

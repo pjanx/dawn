@@ -276,7 +276,7 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 		image->orientation = Orientation(orientation);
 
 	apply_tiff_metadata(*image, tiff);
-	ensure_working_premul(*image, ctx, nullptr, /*input_premul=*/false);
+	finish_image(*image, ctx, nullptr, /*input_premul=*/false);
 	return image;
 }
 
@@ -343,9 +343,9 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	// With associated alpha, TIFFRGBAImageGet() already premultiplies the
 	// samples for us--undo that on the temporary 8-bit buffer so what gets
 	// widened below is always straight (unassociated) BGRA8, exactly what
-	// ensure_working_premul() expects.
+	// finish_image() expects.
 	if (img.alpha == EXTRASAMPLE_ASSOCALPHA)
-		unpremultiply_bgra8(pixels.data(), img.width, img.height, stride);
+		unpremultiply_xxxa8(pixels.data(), img.width, img.height, stride);
 
 	widen_bgra8_to_bgra16(*image, pixels.data(), stride);
 
@@ -356,7 +356,7 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	apply_tiff_metadata(*image, tiff);
 	apply_tiff_orientation(*image, tiff);
 
-	ensure_working_premul(*image, ctx, nullptr, /*input_premul=*/false);
+	finish_image(*image, ctx, nullptr, /*input_premul=*/false);
 
 	// TODO(p): It's possible to implement ClipPath easily.
 	return image;

@@ -65,7 +65,7 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 
 	// LibRaw was told to output sRGB directly; there is no embedded profile
 	// to pass on, and the CMS falls back to sRGB by itself.
-	ensure_working_premul(*result, ctx, nullptr, /*input_premul=*/false);
+	finish_image(*result, ctx, nullptr, /*input_premul=*/false);
 	return result;
 }
 

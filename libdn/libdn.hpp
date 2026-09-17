@@ -179,15 +179,6 @@ public:
 		uint32_t width, uint32_t height, Profile *source, Profile *target,
 		bool target_premul);
 
-	// TODO(p): The finishers don't really belong here.
-
-	/// Expects straight (non-premultiplied) BGRA16. Colour-manages when
-	/// `target` is set, then guarantees premul output.
-	void finish_premultiply(Image &image, Profile *source, Profile *target);
-
-	void finish_page(Image &page, Profile *target);
-	ImagePtr finish(ImagePtr image, Profile *target);
-
 	bool broken_premul() const { return broken_premul_; }
 	void *context() { return context_; }
 };
@@ -404,19 +395,27 @@ fourcc(char a, char b, char c, char d)
 
 std::shared_ptr<Cmm> cmm_or_default(const OpenContext &ctx);
 
-// TODO(p): What in tarnation does this mean?
-/// Bring an image to final working premul. If `source` is null and
-/// `image.icc` is non-empty, loads that profile. If `input_premul` and there
-/// is no screen profile, leaves pixels alone. If `input_premul` and CMS is
-/// needed, un-premultiplies first. Otherwise expects straight BGRA16.
-void ensure_working_premul(
+/// Bring decoded pixels to the final working format: premultiplied BGRA16,
+/// colour-managed to `ctx.screen_profile` when there is one. Pixels are
+/// expected straight (non-premultiplied), unless `input_premul`, in which
+/// case they are only unpremultiplied when there is a target to convert them
+/// to, and left alone when there is not. `source` describes what the pixels
+/// are; when null, `image.icc` is loaded instead, and a missing or unusable
+/// profile is assumed to be sRGB (`profile_assumed`).
+void finish_image(
 	Image &image, const OpenContext &ctx, Profile *source, bool input_premul);
-void ensure_working_premul_pages(
+
+/// finish_image() for a page and all its animation frames, which inherit
+/// the page's source profile when they carry none of their own.
+void finish_frames(
 	Image &page, const OpenContext &ctx, Profile *source, bool input_premul);
 
 void premultiply_bgra16(Image &image);
 void unpremultiply_bgra16(Image &image);
-void unpremultiply_bgra8(
+/// In-place unpremultiplication of four-channel bytes with alpha last,
+/// whatever the ordering of the three colour channels is. Rows are `stride`
+/// bytes apart, and any padding beyond `width` pixels is left alone.
+void unpremultiply_xxxa8(
 	uint8_t *data, uint32_t width, uint32_t height, size_t stride);
 
 /// Widen BGRA8 → straight-or-premul BGRA16 without changing association.

@@ -123,15 +123,15 @@ LibrsvgRenderClosure::render_internal(
 	cairo_argb32_to_image(*image, surface);
 	cairo_surface_destroy(surface);
 
-	// Cairo ARGB32 is premultiplied. ensure_working_premul with
-	// input_premul=true is a no-op when there is no screen profile.
+	// Cairo ARGB32 is premultiplied. finish_image() with input_premul=true
+	// is a no-op when there is no screen profile.
 	OpenContext finish_ctx;
 	if (cmm)
 		finish_ctx.cmm = cmm->shared_from_this();
 	if (target)
 		finish_ctx.screen_profile =
 			shared_ptr<Profile>(shared_ptr<Profile>(), target);
-	ensure_working_premul(*image, finish_ctx, nullptr, /*input_premul=*/true);
+	finish_image(*image, finish_ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
 

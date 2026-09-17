@@ -262,7 +262,7 @@ decode_image(JxrLoadContext &ctx, const OpenContext &octx, Error *error)
 			image->icc.clear();
 	}
 
-	ensure_working_premul(*image, octx, nullptr, layout->premultiplied);
+	finish_image(*image, octx, nullptr, layout->premultiplied);
 	return image;
 }
 

@@ -191,7 +191,7 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 	// embedded ICC profile (derived automatically from result->icc), first
 	// un-premultiplying if the bitstream declared premultiplied alpha and
 	// colour management needs to happen.
-	ensure_working_premul_pages(*result, ctx, nullptr, bitstream_premul);
+	finish_frames(*result, ctx, nullptr, bitstream_premul);
 	return result;
 }
 

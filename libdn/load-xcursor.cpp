@@ -183,11 +183,11 @@ load_xcursor(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	// Pixels are already premultiplied; ensure_working_premul_pages() only
-	// needs to step in when a screen profile is configured, treating the
-	// input as (implicitly sRGB) premultiplied BGRA16.
+	// Pixels are already premultiplied; finish_frames() only needs to step
+	// in when a screen profile is configured, treating the input as
+	// (implicitly sRGB) premultiplied BGRA16.
 	for (Image *page = pages.get(); page; page = page->page_next.get())
-		ensure_working_premul_pages(*page, ctx, nullptr, /*input_premul=*/true);
+		finish_frames(*page, ctx, nullptr, /*input_premul=*/true);
 	return pages;
 }
 

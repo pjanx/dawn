@@ -399,8 +399,7 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	// (if applicable) and premultiply now, before any compositing.
 	if (ctx.source)
 		image->effective_profile = ctx.source;
-	ensure_working_premul(
-		*image, *ctx.octx, ctx.source.get(), /*input_premul=*/false);
+	finish_image(*image, *ctx.octx, ctx.source.get(), /*input_premul=*/false);
 
 	// Single-frame images get a fast path, animations are handled slowly.
 	if (wuffs_base__frame_config__index(&fc) > 0 &&

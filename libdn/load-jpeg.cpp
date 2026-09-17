@@ -564,7 +564,7 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 
 	if (cmyk) {
 		// convert_cmyk8() already colour-manages to working premul; do not
-		// call ensure_working_premul afterwards.
+		// call finish_image() afterwards.
 		const uint8_t *cmyk8 = pixels8;
 		vector<uint8_t> quantized;
 		if (bits > 8) {
@@ -592,14 +592,12 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 		}
 		if (!converted) {
 			widen_bgra8_to_bgra16(*image, pixels8, size_t(image->width) * 4);
-			ensure_working_premul(*image, ctx, source.get(),
-				/*input_premul=*/false);
+			finish_image(*image, ctx, source.get(), /*input_premul=*/false);
 		}
 	} else {
 		pack_jpeg_ext_to_bgra16(*image, pixels16,
 			size_t(image->width) * 4 * sizeof(uint16_t), bits, argb);
-		ensure_working_premul(*image, ctx,
-			image->icc.empty() ? source.get() : nullptr,
+		finish_image(*image, ctx, image->icc.empty() ? source.get() : nullptr,
 			/*input_premul=*/false);
 	}
 }

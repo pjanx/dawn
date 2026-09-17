@@ -7,6 +7,7 @@
 
 #include "scale-scaler.hpp"
 
+#include "libdn.hpp"
 #include "libdnvk.hpp"
 #include "vk-device.hpp"
 
@@ -22,32 +23,6 @@ using namespace std;
 
 namespace dawn
 {
-
-static uint8_t
-unpremul_channel8(uint8_t a, uint8_t x)
-{
-	if (a == 0)
-		return 0;
-	if (a == 255)
-		return x;
-	return uint8_t(min(255, (int(x) * 255 + a / 2) / a));
-}
-
-static void
-unpremul_rgba8(uint8_t *data, uint32_t width, uint32_t height)
-{
-	for (uint32_t y = 0; y < height; y++) {
-		uint8_t *p = data + size_t(y) * width * 4;
-		for (uint32_t x = 0; x < width; x++) {
-			uint8_t r = p[0], g = p[1], b = p[2], a = p[3];
-			p[0] = unpremul_channel8(a, r);
-			p[1] = unpremul_channel8(a, g);
-			p[2] = unpremul_channel8(a, b);
-			p[3] = a;
-			p += 4;
-		}
-	}
-}
 
 static bool
 instance_has_extension(const char *name)
@@ -245,7 +220,8 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		return false;
 	}
 
-	unpremul_rgba8(result->rgba8.data(), out_w, out_h);
+	unpremultiply_xxxa8(
+		result->rgba8.data(), out_w, out_h, size_t(out_w) * 4);
 	return true;
 }
 

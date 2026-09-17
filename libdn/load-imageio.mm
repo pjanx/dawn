@@ -82,7 +82,7 @@ imageio_delay(CFDictionaryRef properties, uint64_t *loops)
 
 // Files that carry no profile of their own get CG's sRGB from ImageIO,
 // and passing that off as embedded would hide that it is a guess.  Clear it,
-// let ensure_working_premul() invent sRGB, and admit to it in profile_assumed.
+// let finish_image() invent sRGB, and admit to it in profile_assumed.
 // Compare bytes rather than trust the absent profile name: a space CG derives
 // from PNG gAMA/cHRM is nameless as well, yet real.
 static void
@@ -194,7 +194,7 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	// Core Graphics always premultiplies, which is what ensure_working_premul()
+	// Core Graphics always premultiplies, which is what finish_image()
 	// is then told about by our caller.
 	if (deep)
 		pack_rgba16le_to_bgra16(*image, pixels.data(), stride, 16);
@@ -277,7 +277,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 
 	head->loops = loops;
 	for (Image *page = head.get(); page; page = page->page_next.get())
-		ensure_working_premul_pages(*page, ctx, nullptr, /*input_premul=*/true);
+		finish_frames(*page, ctx, nullptr, /*input_premul=*/true);
 	return head;
 }
 

@@ -475,8 +475,7 @@ load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			*image, cmyk.data(), source.get(), ctx.screen_profile.get());
 	} else {
 		compose_rgb(*image, planes, h);
-		ensure_working_premul(
-			*image, ctx, source.get(), /*input_premul=*/false);
+		finish_image(*image, ctx, source.get(), /*input_premul=*/false);
 	}
 	return image;
 }

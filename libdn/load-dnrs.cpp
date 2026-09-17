@@ -272,8 +272,7 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			if (entry.key && entry.value)
 				frames->text.emplace(entry.key, entry.value);
 		}
-		ensure_working_premul_pages(
-			*frames, ctx, nullptr, /*input_premul=*/false);
+		finish_frames(*frames, ctx, nullptr, /*input_premul=*/false);
 		append_page(pages, pages_tail, std::move(frames));
 		if (ctx.first_frame_only)
 			break;

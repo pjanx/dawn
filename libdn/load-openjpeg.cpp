@@ -398,7 +398,7 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 			image.icc_profile_buf + image.icc_profile_len);
 	}
 
-	ensure_working_premul_pages(*out, *ctx.octx, nullptr, layout.premultiplied);
+	finish_frames(*out, *ctx.octx, nullptr, layout.premultiplied);
 	return out;
 }
 

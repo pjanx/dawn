@@ -117,7 +117,7 @@ ResvgRenderClosure::render_internal(
 	if (target)
 		finish_ctx.screen_profile =
 			shared_ptr<Profile>(shared_ptr<Profile>(), target);
-	ensure_working_premul(*image, finish_ctx, nullptr, /*input_premul=*/true);
+	finish_image(*image, finish_ctx, nullptr, /*input_premul=*/true);
 	return image;
 }
 

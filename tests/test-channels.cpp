@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -138,6 +139,180 @@ test_pack_helpers()
 		const uint16_t rgb16[] = {0, 0, 65535};
 		dawn::pack_rgb16le_to_bgra16(*img, rgb16, 6, 16);
 		expect_bgra("pack_rgb16le blue", pixel0(*img), 65535, 0, 0, 65535, 0);
+	}
+}
+
+static void
+test_unpremultiply_alpha_last8()
+{
+	// Two padded rows, so that row padding can be proven untouched.
+	const uint32_t width = 4, height = 2;
+	const size_t stride = size_t(width) * 4 + 3;
+	const uint8_t input[height][4][4] = {
+		{{0, 10, 20, 0}, {1, 1, 1, 1}, {64, 128, 200, 128}, {10, 20, 30, 255}},
+		{{255, 255, 255, 255}, {5, 0, 3, 1}, {128, 128, 128, 128},
+			{0, 0, 0, 0}},
+	};
+	const uint8_t expected[height][4][4] = {
+		{{0, 0, 0, 0}, {255, 255, 255, 1}, {128, 255, 255, 128},
+			{10, 20, 30, 255}},
+		{{255, 255, 255, 255}, {255, 0, 255, 1}, {255, 255, 255, 128},
+			{0, 0, 0, 0}},
+	};
+
+	vector<uint8_t> buffer(stride * height, 0xCD);
+	for (uint32_t y = 0; y < height; y++)
+		memcpy(buffer.data() + y * stride, input[y], sizeof input[y]);
+
+	dawn::unpremultiply_xxxa8(buffer.data(), width, height, stride);
+	for (uint32_t y = 0; y < height; y++) {
+		const uint8_t *row = buffer.data() + y * stride;
+		for (uint32_t x = 0; x < width * 4; x++) {
+			const uint8_t *want = &expected[y][0][0];
+			if (row[x] != want[x]) {
+				test::fail("row %u byte %u: got %u expected %u", y, x, row[x],
+					want[x]);
+			}
+		}
+		for (size_t x = size_t(width) * 4; x < stride; x++)
+			CHECK(row[x] == 0xCD);
+	}
+}
+
+static dawn::ImagePtr
+image_1x1(uint16_t b, uint16_t g, uint16_t r, uint16_t a)
+{
+	dawn::ImagePtr img = dawn::image_new(1, 1);
+	if (!img) {
+		test::fail("image_new failed");
+		exit(1);
+	}
+
+	uint16_t *p = dawn::row_u16(*img, 0);
+	p[0] = b;
+	p[1] = g;
+	p[2] = r;
+	p[3] = a;
+	return img;
+}
+
+static void
+test_finishing()
+{
+	auto cmm = dawn::Cmm::get_default();
+	auto srgb = cmm->get_profile_sRGB();
+	auto p3 = cmm->get_profile_display_p3();
+	CHECK(srgb != nullptr && p3 != nullptr);
+	vector<uint8_t> srgb_icc = srgb->to_bytes(), p3_icc = p3->to_bytes();
+	CHECK(!srgb_icc.empty() && !p3_icc.empty());
+
+	dawn::OpenContext plain;
+	plain.cmm = cmm;
+	dawn::OpenContext to_srgb = plain;
+	to_srgb.screen_profile = srgb;
+	dawn::OpenContext to_p3 = plain;
+	to_p3.screen_profile = p3;
+
+	// Straight pixels are premultiplied, sRGB is assumed and admitted to.
+	{
+		dawn::ImagePtr img = image_1x1(1000, 2000, 3000, 32768);
+		dawn::finish_image(*img, plain, nullptr, false);
+		expect_bgra(
+			"straight without target", pixel0(*img), 500, 1000, 1500, 32768, 0);
+		CHECK(img->profile_assumed);
+		CHECK(dawn::profiles_equal(img->effective_profile.get(), srgb.get()));
+	}
+
+	// Premultiplied pixels with nowhere to convert them to stay untouched.
+	{
+		dawn::ImagePtr img = image_1x1(500, 1000, 1500, 32768);
+		dawn::finish_image(*img, plain, nullptr, true);
+		expect_bgra("premultiplied without target", pixel0(*img), 500, 1000,
+			1500, 32768, 0);
+		CHECK(img->profile_assumed);
+		CHECK(img->effective_profile != nullptr);
+	}
+
+	// With a target, they make a round trip through the transform.
+	{
+		dawn::ImagePtr img = image_1x1(500, 1000, 1500, 32768);
+		dawn::finish_image(*img, to_srgb, nullptr, true);
+		expect_bgra(
+			"premultiplied to sRGB", pixel0(*img), 500, 1000, 1500, 32768, 257);
+		CHECK(img->profile_assumed);
+	}
+
+	// A valid embedded profile is what the pixels are then described by.
+	{
+		dawn::ImagePtr img = image_1x1(0, 0, 65535, 65535);
+		img->icc = p3_icc;
+		dawn::finish_image(*img, plain, nullptr, false);
+		expect_bgra("embedded ICC", pixel0(*img), 0, 0, 65535, 65535, 0);
+		CHECK(!img->profile_assumed);
+		CHECK(dawn::profiles_equal(img->effective_profile.get(), p3.get()));
+	}
+
+	// An unusable one falls back to assumed sRGB, as an absent one does.
+	{
+		dawn::ImagePtr img = image_1x1(0, 0, 65535, 65535);
+		img->icc = {0xDE, 0xAD, 0xBE, 0xEF};
+		dawn::finish_image(*img, plain, nullptr, false);
+		expect_bgra("invalid ICC", pixel0(*img), 0, 0, 65535, 65535, 0);
+		CHECK(img->profile_assumed);
+		CHECK(dawn::profiles_equal(img->effective_profile.get(), srgb.get()));
+	}
+
+	// A profile the loader already settled on survives an embedded one.
+	{
+		dawn::ImagePtr img = image_1x1(0, 0, 65535, 65535);
+		img->icc = p3_icc;
+		img->effective_profile = srgb;
+		dawn::finish_image(*img, plain, nullptr, false);
+		CHECK(img->effective_profile == srgb);
+		CHECK(!img->profile_assumed);
+	}
+
+	// An explicit source takes precedence over the embedded profile:
+	// sRGB red converted to Display P3 lands well inside its gamut, while
+	// P3 red stays at the edge.
+	dawn::ImagePtr from_srgb = image_1x1(0, 0, 65535, 65535);
+	from_srgb->icc = p3_icc;
+	dawn::finish_image(*from_srgb, to_p3, srgb.get(), false);
+	// Naming a source leaves describing it to the loader that named it.
+	CHECK(from_srgb->effective_profile == nullptr);
+
+	dawn::ImagePtr from_p3 = image_1x1(0, 0, 65535, 65535);
+	from_p3->icc = srgb_icc;
+	dawn::finish_image(*from_p3, to_p3, p3.get(), false);
+
+	const Pixel srgb_red = pixel0(*from_srgb), p3_red = pixel0(*from_p3);
+	CHECK(srgb_red.r + 1000 < p3_red.r);
+	CHECK(srgb_red.g > p3_red.g + 1000);
+	CHECK(srgb_red.a == 65535 && p3_red.a == 65535);
+
+	// Frames without a profile of their own inherit the page's.
+	{
+		dawn::ImagePtr page = image_1x1(1000, 2000, 3000, 32768);
+		page->icc = p3_icc;
+		page->frame_next = image_1x1(1000, 2000, 3000, 32768);
+		page->frame_next->frame_previous = page;
+		dawn::finish_frames(*page, plain, nullptr, false);
+		expect_bgra("frame page", pixel0(*page), 500, 1000, 1500, 32768, 0);
+		expect_bgra(
+			"frame tail", pixel0(*page->frame_next), 500, 1000, 1500, 32768, 0);
+		CHECK(page->frame_next->effective_profile == page->effective_profile);
+		CHECK(!page->frame_next->profile_assumed);
+		CHECK(dawn::profiles_equal(page->effective_profile.get(), p3.get()));
+	}
+
+	// Including the assumption made for a page without one.
+	{
+		dawn::ImagePtr page = image_1x1(0, 0, 65535, 65535);
+		page->frame_next = image_1x1(0, 0, 65535, 65535);
+		page->frame_next->frame_previous = page;
+		dawn::finish_frames(*page, plain, nullptr, false);
+		CHECK(page->profile_assumed && page->frame_next->profile_assumed);
+		CHECK(page->frame_next->effective_profile == page->effective_profile);
 	}
 }
 
@@ -570,6 +745,8 @@ main()
 {
 	return test::run({
 		{"packing", test_pack_helpers},
+		{"unpremultiply alpha last", test_unpremultiply_alpha_last8},
+		{"finishing", test_finishing},
 		{"solid image loaders", test_loaders_solid},
 		{"JPEG CMS", test_jpeg_cms_8_to_16},
 		{"JPEG fatal error", test_jpeg_fatal_error},
