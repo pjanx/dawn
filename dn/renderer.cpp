@@ -464,14 +464,19 @@ Renderer::create_swapchain()
 		CALL_VK(CreateFramebuffer, "", this->device_, &framebuffer_info,
 			nullptr, &this->framebuffers_[i]);
 	}
-	if (this->overlay_format_ != dest_format ||
-		this->overlay_layout_ != dest_layout) {
+	if (this->overlay_format_ == VK_FORMAT_UNDEFINED) {
 		if (!this->overlay_.init(this->phys_, this->device_, this->queue_,
 				this->queue_family_, dest_format, dest_layout, dest_layout))
 			die("overlay vulkan init failed");
-		this->overlay_format_ = dest_format;
-		this->overlay_layout_ = dest_layout;
+	} else if (this->overlay_format_ != dest_format ||
+		this->overlay_layout_ != dest_layout) {
+		// Toggling the dither pass changes the format; re-initializing here
+		// would drop atlases that no one knows to upload again.
+		if (!this->overlay_.set_format(dest_format, dest_layout, dest_layout))
+			die("overlay format change failed");
 	}
+	this->overlay_format_ = dest_format;
+	this->overlay_layout_ = dest_layout;
 	if (dither)
 		this->overlay_.set_swapchain({this->compose_view_}, this->extent_);
 	else
@@ -1025,7 +1030,6 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	this->device_ = device;
 	this->queue_ = queue;
 	this->queue_family_ = queue_family;
-	this->format_ = format;
 	if (!this->phys_ || !this->device_ || !this->queue_)
 		return false;
 
@@ -1037,46 +1041,6 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	CALL_VK(CreateCommandPool, " overlay upload", this->device_, &pool_info,
 		nullptr, &this->upload_pool_);
 	compute_thumb_atlas_max();
-
-	VkAttachmentDescription color{
-		.format = this->format_,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.initialLayout = initial_layout,
-		.finalLayout = final_layout,
-	};
-	VkAttachmentReference color_ref{
-		.attachment = 0,
-		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	};
-	VkSubpassDescription subpass{
-		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &color_ref,
-	};
-	VkSubpassDependency dependency{
-		.srcSubpass = VK_SUBPASS_EXTERNAL,
-		.dstSubpass = 0,
-		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-			VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
-	};
-	VkRenderPassCreateInfo render_pass_info{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &color,
-		.subpassCount = 1,
-		.pSubpasses = &subpass,
-		.dependencyCount = 1,
-		.pDependencies = &dependency,
-	};
-	CALL_VK(CreateRenderPass, " overlay", this->device_, &render_pass_info,
-		nullptr, &this->render_pass_);
 
 	VkSamplerCreateInfo sampler_info{
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -1126,6 +1090,69 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	};
 	CALL_VK(AllocateDescriptorSets, " overlay", this->device_, &allocate_info,
 		this->descriptor_sets_);
+
+	return set_format(format, initial_layout, final_layout);
+}
+
+// Only the render pass and the pipelines built against it depend on the
+// destination format.  The atlases outlive a change of it, because only
+// their uploaders know what is in them, and nothing tells them to repeat
+// themselves.
+bool
+OverlayVulkan::set_format(
+	VkFormat format, VkImageLayout initial_layout, VkImageLayout final_layout)
+{
+	if (!this->device_)
+		return false;
+
+	// Framebuffers built for the old render pass do not carry over.
+	destroy_swapchain();
+	destroy_pipeline();
+	if (this->render_pass_) {
+		vkDestroyRenderPass(this->device_, this->render_pass_, nullptr);
+		this->render_pass_ = VK_NULL_HANDLE;
+	}
+
+	this->format_ = format;
+	VkAttachmentDescription color{
+		.format = this->format_,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = initial_layout,
+		.finalLayout = final_layout,
+	};
+	VkAttachmentReference color_ref{
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	};
+	VkSubpassDescription subpass{
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &color_ref,
+	};
+	VkSubpassDependency dependency{
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+			VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
+	};
+	VkRenderPassCreateInfo render_pass_info{
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &color,
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &dependency,
+	};
+	CALL_VK(CreateRenderPass, " overlay", this->device_, &render_pass_info,
+		nullptr, &this->render_pass_);
 
 	return create_pipeline();
 }

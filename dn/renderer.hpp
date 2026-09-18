@@ -108,6 +108,8 @@ public:
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkFormat format, VkImageLayout initial_layout,
 		VkImageLayout final_layout);
+	bool set_format(VkFormat format, VkImageLayout initial_layout,
+		VkImageLayout final_layout);
 	void set_swapchain(
 		const std::vector<VkImageView> &views, VkExtent2D extent);
 	bool upload_font(const unsigned char *pixels, int width, int height);
