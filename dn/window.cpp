@@ -23,7 +23,7 @@
 #include "wayland-window.hpp"
 #endif
 
-#if DAWN_WITH_ACCESSIBILITY
+#if DN_WITH_ACCESSIBILITY
 #include <QAccessible>
 #endif
 #include <QByteArray>
@@ -811,7 +811,7 @@ Window::shell()
 QAccessibleInterface *
 Window::accessibleRoot() const
 {
-#if DAWN_WITH_ACCESSIBILITY
+#if DN_WITH_ACCESSIBILITY
 	return QAccessible::queryAccessibleInterface(const_cast<Window *>(this));
 #else
 	return nullptr;

@@ -9,7 +9,7 @@
 
 #include "accessible.hpp"
 
-#if !DAWN_WITH_ACCESSIBILITY
+#if !DN_WITH_ACCESSIBILITY
 
 // Qt was built without accessibility, or without its AT-SPI bridge (*nix).
 // Nothing here can work, and nothing that calls it needs to know that.
@@ -3015,4 +3015,4 @@ accessible_init()
 
 }  // namespace dn
 
-#endif  // DAWN_WITH_ACCESSIBILITY
+#endif  // DN_WITH_ACCESSIBILITY

@@ -257,12 +257,12 @@ block()
 	]] dawn_qt_accessibility)
 endblock()
 
-option(DAWN_WITH_ACCESSIBILITY "Expose the UI to assistive technologies"
+option(DN_WITH_ACCESSIBILITY "Expose the UI to assistive technologies"
 	"${dawn_qt_accessibility}")
-if (DAWN_WITH_ACCESSIBILITY AND NOT dawn_qt_accessibility)
-	message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY=ON but this Qt build lacks "
+if (DN_WITH_ACCESSIBILITY AND NOT dawn_qt_accessibility)
+	message(FATAL_ERROR "DN_WITH_ACCESSIBILITY=ON but this Qt build lacks "
 		"accessibility support (on Linux it also needs the AT-SPI bridge)")
-elseif (NOT DAWN_WITH_ACCESSIBILITY)
+elseif (NOT DN_WITH_ACCESSIBILITY)
 	message(WARNING "Building without accessibility: screen readers and "
 		"external UI tests will see nothing of dn's interface")
 endif()

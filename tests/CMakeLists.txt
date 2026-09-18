@@ -187,9 +187,9 @@ endif()
 # Accessibility is only ever proven from the outside, over the same bus and
 # through the same client library a screen reader uses.  libatspi is a test
 # dependency and nothing else: dn links none of it.
-option(DAWN_WITH_ACCESSIBILITY_TESTS
+option(DN_WITH_ACCESSIBILITY_TESTS
 	"Require what the external accessibility test needs" OFF)
-if (DAWN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
+if (DN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
 	pkg_check_modules(ATSPI IMPORTED_TARGET atspi-2)
 	# Every object libatspi hands out is a GObject, but atspi-2.pc requires
 	# only glib, so referencing and unreferencing them needs this as well.
@@ -239,16 +239,16 @@ if (DAWN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
 		# The launcher skips when the session it needs cannot be built; once
 		# dn is up, anything going wrong at all is a failure.
 		set_tests_properties(accessible PROPERTIES SKIP_RETURN_CODE 77)
-		if (DAWN_WITH_ACCESSIBILITY_TESTS)
+		if (DN_WITH_ACCESSIBILITY_TESTS)
 			set_tests_properties(accessible PROPERTIES
 				ENVIRONMENT "DN_A11Y_STRICT=1")
 		endif()
-	elseif (DAWN_WITH_ACCESSIBILITY_TESTS)
-		message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY_TESTS=ON but atspi-2, "
+	elseif (DN_WITH_ACCESSIBILITY_TESTS)
+		message(FATAL_ERROR "DN_WITH_ACCESSIBILITY_TESTS=ON but atspi-2, "
 			"gobject-2.0, or the weston plugin headers were not found")
 	endif()
-elseif (DAWN_WITH_ACCESSIBILITY_TESTS)
-	message(FATAL_ERROR "DAWN_WITH_ACCESSIBILITY_TESTS=ON without a Linux "
+elseif (DN_WITH_ACCESSIBILITY_TESTS)
+	message(FATAL_ERROR "DN_WITH_ACCESSIBILITY_TESTS=ON without a Linux "
 		"accessibility build")
 endif()
 

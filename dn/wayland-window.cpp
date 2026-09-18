@@ -13,7 +13,7 @@
 #include "wayland-color-bridge.hpp"
 #include "xdg-shell-client-protocol.h"
 
-#if DAWN_WITH_ACCESSIBILITY
+#if DN_WITH_ACCESSIBILITY
 #include <QAccessible>
 #endif
 
@@ -106,7 +106,7 @@ WaylandWindow::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 QAccessibleInterface *
 WaylandWindow::accessibleRoot() const
 {
-#if DAWN_WITH_ACCESSIBILITY
+#if DN_WITH_ACCESSIBILITY
 	return QAccessible::queryAccessibleInterface(
 		const_cast<WaylandWindow *>(this));
 #else
