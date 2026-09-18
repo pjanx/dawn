@@ -18,7 +18,6 @@
 #endif
 
 #include <algorithm>
-#include <bit>
 #include <csetjmp>
 #include <cstring>
 #include <vector>
@@ -484,11 +483,11 @@ load_libjpeg16_simple(jpeg_decompress_struct *cinfo, J16SAMPARRAY lines)
 static ImagePtr open_libjpeg_turbo(
 	span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
-/// Packs opaque interleaved EXT_BGRA / EXT_ARGB uint16 samples into working
-/// BGRA16, scaling from `bits` (12 or 16) to the full uint16 range.
+/// Packs opaque interleaved EXT_BGRA uint16 samples into working BGRA16,
+/// scaling from `bits` (12 or 16) to the full uint16 range.
 static void
 pack_jpeg_ext_to_bgra16(
-	Image &dst, const uint16_t *src, size_t src_stride, int bits, bool argb)
+	Image &dst, const uint16_t *src, size_t src_stride, int bits)
 {
 	StageClock clk(&OpenTiming::widen_ms);
 	for (uint32_t y = 0; y < dst.height; y++) {
@@ -496,17 +495,10 @@ pack_jpeg_ext_to_bgra16(
 		const uint16_t *s = assume_aligned<const uint16_t>(
 			(const uint8_t *) src + y * src_stride);
 		for (uint32_t x = 0; x < dst.width; x++) {
-			if (argb) {
-				d[0] = scale_nbit_to_u16(s[3], bits);
-				d[1] = scale_nbit_to_u16(s[2], bits);
-				d[2] = scale_nbit_to_u16(s[1], bits);
-				d[3] = 65535;
-			} else {
-				d[0] = scale_nbit_to_u16(s[0], bits);
-				d[1] = scale_nbit_to_u16(s[1], bits);
-				d[2] = scale_nbit_to_u16(s[2], bits);
-				d[3] = 65535;
-			}
+			d[0] = scale_nbit_to_u16(s[0], bits);
+			d[1] = scale_nbit_to_u16(s[1], bits);
+			d[2] = scale_nbit_to_u16(s[2], bits);
+			d[3] = 65535;
 			d += 4;
 			s += 4;
 		}
@@ -515,11 +507,10 @@ pack_jpeg_ext_to_bgra16(
 
 /// Finishes a decoded JPEG page: metadata, optional MPF follow-ups, then
 /// colour-manage. `bits` is 8 for JSAMPLE output, or 12/16 for high precision.
-/// When bits==8, `pixels8` is BGRA/ARGB/CMYK8; otherwise `pixels16` is used.
+/// When bits==8, `pixels8` is BGRA8 or CMYK8; otherwise `pixels16` is used.
 static void
-load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
-	const OpenContext &ctx, span<const uint8_t> data, const uint8_t *pixels8,
-	const uint16_t *pixels16)
+load_jpeg_finalize(ImagePtr &image, bool cmyk, int bits, const OpenContext &ctx,
+	span<const uint8_t> data, const uint8_t *pixels8, const uint16_t *pixels16)
 {
 	JpegMetadata meta;
 	parse_jpeg_metadata(data, &meta);
@@ -596,7 +587,7 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, bool argb, int bits,
 		}
 	} else {
 		pack_jpeg_ext_to_bgra16(*image, pixels16,
-			size_t(image->width) * 4 * sizeof(uint16_t), bits, argb);
+			size_t(image->width) * 4 * sizeof(uint16_t), bits);
 		finish_image(*image, ctx, image->icc.empty() ? source.get() : nullptr,
 			/*input_premul=*/false);
 	}
@@ -623,17 +614,14 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 
 	bool use_cmyk = cinfo.jpeg_color_space == JCS_CMYK ||
 		cinfo.jpeg_color_space == JCS_YCCK;
-	bool use_argb = false;
 	if (use_cmyk) {
 		cinfo.out_color_space = JCS_CMYK;
-	} else if constexpr (endian::native == endian::big) {
-		// Unlike JCS_EXT_XRGB/JCS_EXT_BGRX (as used by fiv, which hands the
-		// result to Cairo and does not care about the 4th byte), the "A"
-		// variants guarantee an opaque 0xFF alpha byte, which
-		// widen_bgra8_to_bgra16() below trusts.
-		cinfo.out_color_space = JCS_EXT_ARGB;
-		use_argb = true;
 	} else {
+		// Unlike JCS_EXT_BGRX (as used by fiv, which hands the result to
+		// Cairo and does not care about the 4th byte), the "A" variant
+		// guarantees an opaque 0xFF alpha byte, which the widening below
+		// trusts.  Extended colour spaces name channel order rather than
+		// host word order, so this is also right on big-endian hosts.
 		cinfo.out_color_space = JCS_EXT_BGRA;
 	}
 
@@ -676,8 +664,8 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 					[&] { load_libjpeg16_simple(&cinfo, lines.data()); }))
 				return nullptr;
 		}
-		load_jpeg_finalize(image, use_cmyk, use_argb, precision, ctx, data,
-			nullptr, samples.data());
+		load_jpeg_finalize(
+			image, use_cmyk, precision, ctx, data, nullptr, samples.data());
 	} else
 #endif
 	{
@@ -696,7 +684,7 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 				return nullptr;
 		}
 		load_jpeg_finalize(
-			image, use_cmyk, use_argb, 8, ctx, data, pixels.data(), nullptr);
+			image, use_cmyk, 8, ctx, data, pixels.data(), nullptr);
 	}
 
 	return image;
