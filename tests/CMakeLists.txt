@@ -104,6 +104,14 @@ add_executable(test-icns test-icns.cpp)
 target_link_libraries(test-icns PRIVATE libdn)
 add_test(NAME icns COMMAND test-icns)
 
+# Vulkan may be unavailable, and validation layers only exist where installed.
+add_executable(test-scale-scaler test-scale-scaler.cpp)
+target_link_libraries(test-scale-scaler PRIVATE libdn)
+add_test(NAME scale_scaler COMMAND test-scale-scaler)
+set_tests_properties(scale_scaler PROPERTIES
+	SKIP_RETURN_CODE 77
+	ENVIRONMENT "VK_LOADER_LAYERS_ENABLE=VK_LAYER_KHRONOS_validation")
+
 add_executable(bench-open bench-open.cpp)
 target_link_libraries(bench-open PRIVATE libdn)
 

@@ -60,24 +60,21 @@ struct ScaleScaler::Impl {
 	bool device_ready = false;
 };
 
+// Also releases a partially initialized scaler, which may have an instance
+// and nothing else.  Device-level objects only exist alongside their device.
 static void
-destroy_device(ScaleScaler::Impl &s)
+teardown(ScaleScaler::Impl &s)
 {
-	if (!s.device)
-		return;
-
-	vkDeviceWaitIdle(s.device);
-	s.engine.destroy();
-	if (s.fence) {
+	if (s.device) {
+		vkDeviceWaitIdle(s.device);
+		s.engine.destroy();
 		vkDestroyFence(s.device, s.fence, nullptr);
-		s.fence = VK_NULL_HANDLE;
-	}
-	if (s.cmd_pool) {
 		vkDestroyCommandPool(s.device, s.cmd_pool, nullptr);
-		s.cmd_pool = VK_NULL_HANDLE;
-		s.cmd = VK_NULL_HANDLE;
+		vkDestroyDevice(s.device, nullptr);
 	}
-	vkDestroyDevice(s.device, nullptr);
+	s.fence = VK_NULL_HANDLE;
+	s.cmd_pool = VK_NULL_HANDLE;
+	s.cmd = VK_NULL_HANDLE;
 	s.device = VK_NULL_HANDLE;
 	s.queue = VK_NULL_HANDLE;
 	s.phys = VK_NULL_HANDLE;
@@ -91,20 +88,49 @@ destroy_device(ScaleScaler::Impl &s)
 namespace
 {
 
+/// The render target of one scale(), released before any teardown.
+struct Offscreen {
+	ScaleEngine &engine;
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory mem = VK_NULL_HANDLE;
+	VkImageView view = VK_NULL_HANDLE;
+	VkFramebuffer fb = VK_NULL_HANDLE;
+
+	~Offscreen();
+};
+
+/// The host-visible buffer a readback copies the render target into.
 struct Staging {
+	VkDevice device = VK_NULL_HANDLE;
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	void *mapped = nullptr;
+
+	~Staging();
 };
 
 }  // namespace
 
+Offscreen::~Offscreen()
+{
+	engine.destroy_offscreen(&image, &mem, &view, &fb);
+}
+
+Staging::~Staging()
+{
+	if (mapped)
+		vkUnmapMemory(device, memory);
+	vkDestroyBuffer(device, buffer, nullptr);
+	vkFreeMemory(device, memory, nullptr);
+}
+
 static bool
-readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
-	uint32_t out_h, Staging *staging, ScaleOutput *result, string *error)
+readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
+	ScaleOutput *result, string *error)
 {
 	const VkDeviceSize bytes = VkDeviceSize(out_w) * out_h * 4;
 
+	Staging staging{s.device};
 	VkBufferCreateInfo bci{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = bytes,
@@ -112,11 +138,11 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
 	if (!CALL_VK(CreateBuffer, " readback", s.device, &bci, nullptr,
-			&staging->buffer))
+			&staging.buffer))
 		return false;
 
 	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(s.device, staging->buffer, &mr);
+	vkGetBufferMemoryRequirements(s.device, staging.buffer, &mr);
 	uint32_t mem_type = vk_memory_type(s.phys, mr.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
@@ -130,10 +156,10 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		.memoryTypeIndex = mem_type,
 	};
 	if (!CALL_VK(AllocateMemory, " readback", s.device, &mai, nullptr,
-			&staging->memory))
+			&staging.memory))
 		return false;
-	if (!CALL_VK(BindBufferMemory, " readback", s.device, staging->buffer,
-			staging->memory, 0))
+	if (!CALL_VK(BindBufferMemory, " readback", s.device, staging.buffer,
+			staging.memory, 0))
 		return false;
 
 	if (!CALL_VK(ResetCommandBuffer, " readback", s.cmd, 0))
@@ -177,7 +203,7 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		.imageExtent = {out_w, out_h, 1},
 	};
 	vkCmdCopyImageToBuffer(s.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		staging->buffer, 1, &copy);
+		staging.buffer, 1, &copy);
 	if (!CALL_VK(EndCommandBuffer, " readback", s.cmd))
 		return false;
 
@@ -186,22 +212,24 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &s.cmd,
 	};
-	if (!CALL_VK(QueueSubmit, " readback", s.queue, 1, &submit, VK_NULL_HANDLE))
+	if (!CALL_VK(
+			QueueSubmit, " readback", s.queue, 1, &submit, VK_NULL_HANDLE) ||
+		!CALL_VK(QueueWaitIdle, " readback", s.queue)) {
+		s.device_ready = false;
 		return false;
-	if (!CALL_VK(QueueWaitIdle, " readback", s.queue))
-		return false;
+	}
 
 	// Map the whole allocation, so that the VK_WHOLE_SIZE invalidation below
 	// may end at the allocation, which need not be atom-aligned.
-	if (!CALL_VK(MapMemory, " readback", s.device, staging->memory, 0,
-			VK_WHOLE_SIZE, 0, &staging->mapped))
+	if (!CALL_VK(MapMemory, " readback", s.device, staging.memory, 0,
+			VK_WHOLE_SIZE, 0, &staging.mapped))
 		return false;
 
 	// HOST_CACHED memory need not be HOST_COHERENT, and then the GPU's writes
 	// are not in the CPU's caches yet.
 	VkMappedMemoryRange range{
 		.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-		.memory = staging->memory,
+		.memory = staging.memory,
 		.offset = 0,
 		.size = VK_WHOLE_SIZE,
 	};
@@ -213,36 +241,73 @@ readback_staging(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
 		result->width = out_w;
 		result->height = out_h;
 		result->rgba8.assign(size_t(bytes), 0);
-		memcpy(result->rgba8.data(), staging->mapped, size_t(bytes));
+		memcpy(result->rgba8.data(), staging.mapped, size_t(bytes));
 	} catch (const bad_alloc &) {
 		if (error)
 			*error = "out of memory";
 		return false;
 	}
 
-	unpremultiply_xxxa8(
-		result->rgba8.data(), out_w, out_h, size_t(out_w) * 4);
+	unpremultiply_xxxa8(result->rgba8.data(), out_w, out_h, size_t(out_w) * 4);
 	return true;
 }
 
+// The render target and its readback buffer are gone by the time this
+// returns, so that a caller may tear the device down right after.
 static bool
-readback_dest(ScaleScaler::Impl &s, VkImage image, uint32_t out_w,
-	uint32_t out_h, ScaleOutput *result, string *error)
+render_offscreen(ScaleScaler::Impl &s, uint32_t out_w, uint32_t out_h,
+	const ScaleView &view, ScaleOutput *out, string *error)
 {
-	Staging staging{};
-	bool ok = readback_staging(s, image, out_w, out_h, &staging, result, error);
-	if (staging.mapped)
-		vkUnmapMemory(s.device, staging.memory);
-	vkDestroyBuffer(s.device, staging.buffer, nullptr);
-	vkFreeMemory(s.device, staging.memory, nullptr);
-	return ok;
+	Offscreen dest{s.engine};
+	if (!s.engine.create_offscreen(
+			out_w, out_h, &dest.image, &dest.mem, &dest.view, &dest.fb, error))
+		return false;
+
+	if (!CALL_VK(
+			WaitForFences, "", s.device, 1, &s.fence, VK_TRUE, UINT64_MAX)) {
+		s.device_ready = false;
+		return false;
+	}
+
+	// Recording may still fail, and the fence has to stay signalled until
+	// there actually is a submission for the next scale() to wait on.
+	if (!CALL_VK(ResetCommandBuffer, "", s.cmd, 0))
+		return false;
+
+	VkCommandBufferBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+	if (!CALL_VK(BeginCommandBuffer, "", s.cmd, &begin))
+		return false;
+
+	const float clear[4] = {0, 0, 0, 0};
+	if (!s.engine.record(s.cmd, dest.fb, out_w, out_h, view, clear, error)) {
+		vkEndCommandBuffer(s.cmd);
+		return false;
+	}
+	if (!CALL_VK(EndCommandBuffer, "", s.cmd))
+		return false;
+
+	VkSubmitInfo submit{
+		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &s.cmd,
+	};
+	if (!CALL_VK(ResetFences, "", s.device, 1, &s.fence) ||
+		!CALL_VK(QueueSubmit, "", s.queue, 1, &submit, s.fence) ||
+		!CALL_VK(WaitForFences, " render", s.device, 1, &s.fence, VK_TRUE,
+			UINT64_MAX)) {
+		s.device_ready = false;
+		return false;
+	}
+
+	return readback(s, dest.image, out_w, out_h, out, error);
 }
 
 void
 ScaleScaler::destroy()
 {
 	if (impl_) {
-		destroy_device(*impl_);
+		teardown(*impl_);
 		delete impl_;
 		impl_ = nullptr;
 	}
@@ -263,7 +328,7 @@ ScaleScaler::init(string *error)
 	if (s.device_ready)
 		return true;
 
-	destroy_device(s);
+	teardown(s);
 
 	// Before the first call that makes the loader scan for drivers.
 	vk_add_bundled_driver_files();
@@ -293,7 +358,7 @@ ScaleScaler::init(string *error)
 
 	if (!vk_create_graphics_device(s.instance, VK_NULL_HANDLE, nullptr, {},
 			&s.phys, &s.device, &s.queue, &s.queue_family, error)) {
-		destroy_device(s);
+		teardown(s);
 		return false;
 	}
 
@@ -303,7 +368,7 @@ ScaleScaler::init(string *error)
 		.queueFamilyIndex = s.queue_family,
 	};
 	if (!CALL_VK(CreateCommandPool, "", s.device, &pci, nullptr, &s.cmd_pool)) {
-		destroy_device(s);
+		teardown(s);
 		return false;
 	}
 	VkCommandBufferAllocateInfo cai{
@@ -313,7 +378,7 @@ ScaleScaler::init(string *error)
 		.commandBufferCount = 1,
 	};
 	if (!CALL_VK(AllocateCommandBuffers, "", s.device, &cai, &s.cmd)) {
-		destroy_device(s);
+		teardown(s);
 		return false;
 	}
 
@@ -322,14 +387,14 @@ ScaleScaler::init(string *error)
 		.flags = VK_FENCE_CREATE_SIGNALED_BIT,
 	};
 	if (!CALL_VK(CreateFence, "", s.device, &fci, nullptr, &s.fence)) {
-		destroy_device(s);
+		teardown(s);
 		return false;
 	}
 
 	if (!s.engine.init(s.phys, s.device, s.queue, s.queue_family,
 			VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 			error)) {
-		destroy_device(s);
+		teardown(s);
 		return false;
 	}
 
@@ -401,85 +466,21 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 	if (!s.engine.ensure_viewport(want_out_w, want_out_h, error))
 		return false;
 
-	VkImage dest_image = VK_NULL_HANDLE;
-	VkDeviceMemory dest_mem = VK_NULL_HANDLE;
-	VkImageView dest_view = VK_NULL_HANDLE;
-	VkFramebuffer dest_fb = VK_NULL_HANDLE;
-	if (!s.engine.create_offscreen(want_out_w, want_out_h, &dest_image,
-			&dest_mem, &dest_view, &dest_fb, error))
-		return false;
-
-	if (!CALL_VK(
-			WaitForFences, "", s.device, 1, &s.fence, VK_TRUE, UINT64_MAX)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-	if (!CALL_VK(ResetFences, "", s.device, 1, &s.fence)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-	if (!CALL_VK(ResetCommandBuffer, "", s.cmd, 0)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-
-	VkCommandBufferBeginInfo begin{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	if (!CALL_VK(BeginCommandBuffer, "", s.cmd, &begin)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-
 	ScaleView view{};
 	view.scale = float(want_out_w) / float(disp_w);
 	view.filter = preferred_filter(s.phys);
 	view.transfer = Transfer::Srgb;
 	view.orientation = orientation;
-	const float clear[4] = {0, 0, 0, 0};
-	if (!s.engine.record(
-			s.cmd, dest_fb, want_out_w, want_out_h, view, clear, error)) {
-		vkEndCommandBuffer(s.cmd);
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
 
-	if (!CALL_VK(EndCommandBuffer, "", s.cmd)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
+	bool ok = render_offscreen(s, want_out_w, want_out_h, view, out, error);
 
-	VkSubmitInfo submit{
-		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.commandBufferCount = 1,
-		.pCommandBuffers = &s.cmd,
-	};
-	if (!CALL_VK(QueueSubmit, "", s.queue, 1, &submit, s.fence)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-	if (!CALL_VK(WaitForFences, " render", s.device, 1, &s.fence, VK_TRUE,
-			UINT64_MAX)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-
-	if (!readback_dest(s, dest_image, want_out_w, want_out_h, out, error)) {
-		s.engine.destroy_offscreen(
-			&dest_image, &dest_mem, &dest_view, &dest_fb);
-		return false;
-	}
-
-	s.engine.destroy_offscreen(&dest_image, &dest_mem, &dest_view, &dest_fb);
-	s.engine.clear_image();
-	return true;
+	// A failed submission may leave the fence unsignalled, and nothing will
+	// ever signal it; rebuild the whole device on the next init() instead.
+	if (!s.device_ready)
+		teardown(s);
+	else if (ok)
+		s.engine.clear_image();
+	return ok;
 }
 
 }  // namespace dawn
