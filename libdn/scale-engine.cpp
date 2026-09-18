@@ -175,6 +175,7 @@ struct ScaleEngine::Impl {
 
 	VkRect2D dest_area(uint32_t vp_w, uint32_t vp_h) const;
 
+	bool create_mid(string *error);
 	void destroy_mid();
 	void destroy_tiles();
 	void destroy_pipeline();
@@ -869,7 +870,19 @@ ScaleEngine::Impl::ensure_mid(uint32_t vp_w, uint32_t src_h, string *error)
 	mid_pad_w = want_pad_w;
 	mid_pad_h = want_pad_h;
 	mid_layers = want_layers;
+	if (create_mid(error))
+		return true;
 
+	// Half of an array looks ready to the next ensure_mid(), which compares
+	// the stored dimensions; destroy_mid() clears those as well.
+	destroy_mid();
+	return false;
+}
+
+// Builds the mid array for the dimensions already stored in these fields.
+bool
+ScaleEngine::Impl::create_mid(string *error)
+{
 	VkImageCreateInfo ici{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
