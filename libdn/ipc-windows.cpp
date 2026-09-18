@@ -54,18 +54,11 @@ struct RemoteHandles {
 
 }  // namespace
 
-// The token user of a process, as an owned SID copy.
+// The user of a token, as an owned SID copy.  The token stays the caller's.
 static vector<std::byte>
-process_sid(HANDLE process)
+token_sid(HANDLE token)
 {
 	vector<std::byte> out;
-	if (!process)
-		return out;
-
-	HANDLE token = nullptr;
-	if (!::OpenProcessToken(process, TOKEN_QUERY, &token))
-		return out;
-
 	DWORD need = 0;
 	::GetTokenInformation(token, TokenUser, nullptr, 0, &need);
 	vector<std::byte> buf(need);
@@ -77,8 +70,23 @@ process_sid(HANDLE process)
 		if (!::CopySid(n, out.data(), user->User.Sid))
 			out.clear();
 	}
-	::CloseHandle(token);
 	return out;
+}
+
+// The token user of a process, as an owned SID copy.
+static vector<std::byte>
+process_sid(HANDLE process)
+{
+	if (!process)
+		return {};
+
+	HANDLE token = nullptr;
+	if (!::OpenProcessToken(process, TOKEN_QUERY, &token))
+		return {};
+
+	auto sid = token_sid(token);
+	::CloseHandle(token);
+	return sid;
 }
 
 static vector<std::byte>
@@ -192,15 +200,7 @@ client_is_own_user(HANDLE pipe)
 	HANDLE token = nullptr;
 	bool same = false;
 	if (::OpenThreadToken(::GetCurrentThread(), TOKEN_QUERY, TRUE, &token)) {
-		DWORD need = 0;
-		::GetTokenInformation(token, TokenUser, nullptr, 0, &need);
-		vector<std::byte> buf(need);
-		if (need &&
-			::GetTokenInformation(token, TokenUser, buf.data(), need, &need)) {
-			const auto *user = (const TOKEN_USER *) buf.data();
-			same = !own_sid().empty() &&
-				::EqualSid(user->User.Sid, (PSID) own_sid().data());
-		}
+		same = sid_is_own(token_sid(token));
 		::CloseHandle(token);
 	}
 	::RevertToSelf();

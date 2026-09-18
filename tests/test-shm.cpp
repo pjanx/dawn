@@ -15,6 +15,7 @@
 #include <windows.h>
 #else
 #include <cerrno>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
@@ -34,6 +35,18 @@ duplicate_handle(dawn::ipc::Handle handle)
 #endif
 }
 
+// Rejected mappings consume the handle; ask the platform if it is gone.
+static bool
+handle_is_open(dawn::ipc::Handle handle)
+{
+#ifdef _WIN32
+	DWORD flags = 0;
+	return GetHandleInformation((HANDLE) handle, &flags);
+#else
+	return fcntl(int(handle), F_GETFD) != -1;
+#endif
+}
+
 static void
 test_shared_memory()
 {
@@ -41,9 +54,10 @@ test_shared_memory()
 	memcpy(data, "shared", 6);
 	auto owner = dawn::ipc::SharedMemory::copy(data, sizeof data);
 	CHECK(owner.ok());
-	auto too_large =
-		dawn::ipc::SharedMemory::map(duplicate_handle(owner.handle()), 8192);
-	CHECK(!too_large.ok());
+	const dawn::ipc::Handle spare = duplicate_handle(owner.handle());
+	CHECK(handle_is_open(spare));
+	CHECK(!dawn::ipc::SharedMemory::map(spare, 8192).ok());
+	CHECK(!handle_is_open(spare));
 #ifdef __linux__
 	errno = 0;
 	CHECK(ftruncate(int(owner.handle()), 2048) != 0);
@@ -57,8 +71,28 @@ test_shared_memory()
 	CHECK(reader.ok() && memcmp(reader.data(), "shared", 6) == 0);
 }
 
+static void
+test_empty()
+{
+	char data[4096]{};
+	auto owner = dawn::ipc::SharedMemory::copy(data, sizeof data);
+	CHECK(owner.ok());
+
+	// Nothing to share, nothing to map it with, and nothing to map.
+	CHECK(!dawn::ipc::SharedMemory::copy(data, 0).ok());
+	CHECK(!dawn::ipc::SharedMemory::map(dawn::ipc::kInvalidHandle, 4096).ok());
+
+	const dawn::ipc::Handle spare = duplicate_handle(owner.handle());
+	CHECK(handle_is_open(spare));
+	CHECK(!dawn::ipc::SharedMemory::map(spare, 0).ok());
+	CHECK(!handle_is_open(spare));
+}
+
 int
 main()
 {
-	return test::run({{"shared memory", test_shared_memory}});
+	return test::run({
+		{"shared memory", test_shared_memory},
+		{"empty mappings", test_empty},
+	});
 }

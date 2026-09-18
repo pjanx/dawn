@@ -21,6 +21,9 @@ SharedMemory
 SharedMemory::copy(const void *data, size_t size)
 {
 	SharedMemory out;
+	if (!size)
+		return out;
+
 	const HANDLE h = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr,
 		PAGE_READWRITE, DWORD(uint64_t(size) >> 32), DWORD(size), nullptr);
 	if (!h)
@@ -41,7 +44,15 @@ SharedMemory
 SharedMemory::map(Handle handle, size_t size)
 {
 	SharedMemory out;
-	void *p = MapViewOfFile((HANDLE) handle, FILE_MAP_READ, 0, 0, size);
+	const HANDLE h = (HANDLE) handle;
+
+	// A zero size would map the whole file mapping rather than fail.
+	if (!h || h == INVALID_HANDLE_VALUE || !size) {
+		close_handle(handle);
+		return out;
+	}
+
+	void *p = MapViewOfFile(h, FILE_MAP_READ, 0, 0, size);
 	if (!p) {
 		close_handle(handle);
 		return out;
