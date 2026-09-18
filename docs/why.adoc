@@ -1,27 +1,95 @@
 Why you need a better image viewer
 ==================================
 
+...or a better operating system, computer, monitor.  This could be a whole
+booklet, so forgive the brevity.
+
 Wide gamuts
 -----------
-// TODO(p): show the CIE picture.
-
 Today's displays commonly have colour gamuts going beyond sRGB.
+The difference between the old standard and Apple's Display P3
+(which is slowly displacing the former) may not look significant on paper,
+but you will certainly notice it in photos:
+
+[.text-center]
+image::why-cie.webp["CIE 1931 xy diagram with sRGB and Display P3 triangles"]
+
+Allow me to use a dishonest image to illustrate the magnitude of the difference
+on the hue spectrum:
+
+[.text-center]
+image::why-spectrum.webp["Display P3 hue sweep above sRGB projected into Display P3, faked in sRGB"]
+
+A good image viewer takes care to neither undersaturate nor oversaturate
+images (which can be in any colour space they want, as can your display).
+And most actually do, these days, at least to a basic extent.
+So let's move on to...
 
 Bit depth
 ---------
-// TODO(p): show emphasised banding.
+Today's displays can often display more than 16.7 million colours.  At 1.07
+billion colours of 10-bit panels, banding can finally become almost invisible
+to the human eye.  To illustrate the issue:
 
-Today's displays can often display more than 16.7 million colours.
+[.text-center]
+image::why-banding.webp["Smooth 8-bit ramp versus quantised 6-bit in the 64–192 range"]
+
+If you see no difference, I'm very sorry, because your panel is exactly
+6-bit, which was rather common in cheap laptops--I happen to own one.
+
+Hardware and operating system support are actually just two pieces of
+the puzzle, and they happen to be ones you can circumvent with
+https://en.wikipedia.org/wiki/Dither[dithering].
+Most content today is simply 8-bit.  But even there, the transformation that may
+be necessary to deal with gamut mismatches leads to quantisation errors.
+
+Dawn will help you see things smoothly in all cases.
 
 Gamma correctness
 -----------------
-// TODO(p): show artifacts; architecture is enough.
+Colour blending must be done in linear space.  Doing it wrong is easier,
+thus _most software fails at this_ in one way or another.
+The manifestations are as subtle as they are pervasive.
 
-Zooming in or out requires correct colour handling.
-Even an iPhone fails at this.
+When zooming out, high-frequency details look wrong, such as the building on
+the right side:
+
+[.text-center]
+image::why-gamma.webp["Photograph scaled in sRGB versus linear space"]
+
+When zooming in, things may end up too thick or thin:
+
+[.text-center]
+image::why-gamma-type.webp["Text upscaled in linear space versus sRGB"]
+
+And transitions between pure hues go through darkness:
+
+[.text-center]
+image::why-gamma-strips.webp["Yellow to blue blend in sRGB versus linear space"]
+
+Final blending is where the worst issues like to remain, so Dawn can't quite
+claim victory yet.  Some content is also designed to be rendered wrong,
+such as macOS icons.
 
 Scaling
 -------
-// TODO(p): show extreme close-ups.
+There is one more improvement to make about scaling, and that is
+the filtering algorithm.
 
-You can do better than to use bilinear scaling.
+[.text-center]
+image::why-scaling.webp["Text upscaled with nearest neighbour, bilinear interpolation, and NoHalo"]
+
+The blocky method of not even trying is only here for reference, although its
+rough precision is what makes it indispensable.  For general imagery, you want
+to smooth it out.
+
+The simple and fast method is bilinear interpolation.  If you look at it
+closely, it retains pixel edges, in a pretty noticeable way.  Luckily, modern
+hardware allows Dawn to throw a better alternative at the problem in real time:
+the NoHalo algorithm, originally coming from GIMP.  The edges are almost gone,
+and it doesn't add the ringing artifacts which bicubic or other filtering would.
+
+And more
+--------
+This is just the tip of the iceberg.  Dawn is the image viewer that cares about
+doing things better.
