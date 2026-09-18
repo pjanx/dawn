@@ -9,6 +9,7 @@ dn/kit-chrome.cpp
 dn/kit-cie-diagram.cpp
 dn/kit-crop-jpeg.cpp
 dn/kit-viewer.cpp
+dn/kit.cpp
 dn/main.cpp
 dn/volumes-unix.cpp
 dn/window.cpp

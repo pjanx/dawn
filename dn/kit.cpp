@@ -5,17 +5,22 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <libdn/gettext.hpp>
+
 #include "kit.hpp"
 #include "kit-chrome.hpp"
 #include "renderer.hpp"
 
+#include <QClipboard>
 #include <QFile>
 #include <QFontDatabase>
 #include <QFontInfo>
 #include <QFontMetricsF>
 #include <QGlyphRun>
+#include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
+#include <QMimeData>
 #include <QPainter>
 #include <QPen>
 #include <QTextBoundaryFinder>
@@ -1354,6 +1359,40 @@ grapheme_at_or_after(const QString &text, int at)
 	return grapheme_after(text, at);
 }
 
+// Word motion walks over the run of word characters to its far side.  Which
+// side that is differs: AppKit text fields stop at the end of the word going
+// forwards, everyone else at the start of the next one.
+static int
+word_before(const QString &text, int at)
+{
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Word, text);
+	finder.setPosition(clamp(at, 0, int(text.size())));
+	while (finder.toPreviousBoundary() > 0) {
+		if (finder.boundaryReasons() & QTextBoundaryFinder::StartOfItem)
+			break;
+	}
+	return max(0, int(finder.position()));
+}
+
+static int
+word_after(const QString &text, int at)
+{
+	const int end = int(text.size());
+#ifdef Q_OS_MACOS
+	const auto stop = QTextBoundaryFinder::EndOfItem;
+#else
+	const auto stop = QTextBoundaryFinder::StartOfItem;
+#endif
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Word, text);
+	finder.setPosition(clamp(at, 0, end));
+	while (finder.toNextBoundary() >= 0) {
+		if (finder.position() >= end || (finder.boundaryReasons() & stop))
+			break;
+	}
+	const int p = int(finder.position());
+	return p < 0 ? end : clamp(p, 0, end);
+}
+
 // Qt hands us the control codes as text too; none of them are insertable.
 static QString
 printable_only(const QString &text)
@@ -1368,6 +1407,148 @@ printable_only(const QString &text)
 	return out;
 }
 
+// Everything an Entry can be told to do, none of which needs a selection.
+enum class Edit : uint8_t {
+	CharLeft,
+	CharRight,
+	WordLeft,
+	WordRight,
+	LineStart,
+	LineEnd,
+	DeleteBack,
+	DeleteForward,
+	DeleteWordBack,
+	DeleteWordForward,
+	DeleteToStart,
+	DeleteToEnd,
+	Paste,
+};
+
+struct EntryKey {
+	int key;
+	unsigned mods;
+	Edit edit;
+};
+
+constexpr unsigned kCtrl = unsigned(Qt::ControlModifier);
+[[maybe_unused]] constexpr unsigned kAlt = unsigned(Qt::AltModifier);
+[[maybe_unused]] constexpr unsigned kShift = unsigned(Qt::ShiftModifier);
+[[maybe_unused]] constexpr unsigned kMeta = unsigned(Qt::MetaModifier);
+
+// The keys that ask for them, beyond the unmodified ones Entry::key spells
+// out.  In Qt's reckoning macOS's Command key is ControlModifier and its
+// Control key is MetaModifier, which is what lets a text field there answer
+// to the Emacs combinations as well as to its own.
+// clang-format off
+constexpr EntryKey kEntryKeys[] = {
+#ifdef Q_OS_MACOS
+	{Qt::Key_Left, kAlt, Edit::WordLeft},
+	{Qt::Key_Right, kAlt, Edit::WordRight},
+	{Qt::Key_Left, kCtrl, Edit::LineStart},
+	{Qt::Key_Right, kCtrl, Edit::LineEnd},
+	{Qt::Key_Backspace, kAlt, Edit::DeleteWordBack},
+	{Qt::Key_Delete, kAlt, Edit::DeleteWordForward},
+	{Qt::Key_Backspace, kCtrl, Edit::DeleteToStart},
+	{Qt::Key_V, kCtrl, Edit::Paste},
+	{Qt::Key_B, kMeta, Edit::CharLeft},
+	{Qt::Key_F, kMeta, Edit::CharRight},
+	{Qt::Key_A, kMeta, Edit::LineStart},
+	{Qt::Key_E, kMeta, Edit::LineEnd},
+	{Qt::Key_H, kMeta, Edit::DeleteBack},
+	{Qt::Key_D, kMeta, Edit::DeleteForward},
+	{Qt::Key_K, kMeta, Edit::DeleteToEnd},
+	{Qt::Key_Y, kMeta, Edit::Paste},
+#else
+	{Qt::Key_Left, kCtrl, Edit::WordLeft},
+	{Qt::Key_Right, kCtrl, Edit::WordRight},
+	{Qt::Key_Backspace, kCtrl, Edit::DeleteWordBack},
+	{Qt::Key_Delete, kCtrl, Edit::DeleteWordForward},
+	{Qt::Key_V, kCtrl, Edit::Paste},
+	{Qt::Key_Insert, kShift, Edit::Paste},
+#ifdef Q_OS_UNIX
+	// Line killing is an X11 convention, and Qt binds it nowhere else.
+	{Qt::Key_U, kCtrl, Edit::DeleteToStart},
+	{Qt::Key_K, kCtrl, Edit::DeleteToEnd},
+#endif
+#endif
+};
+// clang-format on
+
+static const EntryKey *
+match_edit(int key, unsigned mods)
+{
+	for (const EntryKey &k : kEntryKeys) {
+		if (k.key == key && k.mods == mods)
+			return &k;
+	}
+	return nullptr;
+}
+
+// What a menu writes next to the command: its first binding, so that the
+// label cannot drift away from what the keyboard does.
+static QString
+edit_accel(Edit edit)
+{
+	for (const EntryKey &k : kEntryKeys) {
+		if (k.edit == edit)
+			return accel_key_label({uint32_t(k.key), k.mods});
+	}
+	return {};
+}
+
+// The one place each command is carried out, whether a key, a menu or an
+// assistive technology asked for it.
+static bool
+apply_edit(Kit &kit, Entry &e, Edit edit)
+{
+	const int end = int(e.text.size());
+	switch (edit) {
+	case Edit::CharLeft:
+		e.move_caret(kit, grapheme_before(e.text, e.caret));
+		break;
+	case Edit::CharRight:
+		e.move_caret(kit, grapheme_after(e.text, e.caret));
+		break;
+	case Edit::WordLeft:
+		e.move_caret(kit, word_before(e.text, e.caret));
+		break;
+	case Edit::WordRight:
+		e.move_caret(kit, word_after(e.text, e.caret));
+		break;
+	case Edit::LineStart:
+		e.move_caret(kit, 0);
+		break;
+	case Edit::LineEnd:
+		e.move_caret(kit, end);
+		break;
+	case Edit::DeleteBack:
+		e.replace(kit, grapheme_before(e.text, e.caret), e.caret, {});
+		break;
+	case Edit::DeleteForward:
+		e.replace(kit, e.caret, grapheme_after(e.text, e.caret), {});
+		break;
+	case Edit::DeleteWordBack:
+		e.replace(kit, word_before(e.text, e.caret), e.caret, {});
+		break;
+	case Edit::DeleteWordForward:
+		e.replace(kit, e.caret, word_after(e.text, e.caret), {});
+		break;
+	case Edit::DeleteToStart:
+		e.replace(kit, 0, e.caret, {});
+		break;
+	case Edit::DeleteToEnd:
+		e.replace(kit, e.caret, end, {});
+		break;
+	case Edit::Paste:
+		// A single line has no room for what the control codes would say,
+		// and the clipboard is as likely as not to carry some.
+		e.replace(kit, e.caret, e.caret,
+			printable_only(QGuiApplication::clipboard()->text()));
+		break;
+	}
+	return true;
+}
+
 // How far through the on-off cycle a caret last touched then is: [0, 1),
 // with the first half lit.
 static double
@@ -1378,6 +1559,8 @@ blink_phase(chrono::steady_clock::time_point since)
 			.count();
 	return fmod(elapsed, kCaretBlinkMs * 2.0) / (kCaretBlinkMs * 2.0);
 }
+
+Entry::~Entry() = default;
 
 int
 Entry::inner_w(const Kit &kit) const
@@ -1640,8 +1823,15 @@ Entry::focusable() const
 }
 
 bool
-Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
+Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
+	// As every other text field does, the menu leaves the caret where it
+	// was: the click is about what to do there, not about going elsewhere.
+	if (button == Qt::RightButton) {
+		kit.set_focus(this, false);
+		context(kit, {int(x), int(y), 0, 0}, false);
+		return true;
+	}
 	if (button != Qt::LeftButton)
 		return false;
 
@@ -1663,40 +1853,71 @@ Entry::press(Kit &kit, float x, float, Qt::MouseButton button)
 	return true;
 }
 
+// Rebuilt at every opening, because whether there is anything to paste is
+// only known now.
+void
+Entry::context(Kit &kit, Rect anchor, bool kbd)
+{
+	if (!this->menu_)
+		this->menu_ = make_unique<Menu>();
+
+	this->menu_->clear(kit);
+	this->menu_->min_w = 200.f;
+	auto *paste = this->menu_->add_item_with_mnemonic(N_("_Paste"));
+	paste->accel = edit_accel(Edit::Paste);
+	// Asking for the text itself would drag the whole of it across just to
+	// find out whether there is any.
+	const QMimeData *clip = QGuiApplication::clipboard()->mimeData();
+	paste->enabled_ = clip && clip->hasText();
+	paste->on_click = [this](Kit &k) {
+		apply_edit(k, *this, Edit::Paste);
+		// The menu took the focus off the field to show itself; picking
+		// from it is no reason to leave it anywhere else.
+		k.set_focus(this, false);
+	};
+
+	this->menu_->open_at(kit, anchor);
+	if (kbd)
+		kit.focus_first(this->menu_.get());
+}
+
 bool
 Entry::key(Kit &kit, const Key &ev)
 {
-	// Let the window keep its shortcuts; only bare typing belongs to us.
+	// Anything the input method is still composing is its business.
+	if (!this->preedit.isEmpty())
+		return false;
+
+	if (context_key(ev.key, ev.mods)) {
+		TextTarget target;
+		if (!text_target(kit, target))
+			return false;
+		context(kit, target.caret_rect, true);
+		return true;
+	}
+	if (const EntryKey *bound = match_edit(ev.key, ev.mods))
+		return apply_edit(kit, *this, bound->edit);
+
+	// Let the window keep the shortcuts we have no use for; past this point
+	// only bare typing belongs to us.
 	const unsigned extra = ev.mods &
 		unsigned(Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
 	if (extra)
 		return false;
 
-	// Anything the input method is still composing is its business.
-	if (!this->preedit.isEmpty())
-		return false;
-
 	switch (ev.key) {
 	case Qt::Key_Left:
-		move_caret(kit, grapheme_before(this->text, this->caret));
-		return true;
+		return apply_edit(kit, *this, Edit::CharLeft);
 	case Qt::Key_Right:
-		move_caret(kit, grapheme_after(this->text, this->caret));
-		return true;
+		return apply_edit(kit, *this, Edit::CharRight);
 	case Qt::Key_Home:
-		move_caret(kit, 0);
-		return true;
+		return apply_edit(kit, *this, Edit::LineStart);
 	case Qt::Key_End:
-		move_caret(kit, int(this->text.size()));
-		return true;
+		return apply_edit(kit, *this, Edit::LineEnd);
 	case Qt::Key_Backspace:
-		if (this->caret > 0)
-			replace(
-				kit, grapheme_before(this->text, this->caret), this->caret, {});
-		return true;
+		return apply_edit(kit, *this, Edit::DeleteBack);
 	case Qt::Key_Delete:
-		replace(kit, this->caret, grapheme_after(this->text, this->caret), {});
-		return true;
+		return apply_edit(kit, *this, Edit::DeleteForward);
 	case Qt::Key_Return:
 	case Qt::Key_Enter:
 		if (this->on_submit) {

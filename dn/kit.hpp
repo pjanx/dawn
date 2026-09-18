@@ -122,6 +122,7 @@ enum : uint8_t {
 };
 
 struct Kit;
+struct Menu;
 struct Scroll;
 
 // One keystroke, as the platform delivered it.
@@ -369,7 +370,9 @@ int grapheme_at_or_before(const QString &text, int at);
 int grapheme_at_or_after(const QString &text, int at);
 
 // A single-line text field.  There is no selection: the caret is the whole
-// of the state, and a click just places it.
+// of the state, and a click just places it.  Everything it can be told to do
+// is therefore a caret move or a splice at the caret, the right-click menu
+// included -- which is why that menu has Paste on it, and nothing else.
 struct Entry : Widget {
 	QString text;
 	QString placeholder;
@@ -391,8 +394,12 @@ struct Entry : Widget {
 	// about focus; paint and wake_ms are const and just read them.
 	bool focused_ = false;
 	bool caret_on_ = false;
+	// Built when first asked for, and owned here because a popup outlives
+	// the click that opened it.
+	std::unique_ptr<Menu> menu_;
 
 	Entry() { this->hittable = this->grow = true; }
+	~Entry() override;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -400,6 +407,8 @@ struct Entry : Widget {
 	bool focusable() const override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	// Opens the caret menu, at the pointer or at the caret.
+	void context(Kit &kit, Rect anchor, bool kbd);
 	bool key(Kit &kit, const Key &ev) override;
 	bool input_method(Kit &kit, const QString &commit, const QString &pre,
 		int pre_caret) override;
