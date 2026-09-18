@@ -1,3 +1,4 @@
+//
 // gen-icon.swift: generate a program icon for dn in the Apple icon format
 //
 // Copyright The Dawn Authors
@@ -49,8 +50,7 @@ func drawIcon(scale: CGFloat) -> CGImage? {
 	context.fillPath()
 	context.restoreGState()
 
-	// Quartz Y is up: start is the bottom of the squircle (orange),
-	// end is the top (yellow #ffee00).
+	// Quartz Y is up: start is the bottom of the squircle.
 	context.saveGState()
 	context.addPath(squircle)
 	context.clip()
