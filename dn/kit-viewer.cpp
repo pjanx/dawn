@@ -1486,14 +1486,15 @@ rotate_locked(Viewer &v, float delta)
 	}
 }
 
+// Deltas are in device pixels, like all widget coordinates.
 static void
-pan_by(Viewer &v, double dx_points, double dy_points)
+pan_by(Viewer &v, double dx, double dy)
 {
 	if (v.scale_ <= 0.f)
 		return;
 
-	const float k = v.kit_.dpr_ / v.scale_;
-	const Vec u = turn(-v.angle_, {float(dx_points) * k, float(dy_points) * k});
+	const float k = 1.f / v.scale_;
+	const Vec u = turn(-v.angle_, {float(dx) * k, float(dy) * k});
 	v.pan_x_ -= u.x;
 	v.pan_y_ -= u.y;
 	request_render(v);
@@ -2088,16 +2089,16 @@ Viewer::key(Kit &kit, const Key &ev)
 		// Other modifiers are taken, and bare arrows iterate files.
 		switch (ev.key) {
 		case Qt::Key_Up:
-			pan_by(*this, 0., +kKeyboardPan);
+			pan_by(*this, 0., +this->kit_.px(kKeyboardPan));
 			return true;
 		case Qt::Key_Right:
-			pan_by(*this, -kKeyboardPan, 0);
+			pan_by(*this, -this->kit_.px(kKeyboardPan), 0);
 			return true;
 		case Qt::Key_Down:
-			pan_by(*this, 0., -kKeyboardPan);
+			pan_by(*this, 0., -this->kit_.px(kKeyboardPan));
 			return true;
 		case Qt::Key_Left:
-			pan_by(*this, +kKeyboardPan, 0);
+			pan_by(*this, +this->kit_.px(kKeyboardPan), 0);
 			return true;
 		}
 		break;
