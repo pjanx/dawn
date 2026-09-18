@@ -50,7 +50,11 @@ private:
 // The thumbnail sizes the browser has, smallest first.  One table: what the
 // settings dialog offers must not drift from what the browser can show, nor
 // from what Settings::load() will accept back off disk.
-constexpr int kThumbSizes[] = {128, 256, 512, 1024};
+struct ThumbnailSize {
+	int pixels;
+	const char *label;
+};
+std::span<const ThumbnailSize> thumbnail_sizes();
 
 // What the settings dialog edits: a copy it owns, handed back whole on Save.
 // Deliberately not Settings itself -- the dialog has no business knowing

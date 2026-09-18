@@ -656,9 +656,6 @@ make_sidebar(Viewer &v, const HostActions &host)
 static void
 sync_ui(Viewer &v, Page &ui)
 {
-	if (ui.toolbar)
-		ui.toolbar->sync_buttons();
-	ui.sync_app_menu();
 	if (v.error_) {
 		v.error_->set_visible(!v.message_.empty() && !v.message_dismissed_);
 		const float max_h = float(v.kit_.host_h_) * 0.4f;

@@ -515,8 +515,6 @@ Cropper::present(Kit &kit, Page &ui)
 	this->scale_label_->min_w =
 		kit.pts(kit.text_width(QStringLiteral("1600%"), false));
 
-	ui.toolbar->sync_buttons();
-	ui.sync_app_menu();
 	kit.frame_ui(ui, {});
 }
 

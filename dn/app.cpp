@@ -111,8 +111,8 @@ parse_thumbnail_size(const string &value)
 		from_chars(value.data(), value.data() + value.size(), size);
 	if (parsed.ec != errc{} || parsed.ptr != value.data() + value.size())
 		return 0;
-	for (const int candidate : kThumbSizes) {
-		if (candidate == size)
+	for (const ThumbnailSize &candidate : thumbnail_sizes()) {
+		if (candidate.pixels == size)
 			return size;
 	}
 	return 0;

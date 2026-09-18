@@ -1037,7 +1037,7 @@ struct Kit {
 	// have moved -- popups, focus, the hover under the pointer -- and paint.
 	// Between arranging and settling, the caller does whatever depends on the
 	// fresh geometry but has to precede prepare().
-	void frame_ui(Widget &ui, const std::function<void()> &placed);
+	void frame_ui(Page &ui, const std::function<void()> &placed);
 	void paint();
 	// Text metrics, all in device pixels: the fonts are already rasterised at
 	// that size, so this is what Qt measures, without a round trip through

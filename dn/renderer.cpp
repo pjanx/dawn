@@ -969,6 +969,27 @@ Renderer::create_dither()
 		1, &pipeline_info, nullptr, &this->dither_pipe_);
 }
 
+// Both passes cover the whole destination; the overlay sets its scissor per
+// draw.
+static void
+begin_render_pass(VkCommandBuffer cmd, VkRenderPass pass, VkFramebuffer dest,
+	VkExtent2D extent)
+{
+	VkRenderPassBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = pass,
+		.framebuffer = dest,
+		.renderArea = {.extent = extent},
+	};
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	VkViewport viewport{
+		.width = float(extent.width),
+		.height = float(extent.height),
+		.maxDepth = 1.f,
+	};
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+}
+
 void
 Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
 {
@@ -990,23 +1011,8 @@ Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&barrier);
-	VkRenderPassBeginInfo begin{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = this->dither_rp_,
-		.framebuffer = dest,
-		.renderArea = {.extent = this->extent_},
-	};
-	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
-	VkViewport viewport{
-		.x = 0.f,
-		.y = 0.f,
-		.width = float(this->extent_.width),
-		.height = float(this->extent_.height),
-		.minDepth = 0.f,
-		.maxDepth = 1.f,
-	};
+	begin_render_pass(cmd, this->dither_rp_, dest, this->extent_);
 	VkRect2D scissor{.extent = this->extent_};
-	vkCmdSetViewport(cmd, 0, 1, &viewport);
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->dither_pipe_);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1732,22 +1738,8 @@ OverlayVulkan::record(
 	vkUnmapMemory(this->device_, this->vertex_memory_);
 	vkUnmapMemory(this->device_, this->index_memory_);
 
-	VkRenderPassBeginInfo begin{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = this->render_pass_,
-		.framebuffer = this->framebuffers_[image_index],
-		.renderArea = {.extent = this->extent_},
-	};
-	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
-	VkViewport viewport{
-		.x = 0.f,
-		.y = 0.f,
-		.width = float(this->extent_.width),
-		.height = float(this->extent_.height),
-		.minDepth = 0.f,
-		.maxDepth = 1.f,
-	};
-	vkCmdSetViewport(cmd, 0, 1, &viewport);
+	begin_render_pass(cmd, this->render_pass_, this->framebuffers_[image_index],
+		this->extent_);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &this->vertex_buffer_, &offset);
 	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);

@@ -67,7 +67,7 @@ parse_metadata(const uint8_t *data, size_t size, Metadata *out)
 		const void *found = memchr(p, 0, size_t(end - p));
 		if (!found)
 			return false;
-		const char *nul = static_cast<const char *>(found);
+		const char *nul = (const char *) found;
 		fields.emplace_back(p, nul);
 		p = nul + 1;
 	}
@@ -180,15 +180,31 @@ decode_webp(const QByteArray &bytes, dawn::Cmm &cmm, dawn::Profile *source,
 }
 
 static ThumbnailHit
+thumbnail_hit(
+	const dawn::Image &image, const Metadata &meta, int tier, bool interim)
+{
+	ThumbnailHit hit;
+	hit.width = image.width;
+	hit.height = image.height;
+	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
+	for (uint32_t y = 0; y < hit.height; y++)
+		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4, row_u16(image, y),
+			size_t(hit.width) * dawn::kBytesPerPixel);
+	hit.tier = tier;
+	hit.interim = interim;
+	read_image_dimensions(meta, &hit);
+	return hit;
+}
+
+static ThumbnailHit
 read_wide(const QString &path, const ThumbnailSource &source, int tier,
 	int desired_tier, const shared_ptr<dawn::Cmm> &cmm, dawn::Profile *screen)
 {
-	ThumbnailHit hit;
 	const QByteArray bytes = read_file(path);
 	Metadata meta;
 	if (bytes.isEmpty() || !webp_metadata(bytes, &meta) ||
 		!valid_metadata(meta, source) || !cmm || !screen)
-		return hit;
+		return {};
 
 	const string *tag = value(meta, kColorSpace);
 	const bool p3 = tag && *tag == "Display P3";
@@ -196,28 +212,18 @@ read_wide(const QString &path, const ThumbnailSource &source, int tier,
 		p3 ? cmm->get_profile_display_p3() : cmm->get_profile_sRGB();
 	dawn::ImagePtr image = decode_webp(bytes, *cmm, src.get(), screen);
 	if (!image)
-		return hit;
+		return {};
 
-	hit.width = image->width;
-	hit.height = image->height;
-	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
-	for (uint32_t y = 0; y < hit.height; y++)
-		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
-			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
-	hit.tier = tier;
-	hit.interim = !p3 || tier != desired_tier;
-	read_image_dimensions(meta, &hit);
-	return hit;
+	return thumbnail_hit(*image, meta, tier, !p3 || tier != desired_tier);
 }
 
 static ThumbnailHit
 read_png(const QString &path, const ThumbnailSource &source, int tier,
 	const shared_ptr<dawn::Cmm> &cmm, dawn::Profile *screen)
 {
-	ThumbnailHit hit;
 	const QByteArray bytes = read_file(path);
 	if (bytes.isEmpty() || !cmm || !screen)
-		return hit;
+		return {};
 
 	dawn::OpenContext ctx;
 	ctx.uri = dawn::path_to_uri(path.toStdString());
@@ -229,7 +235,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 			size_t(bytes.size())),
 		ctx, &error);
 	if (!image)
-		return hit;
+		return {};
 
 	Metadata meta;
 	meta.values = image->text;
@@ -241,16 +247,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 			srgb.get(), screen, true, true))
 		return {};
 
-	hit.width = image->width;
-	hit.height = image->height;
-	hit.pixels.resize(size_t(hit.width) * hit.height * 4);
-	for (uint32_t y = 0; y < hit.height; y++)
-		memcpy(hit.pixels.data() + size_t(y) * hit.width * 4,
-			row_u16(*image, y), size_t(hit.width) * dawn::kBytesPerPixel);
-	hit.tier = tier;
-	hit.interim = true;
-	read_image_dimensions(meta, &hit);
-	return hit;
+	return thumbnail_hit(*image, meta, tier, true);
 }
 
 static QString

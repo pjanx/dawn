@@ -7,8 +7,8 @@
 
 #include <libdn/gettext.hpp>
 
-#include "kit.hpp"
 #include "kit-chrome.hpp"
+#include "kit.hpp"
 #include "renderer.hpp"
 
 #include <QClipboard>
@@ -5810,9 +5810,6 @@ Kit::prepare_popups()
 void
 Widget::present(Kit &kit, Page &page)
 {
-	if (page.toolbar)
-		page.toolbar->sync_buttons();
-	page.sync_app_menu();
 	kit.frame_ui(page, {});
 }
 
@@ -5826,10 +5823,14 @@ Kit::set_host(float width_pts, float height_pts, float dpr)
 }
 
 void
-Kit::frame_ui(Widget &ui, const function<void()> &placed)
+Kit::frame_ui(Page &ui, const function<void()> &placed)
 {
 	if (!this->inited_)
 		return;
+
+	if (ui.toolbar)
+		ui.toolbar->sync_buttons();
+	ui.sync_app_menu();
 
 	this->text_frame_++;
 	this->root_ = &ui;

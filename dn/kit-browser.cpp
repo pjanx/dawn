@@ -58,7 +58,6 @@ constexpr float kPrefetchRows = 2.f;
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
 constexpr const char *kMissingIcon = "image-missing-symbolic";
 
-constexpr int kThumbSizeN = size(kThumbSizes);
 // Wide thumbnail box is 2× row height (512×256 at the default size).
 constexpr int kThumbWide = 2;
 constexpr size_t kThumbRamBudget = 2ull << 30;
@@ -193,9 +192,9 @@ url_of(const string &path)
 static int
 thumb_size_index(int size)
 {
-	for (int i = 0; i < kThumbSizeN; i++) {
-		if (kThumbSizes[i] == size)
-			return i;
+	for (size_t i = 0; i < thumbnail_sizes().size(); i++) {
+		if (thumbnail_sizes()[i].pixels == size)
+			return int(i);
 	}
 	return 1;
 }
@@ -763,8 +762,6 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			update.gpu_pending = queue_gpu(thumbnailer, client, browser,
 				std::move(finish), std::move(gpu));
 			update.failed = !update.gpu_pending;
-			if (!update.gpu_pending && job.reservation)
-				thumbnailer.cancel_bundle(job.reservation);
 		}
 		update.image.reset();
 	}
@@ -2167,7 +2164,7 @@ spec_enabled(const Browser &b, Action action)
 	case Action::DirParent:
 		return b.can_parent_dir_;
 	case Action::ThumbPlus:
-		return idx + 1 < kThumbSizeN;
+		return idx + 1 < int(thumbnail_sizes().size());
 	case Action::ThumbMinus:
 		return idx > 0;
 	case Action::ViewList:
@@ -2320,11 +2317,8 @@ fill_places(Browser &b)
 }
 
 static void
-sync_ui(Browser &b, Page &ui)
+sync_ui(Browser &b)
 {
-	if (ui.toolbar)
-		ui.toolbar->sync_buttons();
-	ui.sync_app_menu();
 	if (b.places_dirty_)
 		fill_places(b);
 	else {
@@ -2374,14 +2368,14 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::ThumbPlus: {
 		const int idx = thumb_size_index(b.thumb_size_);
-		if (idx + 1 < kThumbSizeN)
-			set_thumb_size(b, kThumbSizes[idx + 1]);
+		if (idx + 1 < int(thumbnail_sizes().size()))
+			set_thumb_size(b, thumbnail_sizes()[size_t(idx + 1)].pixels);
 		return true;
 	}
 	case Action::ThumbMinus: {
 		const int idx = thumb_size_index(b.thumb_size_);
 		if (idx > 0)
-			set_thumb_size(b, kThumbSizes[idx - 1]);
+			set_thumb_size(b, thumbnail_sizes()[size_t(idx - 1)].pixels);
 		return true;
 	}
 	case Action::ViewTile:
@@ -2812,7 +2806,7 @@ Browser::present(Kit &, Page &ui)
 	invalidate_arrange();
 	if (!this->kit_.inited_)
 		return;
-	sync_ui(*this, ui);
+	sync_ui(*this);
 	this->kit_.frame_ui(ui, [this] { sync_thumbs(*this); });
 }
 

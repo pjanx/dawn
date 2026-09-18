@@ -447,9 +447,14 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 // --- Settings dialog ---------------------------------------------------------
 
-// TODO(p): This needs to be in one place with sizes.
-static const char *const kThumbSizeNames[] = {
-	N_("Small"), N_("Normal"), N_("Large"), N_("Huge")};
+static constexpr ThumbnailSize kThumbSizes[] = {{128, N_("Small")},
+	{256, N_("Normal")}, {512, N_("Large")}, {1024, N_("Huge")}};
+
+span<const ThumbnailSize>
+thumbnail_sizes()
+{
+	return kThumbSizes;
+}
 
 static QString
 loader_text(const SettingsDraft::Loader &loader)
@@ -567,14 +572,13 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	col->add_child(dialog_label(N_("Settings"), true), size_t(-1));
 
 	auto combo = make_unique<Combo>();
-	for (const char *name : kThumbSizeNames)
-		combo->items.push_back(QString::fromUtf8(_(name)));
-	for (int i = 0; i < int(size(kThumbSizes)); i++) {
-		if (kThumbSizes[i] == state->thumbnail_size)
-			combo->current = i;
+	for (const ThumbnailSize &size : thumbnail_sizes()) {
+		if (size.pixels == state->thumbnail_size)
+			combo->current = int(combo->items.size());
+		combo->items.push_back(QString::fromUtf8(_(size.label)));
 	}
 	combo->on_select = [state](Kit &, int index) {
-		state->thumbnail_size = kThumbSizes[index];
+		state->thumbnail_size = thumbnail_sizes()[size_t(index)].pixels;
 	};
 	col->add_child(
 		settings_row(thumb_label, label_w, std::move(combo)), size_t(-1));
