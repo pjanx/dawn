@@ -443,10 +443,17 @@ TextCache::get(
 
 	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
 	const QFontMetricsF metrics(font);
-	cached.width = int(ceil(metrics.horizontalAdvance(text)));
 	cached.layout = make_unique<QTextLayout>(text, font);
 	cached.layout->setCacheEnabled(true);
 	layout_text(cached.layout.get(), wrap, center);
+
+	// Widths have to come from the layout rather than from QFontMetricsF: the
+	// two can disagree by a pixel, and wrapping at the metrics' width then
+	// breaks text that had been measured as one line onto two.
+	double width = 0;
+	for (int i = 0; i < cached.layout->lineCount(); i++)
+		width = max(width, cached.layout->lineAt(i).naturalTextWidth());
+	cached.width = int(ceil(width));
 
 	const double height = cached.layout->boundingRect().height();
 	cached.height = int(ceil(height > 0 ? height : metrics.height()));
