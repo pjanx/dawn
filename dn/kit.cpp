@@ -4301,9 +4301,11 @@ Toolbar::place_slots(Kit &kit)
 		if (!slot)
 			return false;
 		for (const Widget *item : slot->items_) {
-			// Only what is in the bar: a field in the popup fills a line
-			// there, and must not also stretch the gap it left behind.
-			if (item->shown() && item->grow)
+			// layout_visible is a frame behind here -- the slot only settles
+			// its split once it arranges, below.  It costs nothing: this is
+			// asked on the branch where all three slots fit at their natural
+			// width, so nothing of the slot will overflow anyway.
+			if (item->visible && item->grow)
 				return true;
 		}
 		return false;
