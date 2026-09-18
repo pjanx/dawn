@@ -444,7 +444,7 @@ alloc_range(ThumbScaler::Impl &e, uint64_t bytes, Slot *slot)
 			e.free_ranges.erase(e.free_ranges.begin() + ptrdiff_t(i));
 		e.live[id] = used;
 		slot->id = id;
-		slot->mapped = static_cast<uint8_t *>(e.ring.mapped) + used.off;
+		slot->mapped = (uint8_t *) e.ring.mapped + used.off;
 		return true;
 	}
 	return false;
@@ -1102,7 +1102,7 @@ queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 		return false;
 
 	bool opaque = true;
-	auto *dst = static_cast<uint8_t *>(slot.mapped);
+	auto *dst = (uint8_t *) slot.mapped;
 	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels->data());
 	for (uint32_t y = 0; y < job.src_h; y++) {
 		const auto *row =
@@ -1308,7 +1308,7 @@ ThumbScaler::queue(const Job &job)
 		if (!claim(e, tile_row * tile.h, job.user, job.priority, &slot))
 			break;
 
-		auto *dst = static_cast<uint8_t *>(slot.mapped);
+		auto *dst = (uint8_t *) slot.mapped;
 		for (uint32_t y = 0; y < tile.h; y++) {
 			const uint8_t *src = base + size_t(tile.oy + y) * job.stride +
 				size_t(tile.ox) * kBytesPerPixel;
@@ -1551,8 +1551,7 @@ ThumbScaler::poll(vector<Result> *done)
 			const size_t values = size_t(output.width) * output.height * 4;
 			output.data.resize(values);
 			memcpy(output.data.data(),
-				static_cast<const uint8_t *>(batch.readback.mapped) +
-					item.readback_off,
+				(const uint8_t *) batch.readback.mapped + item.readback_off,
 				values * sizeof(uint16_t));
 			batch_results[index].outputs.push_back(std::move(output));
 			if (item.kind == Item::Kind::Fit) {

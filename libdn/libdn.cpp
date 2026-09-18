@@ -86,28 +86,6 @@ unpremultiply8(uint8_t a, uint8_t x)
 	return uint8_t(min(255u, (uint32_t(x) * 255u + a / 2) / a));
 }
 
-static inline uint16_t
-clamp_u16(int v)
-{
-	if (v < 0)
-		return 0;
-	if (v > 65535)
-		return 65535;
-	return uint16_t(v);
-}
-
-static inline uint16_t *
-pixel_at(Image &img, uint32_t x, uint32_t y)
-{
-	return row_u16(img, y) + x * 4;
-}
-
-static inline const uint16_t *
-pixel_at(const Image &img, uint32_t x, uint32_t y)
-{
-	return row_u16(img, y) + x * 4;
-}
-
 // --- Image -------------------------------------------------------------------
 
 bool
@@ -600,6 +578,28 @@ finish_frames(
 
 // --- Compositing -------------------------------------------------------------
 
+static inline uint16_t
+clamp_u16(int v)
+{
+	if (v < 0)
+		return 0;
+	if (v > 65535)
+		return 65535;
+	return uint16_t(v);
+}
+
+static inline uint16_t *
+pixel_at(Image &img, uint32_t x, uint32_t y)
+{
+	return row_u16(img, y) + x * 4;
+}
+
+static inline const uint16_t *
+pixel_at(const Image &img, uint32_t x, uint32_t y)
+{
+	return row_u16(img, y) + x * 4;
+}
+
 void
 fill_rect(Image &dst, int x, int y, int w, int h, uint16_t b, uint16_t g,
 	uint16_t r, uint16_t a)
@@ -661,12 +661,6 @@ blend_image(Image &dst, const Image &src, int dst_x, int dst_y, BlendOp op)
 // --- Matrix ------------------------------------------------------------------
 
 static Matrix
-matrix_identity()
-{
-	return {};
-}
-
-static Matrix
 matrix_multiply(const Matrix &a, const Matrix &b)
 {
 	Matrix r;
@@ -713,7 +707,7 @@ matrix_rotate(double radians)
 Matrix
 orientation_matrix(Orientation orientation, double width, double height)
 {
-	Matrix matrix = matrix_identity();
+	Matrix matrix;
 	constexpr double pi2 = numbers::pi / 2;
 	switch (orientation) {
 	case Orientation::Rotate90:

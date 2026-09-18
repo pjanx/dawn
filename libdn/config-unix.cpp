@@ -27,7 +27,7 @@ namespace dawn
 namespace ini
 {
 
-string
+static string
 trim(string_view value)
 {
 	const size_t first = value.find_first_not_of(" \t");

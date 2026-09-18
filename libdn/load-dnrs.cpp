@@ -11,7 +11,6 @@
 
 #include <libdnrs.h>
 
-#include <cstring>
 #include <memory>
 
 using namespace std;
@@ -37,6 +36,8 @@ struct FrameGuard {
 using DecoderPtr = unique_ptr<dnrs_decoder, DecoderDeleter>;
 using DnrsErrorPtr = unique_ptr<dnrs_error, ErrorDeleter>;
 
+}  // namespace
+
 // The codec image-rs picked within this loader is worth naming, as one
 // loader stands in for a whole pile of them.
 static string
@@ -48,7 +49,7 @@ dnrs_wrap(const char *codec, const char *detail)
 }
 
 static string
-dnrs_message(dnrs_error *error, const char *codec = nullptr)
+dnrs_message(dnrs_error *error, const char *codec)
 {
 	const char *detail = error ? dnrs_error_message(error) : nullptr;
 	return dnrs_wrap(codec, detail && *detail ? detail : _("decoding error"));
@@ -73,7 +74,7 @@ pack_gray(Image &image, const dnrs_frame &frame, bool alpha, bool wide)
 {
 	for (uint32_t y = 0; y < image.height; y++) {
 		const uint8_t *src = frame.data + size_t(y) * frame.stride;
-		uint16_t *dst = assume_aligned<uint16_t>(row_bytes(image, y));
+		uint16_t *dst = row_u16(image, y);
 		for (uint32_t x = 0; x < image.width; x++) {
 			uint16_t g = 0, a = 65535;
 			if (wide) {
@@ -180,8 +181,6 @@ copy_blob(vector<uint8_t> &out, dnrs_blob blob)
 		out.assign(blob.data, blob.data + blob.length);
 }
 
-}  // namespace
-
 vector<string>
 dnrs_media_types()
 {
@@ -203,7 +202,7 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		data.data(), data.size(), ctx.first_frame_only, &raw_error));
 	DnrsErrorPtr dnrs_error(raw_error);
 	if (!decoder) {
-		set_error(error, dnrs_message(dnrs_error.get()));
+		set_error(error, dnrs_message(dnrs_error.get(), nullptr));
 		return nullptr;
 	}
 
@@ -211,7 +210,7 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	raw_error = nullptr;
 	if (!dnrs_decoder_get_info(decoder.get(), &document, &raw_error)) {
 		dnrs_error.reset(raw_error);
-		set_error(error, dnrs_message(dnrs_error.get()));
+		set_error(error, dnrs_message(dnrs_error.get(), nullptr));
 		return nullptr;
 	}
 	const char *codec = document.codec;

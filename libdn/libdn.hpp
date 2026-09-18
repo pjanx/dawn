@@ -33,7 +33,7 @@ namespace dawn
 //   created on the Cmm thread.
 // - Do not share OpenContext::warnings or Error* across concurrent opens.
 // - After load, Image is single-writer: read-only pixel sharing is fine;
-//   do not mutate (finish/ensure/blend/render) from multiple threads.
+//   do not mutate (finish/blend/render) from multiple threads.
 
 struct Error {
 	enum class Code {

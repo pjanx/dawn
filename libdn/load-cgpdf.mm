@@ -19,7 +19,6 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
 
-#include <cstring>
 #include <memory>
 #include <vector>
 
