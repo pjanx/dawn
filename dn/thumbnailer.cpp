@@ -67,58 +67,68 @@ scaler_priority(Thumbnailer::Priority priority)
 	return dawn::ThumbScaler::Priority::Maintenance;
 }
 
-struct Thumbnailer::Impl {
-	struct CpuTask;
-	struct ClientState {
-		uint64_t epoch = 0;
-		size_t queued = 0;
-		size_t running = 0;
-		size_t gpu = 0;
-		size_t gui = 0;
-		unordered_map<string, shared_ptr<CpuTask>> keyed;
-		Completion activity;
-		bool activity_pending = false;
-	};
-	struct CpuTask {
-		Client client = 0;
-		uint64_t epoch = 0;
-		Priority priority = Priority::Maintenance;
-		Priority running_priority = Priority::Maintenance;
-		Work work;
-		string key;
-		shared_ptr<atomic_bool> gate;
-		bool queued = true;
-	};
-	struct GuiTask {
-		Client client = 0;
-		uint64_t epoch = 0;
-		Priority priority = Priority::Maintenance;
-		Completion completion;
-	};
-	struct GpuTask {
-		Client client = 0;
-		uint64_t epoch = 0;
-		Priority priority = Priority::Maintenance;
-		string key;
-		GpuCompletion completion;
-		shared_ptr<atomic_bool> gate;
-		optional<dawn::ThumbScaler::Result> result;
-	};
-	struct BundleSlot {
-		Reservation id = 0;
-		Client client = 0;
-		uint64_t epoch = 0;
-		ThumbnailSource source;
-		int top_tier = 0;
-		size_t reserved_bytes = 0;
-		Priority priority = Priority::Maintenance;
-		shared_ptr<const ThumbnailBundle> bundle;
-	};
-	struct EncodeJob {
-		Reservation reservation = 0;
-		shared_ptr<const ThumbnailBundle> bundle;
-	};
+namespace
+{
 
+struct CpuTask;
+
+struct ClientState {
+	uint64_t epoch = 0;
+	size_t queued = 0;
+	size_t running = 0;
+	size_t gpu = 0;
+	size_t gui = 0;
+	unordered_map<string, shared_ptr<CpuTask>> keyed;
+	Thumbnailer::Completion activity;
+	bool activity_pending = false;
+};
+
+struct CpuTask {
+	Thumbnailer::Client client = 0;
+	uint64_t epoch = 0;
+	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
+	Thumbnailer::Priority running_priority = Thumbnailer::Priority::Maintenance;
+	Thumbnailer::Work work;
+	string key;
+	shared_ptr<atomic_bool> gate;
+	bool queued = true;
+};
+
+struct GuiTask {
+	Thumbnailer::Client client = 0;
+	uint64_t epoch = 0;
+	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
+	Thumbnailer::Completion completion;
+};
+
+struct GpuTask {
+	Thumbnailer::Client client = 0;
+	uint64_t epoch = 0;
+	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
+	string key;
+	Thumbnailer::GpuCompletion completion;
+	shared_ptr<atomic_bool> gate;
+	optional<dawn::ThumbScaler::Result> result;
+};
+
+struct BundleSlot {
+	Thumbnailer::Reservation id = 0;
+	Thumbnailer::Client client = 0;
+	uint64_t epoch = 0;
+	ThumbnailSource source;
+	int top_tier = 0;
+	size_t reserved_bytes = 0;
+	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
+	shared_ptr<const ThumbnailBundle> bundle;
+};
+struct EncodeJob {
+	Thumbnailer::Reservation reservation = 0;
+	shared_ptr<const ThumbnailBundle> bundle;
+};
+
+}  // namespace
+
+struct Thumbnailer::Impl {
 	Thumbnailer *owner = nullptr;
 	mutable mutex mu;
 	condition_variable cv;
@@ -490,7 +500,7 @@ Thumbnailer::add_client(uint64_t epoch, Completion activity)
 	if (!id)
 		id = impl_->next_client++;
 	impl_->clients.emplace(
-		id, Impl::ClientState{.epoch = epoch, .activity = std::move(activity)});
+		id, ClientState{.epoch = epoch, .activity = std::move(activity)});
 	return id;
 }
 
@@ -541,7 +551,7 @@ Thumbnailer::submit(
 		if (impl_->stop || client == impl_->clients.end() ||
 			client->second.epoch != epoch)
 			return false;
-		auto task = make_shared<Impl::CpuTask>(Impl::CpuTask{
+		auto task = make_shared<CpuTask>(CpuTask{
 			.client = id,
 			.epoch = epoch,
 			.priority = priority,
@@ -579,7 +589,7 @@ Thumbnailer::reprioritize(
 	if (auto found = client->second.keyed.find(key);
 		found != client->second.keyed.end()) {
 		found_any = true;
-		shared_ptr<Impl::CpuTask> task = found->second;
+		shared_ptr<CpuTask> task = found->second;
 		if (priority != task->priority) {
 			task->priority = priority;
 			if (task->queued)
@@ -669,7 +679,7 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 		if (!gpu_id)
 			gpu_id = impl_->next_gpu++;
 		impl_->gpu_tasks.emplace(gpu_id,
-			Impl::GpuTask{
+			GpuTask{
 				.client = id,
 				.epoch = epoch,
 				.priority = priority,
@@ -734,7 +744,7 @@ Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
 	if (!reservation)
 		reservation = impl_->next_reservation++;
 	impl_->bundles.emplace(reservation,
-		Impl::BundleSlot{
+		BundleSlot{
 			reservation, id, epoch, source, top_tier, bytes, priority, {}});
 	impl_->bundle_bytes += bytes;
 	return reservation;
@@ -823,7 +833,7 @@ Thumbnailer::busy(Client id) const
 	auto found = impl_->clients.find(id);
 	if (found == impl_->clients.end())
 		return false;
-	const Impl::ClientState &state = found->second;
+	const ClientState &state = found->second;
 	return state.queued || state.running || state.gpu || state.gui;
 }
 
@@ -847,7 +857,7 @@ Thumbnailer::foreground_busy(Client id) const
 				priority_index(Priority::Dimensions))
 			return true;
 	}
-	for (const Impl::GuiTask &task : impl_->gui)
+	for (const GuiTask &task : impl_->gui)
 		if (task.client == id &&
 			priority_index(task.priority) <
 				priority_index(Priority::Dimensions))
@@ -903,7 +913,7 @@ Thumbnailer::pump()
 			lock_guard lock(impl_->mu);
 			if (impl_->gui.empty())
 				break;
-			Impl::GuiTask task = std::move(impl_->gui.front());
+			GuiTask task = std::move(impl_->gui.front());
 			impl_->gui.pop_front();
 			auto client = impl_->clients.find(task.client);
 			if (client == impl_->clients.end())
@@ -932,7 +942,7 @@ Thumbnailer::pump()
 		lock_guard lock(impl_->mu);
 		for (auto it = impl_->gpu_tasks.begin();
 			it != impl_->gpu_tasks.end();) {
-			Impl::GpuTask &task = it->second;
+			GpuTask &task = it->second;
 			if (!task.result ||
 				(task.gate && !task.gate->load(memory_order_acquire))) {
 				it++;
@@ -967,7 +977,7 @@ Thumbnailer::pump()
 		// retired.
 		gpu_producer = !impl_->gpu_tasks.empty();
 		for (auto &entry : impl_->clients) {
-			Impl::ClientState &client = entry.second;
+			ClientState &client = entry.second;
 			if (!client.activity_pending)
 				continue;
 			client.activity_pending = false;

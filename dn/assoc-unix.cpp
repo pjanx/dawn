@@ -763,6 +763,7 @@ launch(const Handler &app, const QString &path)
 	const Desktop *d = desktop_by_id(app.id);
 	if (!d || d->exec.isEmpty())
 		return false;
+
 	const QStringList args = expand_exec(*d, path);
 	if (args.isEmpty())
 		return false;

@@ -42,16 +42,20 @@ wayland_needs_csd()
 	if (!qGuiApp ||
 		QGuiApplication::platformName() != QStringLiteral("wayland"))
 		return false;
+
 	auto *native =
 		qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
 	if (!native)
 		return false;
+
 	wl_display *display = native->display();
 	if (!display)
 		return false;
+
 	wl_registry *registry = wl_display_get_registry(display);
 	if (!registry)
 		return false;
+
 	bool has_ssd = false;
 	const wl_registry_listener listener = {
 		.global = registry_note,
@@ -82,6 +86,7 @@ WaylandColorBridge::apply_description(wp_image_description_v1 *description)
 {
 	if (description != this->pending_description_)
 		return;
+
 	wp_color_management_surface_v1_set_image_description(this->color_surface_,
 		description, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
 	wp_image_description_v1_destroy(description);
@@ -100,6 +105,7 @@ WaylandColorBridge::registry_global(void *data, wl_registry *registry,
 	if (self->manager_ ||
 		strcmp(interface, wp_color_manager_v1_interface.name) != 0)
 		return;
+
 	self->manager_ = static_cast<wp_color_manager_v1 *>(
 		wl_registry_bind(registry, name, &wp_color_manager_v1_interface, 1));
 	wp_color_manager_v1_add_listener(self->manager_, &kManagerListener, self);
@@ -224,6 +230,7 @@ WaylandColorBridge::detach()
 		wp_color_manager_v1_destroy(this->manager_);
 	if (this->registry_)
 		wl_registry_destroy(this->registry_);
+
 	this->window_ = nullptr;
 	this->display_ = nullptr;
 	this->surface_ = nullptr;

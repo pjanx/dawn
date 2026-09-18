@@ -322,7 +322,7 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 	this->dirty = true;
 }
 
-// TODO(p): These are normalised against the sheet as it is right now, and go
+// TODO: These are normalised against the sheet as it is right now, and go
 // straight into the draw list -- but glyphs are packed lazily, so a grow()
 // during a paint leaves every quad emitted earlier in that frame sampling at
 // the old scale.  Emitting texels and dividing in the shader (or at

@@ -119,6 +119,7 @@ WaylandWindow::begin_close()
 {
 	if (this->close_state_ != CloseState::Open)
 		return;
+
 	// Keep the top-level wl_surface alive until Qt receives text-input leave.
 	this->close_state_ = CloseState::WaitingForLeave;
 	hide();
@@ -131,6 +132,7 @@ WaylandWindow::finish_close()
 {
 	if (this->close_state_ != CloseState::WaitingForLeave)
 		return;
+
 	this->close_state_ = CloseState::ReadyToClose;
 	QTimer::singleShot(0, this, [this] {
 		if (this->close_state_ != CloseState::ReadyToClose)

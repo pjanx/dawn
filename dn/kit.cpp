@@ -3577,6 +3577,7 @@ MenuItem::paint(Kit &kit) const
 {
 	if (!this->visible)
 		return;
+
 	// The selection is kit.focus_ alone: kit.pressed_ is just the capture,
 	// and it would stay lit behind the pointer when press-dragging through.
 	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
@@ -4422,6 +4423,7 @@ Titlebar::measure_content(Kit &kit, int avail_w, int)
 {
 	if (!this->visible)
 		return {};
+
 	int ih = 0;
 	auto slot = [&](Button *b) {
 		if (!b)
@@ -4523,11 +4525,13 @@ Titlebar::motion(Kit &kit, float x, float y)
 {
 	if (!this->drag_armed_ || !kit.start_move)
 		return false;
+
 	const float dx = x - this->drag_x_;
 	const float dy = y - this->drag_y_;
 	const float slop = float(kit.px(kDragPts));
 	if (dx * dx + dy * dy < slop * slop)
 		return false;
+
 	this->drag_armed_ = false;
 	kit.start_move();
 	return true;
@@ -4553,9 +4557,11 @@ Kit::pack_bitmap(const QImage &image)
 {
 	if (image.isNull() || image.width() <= 0 || image.height() <= 0)
 		return {};
+
 	const Packed packed = pack_or_grow(*this, image.width(), image.height());
 	if (packed.empty())
 		return {};
+
 	blit(*this, packed, image, false);
 	return packed;
 }
@@ -4833,6 +4839,7 @@ Kit::set_focus(Widget *w, bool ring)
 	}
 	this->focus_ = w;
 	this->focus_visible_ = ring;
+
 	// Re-seating the same focus is not a focus change, and saying it was
 	// would have a screen reader read the control out a second time.
 	if (moved && this->notify)
@@ -4849,6 +4856,7 @@ Kit::reseat_focus(Widget *w)
 	// moment ago, and forget_tree() has already said the old one is gone.
 	if (this->focus_ == w)
 		return;
+
 	this->focus_ = w;
 	if (this->notify)
 		this->notify(Change::Focus, w);
@@ -5034,6 +5042,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 	}
 	this->hot_ = hit(x, y);
 	this->touch_target_ = this->hot_;
+
 	// A press tracks the pointer just like a hover does, so that what a menu
 	// shows as selected is what the release will activate.
 	track_popups(x, y);
@@ -5055,6 +5064,7 @@ Kit::mouse_release(float x, float y, Qt::MouseButton button)
 	this->mouse_y_ = y;
 	if (button == Qt::LeftButton)
 		this->left_down_ = false;
+
 	// Scrolling must not activate a click or leave a hover highlight.
 	if (this->touch_panned_) {
 		this->touch_panned_ = false;
@@ -5104,6 +5114,7 @@ Kit::mouse_motion(float x, float y)
 			s->reveal();
 	}
 	tooltip(this->hot_);
+
 	// A popup gets first refusal so press-dragging through a menu tracks
 	// hover, but a widget that claims the motion -- a scrollbar being
 	// dragged -- keeps it.
@@ -5301,6 +5312,7 @@ Kit::forget_tree(Widget *tree)
 		}
 		return false;
 	};
+
 	// A popup outlives the frame it was opened from, but not the widget it
 	// hangs off: left on the stack, it would be placed and painted through
 	// freed memory every frame.  Closing is safe here, as callers forget a
@@ -5516,6 +5528,7 @@ wake_tree(const Widget *w)
 {
 	if (!w || !w->shown())
 		return -1;
+
 	int ms = w->wake_ms();
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; i++)
