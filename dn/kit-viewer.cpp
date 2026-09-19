@@ -214,14 +214,12 @@ make_item(Viewer &v, const ToolbarSpec &spec)
 	return {};
 }
 
-static unique_ptr<Row>
-meta_row(
-	const QString &lab, const QString &value, float label_w, Label *&value_out)
+static unique_ptr<GutterRow>
+meta_row(const QString &lab, const QString &value, Label *&value_out)
 {
-	auto row = make_unique<Row>();
+	auto row = make_unique<GutterRow>();
 	row->gap = 4.f;
 	auto k = make_unique<Label>();
-	k->min_w = label_w;
 	k->text = lab;
 	k->bold = true;
 	auto v = make_unique<Label>();
@@ -575,16 +573,8 @@ stop_worker(Viewer &v)
 static unique_ptr<Sidebar>
 make_sidebar(Viewer &v, const HostActions &host)
 {
-	// FIXME: This needs proper layouting.
-	// The widest of them decides, and only translation says which that is.
 	const char *const labels[] = {
 		N_("Name:"), N_("Loader:"), N_("Width:"), N_("Height:")};
-	float label_w = 0;
-	for (const char *label : labels) {
-		label_w = max(label_w,
-			float(v.kit_.text_width(QString::fromUtf8(_(label)), true)) /
-				v.kit_.dpr_);
-	}
 
 	auto col = make_unique<ScrollColumn>();
 	v.info_ = col.get();
@@ -593,13 +583,16 @@ make_sidebar(Viewer &v, const HostActions &host)
 	col->pad_y = kWinPadX * 2.f;
 	col->grow = true;
 
+	auto meta = make_unique<GutterColumn>();
+	meta->gap = kItemGap;
 	Label **const values[] = {
 		&v.name_label_, &v.loader_label_, &v.width_label_, &v.height_label_};
 	for (size_t i = 0; i < size(labels); i++) {
-		col->add_child(meta_row(QString::fromUtf8(_(labels[i])),
-						   QStringLiteral("-"), label_w, *values[i]),
+		meta->add_child(meta_row(QString::fromUtf8(_(labels[i])),
+							QStringLiteral("-"), *values[i]),
 			size_t(-1));
 	}
+	col->add_child(std::move(meta), size_t(-1));
 
 #if DAWN_WITH_JPEG_QS
 	// QuantSmooth processing can take extremely long,

@@ -228,14 +228,13 @@ plain_label(const char *text, bool bold)
 	return label;
 }
 
-static unique_ptr<Row>
-shortcut_row(const ActionDef &def, float accel_w)
+static unique_ptr<GutterRow>
+shortcut_row(const ActionDef &def)
 {
-	auto row = make_unique<Row>();
+	auto row = make_unique<GutterRow>();
 	row->gap = 8.f;
 	auto accel = make_unique<Label>();
 	accel->text = shortcut_accel(def);
-	accel->min_w = accel_w;
 	accel->dim = true;
 	row->add_child(std::move(accel), size_t(-1));
 	row->add_child(plain_label(def.label[0], false), size_t(-1));
@@ -369,20 +368,6 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	span<const Action> keys)
 {
 	bool seen[size_t(Action::Count)] = {};
-	int accel_w = kit.px(120.f);
-	auto consider = [&](Action action) {
-		const ActionDef &def = action_def(action);
-		if (!has_shortcut(def))
-			return;
-		accel_w = max(accel_w, kit.text_width(shortcut_accel(def), false));
-	};
-	for_leaves(tree, consider);
-	auto consider_other = [&](Action action) {
-		const ActionDef &def = action_def(action);
-		if ((def.flags & ActionInMenu) || !has_shortcut(def))
-			return;
-		consider(action);
-	};
 	bool viewer = false;
 	for (Action action : keys) {
 		if (action == Action::ZoomIn || action == Action::FitWidth) {
@@ -390,15 +375,8 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 			break;
 		}
 	}
-	for (Action action : window_keys())
-		consider_other(action);
-	for (Action action : keys)
-		consider_other(action);
-	consider_other(Action::Cancel);
-	if (viewer)
-		consider_other(Action::ZoomLevel);
 
-	auto col = make_unique<Column>();
+	auto col = make_unique<GutterColumn>();
 	col->gap = 2.f;
 	col->add_child(plain_label(N_("Keyboard Shortcuts"), true), size_t(-1));
 	for (const MenuNode &section : tree) {
@@ -417,7 +395,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 			if (!has_shortcut(def))
 				return;
 			seen[size_t(action)] = true;
-			col->add_child(shortcut_row(def, kit.pts(accel_w)), size_t(-1));
+			col->add_child(shortcut_row(def), size_t(-1));
 		});
 	}
 	bool other = false;
@@ -433,7 +411,7 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 			other = true;
 		}
 		seen[i] = true;
-		col->add_child(shortcut_row(def, kit.pts(accel_w)), size_t(-1));
+		col->add_child(shortcut_row(def), size_t(-1));
 	};
 	for (Action action : window_keys())
 		emit_other(action);
@@ -465,16 +443,14 @@ loader_text(const SettingsDraft::Loader &loader)
 		QStringLiteral(")");
 }
 
-// TODO(p): This sizing model is bad.
-static unique_ptr<Row>
-settings_row(const char *label, float label_w, unique_ptr<Widget> control)
+static unique_ptr<GutterRow>
+settings_row(const char *label, unique_ptr<Widget> control)
 {
 	auto text = dialog_label(label);
-	text->min_w = label_w;
 	text->align = Align::End;
 	text->buddy = control.get();
 
-	auto row = make_unique<Row>();
+	auto row = make_unique<GutterRow>();
 	row->gap = 8.f;
 	row->add_child(std::move(text), size_t(-1));
 	row->add_child(std::move(control), size_t(-1));
@@ -557,17 +533,10 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	// Save hands that copy back, and Cancel simply drops it.
 	auto state = make_shared<SettingsDraft>(std::move(draft));
 
-	// The gutter is as wide as the labels that go in it, which is only known
-	// once they have been translated.
-	float label_w = 0;
 	const char *const thumb_label = N_("Default _thumbnail size");
 	const char *const icc_label = N_("ICC _profile override");
-	for (const char *label : {thumb_label, icc_label}) {
-		label_w = max(label_w,
-			kit.pts(kit.text_width(menu_label(label, nullptr), false)));
-	}
 
-	auto col = make_unique<Column>();
+	auto col = make_unique<GutterColumn>();
 	col->gap = 4.f;
 	col->add_child(dialog_label(N_("Settings"), true), size_t(-1));
 
@@ -580,8 +549,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	combo->on_select = [state](Kit &, int index) {
 		state->thumbnail_size = thumbnail_sizes()[size_t(index)].pixels;
 	};
-	col->add_child(
-		settings_row(thumb_label, label_w, std::move(combo)), size_t(-1));
+	col->add_child(settings_row(thumb_label, std::move(combo)), size_t(-1));
 
 	auto names =
 		settings_check(N_("Show _filenames by default"), state->show_filenames);
@@ -589,8 +557,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	names->on_click = [state, names_ref](Kit &) {
 		state->show_filenames = names_ref->checked;
 	};
-	col->add_child(
-		settings_row(nullptr, label_w, std::move(names)), size_t(-1));
+	col->add_child(settings_row(nullptr, std::move(names)), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	entry->text = state->icc_profile_path;
@@ -599,8 +566,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	entry->on_change = [state, entry_ref](Kit &) {
 		state->icc_profile_path = entry_ref->text;
 	};
-	col->add_child(
-		settings_row(icc_label, label_w, std::move(entry)), size_t(-1));
+	col->add_child(settings_row(icc_label, std::move(entry)), size_t(-1));
 
 	auto dither = settings_check(
 		N_("Disable _dithering on 8-bit swapchains"), state->disable_dithering);
@@ -608,8 +574,7 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	dither->on_click = [state, dither_ref](Kit &) {
 		state->disable_dithering = dither_ref->checked;
 	};
-	col->add_child(
-		settings_row(nullptr, label_w, std::move(dither)), size_t(-1));
+	col->add_child(settings_row(nullptr, std::move(dither)), size_t(-1));
 
 	col->add_child(make_unique<Sep>(), size_t(-1));
 
@@ -652,13 +617,9 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 		arrows->add_child(std::move(up), size_t(-1));
 		arrows->add_child(std::move(down), size_t(-1));
 
-		auto gutter = make_unique<Panel>();
-		gutter->min_w = label_w;
-		gutter->add_child(std::move(arrows), size_t(-1));
-
-		auto row = make_unique<Row>();
+		auto row = make_unique<GutterRow>();
 		row->gap = 8.f;
-		row->add_child(std::move(gutter), size_t(-1));
+		row->add_child(std::move(arrows), size_t(-1));
 		row->add_child(std::move(check), size_t(-1));
 		loaders->add_child(std::move(row), size_t(-1));
 	}

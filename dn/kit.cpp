@@ -2282,6 +2282,89 @@ Column::arrange_content(Kit &kit, Rect alloc)
 	arrange_pack(kit, alloc, false, Align::Start);
 }
 
+// --- Gutter ------------------------------------------------------------------
+
+static Widget *
+gutter_cell(const Composite *row, size_t i)
+{
+	Widget *w = row->child(i);
+	return w && w->shown() ? w : nullptr;
+}
+
+// Every GutterRow under the column that no inner one has claimed.
+static void
+gutter_rows(Composite *c, vector<GutterRow *> &out)
+{
+	for (const auto &k : c->kids) {
+		if (!k || !k->shown() || dynamic_cast<GutterColumn *>(k.get()))
+			continue;
+		if (auto *row = dynamic_cast<GutterRow *>(k.get()))
+			out.push_back(row);
+		else if (auto *sub = dynamic_cast<Composite *>(k.get()))
+			gutter_rows(sub, out);
+	}
+}
+
+Size
+GutterColumn::measure_content(Kit &kit, int max_w, int max_h)
+{
+	// The gutter is retained measurement output.  When it changes, discard
+	// the row sizes that were computed against the old one.
+	vector<GutterRow *> rows;
+	gutter_rows(this, rows);
+	int gutter = 0;
+	for (GutterRow *row : rows) {
+		if (Widget *lead = gutter_cell(row, 0))
+			gutter = max(gutter, lead->measure(kit, kUnlim, kUnlim).w);
+	}
+	for (GutterRow *row : rows) {
+		if (row->gutter_ == gutter)
+			continue;
+		row->gutter_ = gutter;
+		row->invalidate_measure();
+	}
+	return Column::measure_content(kit, max_w, max_h);
+}
+
+Size
+GutterRow::measure_content(Kit &kit, int max_w, int max_h)
+{
+	Widget *lead = gutter_cell(this, 0), *rest = gutter_cell(this, 1);
+	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const int ih = max_h < kUnlim ? max(0, max_h - pad_y * 2) : kUnlim;
+	const int gap = rest ? kit.px(this->gap) : 0;
+	const Size l = lead ? lead->measure(kit, kUnlim, kUnlim) : Size{};
+	const int gutter = max(this->gutter_, l.w);
+	const int avail =
+		max_w < kUnlim ? max(0, max_w - pad_x * 2 - gutter - gap) : kUnlim;
+	const Size r = rest ? rest->measure(kit, avail, ih) : Size{};
+	return {pad_x * 2 + gutter + gap + r.w, pad_y * 2 + max(l.h, r.h)};
+}
+
+void
+GutterRow::arrange_content(Kit &kit, Rect alloc)
+{
+	if (!shown()) {
+		this->r = {};
+		return;
+	}
+	this->r = alloc;
+	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
+	Widget *lead = gutter_cell(this, 0), *rest = gutter_cell(this, 1);
+	const int gap = rest ? kit.px(this->gap) : 0;
+	const int gutter =
+		max(this->gutter_, lead ? lead->measure(kit, kUnlim, kUnlim).w : 0);
+	if (lead)
+		lead->arrange(kit, {in.x, in.y, gutter, in.h});
+	if (!rest)
+		return;
+
+	const int avail = max(0, in.w - gutter - gap);
+	const int w =
+		rest->grow ? avail : min(avail, rest->measure(kit, avail, in.h).w);
+	rest->arrange(kit, {in.x + gutter + gap, in.y, w, in.h});
+}
+
 // --- Flow --------------------------------------------------------------------
 
 int

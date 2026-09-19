@@ -493,6 +493,23 @@ struct Column : Container {
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
+// A row whose first cell is sized by the GutterColumn that owns it, so that
+// its second cell starts where its peers' do.  A cell is one widget: nest a
+// container when it needs to hold more.
+struct GutterRow : Container {
+	// Retained measurement output, in pixels, written by the owner.
+	int gutter_ = 0;
+
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
+};
+
+// Gives every GutterRow beneath it one shared first column.  Anything else it
+// holds, such as a heading or a separator, spans.
+struct GutterColumn : Column {
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+};
+
 // Packs sideways like a Row, but breaks onto a new line when the next child
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
