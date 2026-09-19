@@ -12,9 +12,8 @@ image::docs/dn.webp["Screenshot of both the browser and the viewer"]
 Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
 https://git.janouch.name/p/gallery[desires].
-Right now, we're close to our first milestone.  Once we declare the viewer part
-done, we'll clean up after rapid development, and move on to tackling the next
-major goals.
+Right now, we're close to our first milestone.  We need to clean up after rapid
+development, and then we'll move on to tackling the next major goals.
 
 The project comes with a maintenance guarantee--it is actively used.
 Also see link:docs/plan.adoc[Plan],

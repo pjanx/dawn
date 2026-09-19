@@ -234,6 +234,12 @@ struct Widget {
 	// by a different name in every widget that draws one.
 	[[nodiscard]] virtual QChar mnemonic_key() const { return {}; }
 	virtual bool traps_focus() const { return false; }
+	// The one focusable below this that stands for the whole of it in the
+	// Tab order: a listing is one stop, and the arrows are what walk it.
+	// Which one that is belongs to the widget -- a list answers with its
+	// selection, so that tabbing away and back returns to the same row.
+	// Null for everything that is no such group.
+	virtual Widget *tab_stop() { return nullptr; }
 	// A scrollbar is a hover effect rather than an event, so it must not
 	// depend on who ends up consuming the motion.  Neither must the cursor.
 	virtual Scroll *scrollbar() { return nullptr; }
@@ -251,6 +257,8 @@ struct Widget {
 	virtual bool gesture(
 		Kit &kit, float x, float y, float scale_factor, float angle_delta);
 	virtual bool key(Kit &kit, const Key &ev);
+	// Delivered after input dispatch, while the widget tree is idle.
+	virtual void focus_lost(Kit &) {}
 	// An input method updated its preedit, or committed to it.
 	virtual bool input_method(
 		Kit &kit, const QString &commit, const QString &preedit, int caret);
@@ -386,6 +394,9 @@ struct Entry : Widget {
 	bool flat = false;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
+	// Return commits immediately. Focus loss commits after input dispatch,
+	// when the callback can safely replace the newly focused widget tree.
+	std::function<void(Kit &)> on_commit;
 
 	// Horizontal scroll, in points, kept so that the caret stays visible.
 	float scroll_ = 0;
@@ -405,6 +416,7 @@ struct Entry : Widget {
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	bool focusable() const override;
+	void focus_lost(Kit &kit) override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	// Opens the caret menu, at the pointer or at the caret.
@@ -645,6 +657,14 @@ struct Dialog : Popup {
 	Row *footer = nullptr;
 	// Drawn bold, and what Return means where nothing else wanted it.
 	Button *default_button = nullptr;
+	// How wide it may grow; the file chooser wants more than the others.
+	float max_w = 560.f;
+	// Accelerators of its own, wherever the focus is within it: under a
+	// modal the window's are all off, and a chooser still wants Alt+Up.
+	std::function<bool(Kit &kit, const Key &ev)> on_key;
+	// Closed, and waiting for Kit to drop it at the frame boundary: the
+	// footer button that did it is still running inside this very tree.
+	bool retired_ = false;
 
 	Dialog();
 	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w,
@@ -874,6 +894,16 @@ enum class Change : uint8_t {
 };
 
 struct Kit {
+	// Nested dispatch shares one boundary for focus-loss events.
+	// XXX: This invention feels extremely wrong.
+	struct Input {
+		Kit &kit;
+		explicit Input(Kit &kit);
+		~Input();
+	};
+
+	int input_depth_ = 0;
+	std::vector<Widget *> lost_focus_;
 	using Packed = Sheet::Packed;
 	struct Glyph {
 		Packed rect;
@@ -927,6 +957,9 @@ struct Kit {
 	Widget *pressed_ = nullptr;
 	unsigned mods_ = 0;
 	std::vector<Popup *> popups_;
+	// Dialogs are opened, not owned by whoever opens them: one stacks over
+	// another, and the one underneath has to outlive the click that did it.
+	std::vector<std::unique_ptr<Dialog>> dialogs_;
 	std::unique_ptr<Widget> scrim_;
 	int host_w_ = 0;
 	int host_h_ = 0;
@@ -973,6 +1006,11 @@ struct Kit {
 	void destroy();
 	void forget_tree(Widget *tree);
 	void sync_focus();
+	// A fresh dialog, owned here until it closes.  Filled in by whichever
+	// dialog_*() builds it, and reaped once it is done.
+	Dialog &new_dialog();
+	// Whether anything the user has to answer is up.
+	[[nodiscard]] bool modal() const;
 	void open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor);
 	void close_popup(Popup *p, bool keyboard);
 	void close_popups();

@@ -352,6 +352,19 @@ ImagePtr open(const OpenContext &ctx, Error *error);
 ImagePtr open_from_data(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 
+// --- Saving ------------------------------------------------------------------
+
+/// Lossless WebP.  A null `frame` saves the whole page, animating when it has
+/// more than one; otherwise just that frame.  `icc` overrides the page's own
+/// profile, for when colour management has already transformed the pixels.
+/// The working format's 16-bit samples are narrowed to the 8 bits WebP keeps.
+bool save_webp(const Image &page, const Image *frame,
+	std::span<const uint8_t> icc, std::vector<uint8_t> *out, Error *error);
+
+/// Exif, ICC and XMP in an Exiv2-readable pseudo-JPEG.  Metadata that cannot
+/// be expressed in JPEG marker segments is an error, never a truncation.
+bool save_exv(const Image &page, std::vector<uint8_t> *out, Error *error);
+
 // --- JPEG --------------------------------------------------------------------
 
 /// Stored dimensions and the grid on which a lossless crop must start.

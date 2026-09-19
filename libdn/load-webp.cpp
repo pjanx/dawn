@@ -12,9 +12,12 @@
 #include <webp/decode.h>
 #include <webp/demux.h>
 #include <webp/encode.h>
+#include <webp/mux.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <vector>
 
 using namespace std;
 
@@ -264,6 +267,148 @@ load_webp(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	finish_frames(
 		*image, ctx, /*source=*/nullptr, /*input_premul=*/premultiply);
 	return image;
+}
+
+// --- Saving ------------------------------------------------------------------
+
+// Unpremultiply into WebP's native ARGB8 input, without an import buffer.
+static void
+fill_picture(const Image &image, WebPPicture &picture)
+{
+	for (uint32_t y = 0; y < image.height; y++) {
+		const uint16_t *src = row_u16(image, y);
+		uint32_t *dst = picture.argb + size_t(y) * picture.argb_stride;
+		for (uint32_t x = 0; x < image.width; x++, src += 4) {
+			const uint32_t a = src[3];
+			uint32_t pixel = ((a * 255 + 0x7FFF) / 0xFFFF) << 24;
+			if (a) {
+				for (int i = 0; i < 3; i++) {
+					const uint32_t straight = min<uint32_t>(
+						0xFFFF, (uint32_t(src[i]) * 0xFFFF + a / 2) / a);
+					pixel |= ((straight * 255 + 0x7FFF) / 0xFFFF) << (i * 8);
+				}
+			}
+			dst[x] = pixel;
+		}
+	}
+}
+
+static bool
+mux_picture(WebPMux *mux, const Image &image, bool animated)
+{
+	WebPConfig config{};
+	if (!WebPConfigInit(&config) || !WebPConfigLosslessPreset(&config, 6))
+		return false;
+	config.thread_level = 1;
+
+	WebPPicture picture{};
+	WebPMemoryWriter writer{};
+	WebPMemoryWriterInit(&writer);
+	bool ok = WebPPictureInit(&picture);
+	if (ok) {
+		picture.use_argb = 1;
+		picture.width = int(image.width);
+		picture.height = int(image.height);
+		ok = WebPPictureAlloc(&picture);
+	}
+	if (ok) {
+		fill_picture(image, picture);
+		picture.writer = WebPMemoryWrite;
+		picture.custom_ptr = &writer;
+		ok = WebPEncode(&config, &picture);
+	}
+	if (ok) {
+		const WebPData data{writer.mem, writer.size};
+		if (animated) {
+			WebPMuxFrameInfo info{};
+			info.bitstream = data;
+			info.duration = int(image.frame_duration);
+			info.id = WEBP_CHUNK_ANMF;
+			info.dispose_method = WEBP_MUX_DISPOSE_NONE;
+			info.blend_method = WEBP_MUX_NO_BLEND;
+			ok = WebPMuxPushFrame(mux, &info, true) == WEBP_MUX_OK;
+		} else {
+			ok = WebPMuxSetImage(mux, &data, true) == WEBP_MUX_OK;
+		}
+	}
+	WebPPictureFree(&picture);
+	WebPMemoryWriterClear(&writer);
+	return ok;
+}
+
+static bool
+set_chunk(WebPMux *mux, const char *fourcc, span<const uint8_t> data)
+{
+	if (data.empty())
+		return true;
+
+	const WebPData chunk{data.data(), data.size()};
+	return WebPMuxSetChunk(mux, fourcc, &chunk, false) == WEBP_MUX_OK;
+}
+
+bool
+save_webp(const Image &page, const Image *frame, span<const uint8_t> icc,
+	vector<uint8_t> *out, Error *error)
+{
+	if (!out) {
+		set_error(error, _("no output buffer"));
+		return false;
+	}
+	out->clear();
+
+	const bool animated = !frame && page.frame_next;
+	const Image *first = frame ? frame : &page;
+	if (animated && page.loops > 0xFFFF) {
+		set_error(error, _("animation loop count is too large for WebP"));
+		return false;
+	}
+	for (const Image *f = first; f;
+		f = animated ? f->frame_next.get() : nullptr) {
+		if (!f->width || !f->height || f->width > WEBP_MAX_DIMENSION ||
+			f->height > WEBP_MAX_DIMENSION) {
+			set_error(error, _("image dimensions exceed WebP limits"));
+			return false;
+		}
+		if (animated &&
+			(f->frame_duration < 0 || f->frame_duration > 0xFFFFFF)) {
+			set_error(error, _("animation frame duration exceeds WebP limits"));
+			return false;
+		}
+	}
+
+	WebPMux *mux = WebPMuxNew();
+	if (!mux) {
+		set_error(error, _("image allocation failure"));
+		return false;
+	}
+
+	bool ok = true;
+	for (const Image *f = first; ok && f;
+		f = animated ? f->frame_next.get() : nullptr)
+		ok = mux_picture(mux, *f, animated);
+	if (animated) {
+		WebPMuxAnimParams params{};
+		params.loop_count = int(page.loops);
+		ok = ok && WebPMuxSetAnimationParams(mux, &params) == WEBP_MUX_OK;
+	}
+
+	// The override wins outright: it describes what the pixels became, and
+	// the page's own profile describes what they were.
+	ok = ok && set_chunk(mux, "EXIF", page.exif) &&
+		set_chunk(
+			mux, "ICCP", icc.empty() ? span<const uint8_t>(page.icc) : icc) &&
+		set_chunk(mux, "XMP ", page.xmp);
+
+	WebPData assembled{};
+	WebPDataInit(&assembled);
+	ok = ok && WebPMuxAssemble(mux, &assembled) == WEBP_MUX_OK;
+	if (ok)
+		out->assign(assembled.bytes, assembled.bytes + assembled.size);
+	else
+		set_error(error, _("WebP encoding failed"));
+	WebPDataClear(&assembled);
+	WebPMuxDelete(mux);
+	return ok;
 }
 
 // --- TO BE MOVED TO DNTHUMBD -------------------------------------------------

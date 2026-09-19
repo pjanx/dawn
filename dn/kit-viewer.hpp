@@ -42,6 +42,10 @@ struct Viewer : Widget {
 		OpenKey key;
 		dawn::ImagePtr image;
 		std::string message;
+		// What the decode actually transformed the pixels to, or null when
+		// it left them alone.  Kept with the image, because the display
+		// profile may change long before anyone asks to export it.
+		std::shared_ptr<const std::vector<uint8_t>> cms_icc;
 	};
 	struct Worker;
 	struct RestoreView {
@@ -87,6 +91,7 @@ struct Viewer : Widget {
 	// OpenContext::loaders, as the settings have it.
 	std::shared_ptr<const std::vector<std::string>> loaders_;
 	bool screen_profile_fallback_ = true;
+	std::shared_ptr<const std::vector<uint8_t>> cms_icc_;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;
 	dawn::ImagePtr frame_;

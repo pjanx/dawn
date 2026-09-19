@@ -14,6 +14,7 @@
 #include "action.hpp"
 #include "kit-chrome.hpp"
 #include "kit-cie-diagram.hpp"
+#include "kit-files.hpp"
 #include "kit.hpp"
 #include "renderer.hpp"
 #include "url.hpp"
@@ -26,6 +27,7 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QMimeData>
+#include <QSaveFile>
 #include <QUrl>
 #include <QtLogging>
 
@@ -141,6 +143,10 @@ spec_enabled(const Viewer &v, Action action)
 		return QFileInfo(url_to_path(v.url_)).isFile();
 	case Action::Smooth:
 		return !(v.current_ && v.current_->render);
+	case Action::SaveAs:
+		return bool(v.current_);
+	case Action::SaveFrameAs:
+		return v.current_ && v.current_->frame_next;
 	default:
 		return true;
 	}
@@ -291,6 +297,7 @@ struct OpenLoad {
 	Viewer::OpenKey key;
 	dawn::ImagePtr image;
 	string message;
+	shared_ptr<const vector<uint8_t>> cms_icc;
 };
 
 struct ScaleJob {
@@ -745,11 +752,14 @@ clear_image(Viewer &v)
 }
 
 static void
-apply_open(Viewer &v, uint64_t gen, dawn::ImagePtr image, string message)
+apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 {
 	if (gen != v.open_gen_)
 		return;
 
+	dawn::ImagePtr image = cached.image;
+	const string &message = cached.message;
+	v.cms_icc_ = cached.cms_icc;
 	v.opening_ = false;
 	v.open_done_ = true;
 	set_message(v, message);
@@ -827,16 +837,17 @@ apply_open_result(Viewer &v, OpenLoad result)
 		});
 	if (found == v.open_cache_.end()) {
 		v.open_cache_.push_back({std::move(result.key), std::move(result.image),
-			std::move(result.message)});
+			std::move(result.message), std::move(result.cms_icc)});
 		found = prev(v.open_cache_.end());
 	} else {
 		found->image = std::move(result.image);
 		found->message = std::move(result.message);
+		found->cms_icc = std::move(result.cms_icc);
 	}
 	Viewer::CachedOpen *cached = &*found;
 	if (!v.detached_ &&
 		cached->key == Viewer::OpenKey{current, v.enhance_jpeg_})
-		apply_open(v, v.open_gen_, cached->image, cached->message);
+		apply_open(v, v.open_gen_, *cached);
 	if (v.open_cache_.size() > 3)
 		v.open_cache_.erase(v.open_cache_.begin());
 }
@@ -853,6 +864,11 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	ctx.cmm = cmm;
 	ctx.screen_profile =
 		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
+	// What the pixels actually became, retained beside them: the fallback is
+	// a real profile too, and an export has to name the right one.
+	if (ctx.screen_profile)
+		result.cms_icc = make_shared<const vector<uint8_t>>(
+			ctx.screen_profile->to_bytes());
 	ctx.screen_dpi = open.dpi;
 	ctx.enhance = open.key.enhance;
 	if (open.loaders)
@@ -1079,7 +1095,7 @@ start_open(Viewer &v, bool invalidate)
 	}
 	v.worker_->cv.notify_all();
 	if (cached)
-		apply_open(v, v.open_gen_, cached->image, cached->message);
+		apply_open(v, v.open_gen_, *cached);
 	request_render(v);
 }
 
@@ -1642,6 +1658,78 @@ copy_frame(const Viewer &v)
 	QGuiApplication::clipboard()->setMimeData(mime);
 }
 
+// fiv's two formats.  The suffix is stated rather than read out of the
+// globs: what a filter lists and what a save is named are two decisions.
+enum : int { SaveWebp, SaveExv };
+constexpr FileType kSaveTypes[] = {
+	{N_("Lossless WebP (*.webp)"), "*.webp", ".webp"},
+	{N_("Exiv2 metadata (*.exv)"), "*.exv", ".exv"},
+};
+
+static QString
+write_export(const dawn::Image &page, const dawn::Image *frame,
+	const shared_ptr<const vector<uint8_t>> &icc, const QString &path, int type)
+{
+	dawn::Error error;
+	vector<uint8_t> data;
+	const bool ok = type == SaveExv
+		? dawn::save_exv(page, &data, &error)
+		: dawn::save_webp(page, frame,
+			  icc ? span<const uint8_t>(*icc) : span<const uint8_t>(), &data,
+			  &error);
+	if (!ok)
+		return QString::fromStdString(error.message);
+
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly) ||
+		file.write(reinterpret_cast<const char *>(data.data()),
+			qint64(data.size())) != qint64(data.size()) ||
+		!file.commit())
+		return file.errorString();
+	return {};
+}
+
+// What gets written is snapshotted here, not read back when the chooser is
+// answered: a screen profile may change, and a reload land, while it is up,
+// and the pixels have to stay paired with the profile that produced them.
+static void
+save_as(Viewer &v, bool one_frame)
+{
+	if (!v.current_)
+		return;
+
+	const dawn::ImagePtr page = v.current_;
+	const dawn::ImagePtr frame = one_frame ? v.frame_ : dawn::ImagePtr();
+	const shared_ptr<const vector<uint8_t>> icc = v.cms_icc_;
+	if (one_frame && !frame)
+		return;
+
+	const QFileInfo source(url_to_path(v.url_));
+	QString base = source.completeBaseName();
+	if (base.isEmpty())
+		base = QStringLiteral("image");
+
+	FileDialogSetup chooser;
+	chooser.save = true;
+	chooser.directory = source.absolutePath();
+	// TRANSLATORS: Appended to a filename when exporting one frame of an
+	// animation, before the extension.
+	if (one_frame)
+		base += QString::fromUtf8(_("-frame"));
+	chooser.name = base + QStringLiteral(".webp");
+	chooser.types = kSaveTypes;
+	// fiv put this in a modal of its own before the chooser; one dialog says
+	// as much as two, and this one is not two deep.
+	if (icc)
+		chooser.explanation = QString::fromUtf8(
+			_("Colour management overrides attached colour profiles."));
+	chooser.on_accept = [page, frame, icc](
+							Kit &, const QString &path, int type) {
+		return write_export(*page, frame.get(), icc, path, type);
+	};
+	dialog_files(v.kit_, std::move(chooser));
+}
+
 static bool
 apply_action(Viewer &v, Action action)
 {
@@ -1740,6 +1828,10 @@ apply_action(Viewer &v, Action action)
 		return true;
 	case Action::Copy:
 		copy_frame(v);
+		return true;
+	case Action::SaveAs:
+	case Action::SaveFrameAs:
+		save_as(v, action == Action::SaveFrameAs);
 		return true;
 	case Action::Reload:
 		reload_open(v);

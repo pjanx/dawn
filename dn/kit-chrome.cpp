@@ -12,6 +12,7 @@
 #include "assoc.hpp"
 #include "kit-browser.hpp"
 #include "kit-chrome.hpp"
+#include "kit-files.hpp"
 #include "url.hpp"
 
 #include <QFileInfo>
@@ -243,8 +244,9 @@ shortcut_row(const ActionDef &def)
 // The body takes its natural height, never stretched: it only knows to
 // scroll when what it holds is taller than it is.
 void
-dialog_about(Kit &kit, Dialog &dialog)
+dialog_about(Kit &kit)
 {
+	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
 	col->add_child(dialog_label(DAWN_NAME, true), size_t(-1));
@@ -291,15 +293,16 @@ make_banner(Label **out, function<void(Kit &)> on_dismiss)
 }
 
 void
-dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
-	function<QString(const QString &)> on_save)
+dialog_entry(Kit &kit, const char *title_text, const char *affirm,
+	const QString &initial, function<QString(Kit &, const QString &)> on_commit)
 {
+	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	auto title = dialog_label(N_("Save As"), true);
+	auto title = dialog_label(title_text, true);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
-	field->text = suggested;
+	field->text = initial;
 	title->buddy = field;
 	// TODO(p): Place the caret at the end, properly.
 	col->add_child(std::move(title), size_t(-1));
@@ -309,9 +312,10 @@ dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
 	message->wrap = true;
 	message->visible = false;
 	col->add_child(std::move(warning), size_t(-1));
-	auto save = dialog_action(N_("_Save"),
-		[field, message, &dialog, on_save = std::move(on_save)](Kit &inner) {
-			QString result = on_save(field->text);
+	auto commit = dialog_action(affirm,
+		[field, message, &dialog, on_commit = std::move(on_commit)](
+			Kit &inner) {
+			QString result = on_commit(inner, field->text);
 			if (result.isEmpty())
 				dialog.close(inner);
 			else {
@@ -319,14 +323,38 @@ dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
 				message->set_visible(true);
 			}
 		});
-	dialog.show(kit, std::move(col), 480.f, std::move(save),
+	dialog.show(kit, std::move(col), 480.f, std::move(commit),
+		dialog_dismiss_action(dialog, N_("_Cancel")));
+}
+
+// The confirmation runs after the question is gone, so that whatever it opens
+// in turn stacks over what asked rather than over the prompt.
+void
+dialog_question(Kit &kit, const QString &message, const char *affirm,
+	function<void(Kit &)> on_confirm)
+{
+	Dialog &dialog = kit.new_dialog();
+	auto col = make_unique<Column>();
+	col->gap = 8.f;
+	auto label = make_unique<Label>();
+	label->text = message;
+	label->wrap = true;
+	col->add_child(std::move(label), size_t(-1));
+
+	auto confirm = dialog_action(
+		affirm, [&dialog, on_confirm = std::move(on_confirm)](Kit &inner) {
+			dialog.close(inner);
+			if (on_confirm)
+				on_confirm(inner);
+		});
+	dialog.show(kit, std::move(col), 420.f, std::move(confirm),
 		dialog_dismiss_action(dialog, N_("_Cancel")));
 }
 
 void
-dialog_location(
-	Kit &kit, Dialog &dialog, function<void(const QString &)> on_open)
+dialog_location(Kit &kit, function<void(const QString &)> on_open)
 {
+	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
 	auto title = dialog_label(N_("Enter location"), true);
@@ -347,9 +375,9 @@ dialog_location(
 }
 
 void
-dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
-	span<const Action> keys)
+dialog_shortcuts(Kit &kit, span<const MenuNode> tree, span<const Action> keys)
 {
+	Dialog &dialog = kit.new_dialog();
 	bool seen[size_t(Action::Count)] = {};
 	bool viewer = false;
 	for (Action action : keys) {
@@ -409,6 +437,11 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 
 // --- Settings dialog ---------------------------------------------------------
 
+constexpr FileType kIccTypes[] = {
+	{N_("ICC profile (*.icc, *.icm)"), "*.icc;*.icm", nullptr},
+	{N_("All files"), "*", nullptr},
+};
+
 static constexpr ThumbnailSize kThumbSizes[] = {{128, N_("Small")},
 	{256, N_("Normal")}, {512, N_("Large")}, {1024, N_("Huge")}};
 
@@ -427,12 +460,14 @@ loader_text(const SettingsDraft::Loader &loader)
 		QStringLiteral(")");
 }
 
+// The buddy is passed rather than taken off the control: a cell that holds
+// more than one widget still has exactly one that the mnemonic means.
 static unique_ptr<GutterRow>
-settings_row(const char *label, unique_ptr<Widget> control)
+settings_row(const char *label, unique_ptr<Widget> control, Widget *buddy)
 {
 	auto text = dialog_label(label);
 	text->align = Align::End;
-	text->buddy = control.get();
+	text->buddy = buddy;
 
 	auto row = make_unique<GutterRow>();
 	row->gap = 8.f;
@@ -510,9 +545,10 @@ loader_arrow(const char *icon, const QString &tip)
 }
 
 void
-dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
+dialog_settings(Kit &kit, SettingsDraft draft,
 	function<void(const SettingsDraft &)> on_save)
 {
+	Dialog &dialog = kit.new_dialog();
 	// The callbacks outlive this function and share one copy between them;
 	// Save hands that copy back, and Cancel simply drops it.
 	auto state = make_shared<SettingsDraft>(std::move(draft));
@@ -533,7 +569,9 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	combo->on_select = [state](Kit &, int index) {
 		state->thumbnail_size = thumbnail_sizes()[size_t(index)].pixels;
 	};
-	col->add_child(settings_row(thumb_label, std::move(combo)), size_t(-1));
+	Combo *combo_ref = combo.get();
+	col->add_child(
+		settings_row(thumb_label, std::move(combo), combo_ref), size_t(-1));
 
 	auto names =
 		settings_check(N_("Show _filenames by default"), state->show_filenames);
@@ -541,7 +579,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	names->on_click = [state, names_ref](Kit &) {
 		state->show_filenames = names_ref->checked;
 	};
-	col->add_child(settings_row(nullptr, std::move(names)), size_t(-1));
+	col->add_child(
+		settings_row(nullptr, std::move(names), names_ref), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	entry->text = state->icc_profile_path;
@@ -550,7 +589,29 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	entry->on_change = [state, entry_ref](Kit &) {
 		state->icc_profile_path = entry_ref->text;
 	};
-	col->add_child(settings_row(icc_label, std::move(entry)), size_t(-1));
+
+	// Validation stays on the other end, where the file is actually read.
+	auto browse = dialog_action(N_("B_rowse..."), [state, entry_ref](Kit &k) {
+		FileDialogSetup chooser;
+		chooser.directory = QFileInfo(state->icc_profile_path).absolutePath();
+		chooser.types = kIccTypes;
+		chooser.on_accept = [state, entry_ref](
+								Kit &inner, const QString &path, int) {
+			entry_ref->set_text(inner, path);
+			state->icc_profile_path = path;
+			return QString();
+		};
+		dialog_files(k, std::move(chooser));
+	});
+	browse->pad_x = 0;
+
+	auto icc_cell = make_unique<Row>();
+	icc_cell->gap = 4.f;
+	icc_cell->grow = true;
+	icc_cell->add_child(std::move(entry), size_t(-1));
+	icc_cell->add_child(std::move(browse), size_t(-1));
+	col->add_child(
+		settings_row(icc_label, std::move(icc_cell), entry_ref), size_t(-1));
 
 	auto dither = settings_check(
 		N_("Disable _dithering on 8-bit swapchains"), state->disable_dithering);
@@ -558,7 +619,8 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	dither->on_click = [state, dither_ref](Kit &) {
 		state->disable_dithering = dither_ref->checked;
 	};
-	col->add_child(settings_row(nullptr, std::move(dither)), size_t(-1));
+	col->add_child(
+		settings_row(nullptr, std::move(dither), dither_ref), size_t(-1));
 
 	col->add_child(make_unique<Sep>(), size_t(-1));
 
@@ -1019,8 +1081,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->toolbar->left->add_item(std::move(app), 0);
 	}
 #endif
-	this->dialog_owned_ = make_unique<Dialog>();
-	this->dialog = this->dialog_owned_.get();
 	this->hint_owned_ = make_unique<Hint>();
 	this->hint = this->hint_owned_.get();
 	this->hint->page = this;
@@ -1321,9 +1381,14 @@ Actor
 chain_actor(const HostActions &host, function<bool(Action)> apply,
 	function<bool(Action)> enabled, function<bool(Action)> checked)
 {
+	// The host has the last word on what may run at all -- it is what knows
+	// that a modal dialog is up -- and only then does the page get to say
+	// whether it has anything to do.  History stays the host's alone.
 	auto can = [&host, enabled](Action action) {
+		if (host.enabled && !host.enabled(action))
+			return false;
 		if (action == Action::Back || action == Action::Forward)
-			return host.enabled && host.enabled(action);
+			return bool(host.enabled);
 		return !enabled || enabled(action);
 	};
 	Actor actor;

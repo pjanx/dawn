@@ -42,10 +42,8 @@ using namespace std;
 namespace
 {
 
-// How long any one step may wait for the application to catch up.  Generous,
-// because nothing here sleeps for it: the deadline is only ever reached when
-// something has actually gone wrong.
-constexpr int kTimeoutMs = 20000;
+// Bound each failed step so a broken prerequisite does not stall the suite.
+constexpr int kTimeoutMs = 3000;
 constexpr int kPollMs = 25;
 
 const char *g_dn = nullptr;
@@ -341,6 +339,31 @@ dump_tree(AtspiAccessible *scope, int depth)
 	}
 }
 
+static AtspiRect extents_of(AtspiAccessible *obj, AtspiCoordType type);
+
+// Like dump_tree, with the window-relative box of every node: a layout that
+// has gone wrong says so here and nowhere else a headless run can look.
+static void
+dump_geometry(AtspiAccessible *scope, int depth)
+{
+	const AtspiRect r = extents_of(scope, ATSPI_COORD_TYPE_WINDOW);
+	fprintf(stderr, "%*s%s \"%s\" %d,%d %dx%d\n", depth * 2, "",
+		role_of(scope).c_str(), name_of(scope).c_str(), r.x, r.y, r.width,
+		r.height);
+	if (depth > 8)
+		return;
+
+	const gint n = atspi_accessible_get_child_count(scope, nullptr);
+	for (gint i = 0; i < n; i++) {
+		AtspiAccessible *child =
+			atspi_accessible_get_child_at_index(scope, i, nullptr);
+		if (!child)
+			continue;
+		dump_geometry(child, depth + 1);
+		g_object_unref(child);
+	}
+}
+
 // --- Actions, state and geometry ---------------------------------------------
 
 static bool
@@ -407,7 +430,7 @@ has_state(AtspiAccessible *obj, AtspiStateType state)
 }
 
 // Zero-sized on failure, which is also what an unplaced widget answers.
-static AtspiRect
+AtspiRect
 extents_of(AtspiAccessible *obj, AtspiCoordType type)
 {
 	AtspiRect result = {0, 0, 0, 0};
@@ -1807,6 +1830,320 @@ case_files()
 	CHECK(wait_until([] { return has_named(g_window, "Filter"); }));
 }
 
+// The file chooser, reached the way Settings reaches it -- which puts it over
+// a dialog that is already up.  Everything here is the stack seen from
+// outside: a chooser that is itself modal, a prompt that stacks over that,
+// rows the platform can name and press, and the reaping that happens a frame
+// after a footer button has closed the very tree it was running in.
+static void
+case_chooser()
+{
+	if (!g_window)
+		return;
+
+	if (!open_app_menu()) {
+		test::fail("the application menu did not open");
+		return;
+	}
+	if (!act_named(g_window, "File", "ShowMenu") ||
+		!wait_until([] { return has_named(g_window, "Settings..."); })) {
+		test::fail("the File submenu did not open");
+		return;
+	}
+	if (!act_named(g_window, "Settings...", "Press") ||
+		!wait_until([] { return has_role(g_window, "dialog", "Settings"); })) {
+		test::fail("the Settings dialog did not open");
+		return;
+	}
+
+	AtspiAccessible *settings = find_role(g_window, "dialog", "Settings");
+	if (!settings)
+		return;
+
+	AtspiAccessible *icc = find_role(settings, "text", "ICC profile override");
+	if (!icc) {
+		test::fail("the ICC field is not named by its label");
+		g_object_unref(settings);
+		return;
+	}
+
+	// Where the chooser starts is the directory of what the field holds.
+	const string start = string(g_dir) + "/cmyk-lab.icc";
+	const string chosen = string(g_dir) + "/black.png";
+	CHECK(set_text_contents(icc, start.c_str()));
+	if (!act_named(settings, "Browse...", "Press") ||
+		!wait_until([] { return has_role(g_window, "dialog", "Open"); })) {
+		test::fail("the file chooser did not open");
+		g_object_unref(icc);
+		g_object_unref(settings);
+		return;
+	}
+
+	AtspiAccessible *chooser = find_role(g_window, "dialog", "Open");
+	if (!chooser) {
+		g_object_unref(icc);
+		g_object_unref(settings);
+		return;
+	}
+
+	fprintf(stderr, "--- chooser geometry ---\n");
+	dump_geometry(chooser, 0);
+	fprintf(stderr, "------------------------\n");
+
+	// The header is three controls, and re-sorting is pressing one of them.
+	for (const char *column : {"Name", "Size", "Modified"})
+		CHECK(has_named(chooser, column));
+	CHECK(has_named(chooser, "Files of type"));
+	CHECK(!has_named(chooser, "File name"));
+	CHECK(wait_until([chooser] { return has_named(chooser, "cmyk-lab.icc"); }));
+	CHECK(act_named(chooser, "Size", "Press"));
+	CHECK(wait_until([chooser] { return has_named(chooser, "cmyk-lab.icc"); }));
+
+	AtspiAccessible *rows = find_role(chooser, "list", nullptr);
+	if (rows) {
+		AtspiAccessible *row = find_one(rows, "cmyk-lab.icc");
+		if (row) {
+			const gint index =
+				atspi_accessible_get_index_in_parent(row, nullptr);
+			g_saw_selection_event = g_saw_selected_event = false;
+			CHECK(select_child(rows, index));
+			CHECK(wait_until(
+				[] { return g_saw_selection_event && g_saw_selected_event; }));
+			CHECK(has_state(row, ATSPI_STATE_SELECTED));
+			CHECK(has_role(g_window, "dialog", "Open"));
+			CHECK(act_named(chooser, "Name", "SetFocus"));
+			CHECK(has_state(row, ATSPI_STATE_SELECTED));
+			CHECK(act_named(chooser, "Name", "Press"));
+			CHECK(has_state(row, ATSPI_STATE_SELECTED));
+			CHECK(act_named(chooser, "Refresh", "Press"));
+			g_object_unref(row);
+			row = find_one(rows, "cmyk-lab.icc");
+			CHECK(row && has_state(row, ATSPI_STATE_SELECTED));
+			g_clear_object(&row);
+			CHECK(clear_selection(rows));
+		}
+		g_object_unref(rows);
+	}
+
+	// The path field commits before anything that depends on where we are,
+	// and a commit that fails puts back the directory that was listed.
+	AtspiAccessible *path = find_role(chooser, "text", nullptr);
+	if (!path) {
+		test::fail("the chooser has no path field");
+	} else {
+		const string here = text_contents(path);
+		CHECK(here == g_dir);
+		CHECK(set_text_contents(path, "/no/such/directory/at/all"));
+		CHECK(act_named(chooser, "Refresh", "Press"));
+		CHECK(
+			wait_until([path, &here] { return text_contents(path) == here; }));
+		CHECK(has_named(chooser, "cmyk-lab.icc"));
+
+		// And a commit that works navigates, taking the listing with it.
+		const string up = string(g_dir) + "/..";
+		CHECK(do_action(path, "SetFocus"));
+		CHECK(set_text_contents(path, up.c_str()));
+		CHECK(act_named(chooser, "Name", "SetFocus"));
+		CHECK(wait_until([] { return has_named(g_window, "fixtures"); }));
+		CHECK(!has_named(chooser, "cmyk-lab.icc"));
+		CHECK(set_text_contents(path, here.c_str()));
+		AtspiAccessible *types = find_role(chooser, "combo box", nullptr);
+		if (types) {
+			CHECK(do_action(types, "ShowMenu"));
+			CHECK(wait_until(
+				[] { return has_role(g_window, "list item", "All files"); }));
+			{
+				AtspiAccessible *item =
+					find_role(g_window, "list item", "All files");
+				CHECK(item && do_action(item, "Press"));
+				g_clear_object(&item);
+			}
+			g_object_unref(types);
+		}
+		CHECK(wait_until([] { return has_named(g_window, "cmyk-lab.icc"); }));
+		g_object_unref(path);
+	}
+
+	// A filter that matches everything overflows the listing, which is the
+	// state the rows have to be clipped and scrolled in rather than shrunk
+	// to fit: the first is on screen, and the last is not.
+	AtspiAccessible *type = find_role(chooser, "combo box", nullptr);
+	if (!type) {
+		test::fail("the chooser has no type selector");
+	} else {
+		const bool listed = do_action(type, "ShowMenu") && wait_until([] {
+			return has_role(g_window, "list item", "All files");
+		});
+		if (!listed)
+			test::fail("the type list did not open");
+		else {
+			AtspiAccessible *item =
+				find_role(g_window, "list item", "All files");
+			CHECK(item && do_action(item, "Press"));
+			g_clear_object(&item);
+		}
+		g_object_unref(type);
+		CHECK(
+			wait_until([chooser] { return has_named(chooser, "white.png"); }));
+
+		fprintf(stderr, "--- listing overflowing ---\n");
+		dump_geometry(chooser, 0);
+		fprintf(stderr, "---------------------------\n");
+
+		AtspiAccessible *first = find_one(chooser, "black.png");
+		AtspiAccessible *last = find_one(chooser, "white.png");
+		if (first && last) {
+			const AtspiRect box = extents_of(first, ATSPI_COORD_TYPE_WINDOW);
+			// The font's own height, not a share of the listing's.
+			CHECK(box.height >= 20);
+			// Scrolled out of the viewport, which is the bridge's reading
+			// of the offscreen state the kit reports for a clipped row.
+			CHECK(has_state(first, ATSPI_STATE_SHOWING));
+			CHECK(!has_state(last, ATSPI_STATE_SHOWING));
+		}
+		g_clear_object(&first);
+		g_clear_object(&last);
+	}
+
+	// Modal, exactly as the About dialog is: nothing underneath answers,
+	// the Settings dialog it stands on included.
+	AtspiAccessible *dark = find_one(g_window, "Dark Mode");
+	if (dark) {
+		CHECK(!has_action(dark, "Press"));
+		g_object_unref(dark);
+	}
+	CHECK(!has_action(icc, "SetFocus"));
+
+	// A prompt over the chooser, which is the whole point of the stack: two
+	// dialogs stay up underneath it, and both come back afterwards.
+	AtspiAccessible *prompt = nullptr;
+	if (act_named(chooser, "New folder", "Press") &&
+		wait_until([] { return has_role(g_window, "dialog", "New Folder"); }))
+		prompt = find_role(g_window, "dialog", "New Folder");
+	if (!prompt) {
+		test::fail("the New Folder prompt did not stack");
+	} else {
+		CHECK(has_named(prompt, "Create"));
+		CHECK(has_named(chooser, "cmyk-lab.icc"));
+		CHECK(act_named(prompt, "Cancel", "Press"));
+		g_object_unref(prompt);
+		CHECK(wait_until(
+			[] { return !has_role(g_window, "dialog", "New Folder"); }));
+		CHECK(has_named(chooser, "cmyk-lab.icc"));
+	}
+
+	// Pressing a row opens it, as pressing a file in the browser does; the
+	// chooser goes, and the dialog it stood on is live again.
+	AtspiAccessible *row = find_one(chooser, "black.png");
+	g_object_unref(chooser);
+	if (!row) {
+		test::fail("the listing has no row to press");
+	} else {
+		CHECK(do_action(row, "Press"));
+		g_object_unref(row);
+		CHECK(wait_until([] { return !has_role(g_window, "dialog", "Open"); }));
+		CHECK(wait_until(
+			[icc, &chosen] { return text_contents(icc) == chosen; }));
+	}
+	g_object_unref(icc);
+
+	CHECK(act_named(settings, "Cancel", "Press"));
+	g_object_unref(settings);
+	CHECK(wait_until([] { return !has_role(g_window, "dialog", "Settings"); }));
+
+	// And the toolbar answers again once the stack is empty.
+	CHECK(wait_until([] {
+		AtspiAccessible *button = try_role(g_window, "button", "Dark Mode");
+		if (!button)
+			return false;
+		const bool press = has_action(button, "Press");
+		g_object_unref(button);
+		return press;
+	}));
+}
+
+static void
+case_export()
+{
+	if (!g_window || !act_named(g_window, "black.png", "Press"))
+		return;
+	CHECK(wait_until([] { return has_role(g_window, "image", "black.png"); }));
+	CHECK(open_app_menu());
+	CHECK(act_named(g_window, "File", "ShowMenu"));
+	CHECK(wait_until([] { return has_named(g_window, "Save As..."); }));
+	CHECK(act_named(g_window, "Save As...", "Press"));
+	CHECK(wait_until([] { return has_role(g_window, "dialog", "Save As"); }));
+	AtspiAccessible *chooser = find_role(g_window, "dialog", "Save As");
+	if (!chooser)
+		return;
+
+	char dir[] = "/tmp/dawn-export-XXXXXX";
+	if (!mkdtemp(dir)) {
+		test::fail("cannot create export directory");
+		g_object_unref(chooser);
+		return;
+	}
+	AtspiAccessible *path = find_role(chooser, "text", "");
+	AtspiAccessible *name = find_role(chooser, "text", "File name");
+	if (path && name) {
+		CHECK(do_action(path, "SetFocus"));
+		CHECK(set_text_contents(path, dir));
+		CHECK(do_action(name, "SetFocus"));
+		CHECK(text_contents(path) == dir);
+		CHECK(set_text_contents(name, "missing/result.webp"));
+		CHECK(act_named(chooser, "Save", "Press"));
+		CHECK(has_role(g_window, "dialog", "Save As"));
+
+		const string output = string(dir) + "/result.webp";
+		FILE *file = fopen(output.c_str(), "wb");
+		CHECK(file);
+		if (file) {
+			fputs("keep", file);
+			fclose(file);
+		}
+		CHECK(set_text_contents(name, "result"));
+		CHECK(act_named(chooser, "Save", "Press"));
+		const char *question = "result.webp already exists. Overwrite it?";
+		CHECK(wait_until(
+			[question] { return has_role(g_window, "dialog", question); }));
+		AtspiAccessible *prompt = find_role(g_window, "dialog", question);
+		if (prompt) {
+			CHECK(!has_action(name, "SetFocus"));
+			CHECK(act_named(prompt, "Cancel", "Press"));
+			g_object_unref(prompt);
+			CHECK(wait_until([question] {
+				return !has_role(g_window, "dialog", question);
+			}));
+		}
+		char header[4] = {};
+		file = fopen(output.c_str(), "rb");
+		if (file) {
+			CHECK(fread(header, 1, 4, file) == 4);
+			CHECK(!memcmp(header, "keep", 4));
+			fclose(file);
+		}
+		CHECK(act_named(chooser, "Save", "Press"));
+		CHECK(wait_until(
+			[question] { return has_role(g_window, "dialog", question); }));
+		CHECK(act_named(g_window, "Overwrite", "Press"));
+		CHECK(wait_until(
+			[] { return !has_role(g_window, "dialog", "Save As"); }));
+		file = fopen(output.c_str(), "rb");
+		if (file) {
+			CHECK(fread(header, 1, 4, file) == 4);
+			CHECK(!memcmp(header, "RIFF", 4));
+			fclose(file);
+		}
+		unlink(output.c_str());
+	}
+	g_clear_object(&path);
+	g_clear_object(&name);
+	g_object_unref(chooser);
+	rmdir(dir);
+	CHECK(act_named(g_window, "Browse", "Press"));
+	CHECK(wait_until([] { return has_named(g_window, "Filter"); }));
+}
+
 static void
 case_overflow()
 {
@@ -1998,6 +2335,8 @@ main(int argc, char *argv[])
 		{"location", case_location},
 		{"filter", case_filter},
 		{"files", case_files},
+		{"chooser", case_chooser},
+		{"export", case_export},
 		{"overflow", case_overflow},
 		{"teardown", case_teardown},
 	});

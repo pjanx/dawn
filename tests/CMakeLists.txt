@@ -100,6 +100,10 @@ target_compile_definitions(test-jpeg-crop PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
 add_test(NAME jpeg_crop COMMAND test-jpeg-crop)
 
+add_executable(test-save test-save.cpp)
+target_link_libraries(test-save PRIVATE libdn)
+add_test(NAME save COMMAND test-save)
+
 add_executable(test-icns test-icns.cpp)
 target_link_libraries(test-icns PRIVATE libdn)
 add_test(NAME icns COMMAND test-icns)

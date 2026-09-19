@@ -34,7 +34,6 @@ struct Cropper : Widget {
 	Label *error_label_ = nullptr;
 	std::string message_;
 	bool message_dismissed_ = false;
-	QString pending_overwrite_;
 
 	explicit Cropper(Kit &kit);
 	void open(const QUrl &url);

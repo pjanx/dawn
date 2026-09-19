@@ -180,6 +180,10 @@ constexpr ActionDef kDefs[] = {
 	{kMenu, {N_("_Mirror")}, {"flip-h-symbolic"}, {{Qt::Key_Equal}}, {}},
 	{kMenu, {N_("Rotate _Right")}, {"rotate-cw-symbolic"},
 		{{Qt::Key_Greater}}, {}},
+	{kMenu, {N_("Save _As...")}, {"document-save-as-symbolic"},
+		{{Qt::Key_S, kCtrl}}, {}},
+	{kMenu, {N_("Save _Frame As...")}, {},
+		{{Qt::Key_S, kCtrl | kShift}}, {}},
 	{kToggle, {N_("Show I_nformation")}, {"info-outline-symbolic"},
 		{{Qt::Key_Return, kAlt}, {Qt::Key_Enter, kAlt}}, {}},
 	{kMenu, {N_("_First Page")}, {"go-top-symbolic"}, {}, {}},
@@ -202,8 +206,7 @@ constexpr ActionDef kDefs[] = {
 		{{Qt::Key_F5}, {Qt::Key_R}, {Qt::Key_R, kCtrl}}, {}},
 
 	// Cropper
-	{kMenu, {N_("Save _As...")}, {"document-save-as-symbolic"},
-		{{Qt::Key_S, kCtrl}}, {}},
+	{kMenu, {N_("_Open...")}, {}, {{Qt::Key_O, kCtrl}}, {}},
 	{kMenu, {N_("Reset _Crop")}, {}, {}, {}},
 	{0, {N_("Crop _Region")}, {}, {}, N_("Left/Right mouse button")},
 };
@@ -286,6 +289,8 @@ constexpr Action kBrowserKeys[] = {
 };
 
 constexpr Action kViewerKeys[] = {
+	Action::SaveAs,
+	Action::SaveFrameAs,
 	Action::Browse,
 	Action::PrevFile,
 	Action::NextFile,
@@ -318,6 +323,7 @@ constexpr Action kViewerKeys[] = {
 };
 
 constexpr Action kCropJpegKeys[] = {
+	Action::Open,
 	Action::SaveAs,
 	Action::CropReset,
 	Action::RotateLeft,
@@ -344,9 +350,25 @@ static const MenuNode kCropJpegFileMenu = MenuNode::group(N_("_File"), {
 	MenuNode::item(Action::NewWindow),
 	MenuNode::item(Action::CloseWindow),
 	{},
-	// FIXME: This is extremely wrong, but we don't have an open dialog yet.
-	MenuNode::item(Action::Location),
+	MenuNode::item(Action::Open),
 	MenuNode::item(Action::SaveAs),
+	{},
+	MenuNode::item(Action::Reload),
+	{},
+	MenuNode::item(Action::Settings),
+	{},
+	MenuNode::item(Action::Quit),
+});
+
+// Spelled out rather than built: kFileMenu is shared with Browse, which has
+// nothing to save, and two spelled-out File menus beat a builder.  There is
+// no Open here: the browser is this application's file chooser.
+static const MenuNode kViewerFileMenu = MenuNode::group(N_("_File"), {
+	MenuNode::item(Action::NewWindow),
+	MenuNode::item(Action::CloseWindow),
+	{},
+	MenuNode::item(Action::SaveAs),
+	MenuNode::item(Action::SaveFrameAs),
 	{},
 	MenuNode::item(Action::Reload),
 	{},
@@ -399,7 +421,7 @@ const MenuNode kBrowserMenu[] = {
 };
 
 const MenuNode kViewerMenu[] = {
-	kFileMenu,
+	kViewerFileMenu,
 	MenuNode::group(N_("_Go"), {
 		MenuNode::item(Action::Back),
 		MenuNode::item(Action::Forward),

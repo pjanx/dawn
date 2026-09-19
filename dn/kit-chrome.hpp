@@ -77,19 +77,24 @@ struct SettingsDraft {
 std::unique_ptr<Panel> make_banner(
 	Label **out, std::function<void(Kit &)> on_dismiss);
 
-/// Empty result means written; otherwise keep the dialog open with the message.
-void dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
-	std::function<QString(const QString &)> on_save);
+/// One field and a button.  on_commit returns an empty string once it is
+/// done, or the message to show while staying open.
+void dialog_entry(Kit &kit, const char *title, const char *affirm,
+	const QString &initial,
+	std::function<QString(Kit &kit, const QString &)> on_commit);
 
-void dialog_about(Kit &kit, Dialog &dialog);
-void dialog_shortcuts(Kit &kit, Dialog &dialog, std::span<const MenuNode> tree,
-	std::span<const Action> keys);
-void dialog_location(
-	Kit &kit, Dialog &dialog, std::function<void(const QString &)> on_open);
+/// Stacks over whatever is already up, and asks.
+void dialog_question(Kit &kit, const QString &message, const char *affirm,
+	std::function<void(Kit &)> on_confirm);
+
+void dialog_about(Kit &kit);
+void dialog_shortcuts(
+	Kit &kit, std::span<const MenuNode> tree, std::span<const Action> keys);
+void dialog_location(Kit &kit, std::function<void(const QString &)> on_open);
 
 // Takes the draft by value: the dialog edits its own copy, and Save is the
 // only way anything gets back out.
-void dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
+void dialog_settings(Kit &kit, SettingsDraft draft,
 	std::function<void(const SettingsDraft &)> on_save);
 
 struct Sidebar : Panel {
@@ -146,7 +151,6 @@ struct Page : Composite {
 	Splitter *splitter = nullptr;
 	Widget *content = nullptr;
 	Widget *banner = nullptr;
-	Dialog *dialog = nullptr;
 	Hint *hint = nullptr;
 	ContextMenu *context = nullptr;
 	Menu *app_menu = nullptr;
@@ -181,7 +185,6 @@ struct Page : Composite {
 private:
 	std::unique_ptr<Widget> banner_owned_;
 	std::unique_ptr<Menu> app_menu_owned_;
-	std::unique_ptr<Dialog> dialog_owned_;
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;
 	Rect well_{};

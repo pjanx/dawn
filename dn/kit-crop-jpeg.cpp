@@ -6,6 +6,7 @@
 //
 
 #include "kit-crop-jpeg.hpp"
+#include "kit-files.hpp"
 #include "renderer.hpp"
 #include "url.hpp"
 
@@ -313,21 +314,19 @@ Cropper::turn(Action action)
 
 // --- Saving and actions ------------------------------------------------------
 
+constexpr FileType kJpegTypes[] = {
+	{N_("JPEG image (*.jpg, *.jpeg)"), "*.jpg;*.jpeg;*.jpe;*.jfif", ".jpg"},
+	{N_("All files"), "*", nullptr},
+};
+
+// Overwriting is the dialog's question to ask, not this one's.
 QString
 Cropper::save(const QString &input)
 {
 	const QString path =
 		url_to_path(url_from_user_input(input, QDir::currentPath()));
-	if (path.isEmpty()) {
-		this->pending_overwrite_.clear();
+	if (path.isEmpty())
 		return QString::fromUtf8(_("Not a local path"));
-	}
-	if (QFileInfo::exists(path) && path != this->pending_overwrite_) {
-		this->pending_overwrite_ = path;
-		return QString::fromUtf8(
-			_("File exists. Press Save again to overwrite."));
-	}
-	this->pending_overwrite_.clear();
 
 	dawn::Error error;
 	auto data = dawn::jpeg_transform(this->file_, dawn::Orientation::Rotate0,
@@ -407,14 +406,32 @@ Cropper::apply(Action action)
 			float(this->r.x) + float(this->r.w) * .5f,
 			float(this->r.y) + float(this->r.h) * .5f);
 		break;
+	case Action::Open: {
+		FileDialogSetup chooser;
+		chooser.directory =
+			QFileInfo(url_to_path(this->jpeg_url_)).absolutePath();
+		chooser.types = kJpegTypes;
+		chooser.on_accept = [this](Kit &, const QString &path, int) {
+			open(path_to_url(path));
+			return QString();
+		};
+		dialog_files(this->kit_, std::move(chooser));
+		break;
+	}
 	case Action::SaveAs: {
-		QFileInfo source(url_to_path(this->jpeg_url_));
-		const QString suggested =
-			source.dir().filePath(source.completeBaseName() +
-				QStringLiteral(".crop.") + source.suffix());
-		this->pending_overwrite_.clear();
-		dialog_save_as(this->kit_, *this->page_->dialog, suggested,
-			[this](const QString &path) { return save(path); });
+		const QFileInfo source(url_to_path(this->jpeg_url_));
+		FileDialogSetup chooser;
+		chooser.save = true;
+		chooser.directory = source.absolutePath();
+		// TRANSLATORS: Inserted into a filename when saving a cropped JPEG,
+		// between the base name and the extension, dots included.
+		chooser.name = source.completeBaseName() +
+			QString::fromUtf8(_(".crop.")) + source.suffix();
+		chooser.types = kJpegTypes;
+		chooser.on_accept = [this](Kit &, const QString &path, int) {
+			return save(path);
+		};
+		dialog_files(this->kit_, std::move(chooser));
 		break;
 	}
 	default:
@@ -432,7 +449,7 @@ Cropper::paint(Kit &kit) const
 	if (!this->image_) {
 		Label hint;
 		hint.text = QString::fromUtf8(_("Open a JPEG file")) +
-			QStringLiteral(" — ") + action_accel(action_def(Action::Location));
+			QStringLiteral(" — ") + action_accel(action_def(Action::Open));
 		hint.dim = true;
 		hint.align = Align::Center;
 		hint.r = this->r;

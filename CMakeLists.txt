@@ -330,6 +330,7 @@ target_link_libraries(libdn
 		PkgConfig::RESVG
 		PkgConfig::WEBP
 		PkgConfig::WEBPDEMUX
+		PkgConfig::WEBPMUX
 )
 
 if (WIN32)
@@ -503,6 +504,7 @@ qt_add_executable(dn
 	dn/kit-browser.cpp
 	dn/kit-chrome.cpp
 	dn/kit-cie-diagram.cpp
+	dn/kit-files.cpp
 	dn/kit-commander.cpp
 	dn/kit.cpp
 	dn/kit-crop-jpeg.cpp

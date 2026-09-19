@@ -415,19 +415,12 @@ Window::bind_host()
 		case Action::Forward:
 			go_forward();
 			break;
-		case Action::Location: {
-			Page *ui = active_ui();
-			if (!ui || !ui->dialog)
-				break;
-
-			dialog_location(
-				this->kit_, *ui->dialog, [this](const QString &location) {
-					open_any(
-						url_from_user_input(location, QDir::currentPath()));
-				});
+		case Action::Location:
+			dialog_location(this->kit_, [this](const QString &location) {
+				open_any(url_from_user_input(location, QDir::currentPath()));
+			});
 			request_render();
 			break;
-		}
 		case Action::PrevFile:
 			open_sibling(-1);
 			break;
@@ -444,20 +437,18 @@ Window::bind_host()
 		case Action::About:
 		case Action::Shortcuts: {
 			Page *ui = active_ui();
-			if (!ui || !ui->dialog)
+			if (!ui)
 				break;
 
 			if (a == Action::About)
-				dialog_about(this->kit_, *ui->dialog);
+				dialog_about(this->kit_);
 			else
-				dialog_shortcuts(
-					this->kit_, *ui->dialog, ui->menu_tree, ui->keys);
+				dialog_shortcuts(this->kit_, ui->menu_tree, ui->keys);
 			request_render();
 			break;
 		}
 		case Action::Settings: {
-			Page *ui = active_ui();
-			if (!ui || !ui->dialog || !this->app_)
+			if (!this->app_)
 				break;
 
 			const Settings &settings = this->app_->settings;
@@ -468,7 +459,7 @@ Window::bind_host()
 				QString::fromStdString(settings.icc_profile_override_path);
 			draft.disable_dithering = settings.disable_dithering;
 			draft.loaders = settings.loaders;
-			dialog_settings(this->kit_, *ui->dialog, std::move(draft),
+			dialog_settings(this->kit_, std::move(draft),
 				[this](const SettingsDraft &saved) {
 					this->app_->settings.save(saved);
 				});
@@ -480,6 +471,23 @@ Window::bind_host()
 		}
 	};
 	this->host_.enabled = [this](Action a) {
+		// The user's answer to a global menu that stays live under a modal:
+		// grey out everything that would open a second top-level dialog.
+		// The macOS menu bar mirrors this, so it greys the native items too.
+		switch (a) {
+		case Action::About:
+		case Action::Shortcuts:
+		case Action::Settings:
+		case Action::Location:
+		case Action::Open:
+		case Action::SaveAs:
+		case Action::SaveFrameAs:
+			if (this->kit_.modal())
+				return false;
+			break;
+		default:
+			break;
+		}
 		if (a == Action::Back) {
 			if (this->mode_ == Mode::Browse && this->browser_)
 				return this->browser_->hist_can_back();

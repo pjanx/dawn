@@ -54,6 +54,7 @@ accessible_activated(Window *)
 #include "app.hpp"
 #include "kit-browser.hpp"
 #include "kit-chrome.hpp"
+#include "kit-files.hpp"
 #include "kit-viewer.hpp"
 #include "url.hpp"
 #include "window.hpp"
@@ -114,7 +115,8 @@ static bool
 flattened(const Widget *w)
 {
 	if (dynamic_cast<const Popup *>(w) || dynamic_cast<const Toolbar *>(w) ||
-		dynamic_cast<const Titlebar *>(w) || dynamic_cast<const Sidebar *>(w))
+		dynamic_cast<const Titlebar *>(w) || dynamic_cast<const Sidebar *>(w) ||
+		dynamic_cast<const FileRows *>(w))
 		return false;
 	// The page is the client area itself, and has an interface of its own.
 	return dynamic_cast<const Page *>(w) ||
@@ -223,6 +225,7 @@ static bool
 in_input_scope(const Kit &kit, const Widget *w)
 {
 	bool any_open = false, transient_open = false;
+	const Popup *top = nullptr;
 	for (const Popup *p : kit.popups_) {
 		if (!p || !p->shown())
 			continue;
@@ -230,17 +233,26 @@ in_input_scope(const Kit &kit, const Widget *w)
 		any_open = true;
 		if (p->transient())
 			transient_open = true;
+		top = p;
 	}
 	if (!any_open)
 		return true;
 
 	for (const Popup *p : kit.popups_) {
-		if (!p || !p->shown() || (transient_open && !p->transient()))
+		if (!p || !p->shown())
+			continue;
+
+		// What Kit::hit lets the pointer reach, and for the same reasons: a
+		// transient popup owns input for as long as it is up, and where
+		// there is none the topmost dialog does -- one dialog stacked over
+		// another covers it whole.
+		if (transient_open ? !p->transient() : p != top)
 			continue;
 		for (const Widget *a = w; a; a = a->parent_) {
 			if (a == p)
 				return true;
 		}
+
 		// Pressing the button a list came out of is what shuts it again.
 		if (p->opener == w && p->opener->shown())
 			return true;
@@ -267,7 +279,7 @@ role_of(const Widget *w)
 {
 	if (dynamic_cast<const MenuItem *>(w))
 		return QAccessible::MenuItem;
-	if (dynamic_cast<const ComboItem *>(w))
+	if (dynamic_cast<const ComboItem *>(w) || dynamic_cast<const FileRow *>(w))
 		return QAccessible::ListItem;
 	if (dynamic_cast<const Combo *>(w))
 		return QAccessible::ComboBox;
@@ -284,7 +296,7 @@ role_of(const Widget *w)
 		return QAccessible::EditableText;
 	if (dynamic_cast<const Label *>(w))
 		return QAccessible::StaticText;
-	if (dynamic_cast<const Browser *>(w))
+	if (dynamic_cast<const Browser *>(w) || dynamic_cast<const FileRows *>(w))
 		return QAccessible::List;
 	if (auto *viewer = dynamic_cast<const Viewer *>(w)) {
 		if (viewer->current_ &&
@@ -328,15 +340,14 @@ buddy_label(const Widget *w)
 	return nullptr;
 }
 
-// First bold label in the exposed subtree: dialogs put their title there,
-// and that is the name of the dialog itself, not of a separate heading role.
+// The first label names the dialog: a heading, or the plain-text question.
 static QString
 heading_of(const Widget *w)
 {
 	vector<Widget *> kids;
 	semantic_children(w, kids);
 	for (Widget *k : kids) {
-		if (auto *label = dynamic_cast<const Label *>(k); label && label->bold)
+		if (auto *label = dynamic_cast<const Label *>(k))
 			return label->text;
 
 		const QString inner = heading_of(k);
@@ -564,6 +575,11 @@ state_of(Window *window, const Widget *w)
 		state.selectable = 1;
 		if (list->combo && list->combo->current == choice)
 			state.selected = 1;
+	}
+
+	if (auto *row = dynamic_cast<const FileRow *>(w)) {
+		state.selectable = 1;
+		state.selected = ((const FileRows *) row->parent_)->selected == row;
 	}
 
 	// has_popup() already answers for a combo, which is the only reason
@@ -951,6 +967,19 @@ struct ComboListAdapter final : public WidgetAdapter,
 	bool select(QAccessibleInterface *childItem) override;
 	bool unselect(QAccessibleInterface *childItem) override;
 	bool selectAll() override;
+	bool clear() override;
+};
+
+struct FileRowsAdapter final : WidgetAdapter, QAccessibleSelectionInterface {
+	QAccessible::Id last_selected = 0;
+
+	FileRowsAdapter(Window *window, FileRows *rows);
+	void *interface_cast(QAccessible::InterfaceType type) override;
+	int selectedItemCount() const override;
+	QList<QAccessibleInterface *> selectedItems() const override;
+	bool select(QAccessibleInterface *item) override;
+	bool unselect(QAccessibleInterface *item) override;
+	bool selectAll() override { return false; }
 	bool clear() override;
 };
 
@@ -1659,6 +1688,72 @@ ComboListAdapter::clear()
 	return false;
 }
 
+FileRowsAdapter::FileRowsAdapter(Window *window, FileRows *rows)
+	: WidgetAdapter(window, rows)
+{
+}
+
+void *
+FileRowsAdapter::interface_cast(QAccessible::InterfaceType type)
+{
+	if (type == QAccessible::SelectionInterface)
+		return (QAccessibleSelectionInterface *) this;
+	return WidgetAdapter::interface_cast(type);
+}
+
+int
+FileRowsAdapter::selectedItemCount() const
+{
+	return this->widget_ && ((FileRows *) this->widget_)->selected ? 1 : 0;
+}
+
+QList<QAccessibleInterface *>
+FileRowsAdapter::selectedItems() const
+{
+	if (!selectedItemCount())
+		return {};
+	return {
+		interface_for(this->window_, ((FileRows *) this->widget_)->selected)};
+}
+
+bool
+FileRowsAdapter::select(QAccessibleInterface *item)
+{
+	auto *adapter = dynamic_cast<WidgetAdapter *>(item);
+	auto *row = adapter ? dynamic_cast<FileRow *>(adapter->widget_) : nullptr;
+	if (!row || row->parent_ != this->widget_ ||
+		!operable(this->window_, this->widget_))
+		return false;
+
+	Kit &kit = this->window_->kit();
+	Kit::Input input(kit);
+	((FileRows *) this->widget_)->select(kit, row);
+	schedule_render(kit);
+	return true;
+}
+
+bool
+FileRowsAdapter::unselect(QAccessibleInterface *item)
+{
+	auto *adapter = dynamic_cast<WidgetAdapter *>(item);
+	if (!this->widget_ || !adapter || !adapter->widget_ ||
+		adapter->widget_ != ((FileRows *) this->widget_)->selected)
+		return false;
+	return clear();
+}
+
+bool
+FileRowsAdapter::clear()
+{
+	if (!operable(this->window_, this->widget_))
+		return false;
+	Kit &kit = this->window_->kit();
+	Kit::Input input(kit);
+	((FileRows *) this->widget_)->select(kit, nullptr);
+	schedule_render(kit);
+	return true;
+}
+
 // What a widget's default action is called, or nothing for one that has
 // none.  Advertising more than is there is worse than advertising less:
 // focusing an entry is not pressing a button, and a label that merely names
@@ -1706,6 +1801,7 @@ WidgetAdapter::doAction(const QString &name)
 		return;
 
 	Kit &kit = this->window_->kit();
+	Kit::Input input(kit);
 	if (name == QAccessibleActionInterface::setFocusAction())
 		kit.set_focus(this->widget_, true);
 	else
@@ -2261,6 +2357,8 @@ new_adapter(Window *window, Widget *w)
 		return new BrowserAdapter(window, browser);
 	if (auto *list = dynamic_cast<ComboPopup *>(w))
 		return new ComboListAdapter(window, list);
+	if (auto *rows = dynamic_cast<FileRows *>(w))
+		return new FileRowsAdapter(window, rows);
 	return new WidgetAdapter(window, w);
 }
 
@@ -2697,6 +2795,33 @@ reconcile_child_list(Window *window, QAccessibleInterface *parent,
 }
 
 static void
+reconcile_file_rows(Window *window, FileRowsAdapter *adapter)
+{
+	auto *rows = (FileRows *) adapter->widget_;
+	vector<Widget *> now;
+	semantic_children(rows, now);
+	if (now != adapter->last_children_) {
+		notify_listing_replaced(adapter);
+		adapter->last_children_ = std::move(now);
+	}
+	QAccessibleInterface *selected = interface_for(window, rows->selected);
+	const QAccessible::Id id = selected ? QAccessible::uniqueId(selected) : 0;
+	if (id == adapter->last_selected)
+		return;
+	if (auto *was = QAccessible::accessibleInterface(adapter->last_selected)) {
+		QAccessibleEvent removed(was, QAccessible::SelectionRemove);
+		notify(&removed);
+	}
+	if (selected) {
+		QAccessibleEvent added(selected, QAccessible::SelectionAdd);
+		notify(&added);
+	}
+	QAccessibleEvent within(adapter, QAccessible::SelectionWithin);
+	notify(&within);
+	adapter->last_selected = id;
+}
+
+static void
 reconcile_children(Window *window, WidgetAdapter *adapter)
 {
 	if (!adapter->widget_)
@@ -2706,6 +2831,11 @@ reconcile_children(Window *window, WidgetAdapter *adapter)
 	// path against the model instead of by pointer against the tree.
 	if (auto *list = dynamic_cast<BrowserAdapter *>(adapter)) {
 		reconcile_files(window, list);
+		return;
+	}
+
+	if (auto *rows = dynamic_cast<FileRowsAdapter *>(adapter)) {
+		reconcile_file_rows(window, rows);
 		return;
 	}
 

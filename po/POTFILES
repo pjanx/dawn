@@ -8,6 +8,7 @@ dn/kit-browser.cpp
 dn/kit-chrome.cpp
 dn/kit-cie-diagram.cpp
 dn/kit-crop-jpeg.cpp
+dn/kit-files.cpp
 dn/kit-viewer.cpp
 dn/kit.cpp
 dn/main.cpp

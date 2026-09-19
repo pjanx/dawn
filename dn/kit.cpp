@@ -39,6 +39,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace std;
@@ -1833,6 +1834,13 @@ Entry::focusable() const
 	return this->Widget::shown() && this->hittable && this->r.w > 0;
 }
 
+void
+Entry::focus_lost(Kit &kit)
+{
+	if (this->on_commit)
+		this->on_commit(kit);
+}
+
 bool
 Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
@@ -1929,6 +1937,12 @@ Entry::key(Kit &kit, const Key &ev)
 		return apply_edit(kit, *this, Edit::DeleteBack);
 	case Qt::Key_Delete:
 		return apply_edit(kit, *this, Edit::DeleteForward);
+	case Qt::Key_Return:
+	case Qt::Key_Enter:
+		if (!this->on_commit)
+			return false;
+		this->on_commit(kit);
+		return true;
 	case Qt::Key_Escape:
 		if (!this->on_cancel)
 			return false;
@@ -3049,6 +3063,10 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	if (cancel)
 		this->footer->add_child(std::move(cancel), size_t(-1));
 	this->frame->min_w = min_w;
+
+	// Over whatever dialog is already up, which open_popup() sees to.  The
+	// window disables the verbs that would open a second top-level one, so
+	// what it finds there is always a genuine parent.
 	Popup::open(kit, nullptr);
 	this->frame->set_visible(true);
 }
@@ -3058,6 +3076,7 @@ Dialog::after_close(Kit &)
 {
 	if (this->frame)
 		this->frame->set_visible(false);
+	this->retired_ = true;
 }
 
 void
@@ -3072,7 +3091,8 @@ Dialog::place(Kit &kit)
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
 	const int margin = kit.px(kGlowPts * 2.f);
-	const int max_w = max(1, min(kit.px(560.f), kit.host_w_ - margin * 2));
+	const int max_w =
+		max(1, min(kit.px(this->max_w), kit.host_w_ - margin * 2));
 	const int avail_h = max(1, kit.host_h_ - margin * 2);
 	const Size size = this->frame->measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
@@ -3109,6 +3129,8 @@ Dialog::key(Kit &kit, const Key &ev)
 	if (!ev.mods && (ev.key == Qt::Key_Return || ev.key == Qt::Key_Enter) &&
 		this->default_button)
 		return kit.activate(this->default_button);
+	if (this->on_key && this->on_key(kit, ev))
+		return true;
 	return Popup::key(kit, ev);
 }
 
@@ -3196,6 +3218,14 @@ collect_focusable(Widget *w, vector<Widget *> &out)
 		return;
 	if (w->focusable())
 		out.push_back(w);
+
+	// A group stands for itself with one of its own, and Tab steps over
+	// everything else it holds.
+	if (Widget *stop = w->tab_stop()) {
+		if (stop->shown() && stop->focusable())
+			out.push_back(stop);
+		return;
+	}
 	const size_t n = w->child_count();
 	for (size_t i = 0; i < n; i++)
 		collect_focusable(w->child(i), out);
@@ -4015,8 +4045,8 @@ Combo::activate(Kit &kit)
 	}
 
 	fill_combo_popup(kit, *this);
-	// Popup::open() would take the whole stack down with it, dialog and
-	// all; a list dropped from within one is that popup's child.
+	// A list dropped from within a popup is that popup's child, and is
+	// placed beside it rather than merely stacked on it.
 	Popup *owner = nullptr;
 	for (Widget *w = this->parent_; w; w = w->parent_) {
 		if (auto *p = dynamic_cast<Popup *>(w)) {
@@ -4933,11 +4963,39 @@ Kit::sync_focus()
 	done();
 }
 
+Kit::Input::Input(Kit &kit) : kit(kit)
+{
+	kit.input_depth_++;
+}
+
+Kit::Input::~Input()
+{
+	if (--this->kit.input_depth_)
+		return;
+
+	while (!this->kit.lost_focus_.empty()) {
+		Widget *lost = this->kit.lost_focus_.front();
+		this->kit.lost_focus_.erase(this->kit.lost_focus_.begin());
+		if (!lost || lost == this->kit.focus_)
+			continue;
+
+		bool visible = true;
+		for (Widget *w = lost; w; w = w->parent_)
+			visible &= w->shown();
+		if (visible)
+			lost->focus_lost(this->kit);
+	}
+}
+
 void
 Kit::set_focus(Widget *w, bool ring)
 {
 	const bool moved = this->focus_ != w;
 	if (moved) {
+		if (this->focus_ &&
+			find(this->lost_focus_.begin(), this->lost_focus_.end(),
+				this->focus_) == this->lost_focus_.end())
+			this->lost_focus_.push_back(this->focus_);
 		for (Widget *p = w; p; p = p->parent_) {
 			if (auto *column = dynamic_cast<ScrollColumn *>(p);
 				column && column->follow_focus)
@@ -4972,6 +5030,7 @@ Kit::reseat_focus(Widget *w)
 bool
 Kit::activate(Widget *w)
 {
+	Input input(*this);
 	if (!w || !w->shown())
 		return false;
 	if (w->activate(*this))
@@ -4988,6 +5047,7 @@ Kit::activate(Widget *w)
 bool
 Kit::activate_mnemonic(Widget *scope, int key)
 {
+	Input input(*this);
 	if (key < Qt::Key_A || key > Qt::Key_Z)
 		return false;
 
@@ -5077,6 +5137,7 @@ Kit::focus_first(Widget *scope)
 bool
 Kit::key(const Key &ev)
 {
+	Input input(*this);
 	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
 		return p->key(*this, ev);
 
@@ -5109,10 +5170,10 @@ Kit::key(const Key &ev)
 	// And a modal dialog is where anything left over ends: window
 	// accelerators must not fire under one, or F5 would reload the image
 	// being cropped, and the Save As over it would then write the reset
-	// region rather than what was on screen.
-	for (const Popup *p : this->popups_)
-		if (!p->transient())
-			return true;
+	// region rather than what was on screen.  Hinting is the exception,
+	// being how the keyboard reaches what the dialog itself holds.
+	if (modal())
+		return match_key(window_keys(), ev.key, ev.mods) != Action::Hint;
 	return false;
 }
 
@@ -5139,6 +5200,7 @@ Kit::input_method(const QString &commit, const QString &preedit, int caret)
 bool
 Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 {
+	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5172,6 +5234,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
+	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5218,6 +5281,7 @@ Kit::cancel_press()
 bool
 Kit::mouse_motion(float x, float y)
 {
+	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5291,6 +5355,7 @@ Kit::track_popups(float x, float y)
 bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
+	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5361,14 +5426,20 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
+	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
 	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
-	if (popup_open())
-		return true;
+	// A menu must not take the second click of a pair for another pick; a
+	// dialog is an ordinary widget tree, and a list inside one wants it.
+	// hit() already confines this to whatever owns the pointer.
+	for (const Popup *p : this->popups_) {
+		if (p->transient())
+			return true;
+	}
 	for (Widget *w = hit(x, y); w; w = w->parent_) {
 		if (w->double_click(*this, x, y, button, mods))
 			return true;
@@ -5391,6 +5462,11 @@ Kit::destroy()
 {
 	this->inited_ = false;
 	close_popups();
+	// While the subtrees are still whole: retained pointers and whatever
+	// exposes them to the outside have to be retired before the trees go.
+	for (auto &dialog : this->dialogs_)
+		forget_tree(dialog.get());
+	this->dialogs_.clear();
 	this->scrim_.reset();
 	this->tooltip_panel_.reset();
 	this->text_cache_.texts.clear();
@@ -5445,6 +5521,8 @@ Kit::forget_tree(Widget *tree)
 	for (Popup *p : doomed)
 		p->close(*this);
 
+	for (Widget *&w : this->lost_focus_)
+		forget(w);
 	forget(this->focus_);
 	forget(this->default_focus_);
 	forget(this->pressed_);
@@ -5685,9 +5763,38 @@ sync_scrim(Kit &kit)
 	}
 }
 
+Dialog &
+Kit::new_dialog()
+{
+	this->dialogs_.push_back(make_unique<Dialog>());
+	return *this->dialogs_.back();
+}
+
+bool
+Kit::modal() const
+{
+	for (const Popup *p : this->popups_) {
+		if (p && !p->transient())
+			return true;
+	}
+	return false;
+}
+
 void
 Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 {
+	// Nothing that opens a popup may take a dialog down with it: a dialog
+	// goes by Escape or by a button of its own, and by nothing else.  So
+	// whatever is raised while one is up is its child, whether or not the
+	// caller knew there was one -- a caret menu in one of its fields, say.
+	// This is also what keeps such a popup from outliving the tree that
+	// owns it: closing the dialog pops everything above it first.
+	if (!owner) {
+		for (Popup *q : this->popups_) {
+			if (q != &p && !q->transient())
+				owner = q;
+		}
+	}
 	close_above(owner);
 	p.parent_popup = owner;
 	p.opener = opener;
@@ -5956,6 +6063,16 @@ Kit::frame_ui(Page &ui, const function<void()> &placed)
 {
 	if (!this->inited_)
 		return;
+
+	// Not when they close: a footer button's on_click is still running
+	// inside the tree it has just taken down.  The frame boundary is the
+	// first moment at which nothing is standing on any of this.
+	erase_if(this->dialogs_, [this](const unique_ptr<Dialog> &dialog) {
+		if (!dialog || !dialog->retired_)
+			return false;
+		forget_tree(dialog.get());
+		return true;
+	});
 
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();

@@ -103,6 +103,8 @@ enum class Action : uint8_t {
 	RotateLeft,
 	Mirror,
 	RotateRight,
+	SaveAs,
+	SaveFrameAs,
 	Information,
 	PageFirst,
 	PagePrevious,
@@ -117,7 +119,7 @@ enum class Action : uint8_t {
 	Reload,
 
 	// Cropper
-	SaveAs,
+	Open,
 	CropReset,
 	CropRegion,
 

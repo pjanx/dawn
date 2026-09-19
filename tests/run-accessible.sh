@@ -17,7 +17,7 @@
 #                    down while headless.  An offscreen Qt platform is not an
 #                    option here: it exercises neither client-side
 #                    decorations nor compositor geometry.
-#   WESTON_TIMEOUT   180 (default), seconds before the session is killed.
+#   WESTON_TIMEOUT   45 (default), seconds before the session is killed.
 set -eu
 
 if [ ! $# -eq 3 ]
@@ -55,7 +55,7 @@ then missing "no org.a11y.Bus service (install at-spi2-core)"
 fi
 
 renderer=${WESTON_RENDERER:-vulkan}
-timeout_s=${WESTON_TIMEOUT:-180}
+timeout_s=${WESTON_TIMEOUT:-45}
 
 rt=$(mktemp -d)
 chmod 700 "$rt"

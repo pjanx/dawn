@@ -356,6 +356,81 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 	return true;
 }
 
+// --- Saving ------------------------------------------------------------------
+
+static void
+append_u16(vector<uint8_t> &out, size_t value)
+{
+	out.push_back(uint8_t(value >> 8));
+	out.push_back(uint8_t(value));
+}
+
+// One or more APP segments carrying `data` behind `id`.  ICC is the only
+// payload that may span several, and it numbers them; nothing reassembles
+// the others, so those have to fit or say that they do not.  Note that the
+// two sequence bytes count against the length as well.
+static bool
+append_app(vector<uint8_t> &out, uint8_t marker, string_view id,
+	span<const uint8_t> data, bool sequenced, const char *what, Error *error)
+{
+	if (data.empty())
+		return true;
+
+	const size_t extra = sequenced ? 2 : 0;
+	const size_t limit = 0xFFFF - 2 - id.size() - extra;
+	const size_t total = (data.size() + limit - 1) / limit;
+	if (total > (sequenced ? 255u : 1u)) {
+		set_error(
+			error, format_message(_("%s metadata is too large to save"), what));
+		return false;
+	}
+
+	for (size_t i = 0; i < total; i++) {
+		const size_t chunk = min(limit, data.size() - i * limit);
+		out.push_back(0xFF);
+		out.push_back(marker);
+		append_u16(out, chunk + 2 + id.size() + extra);
+		out.insert(out.end(), id.begin(), id.end());
+		if (sequenced) {
+			out.push_back(uint8_t(i + 1));
+			out.push_back(uint8_t(total));
+		}
+		const uint8_t *from = data.data() + i * limit;
+		out.insert(out.end(), from, from + chunk);
+	}
+	return true;
+}
+
+bool
+save_exv(const Image &page, vector<uint8_t> *out, Error *error)
+{
+	if (!out) {
+		set_error(error, _("no output buffer"));
+		return false;
+	}
+	out->clear();
+
+	// This does not constitute a valid JPEG codestream--it is a standalone
+	// TEM marker with trailing nonsense, which is what Exiv2 looks for.
+	static constexpr string_view kTem = "\xFF\x01"
+										"Exiv2";
+	static constexpr string_view kExif{"Exif\0", 6};
+	static constexpr string_view kIcc{"ICC_PROFILE", 12};
+	static constexpr string_view kXmp{"http://ns.adobe.com/xap/1.0/", 29};
+
+	out->insert(out->end(), kTem.begin(), kTem.end());
+	// https://www.color.org/specification/ICC1v43_2010-12.pdf B.4
+	if (!append_app(*out, 0xE1, kExif, page.exif, false, "Exif", error) ||
+		!append_app(*out, 0xE2, kIcc, page.icc, true, "ICC", error) ||
+		!append_app(*out, 0xE1, kXmp, page.xmp, false, "XMP", error)) {
+		out->clear();
+		return false;
+	}
+	out->push_back(0xFF);
+	out->push_back(0xD9);
+	return true;
+}
+
 // --- URLs --------------------------------------------------------------------
 
 static int
