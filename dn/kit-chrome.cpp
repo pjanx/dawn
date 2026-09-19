@@ -177,10 +177,9 @@ dialog_action(const char *text, function<void(Kit &)> on_click)
 }
 
 static unique_ptr<Button>
-dialog_close_action(Dialog &dialog)
+dialog_dismiss_action(Dialog &dialog, const char *text)
 {
-	return dialog_action(
-		N_("_Close"), [&dialog](Kit &kit) { dialog.close(kit); });
+	return dialog_action(text, [&dialog](Kit &kit) { dialog.close(kit); });
 }
 
 static QString
@@ -252,7 +251,8 @@ dialog_about(Kit &kit, Dialog &dialog)
 	col->add_child(dialog_label(N_("Colour-managed image browser and viewer."),
 					   false, true),
 		size_t(-1));
-	dialog.show(kit, std::move(col), 360.f, dialog_close_action(dialog));
+	dialog.show(kit, std::move(col), 360.f,
+		dialog_dismiss_action(dialog, N_("_Close")), nullptr);
 }
 
 unique_ptr<Panel>
@@ -309,7 +309,7 @@ dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
 	message->wrap = true;
 	message->visible = false;
 	col->add_child(std::move(warning), size_t(-1));
-	function<void(Kit &)> submit =
+	auto save = dialog_action(N_("_Save"),
 		[field, message, &dialog, on_save = std::move(on_save)](Kit &inner) {
 			QString result = on_save(field->text);
 			if (result.isEmpty())
@@ -318,18 +318,9 @@ dialog_save_as(Kit &kit, Dialog &dialog, const QString &suggested,
 				message->set_text(result);
 				message->set_visible(true);
 			}
-		};
-	field->on_submit = submit;
-	field->on_cancel = [&dialog](Kit &inner) { dialog.close(inner); };
-
-	auto actions = make_unique<Row>();
-	// FIXME: Arbitrary gap.
-	actions->gap = 8.f;
-	actions->add_child(dialog_action(N_("_Save"), submit), size_t(-1));
-	actions->add_child(dialog_action(N_("_Cancel"),
-						   [&dialog](Kit &inner) { dialog.close(inner); }),
-		size_t(-1));
-	dialog.show(kit, std::move(col), 480.f, std::move(actions));
+		});
+	dialog.show(kit, std::move(col), 480.f, std::move(save),
+		dialog_dismiss_action(dialog, N_("_Cancel")));
 }
 
 void
@@ -345,22 +336,14 @@ dialog_location(
 	col->add_child(std::move(title), size_t(-1));
 	col->add_child(std::move(entry), size_t(-1));
 
-	function<void(Kit &)> submit =
+	auto open = dialog_action(N_("_Open"),
 		[field, &dialog, on_open = std::move(on_open)](Kit &inner) {
 			const QString location = field->text;
 			dialog.close(inner);
 			on_open(location);
-		};
-	field->on_submit = submit;
-	field->on_cancel = [&dialog](Kit &inner) { dialog.close(inner); };
-
-	auto actions = make_unique<Row>();
-	actions->gap = 8.f;
-	actions->add_child(dialog_action(N_("_Open"), submit), size_t(-1));
-	actions->add_child(dialog_action(N_("_Cancel"),
-						   [&dialog](Kit &inner) { dialog.close(inner); }),
-		size_t(-1));
-	dialog.show(kit, std::move(col), 420.f, std::move(actions));
+		});
+	dialog.show(kit, std::move(col), 420.f, std::move(open),
+		dialog_dismiss_action(dialog, N_("_Cancel")));
 }
 
 void
@@ -420,7 +403,8 @@ dialog_shortcuts(Kit &kit, Dialog &dialog, span<const MenuNode> tree,
 	emit_other(Action::Cancel);
 	if (viewer)
 		emit_other(Action::ZoomLevel);
-	dialog.show(kit, std::move(col), 520.f, dialog_close_action(dialog));
+	dialog.show(kit, std::move(col), 520.f,
+		dialog_dismiss_action(dialog, N_("_Close")), nullptr);
 }
 
 // --- Settings dialog ---------------------------------------------------------
@@ -626,20 +610,14 @@ dialog_settings(Kit &kit, Dialog &dialog, SettingsDraft draft,
 	rows->sync();
 	col->add_child(std::move(loaders), size_t(-1));
 
-	auto actions = make_unique<Row>();
-	actions->gap = 8.f;
-	actions->add_child(
-		dialog_action(N_("_Save"),
-			[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
-				dialog.close(inner);
-				if (on_save)
-					on_save(*state);
-			}),
-		size_t(-1));
-	actions->add_child(dialog_action(N_("_Cancel"),
-						   [&dialog](Kit &inner) { dialog.close(inner); }),
-		size_t(-1));
-	dialog.show(kit, std::move(col), 520.f, std::move(actions));
+	auto save = dialog_action(N_("_Save"),
+		[&dialog, state, on_save = std::move(on_save)](Kit &inner) {
+			dialog.close(inner);
+			if (on_save)
+				on_save(*state);
+		});
+	dialog.show(kit, std::move(col), 520.f, std::move(save),
+		dialog_dismiss_action(dialog, N_("_Cancel")));
 }
 
 // --- Hint -------------------------------------------------------------------

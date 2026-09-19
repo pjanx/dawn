@@ -970,7 +970,8 @@ Button::measure_content(Kit &kit, int, int)
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	int cw = 0;
-	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	int ch =
+		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, this->bold);
 	if (this->icon) {
 		cw = icon;
 		ch = max(ch, icon);
@@ -978,8 +979,9 @@ Button::measure_content(Kit &kit, int, int)
 	if (!this->text.isEmpty()) {
 		if (this->icon)
 			cw += kit.px(4.f);
-		cw += this->text_cache_.text_width(kit, this->text, false);
-		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
+		cw += this->text_cache_.text_width(kit, this->text, this->bold);
+		ch = max(
+			ch, this->text_cache_.text_height(kit, this->text, 0, this->bold));
 	}
 	return {px * 2 + cw, kit.px(kFramePadY) * 2 + ch};
 }
@@ -1013,11 +1015,12 @@ Button::paint(Kit &kit) const
 			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
-		const int th = this->text_cache_.text_height(kit, this->text, 0, false);
+		const int th =
+			this->text_cache_.text_height(kit, this->text, 0, this->bold);
 		const QString shown = button_shown(kit, *this);
 		emit_text(kit, this->text_cache_, float(tx),
 			float(this->r.y + (this->r.h - th) / 2), shown,
-			col(kit.colours_[ColourInk], ink_a), false,
+			col(kit.colours_[ColourInk], ink_a), this->bold,
 			shown_mnemonic(this->text, this->mnemonic, shown));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -1030,7 +1033,8 @@ Button::prepare(Kit &kit)
 	if (shown())
 		kit.pack_icon(this->icon, kit.icon_px());
 	if (shown() && !this->text.isEmpty())
-		cache_text(kit, this->text_cache_, button_shown(kit, *this), false, 0);
+		cache_text(
+			kit, this->text_cache_, button_shown(kit, *this), this->bold, 0);
 }
 
 bool
@@ -1925,16 +1929,10 @@ Entry::key(Kit &kit, const Key &ev)
 		return apply_edit(kit, *this, Edit::DeleteBack);
 	case Qt::Key_Delete:
 		return apply_edit(kit, *this, Edit::DeleteForward);
-	case Qt::Key_Return:
-	case Qt::Key_Enter:
-		if (this->on_submit) {
-			this->on_submit(kit);
-			return true;
-		}
-		return false;
 	case Qt::Key_Escape:
-		if (this->on_cancel)
-			this->on_cancel(kit);
+		if (!this->on_cancel)
+			return false;
+		this->on_cancel(kit);
 		return true;
 	default:
 		break;
@@ -3023,6 +3021,7 @@ Dialog::Dialog()
 
 	auto footer = make_unique<Row>();
 	footer->align = Align::End;
+	footer->gap = 8.f;
 	this->footer = footer.get();
 	stack->add_child(std::move(footer), size_t(-1));
 
@@ -3030,17 +3029,25 @@ Dialog::Dialog()
 	add_child(std::move(f), size_t(-1));
 }
 
+// Cancelling is never more than closing, which Popup::key already does for
+// Escape, so only the default button is worth remembering.
 void
 Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
-	unique_ptr<Widget> actions)
+	unique_ptr<Button> default_button, unique_ptr<Button> cancel)
 {
 	if (!this->body || !this->footer || !this->frame)
 		return;
 
 	this->body->erase_children(kit, 0);
 	this->body->add_child(std::move(content), size_t(-1));
+	this->default_button = default_button.get();
 	this->footer->erase_children(kit, 0);
-	this->footer->add_child(std::move(actions), size_t(-1));
+	if (default_button) {
+		default_button->bold = true;
+		this->footer->add_child(std::move(default_button), size_t(-1));
+	}
+	if (cancel)
+		this->footer->add_child(std::move(cancel), size_t(-1));
 	this->frame->min_w = min_w;
 	Popup::open(kit, nullptr);
 	this->frame->set_visible(true);
@@ -3096,11 +3103,21 @@ Dialog::place(Kit &kit)
 		kit.focus_first(this);
 }
 
+bool
+Dialog::key(Kit &kit, const Key &ev)
+{
+	if (!ev.mods && (ev.key == Qt::Key_Return || ev.key == Qt::Key_Enter) &&
+		this->default_button)
+		return kit.activate(this->default_button);
+	return Popup::key(kit, ev);
+}
+
 void
 Dialog::paint(Kit &kit) const
 {
 	if (!this->visible)
 		return;
+
 	// The same wash Hint lays over the window behind it.
 	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
 	if (this->frame && this->frame->visible)
@@ -5085,8 +5102,17 @@ Kit::key(const Key &ev)
 	// accelerators carrying more than it still reach match_key().  Where
 	// there are no mnemonics at all, menu_label() has already seen to it
 	// that this finds nothing.
-	if (ev.mods == unsigned(Qt::AltModifier))
-		return activate_mnemonic(focus_scope(), ev.key);
+	if (ev.mods == unsigned(Qt::AltModifier) &&
+		activate_mnemonic(focus_scope(), ev.key))
+		return true;
+
+	// And a modal dialog is where anything left over ends: window
+	// accelerators must not fire under one, or F5 would reload the image
+	// being cropped, and the Save As over it would then write the reset
+	// region rather than what was on screen.
+	for (const Popup *p : this->popups_)
+		if (!p->transient())
+			return true;
 	return false;
 }
 

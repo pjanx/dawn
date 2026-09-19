@@ -299,6 +299,7 @@ struct Button : Widget {
 	QString text;
 	bool enabled_ = true;
 	bool active = false;
+	bool bold = false;
 	bool dim = false;
 	bool flat = false;
 	bool activate_on_press = false;
@@ -384,7 +385,6 @@ struct Entry : Widget {
 	float pad_x = kFramePadX;
 	bool flat = false;
 	std::function<void(Kit &)> on_change;
-	std::function<void(Kit &)> on_submit;
 	std::function<void(Kit &)> on_cancel;
 
 	// Horizontal scroll, in points, kept so that the caret stays visible.
@@ -643,11 +643,14 @@ struct Dialog : Popup {
 	Panel *frame = nullptr;
 	ScrollColumn *body = nullptr;
 	Row *footer = nullptr;
+	// Drawn bold, and what Return means where nothing else wanted it.
+	Button *default_button = nullptr;
 
 	Dialog();
 	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w,
-		std::unique_ptr<Widget> actions);
+		std::unique_ptr<Button> default_button, std::unique_ptr<Button> cancel);
 	void after_close(Kit &kit) override;
+	bool key(Kit &kit, const Key &ev) override;
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
