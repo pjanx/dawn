@@ -244,6 +244,10 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	CALL_VK(CreateSemaphore, " image_available", this->device_, &semaphore_info,
 		nullptr, &this->image_available_);
 
+	if (!this->overlay_.init(
+			this->phys_, this->device_, this->queue_, this->queue_family_))
+		return false;
+
 	this->want_extent_ = {pixel.width, pixel.height};
 	create_swapchain();
 	return true;
@@ -255,7 +259,7 @@ Renderer::destroy_swapchain()
 	if (!this->device_)
 		return;
 	vkDeviceWaitIdle(this->device_);
-	this->overlay_.set_swapchain({}, {});
+	this->overlay_.set_target(VK_NULL_HANDLE, {});
 	destroy_presentation();
 	for (VkFramebuffer framebuffer : this->framebuffers_)
 		if (framebuffer)
@@ -302,8 +306,6 @@ Renderer::destroy()
 	this->image_available_ = VK_NULL_HANDLE;
 	this->extent_ = {};
 	this->want_extent_ = {};
-	this->overlay_format_ = VK_FORMAT_UNDEFINED;
-	this->overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	this->encoding_.reset();
 	this->present_about_to_queue_ = {};
 	this->present_queued_ = {};
@@ -481,20 +483,8 @@ Renderer::create_swapchain()
 		CALL_VK(CreateFramebuffer, "", this->device_, &framebuffer_info,
 			nullptr, &this->framebuffers_[i]);
 	}
-	if (this->overlay_format_ == VK_FORMAT_UNDEFINED) {
-		if (!this->overlay_.init(this->phys_, this->device_, this->queue_,
-				this->queue_family_, dest_format, dest_layout, dest_layout))
-			die("overlay vulkan init failed");
-	} else if (this->overlay_format_ != dest_format ||
-		this->overlay_layout_ != dest_layout) {
-		// Preserve atlases when recreating the attachment.
-		if (!this->overlay_.set_format(dest_format, dest_layout, dest_layout))
-			die("overlay format change failed");
-	}
-	this->overlay_format_ = dest_format;
-	this->overlay_layout_ = dest_layout;
 	this->overlay_.set_encoding_buffer(this->engine_.encoding_buffer());
-	this->overlay_.set_swapchain({this->compose_view_}, this->extent_);
+	this->overlay_.set_target(this->compose_view_, this->extent_);
 	if (this->engine_.has_image()) {
 		string error;
 		if (!this->engine_.ensure_viewport(
@@ -675,7 +665,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 				   &error)) {
 		die(error.c_str());
 	}
-	this->overlay_.record(this->cmd_, 0, mesh);
+	this->overlay_.record(this->cmd_, mesh);
 	record_presentation(this->cmd_, this->framebuffers_[index]);
 	CALL_VK(EndCommandBuffer, "", this->cmd_);
 
@@ -1073,8 +1063,7 @@ OverlayVulkan::set_encoding_buffer(VkDescriptorBufferInfo info)
 
 bool
 OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-	uint32_t queue_family, VkFormat format, VkImageLayout initial_layout,
-	VkImageLayout final_layout)
+	uint32_t queue_family)
 {
 	destroy();
 	this->phys_ = phys;
@@ -1142,38 +1131,15 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	CALL_VK(AllocateDescriptorSets, " overlay", this->device_, &allocate_info,
 		this->descriptor_sets_);
 
-	return set_format(format, initial_layout, final_layout);
-}
-
-// Only the render pass and the pipelines built against it depend on the
-// destination format.  The atlases outlive a change of it, because only
-// their uploaders know what is in them, and nothing tells them to repeat
-// themselves.
-bool
-OverlayVulkan::set_format(
-	VkFormat format, VkImageLayout initial_layout, VkImageLayout final_layout)
-{
-	if (!this->device_)
-		return false;
-
-	// Framebuffers built for the old render pass do not carry over.
-	destroy_swapchain();
-	destroy_pipeline();
-	if (this->render_pass_) {
-		vkDestroyRenderPass(this->device_, this->render_pass_, nullptr);
-		this->render_pass_ = VK_NULL_HANDLE;
-	}
-
-	this->format_ = format;
 	VkAttachmentDescription color{
-		.format = this->format_,
+		.format = VK_FORMAT_R16G16B16A16_UNORM,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
 		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.initialLayout = initial_layout,
-		.finalLayout = final_layout,
+		.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 	};
 	VkAttachmentReference color_ref{
 		.attachment = 0,
@@ -1315,28 +1281,24 @@ OverlayVulkan::create_pipeline()
 }
 
 void
-OverlayVulkan::set_swapchain(
-	const vector<VkImageView> &views, VkExtent2D extent)
+OverlayVulkan::set_target(VkImageView view, VkExtent2D extent)
 {
-	destroy_swapchain();
+	destroy_target();
 	this->extent_ = extent;
-	if (!this->device_ || !this->render_pass_ || views.empty() ||
-		!extent.width || !extent.height)
+	if (!this->device_ || !this->render_pass_ || !view || !extent.width ||
+		!extent.height)
 		return;
-	this->framebuffers_.resize(views.size());
-	for (size_t i = 0; i < views.size(); i++) {
-		VkFramebufferCreateInfo info{
-			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.renderPass = this->render_pass_,
-			.attachmentCount = 1,
-			.pAttachments = &views[i],
-			.width = extent.width,
-			.height = extent.height,
-			.layers = 1,
-		};
-		CALL_VK(CreateFramebuffer, " overlay", this->device_, &info, nullptr,
-			&this->framebuffers_[i]);
-	}
+	VkFramebufferCreateInfo info{
+		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+		.renderPass = this->render_pass_,
+		.attachmentCount = 1,
+		.pAttachments = &view,
+		.width = extent.width,
+		.height = extent.height,
+		.layers = 1,
+	};
+	CALL_VK(CreateFramebuffer, " overlay", this->device_, &info, nullptr,
+		&this->framebuffer_);
 }
 
 void
@@ -1749,12 +1711,9 @@ OverlayVulkan::ensure_buffers(
 }
 
 void
-OverlayVulkan::record(
-	VkCommandBuffer cmd, uint32_t image_index, const OverlayMesh &mesh)
+OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 {
-	if (!cmd || image_index >= this->framebuffers_.size() ||
-		!this->framebuffers_[image_index] || !this->pipeline_ ||
-		!this->font_view_)
+	if (!cmd || !this->framebuffer_ || !this->pipeline_ || !this->font_view_)
 		return;
 	if (mesh.vertices.empty() || mesh.indices.empty() || mesh.cmds.empty() ||
 		this->extent_.width == 0 || mesh.display_w <= 0.f ||
@@ -1779,8 +1738,8 @@ OverlayVulkan::record(
 	vkUnmapMemory(this->device_, this->vertex_memory_);
 	vkUnmapMemory(this->device_, this->index_memory_);
 
-	begin_render_pass(cmd, this->render_pass_, this->framebuffers_[image_index],
-		this->extent_);
+	begin_render_pass(
+		cmd, this->render_pass_, this->framebuffer_, this->extent_);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &this->vertex_buffer_, &offset);
 	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);
@@ -1841,12 +1800,11 @@ OverlayVulkan::record(
 }
 
 void
-OverlayVulkan::destroy_swapchain()
+OverlayVulkan::destroy_target()
 {
-	for (VkFramebuffer framebuffer : this->framebuffers_)
-		if (framebuffer)
-			vkDestroyFramebuffer(this->device_, framebuffer, nullptr);
-	this->framebuffers_.clear();
+	if (this->framebuffer_)
+		vkDestroyFramebuffer(this->device_, this->framebuffer_, nullptr);
+	this->framebuffer_ = VK_NULL_HANDLE;
 }
 
 void
@@ -1924,7 +1882,7 @@ OverlayVulkan::destroy()
 	if (!this->device_)
 		return;
 	vkDeviceWaitIdle(this->device_);
-	destroy_swapchain();
+	destroy_target();
 	destroy_buffers();
 	destroy_font();
 	destroy_thumbs();
@@ -1949,7 +1907,6 @@ OverlayVulkan::destroy()
 	this->phys_ = VK_NULL_HANDLE;
 	this->device_ = VK_NULL_HANDLE;
 	this->queue_ = VK_NULL_HANDLE;
-	this->format_ = VK_FORMAT_UNDEFINED;
 	this->extent_ = {};
 }
 

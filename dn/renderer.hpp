@@ -37,7 +37,7 @@ struct ThumbUpload {
 // and turns an OverlayMesh into draws on the linear composition image.
 class OverlayVulkan
 {
-	void destroy_swapchain();
+	void destroy_target();
 	void destroy_font();
 	void destroy_thumbs();
 	void destroy_sampled(
@@ -61,7 +61,6 @@ class OverlayVulkan
 	VkDevice device_ = VK_NULL_HANDLE;
 	VkQueue queue_ = VK_NULL_HANDLE;
 	uint32_t queue_family_ = 0;
-	VkFormat format_ = VK_FORMAT_UNDEFINED;
 	VkExtent2D extent_{};
 
 	VkRenderPass render_pass_ = VK_NULL_HANDLE;
@@ -95,7 +94,7 @@ class OverlayVulkan
 
 	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
 
-	std::vector<VkFramebuffer> framebuffers_;
+	VkFramebuffer framebuffer_ = VK_NULL_HANDLE;
 
 public:
 	OverlayVulkan() = default;
@@ -105,13 +104,10 @@ public:
 	OverlayVulkan &operator=(const OverlayVulkan &) = delete;
 
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-		uint32_t queue_family, VkFormat format, VkImageLayout initial_layout,
-		VkImageLayout final_layout);
-	bool set_format(VkFormat format, VkImageLayout initial_layout,
-		VkImageLayout final_layout);
+		uint32_t queue_family);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
-	void set_swapchain(
-		const std::vector<VkImageView> &views, VkExtent2D extent);
+	// The target is linear RGBA16 UNORM in COLOR_ATTACHMENT_OPTIMAL.
+	void set_target(VkImageView view, VkExtent2D extent);
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
@@ -119,8 +115,7 @@ public:
 	bool rebuild_thumbs(
 		const std::vector<ThumbUpload> &uploads, int atlas_side);
 	void reset_thumbs();
-	void record(
-		VkCommandBuffer cmd, uint32_t image_index, const OverlayMesh &mesh);
+	void record(VkCommandBuffer cmd, const OverlayMesh &mesh);
 	void destroy();
 };
 
@@ -175,8 +170,6 @@ class Renderer
 	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
 	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
 	int checker_px_ = 20;
-	VkFormat overlay_format_ = VK_FORMAT_UNDEFINED;
-	VkImageLayout overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage compose_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory compose_memory_ = VK_NULL_HANDLE;
 	VkImageView compose_view_ = VK_NULL_HANDLE;

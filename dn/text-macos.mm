@@ -219,8 +219,6 @@ make_font(const QFont &request, float device_scale, bool bold)
 }
 
 struct TextBackendImpl {
-	QFont request;
-	float device_scale = 1;
 	uint64_t settings_generation = 0;
 	bool smooth_fonts = false;
 	CTFontRef regular = nullptr;
@@ -499,10 +497,8 @@ materialize_text(
 
 static void
 append_glyphs(TextBackendImpl *backend, TextLayoutImpl *layout,
-	vector<TextGlyph> &output, TextLayoutImpl::NativeLine &native,
-	TextLine &line)
+	vector<TextGlyph> &output, const TextLayoutImpl::NativeLine &native)
 {
-	line.glyph_start = output.size();
 	if (!native.line)
 		return;
 
@@ -534,7 +530,6 @@ append_glyphs(TextBackendImpl *backend, TextLayoutImpl *layout,
 			output.push_back(glyph);
 		}
 	}
-	line.glyph_count = output.size() - line.glyph_start;
 }
 
 TextLayout::TextLayout() = default;
@@ -566,8 +561,6 @@ TextBackend::reset(const QFont &font, float device_scale, string *error)
 	}
 
 	this->impl_->clear();
-	this->impl_->request = font;
-	this->impl_->device_scale = device_scale;
 	this->impl_->regular = regular;
 	this->impl_->bold = bold;
 	this->impl_->smooth_fonts = font_smoothing_available();
@@ -672,7 +665,7 @@ TextBackend::layout(
 			max(1.f, float(CTFontGetUnderlineThickness(base)));
 		result->impl_->lines.push_back(native);
 		append_glyphs(this->impl_.get(), result->impl_.get(), result->glyphs_,
-			result->impl_->lines.back(), line);
+			result->impl_->lines.back());
 		result->lines_.push_back(line);
 		result->width_ = max(result->width_, float(advance));
 		top += line.height;

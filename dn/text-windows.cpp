@@ -315,8 +315,6 @@ RunCollector::DrawGlyphRun(void *, FLOAT baseline_x, FLOAT baseline_y,
 	const size_t line_index = this->line_for(baseline_y, description);
 	TextLine *line =
 		this->lines_->empty() ? nullptr : &(*this->lines_)[line_index];
-	if (line && !line->glyph_count)
-		line->glyph_start = this->glyphs_->size();
 
 	DWRITE_FONT_METRICS metrics{};
 	run->fontFace->GetMetrics(&metrics);
@@ -354,8 +352,6 @@ RunCollector::DrawGlyphRun(void *, FLOAT baseline_x, FLOAT baseline_y,
 		if (direction > 0)
 			pen += advance;
 	}
-	if (line)
-		line->glyph_count += run->glyphCount;
 	return S_OK;
 }
 

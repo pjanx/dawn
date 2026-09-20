@@ -57,8 +57,6 @@ struct TextGlyph {
 struct TextLine {
 	int text_start = 0;  // UTF-16 source range
 	int text_length = 0;
-	size_t glyph_start = 0;  // visual-order glyph range
-	size_t glyph_count = 0;
 	float baseline = 0;
 	float advance = 0;  // logical advance, distinct from ink bounds
 	float height = 0;

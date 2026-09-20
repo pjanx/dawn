@@ -176,12 +176,10 @@ EngineReadback::init(string *error)
 		!engine.create_offscreen(
 			2, 2, &image, &memory, &image_view, &fb, error))
 		return false;
-	if (!overlay.init(phys, device, queue, family, VK_FORMAT_R16G16B16A16_UNORM,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL))
+	if (!overlay.init(phys, device, queue, family))
 		return false;
 	overlay.set_encoding_buffer(engine.encoding_buffer());
-	overlay.set_swapchain({image_view}, {2, 2});
+	overlay.set_target(image_view, {2, 2});
 	const uint16_t atlas[] = {
 		65535, 65535, 65535, 65535, 32768, 32768, 32768, 32768};
 	if (!overlay.upload_font((const unsigned char *) atlas, 2, 1))
@@ -380,17 +378,24 @@ EngineReadback::compose(const dn::OverlayMesh &mesh, bool premultiplied,
 	const float clear[4] = {};
 	if (!engine.record_clear(cmd, fb, 2, 2, clear, error))
 		return false;
-	overlay.record(cmd, 0, mesh);
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.image = image,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
+		nullptr, 1, &barrier);
+	overlay.record(cmd, mesh);
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&barrier);
@@ -496,8 +501,8 @@ test_composition()
 	near(0, 1, .360780f);
 
 	// Clipping must not reset the checker phase; atlas data survives resize.
-	gpu.overlay.set_swapchain({}, {});
-	gpu.overlay.set_swapchain({gpu.image_view}, {2, 2});
+	gpu.overlay.set_target(VK_NULL_HANDLE, {});
+	gpu.overlay.set_target(gpu.image_view, {2, 2});
 	begin();
 	auto shifted = background;
 	shifted.origin_x = -1;

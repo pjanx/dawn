@@ -337,7 +337,6 @@ collect_layout(TextBackendImpl &backend, TextLayoutImpl &layout_impl,
 		out.text_length =
 			utf8_to_utf16(layout_impl, line->start_index + line->length) -
 			out.text_start;
-		out.glyph_start = glyphs.size();
 		out.baseline =
 			float(pango_layout_iter_get_baseline(iter)) / kPangoScale;
 		out.advance = float(logical.width) / kPangoScale;
@@ -363,7 +362,6 @@ collect_layout(TextBackendImpl &backend, TextLayoutImpl &layout_impl,
 			}
 			x += float(run->end_x_offset) / kPangoScale;
 		}
-		out.glyph_count = glyphs.size() - out.glyph_start;
 		*width = max(*width, out.advance);
 		lines.push_back(out);
 	} while (pango_layout_iter_next_line(iter));
