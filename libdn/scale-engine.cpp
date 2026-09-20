@@ -68,11 +68,12 @@ struct PushConstants {
 	float angle = 0;
 	float bg_r = 0, bg_g = 0, bg_b = 0;
 	float checker_r = 0, checker_g = 0, checker_b = 0;
+	float checker_size = 1;
 };
 
 }  // namespace
 
-static_assert(sizeof(PushConstants) == 92);
+static_assert(sizeof(PushConstants) == 96);
 
 // TODO(p): What in Hell could be a reason for being this lenient?
 constexpr float kAngleFast = 1e-5f;
@@ -1017,6 +1018,7 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 	pc.checker_r = background(view.checker_r);
 	pc.checker_g = background(view.checker_g);
 	pc.checker_b = background(view.checker_b);
+	pc.checker_size = max(view.checker_size, 1.f);
 	pc.image_w = int32_t(image_w);
 	pc.image_h = int32_t(image_h);
 	pc.grid_cols = int32_t(grid_cols);

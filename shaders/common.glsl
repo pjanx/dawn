@@ -45,11 +45,13 @@ int unpack_linear_blend(int packed)
 }
 
 #ifndef DN_COMPUTE
-// 20px squares. even = toolbar_bottom, odd = well (same pairing as
-// browser draw_checker). Colours are already in the compositing space.
-vec3 checker(vec3 odd, vec3 even)
+// Squares of `size` device pixels, resolved from one design size by the
+// caller, as the browser's draw_checkers() resolves the same constant.
+// even = toolbar_bottom, odd = well (the browser's pairing).
+// Colours are already in the compositing space.
+vec3 checker(vec3 odd, vec3 even, float size)
 {
-	vec2 xy = gl_FragCoord.xy / 20.0;
+	vec2 xy = gl_FragCoord.xy / size;
 	if ((int(floor(xy.x) + floor(xy.y)) & 1) == 0)
 		return even;
 	return odd;
@@ -185,13 +187,13 @@ vec4 associated_to_working(vec4 t, int packed, bool opaque)
 // Filtering and composition use the same selected working space.
 vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
 		  bool composite, bool linear_blend, vec3 background,
-		  vec3 checker_background)
+		  vec3 checker_background, float checker_size)
 {
 	float a = clamp(premul.a, 0.0, 1.0);
 	// Nohalo takes minmod slopes per channel, so RGB can outrun alpha.
 	vec3 rgb = clamp(premul.rgb, vec3(0.0), vec3(a));
 	if (checkerboard)
-		background = checker(background, checker_background);
+		background = checker(background, checker_background, checker_size);
 	else if (!composite) {
 		if (!linear_blend)
 			return vec4(rgb, a);

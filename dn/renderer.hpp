@@ -172,6 +172,7 @@ class Renderer
 	dawn::Transfer transfer_ = dawn::Transfer::Srgb;
 	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
 	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
+	int checker_px_ = 20;
 	VkFormat overlay_format_ = VK_FORMAT_UNDEFINED;
 	VkImageLayout overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
 	VkImage compose_image_ = VK_NULL_HANDLE;
@@ -218,7 +219,13 @@ public:
 	void set_dither_enabled(bool enabled) { this->dither_enabled_ = enabled; }
 	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
-	void set_checkerboard(bool enabled) { this->checkerboard_ = enabled; }
+	/// `size` is one checkerboard square in device pixels: kCheckPts run
+	/// through Kit::px(), like every other design size.
+	void set_checkerboard(bool enabled, int size)
+	{
+		this->checkerboard_ = enabled;
+		this->checker_px_ = size;
+	}
 	void set_blend_linear_light(bool enabled) { this->linear_blend_ = enabled; }
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
 	/// Nearest.

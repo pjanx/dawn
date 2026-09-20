@@ -91,6 +91,9 @@ constexpr int kUnlim = 1 << 24;
 // Design sizes, in points: they must keep their physical size across displays,
 // so they are converted to pixels on use, through Kit::px().
 constexpr float kIconPts = 16.f;
+// One transparency checkerboard square, for the browser's own drawing and
+// for the renderer's shader alike.
+constexpr float kCheckPts = 20.f;
 constexpr float kFramePadX = 6.f;
 constexpr float kFramePadY = 4.f;
 constexpr float kTooltipPadX = 8.f;

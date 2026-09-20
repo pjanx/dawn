@@ -35,6 +35,7 @@ layout(push_constant) uniform Push {
 	float angle;
 	float bg_r, bg_g, bg_b;
 	float checker_r, checker_g, checker_b;
+	float checker_size;
 } pc;
 
 vec4 fetch_image(ivec2 p)
@@ -187,5 +188,6 @@ void main()
 				 unpack_composite(pc.transfer) != 0,
 				 unpack_linear_blend(pc.transfer) != 0,
 				 vec3(pc.bg_r, pc.bg_g, pc.bg_b),
-				 vec3(pc.checker_r, pc.checker_g, pc.checker_b));
+				 vec3(pc.checker_r, pc.checker_g, pc.checker_b),
+				 pc.checker_size);
 }

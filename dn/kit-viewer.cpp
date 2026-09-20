@@ -1775,7 +1775,8 @@ apply_action(Viewer &v, Action action)
 	case Action::Checkerboard:
 		v.checkerboard_ = !v.checkerboard_;
 		if (v.kit_.renderer_)
-			v.kit_.renderer_->set_checkerboard(v.checkerboard_);
+			v.kit_.renderer_->set_checkerboard(
+				v.checkerboard_, v.kit_.px(kCheckPts));
 		request_render(v);
 		return true;
 	case Action::BlendLinearLight:
@@ -1893,7 +1894,7 @@ apply_view(const Viewer &v)
 		}
 	}
 	renderer.set_filter(v.filter_);
-	renderer.set_checkerboard(v.checkerboard_);
+	renderer.set_checkerboard(v.checkerboard_, v.kit_.px(kCheckPts));
 	renderer.set_blend_linear_light(v.blend_linear_light_);
 	renderer.set_view(gpu_scale, pan_x, pan_y, v.orientation_, v.angle_);
 }

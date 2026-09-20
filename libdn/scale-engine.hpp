@@ -41,6 +41,9 @@ struct ScaleView {
 	float checker_r = 0xF0 / 255.f;
 	float checker_g = 0xF0 / 255.f;
 	float checker_b = 0xF0 / 255.f;
+	/// One checkerboard square, in device pixels: the caller resolves its
+	/// design size against the display it draws on.
+	float checker_size = 20.f;
 	/// Resolve alpha against `record`'s clear colour and write opaque pixels.
 	/// Clear it to keep premultiplied alpha, as offscreen readback needs.
 	bool composite = false;

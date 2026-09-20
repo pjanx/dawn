@@ -468,7 +468,7 @@ Cropper::paint(Kit &kit) const
 		auto &renderer = *kit.renderer_;
 		auto vp = renderer.extent();
 		renderer.set_filter(false);
-		renderer.set_checkerboard(false);
+		renderer.set_checkerboard(false, kit.px(kCheckPts));
 		renderer.set_view(float(this->zoom_),
 			float((vp.width * .5 - ox) / this->zoom_ - w * .5),
 			float((vp.height * .5 - oy) / this->zoom_ - h * .5), this->exif_,

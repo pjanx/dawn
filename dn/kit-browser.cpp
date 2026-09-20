@@ -53,7 +53,6 @@ constexpr float kBorder = 2.f;
 constexpr float kThumbGap = 1.f;
 constexpr int kCapLines = 2;
 constexpr float kCapPad = 4.f;
-constexpr int kCheck = 40;
 constexpr float kPrefetchRows = 2.f;
 constexpr const char *kPendingIcon = "dots-horizontal-symbolic";
 constexpr const char *kMissingIcon = "image-missing-symbolic";
@@ -1627,15 +1626,16 @@ draw_checkers(Kit &kit, const Rect &tile)
 	const Colour bg = kit.colours_[ColourToolbarBottom];
 	const Colour fg = kit.colours_[ColourWell];
 	kit.draw_fill(tile, bg);
-	const int nx = max(1, (tile.w + kCheck - 1) / kCheck);
-	const int ny = max(1, (tile.h + kCheck - 1) / kCheck);
+	const int check = max(1, kit.px(kCheckPts));
+	const int nx = max(1, (tile.w + check - 1) / check);
+	const int ny = max(1, (tile.h + check - 1) / check);
 	for (int j = 0; j < ny; j++) {
 		for (int i = 0; i < nx; i++) {
 			if (((i + j) & 1) == 0)
 				continue;
-			const int x0 = tile.x + i * kCheck;
-			const int y0 = tile.y + j * kCheck;
-			kit.list_.add_rect_filled({x0, y0, x0 + kCheck, y0 + kCheck}, fg);
+			const int x0 = tile.x + i * check;
+			const int y0 = tile.y + j * check;
+			kit.list_.add_rect_filled({x0, y0, x0 + check, y0 + check}, fg);
 		}
 	}
 	kit.clip_pop();

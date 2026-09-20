@@ -633,6 +633,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.checker_r = this->checker_[0],
 		.checker_g = this->checker_[1],
 		.checker_b = this->checker_[2],
+		.checker_size = float(this->checker_px_),
 		// The well is behind the image, so alpha resolves in the shader.
 		.composite = true,
 		.filter = this->filter_ ? this->preferred_ : dawn::Filter::Nearest,
