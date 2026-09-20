@@ -77,6 +77,7 @@ struct EngineReadback {
 	VkQueue queue = VK_NULL_HANDLE;
 	VkCommandPool pool = VK_NULL_HANDLE;
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkFence fence = VK_NULL_HANDLE;
 	VkImage image = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	VkImageView image_view = VK_NULL_HANDLE;
@@ -124,6 +125,7 @@ EngineReadback::~EngineReadback()
 		engine.destroy();
 		vkDestroyBuffer(device, buffer, nullptr);
 		vkFreeMemory(device, staging, nullptr);
+		vkDestroyFence(device, fence, nullptr);
 		vkDestroyCommandPool(device, pool, nullptr);
 		vkDestroyDevice(device, nullptr);
 	}
@@ -171,6 +173,9 @@ EngineReadback::init(string *error)
 		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
 		.commandBufferCount = 1};
 	if (!CALL_VK(AllocateCommandBuffers, " test", device, &cai, &cmd))
+		return false;
+	VkFenceCreateInfo fci{.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+	if (!CALL_VK(CreateFence, " test", device, &fci, nullptr, &fence))
 		return false;
 	if (!engine.init(phys, device, queue, family, VK_FORMAT_R16G16B16A16_UNORM,
 			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, error) ||
@@ -223,9 +228,10 @@ bool
 EngineReadback::readback(
 	VkImage source, array<uint16_t, 16> *pixels, string *error)
 {
+	// Include the render pass' final layout transition, not just colour writes.
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
 		.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -233,7 +239,7 @@ EngineReadback::readback(
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.image = source,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 	VkBufferImageCopy copy{
 		.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
@@ -245,8 +251,10 @@ EngineReadback::readback(
 	VkSubmitInfo submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &cmd};
-	if (!CALL_VK(QueueSubmit, " test", queue, 1, &submit, VK_NULL_HANDLE) ||
-		!CALL_VK(QueueWaitIdle, " test", queue))
+	if (!CALL_VK(ResetFences, " test", device, 1, &fence) ||
+		!CALL_VK(QueueSubmit, " test", queue, 1, &submit, fence) ||
+		!CALL_VK(
+			WaitForFences, " test", device, 1, &fence, VK_TRUE, UINT64_MAX))
 		return false;
 	void *mapped = nullptr;
 	if (!CALL_VK(
@@ -376,6 +384,7 @@ EngineReadback::compose(const dn::OverlayMesh &mesh,
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 	if (!CALL_VK(BeginCommandBuffer, " compose test", cmd, &begin))
 		return false;
+	overlay.record_uploads(cmd);
 	if (view && !engine.prepare(cmd, 2, 2, *view, error))
 		return false;
 	const VkClearValue zero{};
@@ -394,7 +403,7 @@ EngineReadback::compose(const dn::OverlayMesh &mesh,
 	vkCmdEndRenderPass(cmd);
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
 		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -402,7 +411,7 @@ EngineReadback::compose(const dn::OverlayMesh &mesh,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.image = image,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&barrier);
 	rp.framebuffer = presented_fb;
@@ -695,7 +704,11 @@ test_font_uploads()
 	atlas.blit({1, 0, 1, 1}, green.data(), 1, 1, 0);
 	atlas.blit({1, 1, 1, 1}, blue.data(), 1, 1, 0);
 	upload();
+	atlas.pixels.assign(atlas.pixels.size(), 0);
 	check({kRed, kGreen, kRed, kBlue});
+	// Restore the CPU shadow for the subsequent growth test.
+	atlas.blit({1, 0, 1, 1}, green.data(), 1, 1, 0);
+	atlas.blit({1, 1, 1, 1}, blue.data(), 1, 1, 0);
 	CHECK(!gpu.overlay.upload_font(atlas.pixels.data(), 2, 2, {2, 0, 1, 1}));
 	check({kRed, kGreen, kRed, kBlue});
 
@@ -713,6 +726,27 @@ test_font_uploads()
 	atlas.grow(2);
 	upload();
 	check({});
+
+	atlas.blit({0, 0, 1, 1}, red.data(), 1, 1, 0);
+	upload();
+	atlas.blit({0, 0, 1, 1}, green.data(), 1, 1, 0);
+	upload();
+	atlas.blit({1, 1, 1, 1}, blue.data(), 1, 1, 0);
+	upload();
+	atlas.pixels.assign(atlas.pixels.size(), 0);
+	check({kGreen, Pixel{}, Pixel{}, kBlue});
+
+	// Growth and reset supersede pending writes before any frame consumes them.
+	atlas.grow(4);
+	upload();
+	atlas.blit({0, 0, 1, 1}, red.data(), 1, 1, 0);
+	upload();
+	atlas.clear();
+	atlas.grow(2);
+	atlas.blit({0, 0, 1, 1}, white.data(), 1, 1, 0);
+	upload();
+	atlas.clear();
+	check({kWhite, Pixel{}, Pixel{}, Pixel{}});
 }
 
 static void
@@ -770,6 +804,32 @@ test_atlas_uploads()
 	const dn::AtlasUpload white{(const uint16_t *) &kWhite, 1, 1, 0, 0};
 	CHECK(!gpu.overlay.upload_thumbs({&white, 1}, 4));
 	check({kWhite, kGreen, kGreen, kBlue});
+
+	// Several requests overlap; all source storage may disappear before draw.
+	{
+		vector<Pixel> temporary(4, kRed);
+		const dn::AtlasUpload full{
+			(const uint16_t *) temporary.data(), 2, 2, 0, 0};
+		CHECK(gpu.overlay.upload_thumbs({&full, 1}, 2));
+		temporary.assign(4, kGreen);
+		const dn::AtlasUpload column{
+			(const uint16_t *) temporary.data(), 1, 2, 1, 0};
+		CHECK(gpu.overlay.upload_thumbs({&column, 1}, 2));
+	}
+	CHECK(gpu.overlay.upload_thumbs({&white, 1}, 2));
+	CHECK(gpu.overlay.upload_thumbs({&red, 1}, 2));
+	check({kWhite, kGreen, kRed, kRed});
+	check({kWhite, kGreen, kRed, kRed});
+
+	// Replace twice without submitting the intermediate atlas.
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 4));
+	CHECK(gpu.overlay.upload_thumbs({&white, 1}, 4));
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
+	check({kRed, kGreen, kBlue, kWhite});
+	CHECK(gpu.overlay.upload_thumbs({&white, 1}, 2));
+	gpu.overlay.reset_thumbs();
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
+	check({kRed, kGreen, kBlue, kWhite});
 
 	// Growing the atlas preserves texel coordinates; reset allows a fresh one.
 	CHECK(gpu.overlay.rebuild_thumbs(uploads, 4));
@@ -1037,7 +1097,7 @@ main()
 		return 77;
 	}
 
-	return test::run({
+	const int result = test::run({
 		{"init and destroy", test_init_destroy},
 		{"valid after rejected", test_rejected_then_valid},
 		{"orientation", test_orientation},
@@ -1050,4 +1110,7 @@ main()
 		{"image and overlay share a pass", test_image_overlay},
 		{"viewport changes without setup", test_viewport_changes},
 	});
+	// Tear down Vulkan before the validation layer's process-exit cleanup.
+	scaler.destroy();
+	return result;
 }

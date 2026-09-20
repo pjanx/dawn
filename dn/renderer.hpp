@@ -49,11 +49,19 @@ class OverlayVulkan
 	void destroy_pipeline();
 	bool create_pipeline(VkRenderPass render_pass);
 	bool ensure_buffer(VkDeviceSize bytes);
-	bool upload_rgba16(std::span<const AtlasUpload> uploads, int width,
+	struct UploadBatch {
+		std::vector<uint8_t> pixels;
+		std::vector<VkBufferImageCopy> copies;
+	};
+	struct PendingAtlas {
+		std::vector<UploadBatch> batches;
+		bool replace = false;
+	};
+	bool queue_rgba16(std::span<const AtlasUpload> uploads, int width,
+		int height, PendingAtlas &pending, bool replace);
+	void record_atlas(VkCommandBuffer cmd, PendingAtlas &pending, int width,
 		int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
-		VkDescriptorSet set, VkComponentMapping swizzle);
-	bool copy_rgba16(std::span<const AtlasUpload> uploads, int width,
-		int height, VkImage image, VkImageLayout layout);
+		VkDescriptorSet set, VkComponentMapping swizzle, VkDeviceSize *offset);
 	bool create_sampled(
 		int width, int height, VkImage *image, VkDeviceMemory *memory) const;
 	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
@@ -91,8 +99,7 @@ class OverlayVulkan
 	VkDeviceMemory quad_memory_ = VK_NULL_HANDLE;
 	VkDeviceSize quad_size_ = 0;
 
-	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
-	VkCommandBuffer upload_cmd_ = VK_NULL_HANDLE;
+	PendingAtlas pending_font_, pending_thumbs_;
 	VkBuffer staging_ = VK_NULL_HANDLE;
 	VkDeviceMemory staging_memory_ = VK_NULL_HANDLE;
 	VkDeviceSize staging_size_ = 0;
@@ -107,12 +114,16 @@ public:
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkRenderPass render_pass);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
+	// Upload requests copy borrowed pixels immediately; GPU work is deferred.
 	bool upload_font(
 		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
+	// After the previous frame fence, outside render passes. The caller must
+	// submit this command buffer and finish it before recording again.
+	void record_uploads(VkCommandBuffer cmd);
 	// Draw inside the caller's composition pass.
 	void record(
 		VkCommandBuffer cmd, const OverlayMesh &mesh, VkExtent2D extent);
