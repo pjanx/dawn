@@ -118,21 +118,14 @@ raster_symbolic(const char *name, int px)
 	const float scale = float(px) / max(size.width, size.height);
 	transform.a = scale;
 	transform.d = scale;
-	vector<char> pixmap(size_t(px) * size_t(px) * 4, 0);
-	resvg_render(tree, transform, uint32_t(px), uint32_t(px), pixmap.data());
+	QImage image(px, px, QImage::Format_RGBA8888_Premultiplied);
+	image.fill(Qt::transparent);
+	resvg_render(
+		tree, transform, uint32_t(px), uint32_t(px), (char *) image.bits());
 	resvg_tree_destroy(tree);
 
-	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
-	const size_t stride = size_t(px) * 4;
-	for (int y = 0; y < px; y++) {
-		auto *row = dawn::assume_aligned<QRgb>(image.scanLine(y));
-		const auto *src =
-			(const unsigned char *) (pixmap.data() + size_t(y) * stride);
-		for (int x = 0; x < px; x++) {
-			const int a = src[x * 4 + 3];
-			row[x] = qRgba(a, a, a, a);
-		}
-	}
+	// The atlas takes only alpha for symbolic icons; keep resvg's pixels
+	// as they are until then.
 	return image;
 }
 

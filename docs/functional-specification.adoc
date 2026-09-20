@@ -71,16 +71,8 @@ Other Weston backends seem to be useful for interactive testing.
 
 Compositing
 -----------
-The general UI is wrongly composited in encoded space rather than linear light:
-
- - Qt cannot pass information on whether font rasterizers assume this.
- - We're matching the viewer, as described below.
-
-The viewer is also wrongly composited in encoded space, unless toggled to be
-correct:
-
- - Real macOS ICNS files in particular assume this wrong compositing is used,
-   and produce artifacts on edges with the correct method.
+The UI is composited in linear light, with the exception of thumbnails,
+and the viewer in its default setting.
 
 Thumbnails
 ----------

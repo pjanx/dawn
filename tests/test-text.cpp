@@ -33,11 +33,74 @@ valid_cluster_index(int index)
 	return index == 0 || index == 1 || index == 3 || index == 5 || index == 6;
 }
 
+static bool
+check_raster_sizes(
+	TextBackend &backend, const QFont &font, const TextLayout &retained)
+{
+	string error;
+	TextOptions plain;
+	float previous_height = 0;
+	for (float scale : {1.f, 1.25f, 1.5f, 2.f}) {
+		const uint64_t old_generation = backend.generation();
+		if (!check(backend.reset(font, scale, &error) &&
+					backend.generation() == old_generation + 1,
+				"DPR reset did not create a new font generation"))
+			return false;
+		if (!check(!backend.settings_changed(),
+				"new native font configuration is already stale"))
+			return false;
+		if (!check(retained.caret(1, TextAffinity::Leading).height > 0,
+				"reset invalidated retained layout geometry"))
+			return false;
+		auto regular = backend.layout(QStringLiteral("H"), plain, &error);
+		TextOptions bold_options;
+		bold_options.bold = true;
+		auto bold = backend.layout(QStringLiteral("H"), bold_options, &error);
+		if (!check(regular && bold && regular->height() >= previous_height,
+				"font metrics did not scale with DPR"))
+			return false;
+		previous_height = regular->height();
+		for (TextLayout *layout : {regular.get(), bold.get()}) {
+			const TextGlyph &glyph = layout->glyphs()[0];
+			for (int phase = 0; phase < 4; phase++) {
+				const GlyphImage image =
+					backend.rasterize(glyph.font_id, glyph.glyph_id, phase);
+				if (!check(image.kind == GlyphImageKind::Mask &&
+							image.width > 0 && image.stride >= image.width &&
+							image.pixels.size() ==
+								size_t(image.stride) * size_t(image.height),
+						"regular or bold phase has invalid scalar mask "
+						"storage"))
+					return false;
+				// Rasterizing another phase must restore the shared native
+				// face.
+				(void) backend.rasterize(
+					glyph.font_id, glyph.glyph_id, (phase + 1) % 4);
+				const GlyphImage repeated =
+					backend.rasterize(glyph.font_id, glyph.glyph_id, phase);
+				if (!check(image.pixels == repeated.pixels &&
+							image.origin_x == repeated.origin_x &&
+							image.origin_y == repeated.origin_y &&
+							image.width == repeated.width &&
+							image.height == repeated.height,
+						"rasterization left the native face in a different "
+						"state"))
+					return false;
+			}
+		}
+	}
+
+	return true;
+}
+
 int
-main()
+main(int argc, char **argv)
 {
 	TextBackend backend;
-	QFont font(QStringLiteral("sans-serif"));
+	// Optional family for exercising installed CFF and variable fonts without
+	// making those particular fonts a prerequisite of the regular suite.
+	QFont font(
+		argc > 1 ? QString::fromUtf8(argv[1]) : QStringLiteral("sans-serif"));
 	font.setPixelSize(18);
 	string error;
 	if (!check(backend.reset(font, 1.f, &error), error.c_str()))
@@ -93,7 +156,8 @@ main()
 		phase_changed |= phases[i].origin_x != phases[0].origin_x ||
 			phases[i].pixels != phases[0].pixels;
 	}
-	if (!check(phase_changed, "FreeType discarded all fractional phases"))
+	if (!check(
+			phase_changed, "native rasterizer discarded all fractional phases"))
 		return 1;
 	if (!check(
 			backend.rasterize(phase_layout->glyphs()[0].font_id,
@@ -204,35 +268,10 @@ main()
 			"invalid reset damaged the active text generation"))
 		return 1;
 
-	float previous_height = 0;
-	for (float scale : {1.f, 1.25f, 1.5f, 2.f}) {
-		const uint64_t old_generation = backend.generation();
-		if (!check(backend.reset(font, scale, &error) &&
-					backend.generation() == old_generation + 1,
-				"DPR reset did not create a new font generation"))
+	for (int size : {9, 13, 18, 20}) {
+		font.setPixelSize(size);
+		if (!check_raster_sizes(backend, font, *shaped))
 			return 1;
-		if (!check(!backend.settings_changed(),
-				"new native font configuration is already stale"))
-			return 1;
-		if (!check(shaped->caret(1, TextAffinity::Leading).height > 0,
-				"reset invalidated retained layout geometry"))
-			return 1;
-		auto regular = backend.layout(QStringLiteral("H"), plain, &error);
-		TextOptions bold_options;
-		bold_options.bold = true;
-		auto bold = backend.layout(QStringLiteral("H"), bold_options, &error);
-		if (!check(regular && bold && regular->height() >= previous_height,
-				"font metrics did not scale with DPR"))
-			return 1;
-		previous_height = regular->height();
-		for (TextLayout *layout : {regular.get(), bold.get()}) {
-			const TextGlyph &glyph = layout->glyphs()[0];
-			const GlyphImage image =
-				backend.rasterize(glyph.font_id, glyph.glyph_id, 0);
-			if (!check(image.kind == GlyphImageKind::Mask && image.width > 0,
-					"regular or bold glyph did not produce a scalar mask"))
-				return 1;
-		}
 	}
 
 	return 0;

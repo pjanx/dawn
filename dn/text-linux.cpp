@@ -12,6 +12,7 @@
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_PARAMETER_TAGS_H
 #include <pango/pangofc-font.h>
 #include <pango/pangofc-fontmap.h>
 #include <pango/pangoft2.h>
@@ -475,6 +476,13 @@ TextBackend::reset(const QFont &font, float device_scale, string *error)
 			*error = "invalid text device scale";
 		return false;
 	}
+	// A new Pango map otherwise inherits the stale process-wide config and
+	// settings_changed() keeps requesting another reset on every frame.
+	if (!FcInitBringUptoDate()) {
+		if (error)
+			*error = "Fontconfig could not refresh its configuration";
+		return false;
+	}
 	auto next = make_unique<TextBackendImpl>();
 	next->font_map = pango_ft2_font_map_new();
 	if (!next->font_map) {
@@ -599,10 +607,15 @@ load_flags(PangoFont *font, FT_Face face)
 		!hinting)
 		return flags | FT_LOAD_NO_HINTING;
 	int style = FC_HINT_FULL;
-	if (FcPatternGetInteger(pattern, FC_HINT_STYLE, 0, &style) ==
-			FcResultMatch &&
-		style == FC_HINT_SLIGHT)
+	FcPatternGetInteger(pattern, FC_HINT_STYLE, 0, &style);
+	if (style == FC_HINT_NONE)
+		return flags | FT_LOAD_NO_HINTING;
+	if (style == FC_HINT_SLIGHT)
 		flags |= FT_LOAD_TARGET_LIGHT;
+	FcBool autohint = FcFalse;
+	if (FcPatternGetBool(pattern, FC_AUTOHINT, 0, &autohint) == FcResultMatch &&
+		autohint)
+		flags |= FT_LOAD_FORCE_AUTOHINT;
 	return flags;
 }
 
@@ -622,10 +635,18 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	if (!this->impl_ || font_id >= this->impl_->fonts.size() || phase < 0 ||
 		phase >= 4 || (glyph_id & PANGO_GLYPH_UNKNOWN_FLAG))
 		return result;
+
 	PangoFont *font = this->impl_->fonts[font_id];
 	LockedFace locked(font);
 	if (!locked.face)
 		return result;
+
+	// It appears that linear composition is being difficult.
+	FT_Bool darken_stems = true;
+	FT_Parameter darkening{FT_PARAM_TAG_STEM_DARKENING, &darken_stems};
+	if (FT_Face_Properties(locked.face, 1, &darkening))
+		return result;
+
 	FT_Matrix matrix{};
 	FT_Vector delta{};
 	FT_Get_Transform(locked.face, &matrix, &delta);
@@ -633,6 +654,7 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	FT_Set_Transform(locked.face, &matrix, &delta);
 	if (FT_Load_Glyph(locked.face, glyph_id, load_flags(font, locked.face)))
 		return result;
+
 	FT_GlyphSlot slot = locked.face->glyph;
 	// Embedded strikes cannot express a fractional pen.  Scalable faces were
 	// forced through their outline above, so a bitmap here is bitmap-only.
@@ -640,6 +662,7 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 		return result;
 	if (FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL))
 		return result;
+
 	const FT_Bitmap &bitmap = slot->bitmap;
 	if (!bitmap.buffer || !bitmap.width || !bitmap.rows)
 		return GlyphImage{GlyphImageKind::Mask};
@@ -671,6 +694,7 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	}
 	if (right < left || bottom < top)
 		return GlyphImage{GlyphImageKind::Mask};
+
 	result.kind = colour ? GlyphImageKind::ColourBgra8SrgbPremultiplied
 						 : GlyphImageKind::Mask;
 	result.width = right - left + 1;

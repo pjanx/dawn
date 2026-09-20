@@ -10,7 +10,7 @@ package names:
 ```sh
 apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
   librsvg2-bin libwebp-dev libjpeg-dev libturbojpeg0-dev libcolord-dev \
-  libpango1.0-dev shared-mime-info gettext
+  libpango1.0-dev libfreetype-dev libfontconfig-dev shared-mime-info gettext
 ```
 
 .Optional dependencies
