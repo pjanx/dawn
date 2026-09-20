@@ -38,14 +38,13 @@ struct AtlasUpload {
 // and turns an OverlayMesh into draws on the linear composition image.
 class OverlayVulkan
 {
-	void destroy_target();
 	void destroy_font();
 	void destroy_thumbs();
 	void destroy_sampled(
 		VkImage *image, VkDeviceMemory *memory, VkImageView *view) const;
 	void destroy_buffer();
 	void destroy_pipeline();
-	bool create_pipeline();
+	bool create_pipeline(VkRenderPass render_pass);
 	bool ensure_buffer(VkDeviceSize bytes);
 	bool upload_rgba16(std::span<const AtlasUpload> uploads, int width,
 		int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
@@ -62,9 +61,7 @@ class OverlayVulkan
 	VkDevice device_ = VK_NULL_HANDLE;
 	VkQueue queue_ = VK_NULL_HANDLE;
 	uint32_t queue_family_ = 0;
-	VkExtent2D extent_{};
 
-	VkRenderPass render_pass_ = VK_NULL_HANDLE;
 	VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
 	VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 	VkPipeline pipeline_ = VK_NULL_HANDLE;
@@ -89,8 +86,6 @@ class OverlayVulkan
 
 	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
 
-	VkFramebuffer framebuffer_ = VK_NULL_HANDLE;
-
 public:
 	OverlayVulkan() = default;
 	~OverlayVulkan() { destroy(); }
@@ -99,17 +94,17 @@ public:
 	OverlayVulkan &operator=(const OverlayVulkan &) = delete;
 
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-		uint32_t queue_family);
+		uint32_t queue_family, VkRenderPass render_pass);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
-	// The target is linear RGBA16 UNORM in COLOR_ATTACHMENT_OPTIMAL.
-	void set_target(VkImageView view, VkExtent2D extent);
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
 		int dst_y, int atlas_side);
 	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
-	void record(VkCommandBuffer cmd, const OverlayMesh &mesh);
+	// Draw inside the caller's composition pass.
+	void record(
+		VkCommandBuffer cmd, const OverlayMesh &mesh, VkExtent2D extent);
 	void destroy();
 };
 
@@ -117,10 +112,11 @@ class Renderer
 {
 	void destroy_swapchain();
 	void create_swapchain();
-	void ensure_engine(VkFormat dest_format, VkImageLayout dest_layout);
+	void ensure_engine();
 	void wait_idle() const;
 	void destroy_compose();
 	void create_compose();
+	VkRect2D begin_composition(VkCommandBuffer cmd) const;
 	void destroy_presentation_pipeline();
 	void create_presentation_pipeline();
 	void destroy_presentation();

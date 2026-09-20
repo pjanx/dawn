@@ -93,19 +93,19 @@ public:
 
 	bool ensure_viewport(
 		uint32_t viewport_w, uint32_t viewport_h, std::string *error);
-	/// Excluded margins are cleared to transparent black.
-	void set_dest_inset(
-		uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
+	/// Record intermediate scaling outside a render pass. Call draw() next
+	/// with the same view and viewport, without changing the source image.
+	bool prepare(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,
+		const ScaleView &view, std::string *error);
+	/// Draw inside a pass compatible with dest_render_pass(), after prepare().
+	/// Background RGB is encoded; the caller owns clearing and clipping.
+	void draw(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,
+		const ScaleView &view, const float background[4], VkRect2D clip);
 
 	/// Clear/background RGB is encoded. Use transparent black for readback
 	/// that preserves image alpha; the destination uses source-over.
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
 		uint32_t viewport_h, const ScaleView &view, const float clear_rgba[4],
-		std::string *error);
-	/// Dest-pass CLEAR only (no H/V). For presenting the well with no pixmap.
-	/// Here clear_rgba is already in the destination representation.
-	bool record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
-		uint32_t viewport_w, uint32_t viewport_h, const float clear_rgba[4],
 		std::string *error);
 
 	bool create_offscreen(uint32_t w, uint32_t h, VkImage *image,

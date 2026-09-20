@@ -244,8 +244,9 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	CALL_VK(CreateSemaphore, " image_available", this->device_, &semaphore_info,
 		nullptr, &this->image_available_);
 
-	if (!this->overlay_.init(
-			this->phys_, this->device_, this->queue_, this->queue_family_))
+	ensure_engine();
+	if (!this->overlay_.init(this->phys_, this->device_, this->queue_,
+			this->queue_family_, this->engine_.dest_render_pass()))
 		return false;
 
 	this->want_extent_ = {pixel.width, pixel.height};
@@ -259,7 +260,6 @@ Renderer::destroy_swapchain()
 	if (!this->device_)
 		return;
 	vkDeviceWaitIdle(this->device_);
-	this->overlay_.set_target(VK_NULL_HANDLE, {});
 	destroy_compose();
 	for (VkFramebuffer framebuffer : this->framebuffers_)
 		if (framebuffer)
@@ -320,14 +320,15 @@ Renderer::dithering() const
 }
 
 void
-Renderer::ensure_engine(VkFormat dest_format, VkImageLayout dest_layout)
+Renderer::ensure_engine()
 {
 	if (!this->device_)
 		return;
 
 	string error;
 	if (!this->engine_.init(this->phys_, this->device_, this->queue_,
-			this->queue_family_, dest_format, dest_layout, &error))
+			this->queue_family_, VK_FORMAT_R16G16B16A16_UNORM,
+			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &error))
 		die(error.c_str());
 	if (!this->encoding_)
 		set_encoding(make_shared<const dawn::ProfileEncoding>(
@@ -390,13 +391,6 @@ Renderer::create_swapchain()
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
 	}
-	constexpr VkFormat dest_format = VK_FORMAT_R16G16B16A16_UNORM;
-	constexpr VkImageLayout dest_layout =
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	ensure_engine(dest_format, dest_layout);
-
-	// A window that isn't shown yet has no extent, but pages may already
-	// be handing it images, and those need the engine.
 	if (this->extent_.width == 0 || this->extent_.height == 0)
 		return;
 
@@ -491,7 +485,6 @@ Renderer::create_swapchain()
 			nullptr, &this->framebuffers_[i]);
 	}
 	this->overlay_.set_encoding_buffer(this->engine_.encoding_buffer());
-	this->overlay_.set_target(this->compose_view_, this->extent_);
 	if (this->engine_.has_image()) {
 		string error;
 		if (!this->engine_.ensure_viewport(
@@ -655,24 +648,18 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	const auto well = dawn::sample_curves(this->encoding_->encode,
 		{this->well_[0], this->well_[1], this->well_[2]});
 	const float clear[4] = {well[0], well[1], well[2], this->well_[3]};
-	VkFramebuffer dest_fb = this->compose_fb_;
+	const bool draw_image = show_image && this->engine_.has_image();
 	string error;
-	const uint32_t inset =
-		(this->dest_inset_ > 0 && this->extent_.width > this->dest_inset_ * 2 &&
-			this->extent_.height > this->dest_inset_ * 2)
-		? this->dest_inset_
-		: 0;
-	this->engine_.set_dest_inset(inset, inset, inset, inset);
-	if (show_image && this->engine_.has_image()) {
-		if (!this->engine_.record(this->cmd_, dest_fb, this->extent_.width,
-				this->extent_.height, view, clear, &error))
-			die(error.c_str());
-	} else if (!this->engine_.record_clear(this->cmd_, dest_fb,
-				   this->extent_.width, this->extent_.height, this->well_,
-				   &error)) {
+	if (draw_image &&
+		!this->engine_.prepare(this->cmd_, this->extent_.width,
+			this->extent_.height, view, &error))
 		die(error.c_str());
-	}
-	this->overlay_.record(this->cmd_, mesh);
+	const VkRect2D area = begin_composition(this->cmd_);
+	if (draw_image)
+		this->engine_.draw(this->cmd_, this->extent_.width,
+			this->extent_.height, view, clear, area);
+	this->overlay_.record(this->cmd_, mesh, this->extent_);
+	vkCmdEndRenderPass(this->cmd_);
 	record_presentation(this->cmd_, this->framebuffers_[index]);
 	CALL_VK(EndCommandBuffer, "", this->cmd_);
 
@@ -801,6 +788,40 @@ Renderer::create_compose()
 		.pImageInfo = &image_descriptor,
 	};
 	vkUpdateDescriptorSets(this->device_, 1, &write, 0, nullptr);
+}
+
+VkRect2D
+Renderer::begin_composition(VkCommandBuffer cmd) const
+{
+	const uint32_t inset =
+		(this->dest_inset_ > 0 && this->extent_.width > this->dest_inset_ * 2 &&
+			this->extent_.height > this->dest_inset_ * 2)
+		? this->dest_inset_
+		: 0;
+	const VkRect2D area{.offset = {int32_t(inset), int32_t(inset)},
+		.extent = {
+			this->extent_.width - 2 * inset, this->extent_.height - 2 * inset}};
+	const VkClearValue background{.color = {{this->well_[0], this->well_[1],
+									  this->well_[2], this->well_[3]}}};
+	const VkClearValue clear = inset ? VkClearValue{} : background;
+	const VkRenderPassBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = this->engine_.dest_render_pass(),
+		.framebuffer = this->compose_fb_,
+		.renderArea = {.extent = this->extent_},
+		.clearValueCount = 1,
+		.pClearValues = &clear};
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	if (inset) {
+		const VkClearAttachment attachment{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.colorAttachment = 0,
+			.clearValue = background};
+		const VkClearRect rect{
+			.rect = area, .baseArrayLayer = 0, .layerCount = 1};
+		vkCmdClearAttachments(cmd, 1, &attachment, 1, &rect);
+	}
+	return area;
 }
 
 void
@@ -1000,8 +1021,7 @@ Renderer::create_presentation_pipeline()
 	vkDestroyShaderModule(this->device_, presentation_frag, nullptr);
 }
 
-// Both passes cover the whole destination; the overlay sets its scissor per
-// draw.
+// Presentation covers the whole destination.
 static void
 begin_render_pass(VkCommandBuffer cmd, VkRenderPass pass, VkFramebuffer dest,
 	VkExtent2D extent)
@@ -1084,7 +1104,7 @@ OverlayVulkan::set_encoding_buffer(VkDescriptorBufferInfo info)
 
 bool
 OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-	uint32_t queue_family)
+	uint32_t queue_family, VkRenderPass render_pass)
 {
 	destroy();
 	this->phys_ = phys;
@@ -1152,51 +1172,11 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	CALL_VK(AllocateDescriptorSets, " overlay", this->device_, &allocate_info,
 		this->descriptor_sets_);
 
-	VkAttachmentDescription color{
-		.format = VK_FORMAT_R16G16B16A16_UNORM,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	};
-	VkAttachmentReference color_ref{
-		.attachment = 0,
-		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-	};
-	VkSubpassDescription subpass{
-		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &color_ref,
-	};
-	VkSubpassDependency dependency{
-		.srcSubpass = VK_SUBPASS_EXTERNAL,
-		.dstSubpass = 0,
-		.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-			VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
-	};
-	VkRenderPassCreateInfo render_pass_info{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &color,
-		.subpassCount = 1,
-		.pSubpasses = &subpass,
-		.dependencyCount = 1,
-		.pDependencies = &dependency,
-	};
-	CALL_VK(CreateRenderPass, " overlay", this->device_, &render_pass_info,
-		nullptr, &this->render_pass_);
-
-	return create_pipeline();
+	return create_pipeline(render_pass);
 }
 
 bool
-OverlayVulkan::create_pipeline()
+OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 {
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE,
 				   thumb_frag = VK_NULL_HANDLE;
@@ -1289,7 +1269,7 @@ OverlayVulkan::create_pipeline()
 		.pColorBlendState = &dawn::kBlendPremulOver,
 		.pDynamicState = &dawn::kDynamicViewportScissor,
 		.layout = this->pipeline_layout_,
-		.renderPass = this->render_pass_,
+		.renderPass = render_pass,
 	};
 	CALL_VK(CreateGraphicsPipelines, " overlay", this->device_, VK_NULL_HANDLE,
 		1, &pipeline_info, nullptr, &this->pipeline_);
@@ -1300,27 +1280,6 @@ OverlayVulkan::create_pipeline()
 	vkDestroyShaderModule(this->device_, frag, nullptr);
 	vkDestroyShaderModule(this->device_, thumb_frag, nullptr);
 	return true;
-}
-
-void
-OverlayVulkan::set_target(VkImageView view, VkExtent2D extent)
-{
-	destroy_target();
-	this->extent_ = extent;
-	if (!this->device_ || !this->render_pass_ || !view || !extent.width ||
-		!extent.height)
-		return;
-	VkFramebufferCreateInfo info{
-		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-		.renderPass = this->render_pass_,
-		.attachmentCount = 1,
-		.pAttachments = &view,
-		.width = extent.width,
-		.height = extent.height,
-		.layers = 1,
-	};
-	CALL_VK(CreateFramebuffer, " overlay", this->device_, &info, nullptr,
-		&this->framebuffer_);
 }
 
 void
@@ -1672,11 +1631,12 @@ OverlayVulkan::ensure_buffer(VkDeviceSize bytes)
 }
 
 void
-OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
+OverlayVulkan::record(
+	VkCommandBuffer cmd, const OverlayMesh &mesh, VkExtent2D extent)
 {
-	if (!cmd || !this->framebuffer_ || !this->pipeline_ || !this->font_view_)
+	if (!cmd || !this->pipeline_ || !this->font_view_)
 		return;
-	if (mesh.quads.empty() || mesh.cmds.empty() || this->extent_.width == 0 ||
+	if (mesh.quads.empty() || mesh.cmds.empty() || extent.width == 0 ||
 		mesh.display_w <= 0.f || mesh.display_h <= 0.f)
 		return;
 
@@ -1691,8 +1651,10 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 	memcpy(mapped, mesh.quads.data(), size_t(bytes));
 	vkUnmapMemory(this->device_, this->quad_memory_);
 
-	begin_render_pass(
-		cmd, this->render_pass_, this->framebuffer_, this->extent_);
+	const VkViewport viewport{.width = float(extent.width),
+		.height = float(extent.height),
+		.maxDepth = 1.f};
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
 	VkDeviceSize offset = 0;
 	vkCmdBindVertexBuffers(cmd, 0, 1, &this->quad_buffer_, &offset);
 
@@ -1737,8 +1699,8 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 			sizeof push, &push);
 		const Box &clip = draw_cmd.clip;
 		const int x0 = max(0, clip.x0), y0 = max(0, clip.y0);
-		const int x1 = min(int(this->extent_.width), clip.x1);
-		const int y1 = min(int(this->extent_.height), clip.y1);
+		const int x1 = min(int(extent.width), clip.x1);
+		const int y1 = min(int(extent.height), clip.y1);
 		if (x1 <= x0 || y1 <= y0)
 			continue;
 		VkRect2D scissor{
@@ -1748,15 +1710,6 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
 		vkCmdDraw(cmd, 6, draw_cmd.quad_count, 0, draw_cmd.quad_offset);
 	}
-	vkCmdEndRenderPass(cmd);
-}
-
-void
-OverlayVulkan::destroy_target()
-{
-	if (this->framebuffer_)
-		vkDestroyFramebuffer(this->device_, this->framebuffer_, nullptr);
-	this->framebuffer_ = VK_NULL_HANDLE;
 }
 
 void
@@ -1818,7 +1771,6 @@ OverlayVulkan::destroy()
 	if (!this->device_)
 		return;
 	vkDeviceWaitIdle(this->device_);
-	destroy_target();
 	destroy_buffer();
 	destroy_font();
 	destroy_thumbs();
@@ -1829,8 +1781,6 @@ OverlayVulkan::destroy()
 		vkDestroyDescriptorSetLayout(this->device_, this->set_layout_, nullptr);
 	if (this->sampler_)
 		vkDestroySampler(this->device_, this->sampler_, nullptr);
-	if (this->render_pass_)
-		vkDestroyRenderPass(this->device_, this->render_pass_, nullptr);
 	if (this->upload_pool_)
 		vkDestroyCommandPool(this->device_, this->upload_pool_, nullptr);
 	this->descriptor_pool_ = VK_NULL_HANDLE;
@@ -1838,12 +1788,10 @@ OverlayVulkan::destroy()
 	this->descriptor_sets_[1] = VK_NULL_HANDLE;
 	this->set_layout_ = VK_NULL_HANDLE;
 	this->sampler_ = VK_NULL_HANDLE;
-	this->render_pass_ = VK_NULL_HANDLE;
 	this->upload_pool_ = VK_NULL_HANDLE;
 	this->phys_ = VK_NULL_HANDLE;
 	this->device_ = VK_NULL_HANDLE;
 	this->queue_ = VK_NULL_HANDLE;
-	this->extent_ = {};
 }
 
 }  // namespace dn

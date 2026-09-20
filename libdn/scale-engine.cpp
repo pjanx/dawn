@@ -141,7 +141,6 @@ struct ScaleEngine::Impl {
 	VkPipeline pipeline_2d_nearest = VK_NULL_HANDLE;
 	VkPipeline pipeline_2d_bilinear = VK_NULL_HANDLE;
 	VkPipeline pipeline_2d_nohalo = VK_NULL_HANDLE;
-	VkPipeline pipe_2d = VK_NULL_HANDLE;
 
 	VkImage tile_image = VK_NULL_HANDLE;
 	VkDeviceMemory tile_memory = VK_NULL_HANDLE;
@@ -170,16 +169,8 @@ struct ScaleEngine::Impl {
 
 	uint32_t viewport_w = 0;
 	uint32_t viewport_h = 0;
-	uint32_t dest_inset_l = 0;
-	uint32_t dest_inset_t = 0;
-	uint32_t dest_inset_r = 0;
-	uint32_t dest_inset_b = 0;
 
 	bool ready = false;
-
-	VkRect2D dest_area(uint32_t vp_w, uint32_t vp_h) const;
-	void begin_dest(VkCommandBuffer cmd, VkFramebuffer fb, uint32_t w,
-		uint32_t h, const float rgba[4]) const;
 
 	bool create_mid(string *error);
 	void destroy_mid();
@@ -201,12 +192,6 @@ struct ScaleEngine::Impl {
 		VkCommandBuffer cmd, const PushConstants &pc_in, const MidTile &tile);
 	void cmd_barrier_mid(
 		VkCommandBuffer cmd, uint32_t first_layer, uint32_t last_layer);
-	void cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
-		VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
-		const float clear_rgba[4]);
-	void cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
-		VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
-		const float clear_rgba[4]);
 	pair<uint32_t, uint32_t> cmd_fill_visible_mid(VkCommandBuffer cmd,
 		const PushConstants &pc, YRange need, uint32_t vp_w, uint32_t disp_h);
 };
@@ -284,7 +269,6 @@ ScaleEngine::Impl::destroy_pipeline()
 	kill(pipeline_2d_nearest);
 	kill(pipeline_2d_bilinear);
 	kill(pipeline_2d_nohalo);
-	pipe_2d = VK_NULL_HANDLE;
 	if (pipeline_layout_tiles) {
 		vkDestroyPipelineLayout(device, pipeline_layout_tiles, nullptr);
 		pipeline_layout_tiles = VK_NULL_HANDLE;
@@ -1141,101 +1125,6 @@ ScaleEngine::Impl::cmd_barrier_mid(
 		&barrier);
 }
 
-VkRect2D
-ScaleEngine::Impl::dest_area(uint32_t vp_w, uint32_t vp_h) const
-{
-	const uint32_t x = min(this->dest_inset_l, vp_w);
-	const uint32_t y = min(this->dest_inset_t, vp_h);
-	const uint32_t w = vp_w - x - min(this->dest_inset_r, vp_w - x);
-	const uint32_t h = vp_h - y - min(this->dest_inset_b, vp_h - y);
-	return {{int32_t(x), int32_t(y)}, {w, h}};
-}
-
-void
-ScaleEngine::Impl::begin_dest(VkCommandBuffer cmd, VkFramebuffer fb, uint32_t w,
-	uint32_t h, const float rgba[4]) const
-{
-	const VkRect2D area = dest_area(w, h);
-	const bool inset = area.extent.width != w || area.extent.height != h;
-	const VkClearValue background{
-		.color = {{rgba[0], rgba[1], rgba[2], rgba[3]}}};
-	const VkClearValue clear = inset ? VkClearValue{} : background;
-	VkRenderPassBeginInfo rp{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = dest_render_pass,
-		.framebuffer = fb,
-		.renderArea = {.extent = {w, h}},
-		.clearValueCount = 1,
-		.pClearValues = &clear};
-	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
-	// Clear transparent margins and the well in the same pass. A second
-	// UNDEFINED-layout pass could discard the first pass's margin pixels.
-	if (inset && area.extent.width && area.extent.height) {
-		const VkClearAttachment attachment{
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.colorAttachment = 0,
-			.clearValue = background};
-		const VkClearRect rect{
-			.rect = area, .baseArrayLayer = 0, .layerCount = 1};
-		vkCmdClearAttachments(cmd, 1, &attachment, 1, &rect);
-	}
-}
-
-void
-ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
-	VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
-	const float clear_rgba[4])
-{
-	begin_dest(cmd, dest_fb, vp_w, vp_h, clear_rgba);
-	const VkRect2D area = dest_area(vp_w, vp_h);
-
-	VkViewport vp{
-		.x = 0.f,
-		.y = 0.f,
-		.width = float(vp_w),
-		.height = float(vp_h),
-		.minDepth = 0.f,
-		.maxDepth = 1.f,
-	};
-	VkRect2D scissor = area;
-	vkCmdSetViewport(cmd, 0, 1, &vp);
-	vkCmdSetScissor(cmd, 0, 1, &scissor);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_v);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline_layout_horiz, 0, 1, &dset_horiz, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_horiz, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof pc, &pc);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
-	vkCmdEndRenderPass(cmd);
-}
-
-void
-ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
-	VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
-	const float clear_rgba[4])
-{
-	begin_dest(cmd, dest_fb, vp_w, vp_h, clear_rgba);
-	const VkRect2D area = dest_area(vp_w, vp_h);
-
-	VkViewport vp{
-		.x = 0.f,
-		.y = 0.f,
-		.width = float(vp_w),
-		.height = float(vp_h),
-		.minDepth = 0.f,
-		.maxDepth = 1.f,
-	};
-	VkRect2D scissor = area;
-	vkCmdSetViewport(cmd, 0, 1, &vp);
-	vkCmdSetScissor(cmd, 0, 1, &scissor);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe_2d);
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof pc, &pc);
-	vkCmdDraw(cmd, 3, 1, 0, 0);
-	vkCmdEndRenderPass(cmd);
-}
-
 pair<uint32_t, uint32_t>
 ScaleEngine::Impl::cmd_fill_visible_mid(VkCommandBuffer cmd,
 	const PushConstants &pc, YRange need, uint32_t vp_w, uint32_t disp_h)
@@ -1270,19 +1159,6 @@ ScaleEngine::Impl::cmd_fill_visible_mid(VkCommandBuffer cmd,
 		}
 	}
 	return {first, last};
-}
-
-void
-ScaleEngine::set_dest_inset(
-	uint32_t left, uint32_t top, uint32_t right, uint32_t bottom)
-{
-	if (!impl_)
-		return;
-
-	impl_->dest_inset_l = left;
-	impl_->dest_inset_t = top;
-	impl_->dest_inset_r = right;
-	impl_->dest_inset_b = bottom;
 }
 
 ScaleEngine::ScaleEngine() = default;
@@ -1593,18 +1469,17 @@ ScaleEngine::ensure_viewport(
 }
 
 bool
-ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
-	uint32_t viewport_w, uint32_t viewport_h, const ScaleView &view,
-	const float clear_rgba[4], string *error)
+ScaleEngine::prepare(VkCommandBuffer cmd, uint32_t viewport_w,
+	uint32_t viewport_h, const ScaleView &view, string *error)
 {
 	if (!impl_ || !impl_->ready) {
 		if (error)
 			*error = "ScaleEngine not initialized";
 		return false;
 	}
-	if (!cmd || !dest_fb) {
+	if (!cmd) {
 		if (error)
-			*error = "invalid record parameters";
+			*error = "invalid prepare parameters";
 		return false;
 	}
 	if (!has_image()) {
@@ -1618,6 +1493,70 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		return false;
 	}
 
+	if (!use_separable(view))
+		return true;
+	Impl &e = *impl_;
+	const float background[4] = {};
+	// make_push() snapshots the mid geometry, so the buffer has to be sized
+	// for this view's display height first; a rotation changes it.
+	uint32_t disp_w = 0, disp_h = 0;
+	orientation_display_size(
+		e.image_w, e.image_h, view.orientation, &disp_w, &disp_h);
+	if (!e.ensure_mid(viewport_w, disp_h, error))
+		return false;
+
+	const PushConstants pc =
+		e.make_push(view, viewport_w, viewport_h, background);
+	const YRange need = e.visible_source_y_range(view, viewport_h);
+	const auto [first_mid, last_mid] =
+		e.cmd_fill_visible_mid(cmd, pc, need, viewport_w, disp_h);
+	e.cmd_barrier_mid(cmd, first_mid, last_mid);
+	return true;
+}
+
+void
+ScaleEngine::draw(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,
+	const ScaleView &view, const float background[4], VkRect2D clip)
+{
+	Impl &e = *impl_;
+	const bool separable = use_separable(view);
+	VkPipeline pipeline = e.pipeline_2d_bilinear;
+	if (separable)
+		pipeline = e.pipeline_v;
+	else if (view.filter == Filter::Nearest)
+		pipeline = e.pipeline_2d_nearest;
+	else if (view.filter == Filter::Expensive && view.scale >= 1.f)
+		pipeline = e.pipeline_2d_nohalo;
+	const VkPipelineLayout layout =
+		separable ? e.pipeline_layout_horiz : e.pipeline_layout_tiles;
+	const VkDescriptorSet set = separable ? e.dset_horiz : e.dset_tiles;
+	const PushConstants pc =
+		e.make_push(view, viewport_w, viewport_h, background);
+	const VkViewport vp{.width = float(viewport_w),
+		.height = float(viewport_h),
+		.maxDepth = 1.f};
+	vkCmdSetViewport(cmd, 0, 1, &vp);
+	vkCmdSetScissor(cmd, 0, 1, &clip);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	vkCmdBindDescriptorSets(
+		cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
+	vkCmdPushConstants(
+		cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+}
+
+bool
+ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
+	uint32_t viewport_w, uint32_t viewport_h, const ScaleView &view,
+	const float clear_rgba[4], string *error)
+{
+	if (!dest_fb) {
+		if (error)
+			*error = "invalid destination framebuffer";
+		return false;
+	}
+	if (!prepare(cmd, viewport_w, viewport_h, view, error))
+		return false;
 	float target_clear[4];
 	copy_n(clear_rgba, 4, target_clear);
 	if (view.output_encoding == ScaleEncoding::Linear) {
@@ -1630,56 +1569,18 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 				target_clear[i] = transfer_decode(clear_rgba[i], view.transfer);
 		}
 	}
-
-	Impl &e = *impl_;
-	if (view.filter == Filter::Nearest)
-		e.pipe_2d = e.pipeline_2d_nearest;
-	else if (view.filter == Filter::Expensive && view.scale >= 1.f)
-		e.pipe_2d = e.pipeline_2d_nohalo;
-	else
-		e.pipe_2d = e.pipeline_2d_bilinear;
-	if (!use_separable(view)) {
-		const PushConstants pc =
-			e.make_push(view, viewport_w, viewport_h, clear_rgba);
-		e.cmd_2d_pass(cmd, pc, dest_fb, viewport_w, viewport_h, target_clear);
-		return true;
-	}
-
-	// make_push() snapshots the mid geometry, so the buffer has to be sized
-	// for this view's display height first; a rotation changes it.
-	uint32_t disp_w = 0, disp_h = 0;
-	orientation_display_size(
-		e.image_w, e.image_h, view.orientation, &disp_w, &disp_h);
-	if (!e.ensure_mid(viewport_w, disp_h, error))
-		return false;
-
-	const PushConstants pc =
-		e.make_push(view, viewport_w, viewport_h, clear_rgba);
-	const YRange need = e.visible_source_y_range(view, viewport_h);
-	const auto [first_mid, last_mid] =
-		e.cmd_fill_visible_mid(cmd, pc, need, viewport_w, disp_h);
-	e.cmd_barrier_mid(cmd, first_mid, last_mid);
-	e.cmd_v_pass(cmd, pc, dest_fb, viewport_w, viewport_h, target_clear);
-	return true;
-}
-
-bool
-ScaleEngine::record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
-	uint32_t viewport_w, uint32_t viewport_h, const float clear_rgba[4],
-	string *error)
-{
-	if (!impl_ || !impl_->ready) {
-		if (error)
-			*error = "ScaleEngine not initialized";
-		return false;
-	}
-	if (!cmd || !dest_fb || !viewport_w || !viewport_h) {
-		if (error)
-			*error = "invalid record_clear parameters";
-		return false;
-	}
-
-	impl_->begin_dest(cmd, dest_fb, viewport_w, viewport_h, clear_rgba);
+	const VkClearValue clear{.color = {{target_clear[0], target_clear[1],
+								 target_clear[2], target_clear[3]}}};
+	const VkRect2D area{.extent = {viewport_w, viewport_h}};
+	const VkRenderPassBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = impl_->dest_render_pass,
+		.framebuffer = dest_fb,
+		.renderArea = area,
+		.clearValueCount = 1,
+		.pClearValues = &clear};
+	vkCmdBeginRenderPass(cmd, &begin, VK_SUBPASS_CONTENTS_INLINE);
+	draw(cmd, viewport_w, viewport_h, view, clear_rgba, area);
 	vkCmdEndRenderPass(cmd);
 	return true;
 }

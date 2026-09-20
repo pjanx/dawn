@@ -100,7 +100,8 @@ struct EngineReadback {
 	bool init(string *error);
 	bool init_presentation(string *error);
 	bool readback(VkImage source, array<uint16_t, 16> *pixels, string *error);
-	bool compose(const dn::OverlayMesh &mesh, bool premultiplied, float levels,
+	bool compose(const dn::OverlayMesh &mesh, const dawn::ScaleView *view,
+		VkRect2D clip, bool premultiplied, float levels,
 		array<uint16_t, 16> *pixels, string *error);
 	bool draw(const dawn::ScaleView &view, const float clear[4],
 		array<uint16_t, 16> *pixels, string *error);
@@ -176,10 +177,9 @@ EngineReadback::init(string *error)
 		!engine.create_offscreen(
 			2, 2, &image, &memory, &image_view, &fb, error))
 		return false;
-	if (!overlay.init(phys, device, queue, family))
+	if (!overlay.init(phys, device, queue, family, engine.dest_render_pass()))
 		return false;
 	overlay.set_encoding_buffer(engine.encoding_buffer());
-	overlay.set_target(image_view, {2, 2});
 	const uint16_t atlas[] = {
 		65535, 65535, 65535, 65535, 32768, 32768, 32768, 32768};
 	if (!overlay.upload_font((const unsigned char *) atlas, 2, 1))
@@ -366,7 +366,8 @@ EngineReadback::init_presentation(string *error)
 }
 
 bool
-EngineReadback::compose(const dn::OverlayMesh &mesh, bool premultiplied,
+EngineReadback::compose(const dn::OverlayMesh &mesh,
+	const dawn::ScaleView *view, VkRect2D clip, bool premultiplied,
 	float levels, array<uint16_t, 16> *pixels, string *error)
 {
 	if (!CALL_VK(ResetCommandBuffer, " compose test", cmd, 0))
@@ -375,37 +376,36 @@ EngineReadback::compose(const dn::OverlayMesh &mesh, bool premultiplied,
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 	if (!CALL_VK(BeginCommandBuffer, " compose test", cmd, &begin))
 		return false;
-	const float clear[4] = {};
-	if (!engine.record_clear(cmd, fb, 2, 2, clear, error))
+	if (view && !engine.prepare(cmd, 2, 2, *view, error))
 		return false;
+	const VkClearValue zero{};
+	VkRenderPassBeginInfo rp{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = engine.dest_render_pass(),
+		.framebuffer = fb,
+		.renderArea = {.extent = {2, 2}},
+		.clearValueCount = 1,
+		.pClearValues = &zero};
+	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+	if (view) {
+		const float background[4] = {};
+		engine.draw(cmd, 2, 2, *view, background, clip);
+	}
+	overlay.record(cmd, mesh, {2, 2});
+	vkCmdEndRenderPass(cmd);
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.image = image,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
-		nullptr, 1, &barrier);
-	overlay.record(cmd, mesh);
-	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	barrier.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&barrier);
-	const VkClearValue zero{};
-	VkRenderPassBeginInfo rp{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = engine.dest_render_pass(),
-		.framebuffer = presented_fb,
-		.renderArea = {.extent = {2, 2}},
-		.clearValueCount = 1,
-		.pClearValues = &zero};
+	rp.framebuffer = presented_fb;
 	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 	VkViewport vp{.width = 2, .height = 2, .maxDepth = 1};
 	VkRect2D scissor{.extent = {2, 2}};
@@ -442,7 +442,8 @@ test_composition()
 	auto begin = [&] { list.begin(2, 2, {.5f, .5f, .5f, .5f}); };
 	auto render = [&](bool premultiplied, float levels) {
 		list.end();
-		CHECK(gpu.compose(list.mesh(), premultiplied, levels, &pixels, &error));
+		CHECK(gpu.compose(list.mesh(), nullptr, {{0, 0}, {2, 2}}, premultiplied,
+			levels, &pixels, &error));
 	};
 	auto near = [&](int pixel, int c, float want) {
 		const float actual = pixels[pixel * 4 + c] / 65535.f;
@@ -526,9 +527,7 @@ test_composition()
 	near(0, 0, .801881f);
 	near(0, 1, .360780f);
 
-	// Clipping must not reset the checker phase; atlas data survives resize.
-	gpu.overlay.set_target(VK_NULL_HANDLE, {});
-	gpu.overlay.set_target(gpu.image_view, {2, 2});
+	// Clipping must not reset the checker phase.
 	begin();
 	auto shifted = background;
 	shifted.origin_x = -1;
@@ -575,6 +574,42 @@ test_composition()
 }
 
 static void
+test_image_overlay()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error) || !gpu.init_presentation(&error)) {
+		test::fail("image/overlay setup: %s", error.c_str());
+		return;
+	}
+	const array<Pixel, 4> source{kRed, kRed, kRed, kRed};
+	CHECK(gpu.engine.set_image(
+		2, 2, (const uint8_t *) source.data(), 2 * sizeof(Pixel), &error));
+	CHECK(gpu.engine.ensure_viewport(2, 2, &error));
+	dn::OverlayList list;
+	list.begin(2, 2, {.5f, .5f, .5f, .5f});
+	list.add_rect_filled({0, 0, 2, 1}, {0, 0, 1, .5f});
+	list.end();
+	for (auto filter : {dawn::Filter::Nearest, dawn::Filter::Bilinear,
+			 dawn::Filter::Expensive}) {
+		dawn::ScaleView view;
+		view.filter = filter;
+		view.output_encoding = dawn::ScaleEncoding::Linear;
+		array<uint16_t, 16> pixels{};
+		CHECK(gpu.compose(
+			list.mesh(), &view, {{1, 0}, {1, 2}}, true, 0, &pixels, &error));
+		// Image scissor excludes the left column, but the overlay covers it.
+		CHECK(abs(pixels[2] / 65535.f - .5f) < .0003f);
+		CHECK(abs(pixels[3] / 65535.f - .5f) < .0003f);
+		CHECK(abs(pixels[4] / 65535.f - .735357f) < .0003f);
+		CHECK(abs(pixels[6] / 65535.f - .735357f) < .0003f);
+		CHECK(pixels[7] == 65535);
+		CHECK(pixels[8] == 0 && pixels[11] == 0);
+		CHECK(pixels[12] == 65535 && pixels[15] == 65535);
+	}
+}
+
+static void
 test_atlas_uploads()
 {
 	EngineReadback gpu;
@@ -595,7 +630,8 @@ test_atlas_uploads()
 		list.add_thumb({0, 0, 2, 2}, {0, 0, 2, 2}, {1, 1, 1, 1}, {});
 		list.end();
 		array<uint16_t, 16> pixels{};
-		CHECK(gpu.compose(list.mesh(), true, 0, &pixels, &error));
+		CHECK(gpu.compose(
+			list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
 		for (size_t i = 0; i < expected.size(); i++) {
 			CHECK(pixels[i * 4] == expected[i].r);
 			CHECK(pixels[i * 4 + 1] == expected[i].g);
@@ -678,17 +714,6 @@ test_viewer_curves()
 				.0001f);
 		}
 	}
-	// CSD margins remain transparent even when the well and image are drawn.
-	gpu.engine.set_dest_inset(1, 0, 0, 0);
-	dawn::ScaleView view;
-	view.profile_curves = true;
-	view.output_encoding = dawn::ScaleEncoding::Linear;
-	view.composite = true;
-	const float clear[] = {1, 1, 1, 1};
-	array<uint16_t, 16> pixels{};
-	CHECK(gpu.draw(view, clear, &pixels, &error));
-	CHECK(pixels[0] == 0 && pixels[3] == 0 && pixels[11] == 0);
-	CHECK(pixels[7] == 65535 && pixels[15] == 65535);
 }
 
 static void
@@ -903,5 +928,6 @@ main()
 		{"linear GUI composition", test_composition},
 		{"viewer display curves", test_viewer_curves},
 		{"atlas uploads", test_atlas_uploads},
+		{"image and overlay share a pass", test_image_overlay},
 	});
 }
