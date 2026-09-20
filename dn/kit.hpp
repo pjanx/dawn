@@ -1013,6 +1013,8 @@ struct Kit {
 	bool tooltip_visible_ = false;
 	const Widget *tooltip_anchor_ = nullptr;  // set for keyboard-focus tips
 
+	ScreenState screen_state_;
+
 	Kit() = default;
 	~Kit() { destroy(); }
 
@@ -1093,9 +1095,10 @@ struct Kit {
 	bool set_host(float width_pts, float height_pts, float dpr);
 	bool reset_fonts();
 	[[nodiscard]] bool text_settings_changed() const;
-	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
+	void bake_colours(const ScreenState &state);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);
-	Packed pack_bitmap(const QImage &image);
+	// Coverage copies scalar alpha; other bitmaps are sRGB premultiplied.
+	Packed pack_bitmap(const QImage &image, bool coverage);
 	void emit_text(
 		float x, float y, const QString &text, Colour colour, bool bold);
 	void draw_glow(Rect w, Colour col);

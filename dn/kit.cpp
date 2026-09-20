@@ -235,24 +235,51 @@ pack_or_grow(Kit &kit, int width, int height)
 }
 
 static void
-blit(Kit &kit, const Kit::Packed &rect, const QImage &src)
+blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 {
-	QImage img = src;
-	if (img.format() != QImage::Format_ARGB32_Premultiplied)
-		img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
-
+	const QImage img = src.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 	const int rows = min(rect.h, img.height());
 	const int cols = min(rect.w, img.width());
+	vector<uint16_t> pixels(size_t(cols) * rows * 4);
 	for (int y = 0; y < rows; y++) {
-		uint16_t *dst = kit.atlas_.pixels.data() +
-			(size_t(rect.y + y) * size_t(kit.atlas_.w) + size_t(rect.x)) * 4;
 		const auto *row =
 			dawn::assume_aligned<const QRgb>(img.constScanLine(y));
 		for (int x = 0; x < cols; x++) {
-			dst[x * 4 + 0] = widen8(uint8_t(qRed(row[x])));
-			dst[x * 4 + 1] = widen8(uint8_t(qGreen(row[x])));
-			dst[x * 4 + 2] = widen8(uint8_t(qBlue(row[x])));
-			dst[x * 4 + 3] = widen8(uint8_t(qAlpha(row[x])));
+			uint16_t *p = pixels.data() + (size_t(y) * cols + x) * 4;
+			p[0] = widen8(uint8_t(qBlue(row[x])));
+			p[1] = widen8(uint8_t(qGreen(row[x])));
+			p[2] = widen8(uint8_t(qRed(row[x])));
+			p[3] = widen8(uint8_t(qAlpha(row[x])));
+		}
+	}
+	const auto &state = kit.screen_state_;
+	if (!coverage && state.cmm && state.profile) {
+		auto srgb = state.cmm->get_profile_sRGB();
+		state.cmm->transform_bgra16((uint8_t *) pixels.data(), cols, rows,
+			srgb.get(), state.profile.get(), true, true);
+	}
+	for (int y = 0; y < rows; y++) {
+		uint16_t *dst = kit.atlas_.pixels.data() +
+			(size_t(rect.y + y) * kit.atlas_.w + rect.x) * 4;
+		for (int x = 0; x < cols; x++) {
+			const uint16_t *p = pixels.data() + (size_t(y) * cols + x) * 4;
+			if (coverage) {
+				fill_n(dst + x * 4, 4, p[3]);
+				continue;
+			}
+			array<float, 3> rgb{};
+			if (p[3])
+				rgb = {
+					float(p[2]) / p[3], float(p[1]) / p[3], float(p[0]) / p[3]};
+			if (state.colour)
+				rgb = dawn::sample_curves(state.colour->encoding.decode, rgb);
+			else
+				for (float &c : rgb)
+					c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
+			for (int c = 0; c < 3; c++)
+				dst[x * 4 + c] =
+					uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * p[3]));
+			dst[x * 4 + 3] = p[3];
 		}
 	}
 	kit.atlas_.dirty = true;
@@ -269,7 +296,8 @@ cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 
 	const GlyphImage map = kit.text_backend_.rasterize(font_id, gid, phase);
 	if (map.kind != GlyphImageKind::Mask || map.width <= 0 || map.height <= 0 ||
-		map.stride < map.width || map.pixels.size() <
+		map.stride < map.width ||
+		map.pixels.size() <
 			size_t(map.stride) * size_t(map.height - 1) + size_t(map.width)) {
 		Kit::Glyph glyph;
 		auto [it, _] = kit.glyphs_.emplace(key, glyph);
@@ -280,10 +308,9 @@ cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 		return nullptr;
 	for (int y = 0; y < map.height; y++) {
 		uint16_t *dst = kit.atlas_.pixels.data() +
-			(size_t(packed.y + y) * size_t(kit.atlas_.w) +
-				size_t(packed.x)) * 4;
-		const uint8_t *src =
-			map.pixels.data() + size_t(y) * size_t(map.stride);
+			(size_t(packed.y + y) * size_t(kit.atlas_.w) + size_t(packed.x)) *
+				4;
+		const uint8_t *src = map.pixels.data() + size_t(y) * size_t(map.stride);
 		for (int x = 0; x < map.width; x++)
 			fill_n(dst + x * 4, 4, widen8(src[x]));
 	}
@@ -373,8 +400,8 @@ TextCache::hit_test(
 }
 
 vector<TextRect>
-TextCache::range_rects(const Kit &kit, const QString &text, int start,
-	int length, bool bold)
+TextCache::range_rects(
+	const Kit &kit, const QString &text, int start, int length, bool bold)
 {
 	if (length <= 0)
 		return {};
@@ -465,7 +492,6 @@ rebuild_atlas(Kit &kit)
 		}
 		kit.atlas_.dirty = true;
 	}
-
 }
 
 // The mnemonic is an index into text, and gets underlined; -1 for none.
@@ -489,13 +515,13 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 			phase = 0;
 			gx++;
 		}
-		const Kit::Glyph *glyph = cache_glyph(
-			kit, positioned.font_id, positioned.glyph_id, phase);
+		const Kit::Glyph *glyph =
+			cache_glyph(kit, positioned.font_id, positioned.glyph_id, phase);
 		if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
 			continue;
 		gx += glyph->bearing_x;
-		const int gy = int(lround(double(y) + double(positioned.y))) +
-			glyph->bearing_y;
+		const int gy =
+			int(lround(double(y) + double(positioned.y))) + glyph->bearing_y;
 		kit.list_.add_image({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
 			glyph->rect.texels(), colour);
 	}
@@ -536,7 +562,7 @@ emit_icon(Kit &kit, int x, int y, int size, const char *name, Colour colour)
 			image = raster_window_button(name, size);
 		if (image.isNull())
 			return;
-		const Kit::Packed packed = kit.pack_bitmap(image);
+		const Kit::Packed packed = kit.pack_bitmap(image, true);
 		if (packed.empty())
 			return;
 		it = kit.icons_.emplace(key, packed).first;
@@ -1398,8 +1424,7 @@ Entry::reveal(const Kit &kit, int start, int end)
 		start += preedit_size;
 	if (end >= this->caret)
 		end += preedit_size;
-	const float text_w =
-		float(this->text_cache_.text_width(kit, full, false));
+	const float text_w = float(this->text_cache_.text_width(kit, full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
 		this->scroll_ = 0.f;
@@ -1407,17 +1432,18 @@ Entry::reveal(const Kit &kit, int start, int end)
 	}
 
 	float from = this->text_cache_
-		.caret_rect(kit, full, start, TextAffinity::Leading, false)
-		.x;
+					 .caret_rect(kit, full, start, TextAffinity::Leading, false)
+					 .x;
 	float to = from;
-	for (const TextRect &rect : this->text_cache_.range_rects(
-			 kit, full, start, end - start, false)) {
+	for (const TextRect &rect :
+		this->text_cache_.range_rects(kit, full, start, end - start, false)) {
 		from = min(from, rect.x);
 		to = max(to, rect.x + rect.width);
 	}
-	const float end_x = this->text_cache_
-		.caret_rect(kit, full, end, TextAffinity::Trailing, false)
-		.x;
+	const float end_x =
+		this->text_cache_
+			.caret_rect(kit, full, end, TextAffinity::Trailing, false)
+			.x;
 	from = min(from, end_x);
 	to = max(to, end_x);
 	if (to - from >= view) {
@@ -1576,8 +1602,8 @@ Entry::paint(Kit &kit) const
 			this->text_cache_.get(kit, full, 0, false, false);
 		if (cached.layout) {
 			const TextLayout &layout = *cached.layout;
-			for (const TextRect &rect : layout.range_rects(
-					 this->caret, int(this->preedit.size()))) {
+			for (const TextRect &rect :
+				layout.range_rects(this->caret, int(this->preedit.size()))) {
 				const TextLine *line = nullptr;
 				float top = 0.f;
 				for (const TextLine &candidate : layout.lines()) {
@@ -1613,8 +1639,7 @@ Entry::paint(Kit &kit) const
 			this->text_cache_.caret_rect(kit, full, at, affinity, false);
 		const int cx = int(lround(double(tx) + double(caret.x)));
 		const int cy = int(floor(double(ty) + double(caret.y)));
-		const int cy1 =
-			int(ceil(double(ty) + double(caret.y + caret.height)));
+		const int cy1 = int(ceil(double(ty) + double(caret.y + caret.height)));
 		kit.list_.add_rect_filled({cx, cy, cx + hair, max(cy + 1, cy1)},
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
@@ -1680,8 +1705,8 @@ Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	// method still owns; let it finish rather than fighting over the caret.
 	if (this->preedit.isEmpty()) {
 		const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
-		const int th = this->text_cache_.text_height(
-			kit, QStringLiteral("Ag"), 0, false);
+		const int th =
+			this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 		const int ty = this->r.y + (this->r.h - th) / 2;
 		const TextHit hit = this->text_cache_.hit_test(kit, this->text,
 			x - float(in.x) + this->scroll_, y - float(ty), false);
@@ -1817,8 +1842,8 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	const int th =
 		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
-	out.caret_rect = {int(lround(double(tx) - double(this->scroll_) +
-			double(caret.x))),
+	out.caret_rect = {
+		int(lround(double(tx) - double(this->scroll_) + double(caret.x))),
 		ty + int(floor(caret.y)), 1, max(1, int(ceil(caret.height)))};
 	return true;
 }
@@ -4376,7 +4401,7 @@ Titlebar::double_click(
 // --- Kit ---------------------------------------------------------------------
 
 Kit::Packed
-Kit::pack_bitmap(const QImage &image)
+Kit::pack_bitmap(const QImage &image, bool coverage)
 {
 	if (image.isNull() || image.width() <= 0 || image.height() <= 0)
 		return {};
@@ -4385,7 +4410,7 @@ Kit::pack_bitmap(const QImage &image)
 	if (packed.empty())
 		return {};
 
-	blit(*this, packed, image);
+	blit(*this, packed, image, coverage);
 	return packed;
 }
 
@@ -5117,7 +5142,7 @@ Kit::init(float dpr)
 	destroy();
 	this->dpr_ = dpr > 0.f ? dpr : 1.f;
 	reset_fonts();
-	bake_colours(nullptr, nullptr);
+	bake_colours({});
 	this->inited_ = true;
 }
 
@@ -5192,8 +5217,11 @@ Kit::forget_tree(Widget *tree)
 }
 
 void
-Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
+Kit::bake_colours(const ScreenState &state)
 {
+	this->screen_state_ = state;
+	auto *cmm = state.cmm.get();
+	auto *target = state.profile.get();
 	if (this->dark_) {
 		this->colours_[ColourWell] = bake_grey(cmm, target, 0x20);
 		this->colours_[ColourToolbarTop] = bake_grey(cmm, target, 0x34);
@@ -5227,6 +5255,20 @@ Kit::bake_colours(dawn::Cmm *cmm, dawn::Profile *target)
 		this->colours_[ColourEntryBottom] = this->colours_[ColourFrame];
 		this->colours_[ColourPanel] = bake_grey(cmm, target, 0xf0);
 		this->colours_[ColourHint] = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
+	}
+
+	// Convert straight palette RGB before vertex premultiplication and
+	// interpolation. Atlas coverage is independent of these transforms.
+	for (Colour &colour : this->colours_) {
+		array<float, 3> rgb{colour.r, colour.g, colour.b};
+		if (state.colour)
+			rgb = dawn::sample_curves(state.colour->encoding.decode, rgb);
+		else
+			for (float &c : rgb)
+				c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
+		colour.r = rgb[0];
+		colour.g = rgb[1];
+		colour.b = rgb[2];
 	}
 
 	// The well and the checkerboard are drawn by the renderer's own passes

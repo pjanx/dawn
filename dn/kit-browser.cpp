@@ -130,7 +130,6 @@ struct ThumbUpdate {
 	vector<uint16_t> ram;
 	dawn::ImagePtr image;
 	dawn::Orientation orientation = dawn::Orientation::Rotate0;
-	dawn::Transfer transfer = dawn::Transfer::Srgb;
 	bool failed = true;
 	bool gpu_pending = false;
 	bool interim = false;
@@ -153,6 +152,7 @@ struct FinishJob {
 	shared_ptr<const vector<uint16_t>> pixels;
 	int tier = 0;
 	shared_ptr<const ScreenColour> screen_colour;
+	bool linear = false;
 };
 
 struct GpuFinish {
@@ -560,7 +560,6 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 				result.ram_h = pixels->height;
 				result.ram_tier = tier;
 				result.tier = tier;
-				result.transfer = profile_transfer(screen.get());
 				result.persistent_checked = true;
 				result.failed = false;
 				return result;
@@ -579,7 +578,6 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 			result.ram_w = hit.width;
 			result.ram_h = hit.height;
 			result.ram_tier = hit.tier;
-			result.transfer = profile_transfer(screen.get());
 			result.interim = hit.interim;
 			result.generation_needed = hit.interim;
 			result.persistent_checked = true;
@@ -631,7 +629,6 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 
 	result.image = std::move(image);
 	result.orientation = ori;
-	result.transfer = profile_transfer(ctx.screen_profile.get());
 	result.gpu_purpose = job.cacheable
 		? (job.priority == Thumbnailer::Priority::Dimensions
 				  ? GpuPurpose::CacheOnly
@@ -677,31 +674,60 @@ queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 		key);
 }
 
+// Non-cache thumbnails are already in display RGB. Linearize them before
+// the shared GPU scaler, which otherwise only knows three analytic curves.
+static void
+thumb_curves(vector<uint16_t> &pixels, const ScreenColour *colour, bool decode)
+{
+	for (size_t i = 0; i < pixels.size(); i += 4) {
+		const uint16_t a = pixels[i + 3];
+		array<float, 3> rgb{};
+		if (a)
+			rgb = {float(pixels[i + 2]) / a, float(pixels[i + 1]) / a,
+				float(pixels[i]) / a};
+		if (colour)
+			rgb = dawn::sample_curves(
+				decode ? colour->encoding.decode : colour->encoding.encode,
+				rgb);
+		else
+			for (float &c : rgb)
+				c = decode ? dawn::transfer_decode(c, dawn::Transfer::Srgb)
+						   : dawn::transfer_encode(c, dawn::Transfer::Srgb);
+		for (int c = 0; c < 3; c++)
+			pixels[i + 2 - c] = uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * a));
+	}
+}
+
 static Thumbnailer::Completion
 display_thumb(Browser *browser, FinishJob job)
 {
 	ThumbUpdate update;
 	update.geometry_w = job.image_w;
 	update.geometry_h = job.image_h;
-	update.regeneration = true;
-	update.persistent_checked = true;
+	update.regeneration = !job.linear;
+	update.persistent_checked = !job.linear;
 	update.tier = job.tier;
 	update.ram_tier = job.tier;
 
-	auto cmm = worker_cmm();
-	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
-	shared_ptr<dawn::Profile> screen =
-		profile_from_screen(*cmm, job.screen_colour);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
-	if (p3 && screen && !display.empty() &&
-		cmm->transform_bgra16(reinterpret_cast<uint8_t *>(display.data()),
-			job.width, job.height, p3.get(), screen.get(), true, true)) {
-		update.transfer = profile_transfer(screen.get());
+	bool converted = !display.empty();
+	if (job.linear) {
+		thumb_curves(display, job.screen_colour.get(), false);
+	} else {
+		auto cmm = worker_cmm();
+		auto p3 = cmm->get_profile_display_p3();
+		auto screen = profile_from_screen(*cmm, job.screen_colour);
+		converted = converted && p3 && screen &&
+			cmm->transform_bgra16((uint8_t *) display.data(), job.width,
+				job.height, p3.get(), screen.get(), true, true);
+	}
+	if (converted) {
 		update.ram = std::move(display);
 		update.ram_w = job.width;
 		update.ram_h = job.height;
 		update.failed = false;
 	}
+
 	return
 		[browser, gen = job.gen, path = std::move(job.path), mtime = job.mtime,
 			size = job.size, update = std::move(update)]() mutable {
@@ -736,6 +762,8 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			auto owned = make_shared<vector<uint16_t>>(
 				size_t(src.width) * src.height * 4);
 			copy_bgra16(src, owned->data(), src.width, src.height);
+			if (!job.cacheable)
+				thumb_curves(*owned, job.screen_colour.get(), true);
 			gpu.pixels = std::move(owned);
 			gpu.stride = size_t(src.width) * dawn::kBytesPerPixel;
 			gpu.src_w = src.width;
@@ -745,7 +773,8 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 					  update.geometry_w, update.geometry_h, update.tier)
 				: vector<dawn::ThumbScaler::Job::Output>{{ow, oh, -1}};
 			gpu.orientation = update.orientation;
-			gpu.transfer = update.transfer;
+			gpu.transfer =
+				job.cacheable ? dawn::Transfer::Srgb : dawn::Transfer::Linear;
 			gpu.path = job.path;
 			GpuFinish finish;
 			finish.gen = job.gen;
@@ -854,9 +883,7 @@ trim_ram(Browser &b)
 		// The atlas entry, if any, stays: residency is its own fact.  It
 		// is still drawn through this bitmap's transfer function, so that
 		// outlives the pixels it came with.
-		const dawn::Transfer transfer = f.pixels.transfer;
 		f.pixels = {};
-		f.pixels.transfer = transfer;
 		f.progress.interim = false;
 	}
 }
@@ -988,6 +1015,18 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			break;
 		}
 
+		FinishJob display;
+		display.gen = finish.gen;
+		display.priority = finish.priority;
+		display.path = f.path;
+		display.mtime = finish.mtime;
+		display.size = finish.size;
+		display.image_w = finish.image_w;
+		display.image_h = finish.image_h;
+		display.screen_colour = std::move(finish.screen_colour);
+		display.linear = finish.purpose == GpuPurpose::Display;
+		display.tier = display.linear ? -1 : finish.requested_tier;
+
 		if (finish.purpose == GpuPurpose::CacheDisplay ||
 			finish.purpose == GpuPurpose::CacheOnly) {
 			auto bundle = make_shared<ThumbnailBundle>();
@@ -1027,54 +1066,28 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 				b.thumb_inflight_.erase(f.path);
 				break;
 			}
-			FinishJob display;
-			display.gen = finish.gen;
-			display.priority = finish.priority;
-			display.path = f.path;
-			display.mtime = finish.mtime;
-			display.size = finish.size;
-			display.image_w = finish.image_w;
-			display.image_h = finish.image_h;
+
 			display.width = pixels->width;
 			display.height = pixels->height;
 			display.pixels = pixels->pixels;
-			display.tier = finish.requested_tier;
-			display.screen_colour = std::move(finish.screen_colour);
-			Browser *browser = &b;
-			if (!b.thumbnailer_.submit(
-					b.thumbnail_client_, finish.gen, finish.priority,
-					[browser, display = std::move(display)]() mutable {
-						return display_thumb(browser, std::move(display));
-					},
-					f.path)) {
-				f.progress.pending = false;
-				f.progress.failed = f.pixels.ram.empty();
-				b.thumb_inflight_.erase(f.path);
-			}
-			break;
+		} else {
+			auto &output = res.outputs.front();
+			display.width = output.width;
+			display.height = output.height;
+			display.pixels =
+				make_shared<const vector<uint16_t>>(std::move(output.data));
 		}
-
-		dawn::ThumbScaler::Result::Output &output = res.outputs.front();
-		if (!output.width || !output.height || output.data.empty()) {
+		Browser *browser = &b;
+		if (!b.thumbnailer_.submit(
+				b.thumbnail_client_, finish.gen, finish.priority,
+				[browser, display = std::move(display)]() mutable {
+					return display_thumb(browser, std::move(display));
+				},
+				f.path)) {
 			f.progress.pending = false;
 			f.progress.failed = f.pixels.ram.empty();
 			b.thumb_inflight_.erase(f.path);
-			break;
 		}
-		if (!f.gpu.empty())
-			b.sheet_.release(f.gpu);
-		f.gpu = {};
-		f.pixels.ram = std::move(output.data);
-		f.pixels.w = int(output.width);
-		f.pixels.h = int(output.height);
-		f.pixels.tier = -1;
-		f.progress.interim = false;
-		f.progress.pending = false;
-		f.progress.regen_failed = false;
-		f.progress.failed = false;
-		b.thumb_inflight_.erase(f.path);
-		if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
-			try_upload(b, f);
 		break;
 	}
 	if (!matched) {
@@ -1169,7 +1182,6 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.pending = false;
 		} else if (update.gpu_pending) {
 			f.progress.pending = true;
-			f.pixels.transfer = update.transfer;
 			if (!update.regeneration)
 				f.progress.interim = update.interim;
 		} else if (!update.ram.empty() && update.ram_w && update.ram_h) {
@@ -1180,7 +1192,6 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.interim = update.interim;
 			f.progress.pending = false;
 			f.progress.regen_failed = false;
-			f.pixels.transfer = update.transfer;
 			if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
 				try_upload(b, f);
 			trim_ram(b);
@@ -1616,31 +1627,6 @@ layout_grid(Browser &b, Rect area)
 			f.cap.y += dy;
 		}
 	}
-}
-
-static void
-draw_checkers(Kit &kit, const Rect &tile)
-{
-	if (tile.empty())
-		return;
-
-	kit.clip_to(tile);
-	const Colour bg = kit.colours_[ColourToolbarBottom];
-	const Colour fg = kit.colours_[ColourWell];
-	kit.draw_fill(tile, bg);
-	const int check = max(1, kit.px(kCheckPts));
-	const int nx = max(1, (tile.w + check - 1) / check);
-	const int ny = max(1, (tile.h + check - 1) / check);
-	for (int j = 0; j < ny; j++) {
-		for (int i = 0; i < nx; i++) {
-			if (((i + j) & 1) == 0)
-				continue;
-			const int x0 = tile.x + i * check;
-			const int y0 = tile.y + j * check;
-			kit.list_.add_rect_filled({x0, y0, x0 + check, y0 + check}, fg);
-		}
-	}
-	kit.clip_pop();
 }
 
 static int
@@ -2656,10 +2642,9 @@ Browser::paint(Kit &kit) const
 			const Rect outer = {
 				dx - border, dy - border, dw + 2 * border, dh + 2 * border};
 			kit.draw_glow(outer, focused ? glow_hot : glow_idle);
-			draw_checkers(kit, {dx, dy, dw, dh});
 			kit.list_.add_rect_stroke(outer.box(), frame, border);
 			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh},
-				this->sheet_.uv(f.gpu), int(f.pixels.transfer), {1, 1, 1, 1},
+				this->sheet_.uv(f.gpu), {1, 1, 1, 1},
 				{kit.colours_[ColourWell], kit.colours_[ColourToolbarBottom],
 					float(dx), float(dy), float(max(1, kit.px(kCheckPts)))});
 		} else {

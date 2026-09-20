@@ -275,17 +275,20 @@ CieDiagram::prepare(Kit &kit)
 		this->packed_image_dashed_ == this->image_dashed &&
 		same_chroma(this->packed_image_, this->image) &&
 		same_chroma(this->packed_screen_, this->screen);
-	if (epoch_ok && chroma_ok)
+	if (epoch_ok && chroma_ok &&
+		this->packed_colour_ == kit.screen_state_.colour)
 		return;
 
 	if (epoch_ok)
 		kit.atlas_.release(this->slot_);
 	this->slot_ = kit.pack_bitmap(
 		raster_diagram(kRasterW, kRasterH, this->image, this->screen,
-			this->show_screen, this->screen_dashed, this->image_dashed));
+			this->show_screen, this->screen_dashed, this->image_dashed),
+		false);
 	if (this->slot_.empty())
 		return;
 	this->epoch_ = kit.atlas_epoch_;
+	this->packed_colour_ = kit.screen_state_.colour;
 	this->packed_image_ = this->image;
 	this->packed_screen_ = this->screen;
 	this->packed_show_screen_ = this->show_screen;

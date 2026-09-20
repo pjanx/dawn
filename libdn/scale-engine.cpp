@@ -123,6 +123,9 @@ struct ScaleEngine::Impl {
 	VkCommandBuffer upload_cmd = VK_NULL_HANDLE;
 
 	VkSampler sampler = VK_NULL_HANDLE;
+	VkBuffer encoding_buffer = VK_NULL_HANDLE;
+	VkDeviceMemory encoding_memory = VK_NULL_HANDLE;
+	ProfileEncoding encoding;
 
 	VkRenderPass dest_render_pass = VK_NULL_HANDLE;
 	VkRenderPass mid_render_pass = VK_NULL_HANDLE;
@@ -175,6 +178,8 @@ struct ScaleEngine::Impl {
 	bool ready = false;
 
 	VkRect2D dest_area(uint32_t vp_w, uint32_t vp_h) const;
+	void begin_dest(VkCommandBuffer cmd, VkFramebuffer fb, uint32_t w,
+		uint32_t h, const float rgba[4]) const;
 
 	bool create_mid(string *error);
 	void destroy_mid();
@@ -329,6 +334,10 @@ ScaleEngine::Impl::destroy_all()
 		upload_pool = VK_NULL_HANDLE;
 		upload_cmd = VK_NULL_HANDLE;
 	}
+	vkDestroyBuffer(device, encoding_buffer, nullptr);
+	vkFreeMemory(device, encoding_memory, nullptr);
+	encoding_buffer = VK_NULL_HANDLE;
+	encoding_memory = VK_NULL_HANDLE;
 	phys = VK_NULL_HANDLE;
 	device = VK_NULL_HANDLE;
 	queue = VK_NULL_HANDLE;
@@ -1003,22 +1012,30 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 	pc.viewport_x = float(vp_w);
 	pc.viewport_y = float(vp_h);
 	pc.scale = view.scale;
-	pc.transfer = int32_t(view.transfer) |
+	pc.transfer = (view.profile_curves ? 3 : int32_t(view.transfer)) |
 		(int32_t(orientation_or_0(view.orientation)) << 8) |
 		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
 		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0) |
 		(view.output_encoding == ScaleEncoding::Linear ? (1 << 20) : 0);
-	// Supply backgrounds in the selected compositing space.
-	auto background = [&](float encoded) {
-		return view.linear_blend ? transfer_decode(encoded, view.transfer)
-								 : encoded;
+	// Backgrounds arrive encoded, independently of the output attachment.
+	auto background = [&](array<float, 3> rgb) {
+		if (!view.linear_blend)
+			return rgb;
+		if (view.profile_curves)
+			return sample_curves(encoding.decode, rgb);
+		for (float &c : rgb)
+			c = transfer_decode(c, view.transfer);
+		return rgb;
 	};
-	pc.bg_r = background(clear_rgba[0]);
-	pc.bg_g = background(clear_rgba[1]);
-	pc.bg_b = background(clear_rgba[2]);
-	pc.checker_r = background(view.checker_r);
-	pc.checker_g = background(view.checker_g);
-	pc.checker_b = background(view.checker_b);
+	const auto bg = background({clear_rgba[0], clear_rgba[1], clear_rgba[2]});
+	const auto check =
+		background({view.checker_r, view.checker_g, view.checker_b});
+	pc.bg_r = bg[0];
+	pc.bg_g = bg[1];
+	pc.bg_b = bg[2];
+	pc.checker_r = check[0];
+	pc.checker_g = check[1];
+	pc.checker_b = check[2];
 	pc.checker_size = max(view.checker_size, 1.f);
 	pc.image_w = int32_t(image_w);
 	pc.image_h = int32_t(image_h);
@@ -1135,22 +1152,41 @@ ScaleEngine::Impl::dest_area(uint32_t vp_w, uint32_t vp_h) const
 }
 
 void
+ScaleEngine::Impl::begin_dest(VkCommandBuffer cmd, VkFramebuffer fb, uint32_t w,
+	uint32_t h, const float rgba[4]) const
+{
+	const VkRect2D area = dest_area(w, h);
+	const bool inset = area.extent.width != w || area.extent.height != h;
+	const VkClearValue background{
+		.color = {{rgba[0], rgba[1], rgba[2], rgba[3]}}};
+	const VkClearValue clear = inset ? VkClearValue{} : background;
+	VkRenderPassBeginInfo rp{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = dest_render_pass,
+		.framebuffer = fb,
+		.renderArea = {.extent = {w, h}},
+		.clearValueCount = 1,
+		.pClearValues = &clear};
+	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+	// Clear transparent margins and the well in the same pass. A second
+	// UNDEFINED-layout pass could discard the first pass's margin pixels.
+	if (inset && area.extent.width && area.extent.height) {
+		const VkClearAttachment attachment{
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.colorAttachment = 0,
+			.clearValue = background};
+		const VkClearRect rect{
+			.rect = area, .baseArrayLayer = 0, .layerCount = 1};
+		vkCmdClearAttachments(cmd, 1, &attachment, 1, &rect);
+	}
+}
+
+void
 ScaleEngine::Impl::cmd_v_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
 	const float clear_rgba[4])
 {
-	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
-								 clear_rgba[2], clear_rgba[3]}}};
+	begin_dest(cmd, dest_fb, vp_w, vp_h, clear_rgba);
 	const VkRect2D area = dest_area(vp_w, vp_h);
-	VkRenderPassBeginInfo rp{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = dest_render_pass,
-		.framebuffer = dest_fb,
-		.renderArea = area,
-		.clearValueCount = 1,
-		.pClearValues = &clear,
-	};
-	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport vp{
 		.x = 0.f,
@@ -1177,18 +1213,8 @@ ScaleEngine::Impl::cmd_2d_pass(VkCommandBuffer cmd, const PushConstants &pc,
 	VkFramebuffer dest_fb, uint32_t vp_w, uint32_t vp_h,
 	const float clear_rgba[4])
 {
-	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
-								 clear_rgba[2], clear_rgba[3]}}};
+	begin_dest(cmd, dest_fb, vp_w, vp_h, clear_rgba);
 	const VkRect2D area = dest_area(vp_w, vp_h);
-	VkRenderPassBeginInfo rp{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = dest_render_pass,
-		.framebuffer = dest_fb,
-		.renderArea = area,
-		.clearValueCount = 1,
-		.pClearValues = &clear,
-	};
-	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport vp{
 		.x = 0.f,
@@ -1351,16 +1377,16 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		return false;
 	}
 
-	VkDescriptorSetLayoutBinding binding{
-		.binding = 0,
-		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 1,
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+	const VkDescriptorSetLayoutBinding bindings[] = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT,
+			nullptr},
 	};
 	VkDescriptorSetLayoutCreateInfo dlci{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 1,
-		.pBindings = &binding,
+		.bindingCount = 2,
+		.pBindings = bindings,
 	};
 	if (!CALL_VK(CreateDescriptorSetLayout, " tiles", device, &dlci, nullptr,
 			&e.dset_layout_tiles) ||
@@ -1370,15 +1396,15 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		return false;
 	}
 
-	VkDescriptorPoolSize pool_size{
-		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 2,
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
 	};
 	VkDescriptorPoolCreateInfo dpci{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.maxSets = 2,
-		.poolSizeCount = 1,
-		.pPoolSizes = &pool_size,
+		.poolSizeCount = 2,
+		.pPoolSizes = pool_sizes,
 	};
 	if (!CALL_VK(
 			CreateDescriptorPool, "", device, &dpci, nullptr, &e.dset_pool)) {
@@ -1414,6 +1440,75 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	}
 
 	e.ready = true;
+	if (set_encoding(profile_encoding(nullptr), error))
+		return true;
+	e.destroy_all();
+	return false;
+}
+
+VkDescriptorBufferInfo
+ScaleEngine::encoding_buffer() const
+{
+	if (!impl_)
+		return {};
+	return {impl_->encoding_buffer, 0, sizeof impl_->encoding.decode * 2};
+}
+
+bool
+ScaleEngine::set_encoding(const ProfileEncoding &encoding, string *error)
+{
+	if (!impl_ || !impl_->ready) {
+		if (error)
+			*error = "ScaleEngine not initialized";
+		return false;
+	}
+	Impl &e = *impl_;
+	const VkDeviceSize size = sizeof encoding.decode * 2;
+	if (!e.encoding_buffer) {
+		VkBufferCreateInfo bci{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size = size,
+			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
+		if (!CALL_VK(CreateBuffer, " curves", e.device, &bci, nullptr,
+				&e.encoding_buffer))
+			return false;
+		VkMemoryRequirements mr{};
+		vkGetBufferMemoryRequirements(e.device, e.encoding_buffer, &mr);
+		const uint32_t type = vk_memory_type(e.phys, mr.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			error, nullptr);
+		if (type == UINT32_MAX)
+			return false;
+		VkMemoryAllocateInfo mai{
+			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+			.allocationSize = mr.size,
+			.memoryTypeIndex = type};
+		if (!CALL_VK(AllocateMemory, " curves", e.device, &mai, nullptr,
+				&e.encoding_memory) ||
+			!CALL_VK(BindBufferMemory, " curves", e.device, e.encoding_buffer,
+				e.encoding_memory, 0))
+			return false;
+	}
+	void *mapped = nullptr;
+	if (!CALL_VK(MapMemory, " curves", e.device, e.encoding_memory, 0, size, 0,
+			&mapped))
+		return false;
+	memcpy(mapped, encoding.decode.data(), sizeof encoding.decode);
+	memcpy((uint8_t *) mapped + sizeof encoding.decode, encoding.encode.data(),
+		sizeof encoding.encode);
+	vkUnmapMemory(e.device, e.encoding_memory);
+	e.encoding = encoding;
+	const VkDescriptorBufferInfo info = encoding_buffer();
+	for (VkDescriptorSet set : {e.dset_tiles, e.dset_horiz}) {
+		VkWriteDescriptorSet write{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = set,
+			.dstBinding = 1,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pBufferInfo = &info};
+		vkUpdateDescriptorSets(e.device, 1, &write, 0, nullptr);
+	}
 	return true;
 }
 
@@ -1526,8 +1621,14 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 	float target_clear[4];
 	copy_n(clear_rgba, 4, target_clear);
 	if (view.output_encoding == ScaleEncoding::Linear) {
-		for (int i = 0; i < 3; i++)
-			target_clear[i] = transfer_decode(clear_rgba[i], view.transfer);
+		if (view.profile_curves) {
+			const auto rgb = sample_curves(impl_->encoding.decode,
+				{clear_rgba[0], clear_rgba[1], clear_rgba[2]});
+			copy(rgb.begin(), rgb.end(), target_clear);
+		} else {
+			for (int i = 0; i < 3; i++)
+				target_clear[i] = transfer_decode(clear_rgba[i], view.transfer);
+		}
 	}
 
 	Impl &e = *impl_;
@@ -1578,18 +1679,7 @@ ScaleEngine::record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		return false;
 	}
 
-	const VkClearValue clear{.color = {{clear_rgba[0], clear_rgba[1],
-								 clear_rgba[2], clear_rgba[3]}}};
-	const VkRect2D area = impl_->dest_area(viewport_w, viewport_h);
-	VkRenderPassBeginInfo rp{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-		.renderPass = impl_->dest_render_pass,
-		.framebuffer = dest_fb,
-		.renderArea = area,
-		.clearValueCount = 1,
-		.pClearValues = &clear,
-	};
-	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+	impl_->begin_dest(cmd, dest_fb, viewport_w, viewport_h, clear_rgba);
 	vkCmdEndRenderPass(cmd);
 	return true;
 }
@@ -1625,7 +1715,7 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 		.samples = VK_SAMPLE_COUNT_1_BIT,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
 		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-			VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};

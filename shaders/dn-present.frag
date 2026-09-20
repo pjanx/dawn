@@ -1,17 +1,22 @@
 //
-// dn-dither.frag: ordered dither from the 16-bit compose to a chosen depth
+// dn-present.frag: encode linear composition, then optionally dither
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
 //
 
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#define DN_FILTER 0
+#include "common.glsl"
 
 layout(set = 0, binding = 0) uniform sampler2D u_compose;
 layout(location = 0) out vec4 out_color;
 
 layout(push_constant) uniform Push {
-	float levels;  // 2^bpc - 1
+	float levels;  // 0 disables dithering; otherwise 2^bpc - 1
+	uint premultiplied;
+	uint srgb_attachment;
 } pc;
 
 float
@@ -29,6 +34,12 @@ void
 main()
 {
 	vec4 c = texelFetch(u_compose, ivec2(gl_FragCoord.xy), 0);
-	c.rgb = floor(c.rgb * pc.levels + bayer8(gl_FragCoord.xy)) / pc.levels;
+	c.rgb = c.a > 0.0 ? profile_curve(c.rgb / c.a, true) : vec3(0.0);
+	if (pc.premultiplied != 0)
+		c.rgb *= c.a;
+	if (pc.levels > 0.0)
+		c.rgb = floor(c.rgb * pc.levels + bayer8(gl_FragCoord.xy)) / pc.levels;
+	if (pc.srgb_attachment != 0)
+		c.rgb = srgb_to_linear(c.rgb);
 	out_color = vec4(c.rgb, c.a);
 }

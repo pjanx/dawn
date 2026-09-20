@@ -34,8 +34,7 @@ struct ThumbUpload {
 };
 
 // The overlay half of the renderer: it owns the font and thumbnail atlases,
-// and turns an OverlayMesh into draw calls on the swapchain (or, when the
-// renderer dithers, on its compose image).
+// and turns an OverlayMesh into draws on the linear composition image.
 class OverlayVulkan
 {
 	void destroy_swapchain();
@@ -110,6 +109,7 @@ public:
 		VkImageLayout final_layout);
 	bool set_format(VkFormat format, VkImageLayout initial_layout,
 		VkImageLayout final_layout);
+	void set_encoding_buffer(VkDescriptorBufferInfo info);
 	void set_swapchain(
 		const std::vector<VkImageView> &views, VkExtent2D extent);
 	bool upload_font(const unsigned char *pixels, int width, int height);
@@ -130,9 +130,9 @@ class Renderer
 	void create_swapchain();
 	void ensure_engine(VkFormat dest_format, VkImageLayout dest_layout);
 	void wait_idle() const;
-	void destroy_dither();
-	void create_dither();
-	void record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const;
+	void destroy_presentation();
+	void create_presentation();
+	void record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const;
 	[[nodiscard]] bool dithering() const;
 
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;   // borrowed from QWindow
@@ -169,7 +169,9 @@ class Renderer
 	bool linear_blend_ = false;
 	bool filter_ = true;
 	dawn::Filter preferred_ = dawn::Filter::Expensive;
-	dawn::Transfer transfer_ = dawn::Transfer::Srgb;
+	std::shared_ptr<const dawn::ProfileEncoding> encoding_;
+	VkCompositeAlphaFlagBitsKHR composite_alpha_ =
+		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
 	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
 	int checker_px_ = 20;
@@ -179,15 +181,15 @@ class Renderer
 	VkDeviceMemory compose_memory_ = VK_NULL_HANDLE;
 	VkImageView compose_view_ = VK_NULL_HANDLE;
 	VkFramebuffer compose_fb_ = VK_NULL_HANDLE;
-	VkRenderPass dither_rp_ = VK_NULL_HANDLE;
-	VkDescriptorSetLayout dither_set_layout_ = VK_NULL_HANDLE;
-	VkPipelineLayout dither_layout_ = VK_NULL_HANDLE;
-	VkPipeline dither_pipe_ = VK_NULL_HANDLE;
-	VkSampler dither_sampler_ = VK_NULL_HANDLE;
-	VkDescriptorPool dither_pool_ = VK_NULL_HANDLE;
-	VkDescriptorSet dither_set_ = VK_NULL_HANDLE;
-	VkShaderModule dither_vert_ = VK_NULL_HANDLE;
-	VkShaderModule dither_frag_ = VK_NULL_HANDLE;
+	VkRenderPass presentation_rp_ = VK_NULL_HANDLE;
+	VkDescriptorSetLayout presentation_set_layout_ = VK_NULL_HANDLE;
+	VkPipelineLayout presentation_layout_ = VK_NULL_HANDLE;
+	VkPipeline presentation_pipe_ = VK_NULL_HANDLE;
+	VkSampler presentation_sampler_ = VK_NULL_HANDLE;
+	VkDescriptorPool presentation_pool_ = VK_NULL_HANDLE;
+	VkDescriptorSet presentation_set_ = VK_NULL_HANDLE;
+	VkShaderModule presentation_vert_ = VK_NULL_HANDLE;
+	VkShaderModule presentation_frag_ = VK_NULL_HANDLE;
 	bool needs_resize_ = false;
 	bool prefer_premultiplied_ = false;
 	bool dither_enabled_ = true;
@@ -230,7 +232,7 @@ public:
 	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
 	/// Nearest.
 	void set_filter(bool enabled) { this->filter_ = enabled; }
-	void set_transfer(dawn::Transfer transfer) { this->transfer_ = transfer; }
+	void set_encoding(std::shared_ptr<const dawn::ProfileEncoding> encoding);
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,

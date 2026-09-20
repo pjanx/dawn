@@ -161,7 +161,7 @@ OverlayList::add_image(Box b, Uv uv, Colour col)
 
 void
 OverlayList::add_thumb(
-	Box b, Uv uv, int transfer, Colour col, const ThumbBackground &background)
+	Box b, Uv uv, Colour col, const ThumbBackground &background)
 {
 	this->tex_ = kOverlayTexThumbs;
 	this->background_ = background;
@@ -175,7 +175,6 @@ OverlayList::add_thumb(
 		vertex.atlas_y1 = uv.v1;
 		vertex.dest_w = float(abs(b.x1 - b.x0));
 		vertex.dest_h = float(abs(b.y1 - b.y0));
-		vertex.transfer = float(transfer);
 	}
 }
 

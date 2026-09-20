@@ -5,6 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "dn-present-frag-spv.h"
+#include "dn/renderer.hpp"
+#include "fullscreen-vert-spv.h"
 #include "libdn/libdnvk.hpp"
 #include "libdn/scale-scaler.hpp"
 #include "libdn/vk-device.hpp"
@@ -81,9 +84,24 @@ struct EngineReadback {
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VkDeviceMemory staging = VK_NULL_HANDLE;
 	dawn::ScaleEngine engine;
+	dn::OverlayVulkan overlay;
+	VkImage presented = VK_NULL_HANDLE;
+	VkDeviceMemory presented_memory = VK_NULL_HANDLE;
+	VkImageView presented_view = VK_NULL_HANDLE;
+	VkFramebuffer presented_fb = VK_NULL_HANDLE;
+	VkDescriptorSetLayout set_layout = VK_NULL_HANDLE;
+	VkDescriptorPool descriptors = VK_NULL_HANDLE;
+	VkDescriptorSet set = VK_NULL_HANDLE;
+	VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+	VkPipeline pipeline = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
 
 	~EngineReadback();
 	bool init(string *error);
+	bool init_presentation(string *error);
+	bool readback(VkImage source, array<uint16_t, 16> *pixels, string *error);
+	bool compose(const dn::OverlayMesh &mesh, bool premultiplied, float levels,
+		array<uint16_t, 16> *pixels, string *error);
 	bool draw(const dawn::ScaleView &view, const float clear[4],
 		array<uint16_t, 16> *pixels, string *error);
 };
@@ -93,6 +111,14 @@ EngineReadback::~EngineReadback()
 {
 	if (device) {
 		vkDeviceWaitIdle(device);
+		overlay.destroy();
+		vkDestroyPipeline(device, pipeline, nullptr);
+		vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+		vkDestroyDescriptorPool(device, descriptors, nullptr);
+		vkDestroyDescriptorSetLayout(device, set_layout, nullptr);
+		vkDestroySampler(device, sampler, nullptr);
+		engine.destroy_offscreen(
+			&presented, &presented_memory, &presented_view, &presented_fb);
 		engine.destroy_offscreen(&image, &memory, &image_view, &fb);
 		engine.destroy();
 		vkDestroyBuffer(device, buffer, nullptr);
@@ -150,6 +176,16 @@ EngineReadback::init(string *error)
 		!engine.create_offscreen(
 			2, 2, &image, &memory, &image_view, &fb, error))
 		return false;
+	if (!overlay.init(phys, device, queue, family, VK_FORMAT_R16G16B16A16_UNORM,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL))
+		return false;
+	overlay.set_encoding_buffer(engine.encoding_buffer());
+	overlay.set_swapchain({image_view}, {2, 2});
+	const uint16_t atlas[] = {
+		65535, 65535, 65535, 65535, 32768, 32768, 32768, 32768};
+	if (!overlay.upload_font((const unsigned char *) atlas, 2, 1))
+		return false;
 	VkBufferCreateInfo bci{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = 32,
 		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -182,6 +218,13 @@ EngineReadback::draw(const dawn::ScaleView &view, const float clear[4],
 	if (!CALL_VK(BeginCommandBuffer, " test", cmd, &begin) ||
 		!engine.record(cmd, fb, 2, 2, view, clear, error))
 		return false;
+	return readback(image, pixels, error);
+}
+
+bool
+EngineReadback::readback(
+	VkImage source, array<uint16_t, 16> *pixels, string *error)
+{
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -190,7 +233,7 @@ EngineReadback::draw(const dawn::ScaleView &view, const float clear[4],
 		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.image = image,
+		.image = source,
 		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
@@ -198,7 +241,7 @@ EngineReadback::draw(const dawn::ScaleView &view, const float clear[4],
 		.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
 		.imageExtent = {2, 2, 1}};
 	vkCmdCopyImageToBuffer(
-		cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copy);
+		cmd, source, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copy);
 	if (!CALL_VK(EndCommandBuffer, " test", cmd))
 		return false;
 	VkSubmitInfo submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -214,6 +257,357 @@ EngineReadback::draw(const dawn::ScaleView &view, const float clear[4],
 	memcpy(pixels->data(), mapped, sizeof *pixels);
 	vkUnmapMemory(device, staging);
 	return true;
+}
+
+bool
+EngineReadback::init_presentation(string *error)
+{
+	if (!engine.create_offscreen(2, 2, &presented, &presented_memory,
+			&presented_view, &presented_fb, error))
+		return false;
+	const VkDescriptorSetLayoutBinding bindings[] = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT,
+			nullptr},
+	};
+	VkDescriptorSetLayoutCreateInfo dlci{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 2,
+		.pBindings = bindings};
+	if (!CALL_VK(CreateDescriptorSetLayout, " present test", device, &dlci,
+			nullptr, &set_layout))
+		return false;
+	const VkDescriptorPoolSize sizes[] = {
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+	VkDescriptorPoolCreateInfo dpci{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+		.maxSets = 1,
+		.poolSizeCount = 2,
+		.pPoolSizes = sizes};
+	if (!CALL_VK(CreateDescriptorPool, " present test", device, &dpci, nullptr,
+			&descriptors))
+		return false;
+	VkDescriptorSetAllocateInfo ai{
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+		.descriptorPool = descriptors,
+		.descriptorSetCount = 1,
+		.pSetLayouts = &set_layout};
+	if (!CALL_VK(AllocateDescriptorSets, " present test", device, &ai, &set))
+		return false;
+	VkSamplerCreateInfo sci{.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.magFilter = VK_FILTER_NEAREST,
+		.minFilter = VK_FILTER_NEAREST,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE};
+	if (!CALL_VK(
+			CreateSampler, " present test", device, &sci, nullptr, &sampler))
+		return false;
+	const VkDescriptorImageInfo image_info{
+		sampler, image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+	const auto buffer_info = engine.encoding_buffer();
+	const VkWriteDescriptorSet writes[] = {
+		{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = set,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &image_info},
+		{.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = set,
+			.dstBinding = 1,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pBufferInfo = &buffer_info},
+	};
+	vkUpdateDescriptorSets(device, 2, writes, 0, nullptr);
+	VkPushConstantRange push{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 12};
+	VkPipelineLayoutCreateInfo plci{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &set_layout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &push};
+	if (!CALL_VK(CreatePipelineLayout, " present test", device, &plci, nullptr,
+			&pipeline_layout))
+		return false;
+	VkShaderModule vert = dawn::make_shader(
+		device, fullscreen_vert, fullscreen_vert_words, error);
+	VkShaderModule frag = dawn::make_shader(
+		device, dn_present_frag, dn_present_frag_words, error);
+	VkPipelineShaderStageCreateInfo stages[] = {
+		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_VERTEX_BIT,
+			.module = vert,
+			.pName = "main"},
+		{.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.module = frag,
+			.pName = "main"},
+	};
+	VkGraphicsPipelineCreateInfo pci{
+		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+		.stageCount = 2,
+		.pStages = stages,
+		.pVertexInputState = &dawn::kNoVertexInput,
+		.pInputAssemblyState = &dawn::kTriangleList,
+		.pViewportState = &dawn::kOneViewport,
+		.pRasterizationState = &dawn::kRasterFill,
+		.pMultisampleState = &dawn::kNoMultisample,
+		.pColorBlendState = &dawn::kBlendReplace,
+		.pDynamicState = &dawn::kDynamicViewportScissor,
+		.layout = pipeline_layout,
+		.renderPass = engine.dest_render_pass()};
+	const bool ok = vert && frag &&
+		CALL_VK(CreateGraphicsPipelines, " present test", device,
+			VK_NULL_HANDLE, 1, &pci, nullptr, &pipeline);
+	vkDestroyShaderModule(device, vert, nullptr);
+	vkDestroyShaderModule(device, frag, nullptr);
+	return ok;
+}
+
+bool
+EngineReadback::compose(const dn::OverlayMesh &mesh, bool premultiplied,
+	float levels, array<uint16_t, 16> *pixels, string *error)
+{
+	if (!CALL_VK(ResetCommandBuffer, " compose test", cmd, 0))
+		return false;
+	VkCommandBufferBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+	if (!CALL_VK(BeginCommandBuffer, " compose test", cmd, &begin))
+		return false;
+	const float clear[4] = {};
+	if (!engine.record_clear(cmd, fb, 2, 2, clear, error))
+		return false;
+	overlay.record(cmd, 0, mesh);
+	VkImageMemoryBarrier barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = image,
+		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
+		&barrier);
+	const VkClearValue zero{};
+	VkRenderPassBeginInfo rp{.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+		.renderPass = engine.dest_render_pass(),
+		.framebuffer = presented_fb,
+		.renderArea = {.extent = {2, 2}},
+		.clearValueCount = 1,
+		.pClearValues = &zero};
+	vkCmdBeginRenderPass(cmd, &rp, VK_SUBPASS_CONTENTS_INLINE);
+	VkViewport vp{.width = 2, .height = 2, .maxDepth = 1};
+	VkRect2D scissor{.extent = {2, 2}};
+	vkCmdSetViewport(cmd, 0, 1, &vp);
+	vkCmdSetScissor(cmd, 0, 1, &scissor);
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipeline_layout, 0, 1, &set, 0, nullptr);
+	const struct {
+		float levels;
+		uint32_t premultiplied;
+		uint32_t srgb;
+	} push{levels, premultiplied, 0};
+	vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+		sizeof push, &push);
+	vkCmdDraw(cmd, 3, 1, 0, 0);
+	vkCmdEndRenderPass(cmd);
+	return readback(presented, pixels, error);
+}
+
+static void
+test_composition()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error) || !gpu.init_presentation(&error)) {
+		test::fail("composition setup: %s", error.c_str());
+		return;
+	}
+	const dn::Box box{0, 0, 2, 2};
+	const dn::Colour white{1, 1, 1, 1};
+	dn::OverlayList list;
+	array<uint16_t, 16> pixels{};
+	auto begin = [&] { list.begin(2, 2, {.5f, .5f, .5f, .5f}); };
+	auto render = [&](bool premultiplied, float levels) {
+		list.end();
+		CHECK(gpu.compose(list.mesh(), premultiplied, levels, &pixels, &error));
+	};
+	auto near = [&](int pixel, int c, float want) {
+		const float actual = pixels[pixel * 4 + c] / 65535.f;
+		if (abs(actual - want) > .0003f)
+			test::fail("composition pixel %d channel %d: %.6f != %.6f", pixel,
+				c, actual, want);
+	};
+	begin();
+	list.add_rect_filled(box, white);
+	list.add_rect_filled(box, {0, 0, 0, .5f});
+	render(true, 0);
+	near(0, 0, .735357f);
+	near(0, 3, 1);
+
+	// Coverage is scalar opacity, not an encoded RGB sample.
+	begin();
+	list.add_rect_filled(box, white);
+	list.add_image(box, {1.5f, .5f, 1.5f, .5f}, {0, 0, 0, 1});
+	render(true, 0);
+	near(0, 0, .735357f);
+
+	begin();
+	list.add_rect_filled_vgradient(box, white, {0, 0, 0, 1});
+	render(true, 0);
+	near(0, 0, .880825f);
+	near(2, 0, .537099f);
+
+	for (bool premultiplied : {false, true}) {
+		begin();
+		list.add_rect_filled(box, {1, 0, 0, .25f});
+		list.add_rect_filled(box, {0, 0, 1, .5f});
+		render(premultiplied, 0);
+		near(0, 0, .484529f * (premultiplied ? .625f : 1));
+		near(0, 2, .906332f * (premultiplied ? .625f : 1));
+		near(0, 3, .625f);
+		begin();
+		render(premultiplied, 0);
+		near(0, 0, 0);
+		near(0, 3, 0);
+	}
+	// A half-transparent black image resolves against encoded checkers.
+	const uint16_t thumbnail[] = {0, 0, 0, 32768};
+	bool recreated = false;
+	CHECK(gpu.overlay.upload_thumb(thumbnail, 1, 1, 0, 0, 2, &recreated));
+	const dn::ThumbBackground background{{.25f, .25f, .25f, 1}, white, 0, 0, 1};
+	begin();
+	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	render(true, 0);
+	near(0, 0, .5f);
+	near(1, 0, .268549f);
+	begin();
+	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	list.add_rect_filled(box, {1, 0, 0, .5f});
+	render(true, 0);
+	near(0, 0, .801881f);
+	near(0, 1, .360780f);
+
+	// Clipping must not reset the checker phase; atlas data survives resize.
+	gpu.overlay.set_swapchain({}, {});
+	gpu.overlay.set_swapchain({gpu.image_view}, {2, 2});
+	begin();
+	auto shifted = background;
+	shifted.origin_x = -1;
+	list.push_clip({0, 0, 1, 2});
+	list.add_thumb(box, {0, 0, .5f, .5f}, white, shifted);
+	list.pop_clip();
+	render(true, 0);
+	near(0, 0, .268549f);
+	near(1, 3, 0);
+	near(2, 0, .5f);
+
+	// A profile replacement updates both presentation and thumbnail curves.
+	auto custom = dawn::profile_encoding(nullptr);
+	for (size_t i = 0; i < custom.kSamples; i++) {
+		const float x = float(i) / float(custom.kSamples - 1);
+		for (int c = 0; c < 3; c++) {
+			custom.decode[i][c] = powf(x, float(c + 1));
+			custom.encode[i][c] = powf(x, 1.f / float(c + 1));
+		}
+	}
+	CHECK(gpu.engine.set_encoding(custom, &error));
+	begin();
+	list.add_rect_filled(box, {.25f, .25f, .25f, 1});
+	render(true, 0);
+	near(0, 0, .25f);
+	near(0, 1, .5f);
+	near(0, 2, .629961f);
+	begin();
+	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	render(true, 0);
+	near(0, 0, .5f);
+	near(0, 1, .5f);
+	near(0, 2, .5f);
+	near(1, 0, .125f);
+	near(1, 1, .25f);
+	near(1, 2, .31498f);
+
+	for (float levels : {255.f, 1023.f}) {
+		begin();
+		list.add_rect_filled(box, {.25f, .25f, .25f, 1});
+		render(true, levels);
+		near(0, 0, floorf(.25f * levels + .5f / 64) / levels);
+	}
+}
+
+static void
+test_viewer_curves()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error)) {
+		test::fail("viewer curves setup: %s", error.c_str());
+		return;
+	}
+	auto curves = dawn::profile_encoding(nullptr);
+	for (size_t i = 0; i < curves.kSamples; i++) {
+		const float x = float(i) / float(curves.kSamples - 1);
+		for (int c = 0; c < 3; c++) {
+			curves.decode[i][c] = powf(x, float(c + 1));
+			curves.encode[i][c] = powf(x, 1.f / float(c + 1));
+		}
+	}
+	CHECK(gpu.engine.set_encoding(curves, &error));
+	const array<Pixel, 4> src{
+		{{16384, 16384, 16384, 32768}, {16384, 16384, 16384, 32768},
+			{16384, 16384, 16384, 32768}, {16384, 16384, 16384, 32768}}};
+	CHECK(gpu.engine.set_image(
+		2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error));
+	CHECK(gpu.engine.ensure_viewport(2, 2, &error));
+	for (auto filter : {dawn::Filter::Nearest, dawn::Filter::Bilinear,
+			 dawn::Filter::Expensive}) {
+		for (int flags = 0; flags < 8; flags++) {
+			dawn::ScaleView view;
+			view.profile_curves = true;
+			view.filter = filter;
+			view.linear_blend = flags & 1;
+			const bool linear = flags & 2;
+			view.output_encoding = linear ? dawn::ScaleEncoding::Linear
+										  : dawn::ScaleEncoding::Encoded;
+			view.composite = flags & 4;
+			const float bg = view.composite ? 1 : 0;
+			const float clear[] = {bg, bg, bg, bg};
+			array<uint16_t, 16> pixels{};
+			CHECK(gpu.draw(view, clear, &pixels, &error));
+			for (int c = 0; c < 3; c++) {
+				const float gamma = float(c + 1);
+				float expected = .5f * (linear ? powf(.5f, gamma) : .5f);
+				if (view.composite) {
+					expected =
+						view.linear_blend ? .5f + .5f * powf(.5f, gamma) : .75f;
+					if (linear != view.linear_blend)
+						expected = powf(expected, linear ? gamma : 1.f / gamma);
+				}
+				CHECK(abs(pixels[c] / 65535.f - expected) < .0003f);
+			}
+			CHECK(abs(pixels[3] / 65535.f - (view.composite ? 1.f : .5f)) <
+				.0001f);
+		}
+	}
+	// CSD margins remain transparent even when the well and image are drawn.
+	gpu.engine.set_dest_inset(1, 0, 0, 0);
+	dawn::ScaleView view;
+	view.profile_curves = true;
+	view.output_encoding = dawn::ScaleEncoding::Linear;
+	view.composite = true;
+	const float clear[] = {1, 1, 1, 1};
+	array<uint16_t, 16> pixels{};
+	CHECK(gpu.draw(view, clear, &pixels, &error));
+	CHECK(pixels[0] == 0 && pixels[3] == 0 && pixels[11] == 0);
+	CHECK(pixels[7] == 65535 && pixels[15] == 65535);
 }
 
 static void
@@ -425,5 +819,7 @@ main()
 		{"orientation", test_orientation},
 		{"partial transparency", test_partial_transparency},
 		{"output encoding and composition", test_output_encoding},
+		{"linear GUI composition", test_composition},
+		{"viewer display curves", test_viewer_curves},
 	});
 }

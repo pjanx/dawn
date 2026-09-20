@@ -382,6 +382,17 @@ profile_transfer(const Profile *profile)
 	return Transfer::Srgb;
 }
 
+array<float, 3>
+sample_curves(span<const array<float, 3>> curves, array<float, 3> rgb)
+{
+	for (int c = 0; c < 3; c++) {
+		const float x = clamp(rgb[c], 0.f, 1.f) * float(curves.size() - 1);
+		const size_t lo = min(size_t(x), curves.size() - 2);
+		rgb[c] = lerp(curves[lo][c], curves[lo + 1][c], x - float(lo));
+	}
+	return rgb;
+}
+
 ProfileEncoding
 profile_encoding(const Profile *profile)
 {

@@ -62,7 +62,6 @@ struct Browser : Widget {
 			int h = 0;
 			// Which cache tier these came from, -1 if from none.
 			int tier = -1;
-			dawn::Transfer transfer = dawn::Transfer::Srgb;
 		};
 		Pixels pixels;
 

@@ -550,7 +550,7 @@ target_sources(dn PRIVATE
 dawn_embed_shader(dn dn-overlay.vert dn_overlay_vert)
 dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
 dawn_embed_shader(dn dn-thumb.frag dn_thumb_frag)
-dawn_embed_shader(dn dn-dither.frag dn_dither_frag)
+dawn_embed_shader(dn dn-present.frag dn_present_frag)
 
 if (WIN32)
 	target_sources(dn PRIVATE

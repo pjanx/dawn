@@ -52,13 +52,12 @@ struct OverlayVertex {
 	float atlas_y1 = 0;
 	float dest_w = 0;
 	float dest_h = 0;
-	float transfer = 0;
 };
 
 constexpr uint32_t kOverlayTexFont = 0;
 constexpr uint32_t kOverlayTexThumbs = 1;
 
-// Encoded, opaque checker colours; size and origin are framebuffer pixels.
+// Linear, opaque checker colours; size and origin are framebuffer pixels.
 struct ThumbBackground {
 	Colour odd{};
 	Colour even{};
@@ -107,8 +106,7 @@ public:
 	// collapsed along one axis: there is no line primitive.
 	void add_rect_stroke(Box b, Colour col, int thickness);
 	void add_image(Box b, Uv uv, Colour col);
-	void add_thumb(Box b, Uv uv, int transfer, Colour col,
-		const ThumbBackground &background);
+	void add_thumb(Box b, Uv uv, Colour col, const ThumbBackground &background);
 
 	[[nodiscard]] const OverlayMesh &mesh() const { return this->mesh_; }
 };

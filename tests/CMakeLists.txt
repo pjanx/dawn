@@ -109,8 +109,15 @@ target_link_libraries(test-icns PRIVATE libdn)
 add_test(NAME icns COMMAND test-icns)
 
 # Vulkan may be unavailable, and validation layers only exist where installed.
-add_executable(test-scale-scaler test-scale-scaler.cpp)
-target_link_libraries(test-scale-scaler PRIVATE libdn Vulkan::Vulkan)
+add_executable(test-scale-scaler test-scale-scaler.cpp
+	"${PROJECT_SOURCE_DIR}/dn/renderer.cpp"
+	"${PROJECT_SOURCE_DIR}/dn/overlay.cpp")
+dawn_embed_shader(test-scale-scaler dn-overlay.vert dn_overlay_vert)
+dawn_embed_shader(test-scale-scaler dn-overlay.frag dn_overlay_frag)
+dawn_embed_shader(test-scale-scaler dn-thumb.frag dn_thumb_frag)
+dawn_embed_shader(test-scale-scaler dn-present.frag dn_present_frag)
+dawn_embed_shader(test-scale-scaler fullscreen.vert fullscreen_vert)
+target_link_libraries(test-scale-scaler PRIVATE libdn Vulkan::Vulkan Qt6::Gui)
 add_test(NAME scale_scaler COMMAND test-scale-scaler)
 set_tests_properties(scale_scaler PROPERTIES
 	SKIP_RETURN_CODE 77

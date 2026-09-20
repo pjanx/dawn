@@ -51,7 +51,7 @@ int unpack_linear_output(int packed)
 
 #ifndef DN_COMPUTE
 // Squares of `size` device pixels, resolved from one design size by the
-// caller, as the browser's draw_checkers() resolves the same constant.
+// caller, as the browser resolves its thumbnail checker size.
 // even = toolbar_bottom, odd = well (the browser's pairing).
 // Colours are already in the compositing space.
 vec3 checker(vec3 odd, vec3 even, float size)
@@ -125,8 +125,34 @@ vec3 linear_to_gamma22(vec3 c)
 	return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2));
 }
 
+#ifndef DN_COMPUTE
+// The GUI shares these actual display curves across image, overlay and
+// presentation passes. Analytic non-GUI clients retain their old transfer IDs.
+layout(std430, set = 0, binding = 1) readonly buffer Curves {
+	float decode[4097 * 3];
+	float encode[4097 * 3];
+} curves;
+
+vec3 profile_curve(vec3 rgb, bool encode)
+{
+	vec3 x = clamp(rgb, 0.0, 1.0) * 4096.0;
+	ivec3 lo = min(ivec3(x), ivec3(4095));
+	for (int c = 0; c < 3; c++) {
+		int i = lo[c] * 3 + c;
+		float a = encode ? curves.encode[i] : curves.decode[i];
+		float b = encode ? curves.encode[i + 3] : curves.decode[i + 3];
+		rgb[c] = mix(a, b, x[c] - float(lo[c]));
+	}
+	return rgb;
+}
+#endif
+
 vec3 decode_rgb(vec3 c, int transfer)
 {
+#ifndef DN_COMPUTE
+	if (transfer == 3)
+		return profile_curve(c, false);
+#endif
 	if (transfer == TRANSFER_SRGB)
 		return srgb_to_linear(c);
 	if (transfer == TRANSFER_ADOBE_RGB)
@@ -136,6 +162,10 @@ vec3 decode_rgb(vec3 c, int transfer)
 
 vec3 encode_rgb(vec3 c, int transfer)
 {
+#ifndef DN_COMPUTE
+	if (transfer == 3)
+		return profile_curve(c, true);
+#endif
 	if (transfer == TRANSFER_SRGB)
 		return linear_to_srgb(c);
 	if (transfer == TRANSFER_ADOBE_RGB)

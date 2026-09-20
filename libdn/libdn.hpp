@@ -202,6 +202,9 @@ public:
 /// tags, mixed channels, or any other curve → Srgb.
 Transfer profile_transfer(const Profile *profile);
 ProfileEncoding profile_encoding(const Profile *profile);
+/// Linearly sample at least two uniformly spaced RGB curve entries.
+std::array<float, 3> sample_curves(
+	std::span<const std::array<float, 3>> curves, std::array<float, 3> rgb);
 float transfer_decode(float encoded, Transfer transfer);
 float transfer_encode(float linear, Transfer transfer);
 

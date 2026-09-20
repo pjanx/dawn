@@ -27,6 +27,7 @@ struct CieDiagram : Widget {
 	void paint(Kit &kit) const override;
 
 private:
+	std::shared_ptr<const ScreenColour> packed_colour_;
 	Kit::Packed slot_{};
 	uint32_t epoch_ = 0;
 	dawn::Chromaticities packed_image_{};

@@ -808,8 +808,9 @@ Window::apply_screen_profile(QScreen *target_screen, bool force_reload)
 	this->screen_state_.profile = this->screen_profile_;
 	this->screen_state_.fallback = this->screen_profile_fallback_;
 
-	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
-	this->renderer_.set_transfer(profile_transfer(this->screen_profile_.get()));
+	this->kit_.bake_colours(this->screen_state_);
+	this->renderer_.set_encoding(shared_ptr<const dawn::ProfileEncoding>(
+		this->screen_state_.colour, &this->screen_state_.colour->encoding));
 	for (auto &page : this->pages_)
 		if (page && page->content)
 			page->content->screen_changed(
@@ -887,7 +888,7 @@ void
 Window::apply_dark(bool dark)
 {
 	this->kit_.dark_ = dark;
-	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
+	this->kit_.bake_colours(this->screen_state_);
 #ifdef Q_OS_MACOS
 	sync_macos_window_appearance(this, dark);
 #endif

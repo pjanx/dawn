@@ -33,6 +33,8 @@ struct ScaleView {
 	float pan_y = 0.f;
 	float angle = 0.f;
 	Transfer transfer = Transfer::Srgb;
+	/// Use set_encoding()'s actual per-channel curves instead of transfer.
+	bool profile_curves = false;
 	/// Output representation, independent of the image blending policy.
 	/// Non-composited output remains premultiplied in this space.
 	ScaleEncoding output_encoding = ScaleEncoding::Encoded;
@@ -76,6 +78,11 @@ public:
 		VkImageLayout dest_final_layout, std::string *error);
 	void destroy();
 
+	/// Caller must finish outstanding draws before updating these shared
+	/// curves.
+	bool set_encoding(const ProfileEncoding &encoding, std::string *error);
+	VkDescriptorBufferInfo encoding_buffer() const;
+
 	bool set_image(uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride,
 		std::string *error);
 	void clear_image();
@@ -86,6 +93,7 @@ public:
 
 	bool ensure_viewport(
 		uint32_t viewport_w, uint32_t viewport_h, std::string *error);
+	/// Excluded margins are cleared to transparent black.
 	void set_dest_inset(
 		uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
 

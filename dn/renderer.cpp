@@ -7,9 +7,9 @@
 
 #include "renderer.hpp"
 
-#include "dn-dither-frag-spv.h"
 #include "dn-overlay-frag-spv.h"
 #include "dn-overlay-vert-spv.h"
+#include "dn-present-frag-spv.h"
 #include "dn-thumb-frag-spv.h"
 #include "fullscreen-vert-spv.h"
 #include "libdn/vk-device.hpp"
@@ -117,6 +117,8 @@ dither_bits(VkFormat format)
 	static const int forced = env ? atoi(env) : 0;
 	if (forced)
 		return forced;
+	if (format == VK_FORMAT_B8G8R8A8_SRGB || format == VK_FORMAT_R8G8B8A8_SRGB)
+		return 8;
 	return format_bits(format);
 }
 
@@ -169,9 +171,8 @@ struct PushConstant {
 	Colour even;
 	float origin[2];
 	float checker_size;
-	uint32_t linear_output;
 };
-static_assert(sizeof(PushConstant) == 64);
+static_assert(sizeof(PushConstant) == 60);
 }  // namespace
 
 static VkImageCreateInfo
@@ -255,7 +256,7 @@ Renderer::destroy_swapchain()
 		return;
 	vkDeviceWaitIdle(this->device_);
 	this->overlay_.set_swapchain({}, {});
-	destroy_dither();
+	destroy_presentation();
 	for (VkFramebuffer framebuffer : this->framebuffers_)
 		if (framebuffer)
 			vkDestroyFramebuffer(this->device_, framebuffer, nullptr);
@@ -303,6 +304,7 @@ Renderer::destroy()
 	this->want_extent_ = {};
 	this->overlay_format_ = VK_FORMAT_UNDEFINED;
 	this->overlay_layout_ = VK_IMAGE_LAYOUT_UNDEFINED;
+	this->encoding_.reset();
 	this->present_about_to_queue_ = {};
 	this->present_queued_ = {};
 }
@@ -311,7 +313,7 @@ bool
 Renderer::dithering() const
 {
 	const int bits = dither_bits(this->format_);
-	return this->dither_enabled_ && bits > 0 && bits <= 8;
+	return this->dither_enabled_ && bits > 0 && bits <= 10;
 }
 
 void
@@ -323,6 +325,21 @@ Renderer::ensure_engine(VkFormat dest_format, VkImageLayout dest_layout)
 	string error;
 	if (!this->engine_.init(this->phys_, this->device_, this->queue_,
 			this->queue_family_, dest_format, dest_layout, &error))
+		die(error.c_str());
+	if (!this->encoding_)
+		set_encoding(make_shared<const dawn::ProfileEncoding>(
+			dawn::profile_encoding(nullptr)));
+}
+
+void
+Renderer::set_encoding(shared_ptr<const dawn::ProfileEncoding> encoding)
+{
+	if (this->encoding_ == encoding)
+		return;
+	wait_idle();
+	this->encoding_ = std::move(encoding);
+	string error;
+	if (!this->engine_.set_encoding(*this->encoding_, &error))
 		die(error.c_str());
 }
 
@@ -368,14 +385,9 @@ Renderer::create_swapchain()
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
 	}
-	const bool dither = dithering();
-	const VkFormat dest_format =
-		dither ? VK_FORMAT_R16G16B16A16_UNORM : this->format_;
-	const VkImageLayout dest_layout = dither
-		? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-		: VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	if (this->format_ != old_format || !this->engine_.dest_render_pass())
-		this->engine_.destroy();
+	constexpr VkFormat dest_format = VK_FORMAT_R16G16B16A16_UNORM;
+	constexpr VkImageLayout dest_layout =
+		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	ensure_engine(dest_format, dest_layout);
 
 	// A window that isn't shown yet has no extent, but pages may already
@@ -408,6 +420,7 @@ Renderer::create_swapchain()
 			}
 		}
 	}
+	this->composite_alpha_ = composite_alpha;
 	VkSwapchainCreateInfoKHR swapchain_info{
 		.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 		.surface = this->surface_,
@@ -453,10 +466,8 @@ Renderer::create_swapchain()
 		CALL_VK(CreateImageView, " swap", this->device_, &view_info, nullptr,
 			&this->views_[i]);
 	}
-	if (dither)
-		create_dither();
-	const VkRenderPass swap_rp =
-		dither ? this->dither_rp_ : this->engine_.dest_render_pass();
+	create_presentation();
+	const VkRenderPass swap_rp = this->presentation_rp_;
 	for (uint32_t i = 0; i < count; i++) {
 		VkFramebufferCreateInfo framebuffer_info{
 			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -476,17 +487,14 @@ Renderer::create_swapchain()
 			die("overlay vulkan init failed");
 	} else if (this->overlay_format_ != dest_format ||
 		this->overlay_layout_ != dest_layout) {
-		// Toggling the dither pass changes the format; re-initializing here
-		// would drop atlases that no one knows to upload again.
+		// Preserve atlases when recreating the attachment.
 		if (!this->overlay_.set_format(dest_format, dest_layout, dest_layout))
 			die("overlay format change failed");
 	}
 	this->overlay_format_ = dest_format;
 	this->overlay_layout_ = dest_layout;
-	if (dither)
-		this->overlay_.set_swapchain({this->compose_view_}, this->extent_);
-	else
-		this->overlay_.set_swapchain(this->views_, this->extent_);
+	this->overlay_.set_encoding_buffer(this->engine_.encoding_buffer());
+	this->overlay_.set_swapchain({this->compose_view_}, this->extent_);
 	if (this->engine_.has_image()) {
 		string error;
 		if (!this->engine_.ensure_viewport(
@@ -627,55 +635,48 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 	};
 	CALL_VK(BeginCommandBuffer, "", this->cmd_, &begin_info);
+	const auto checker = dawn::sample_curves(this->encoding_->encode,
+		{this->checker_[0], this->checker_[1], this->checker_[2]});
 	dawn::ScaleView view{
 		.scale = this->scale_,
 		.pan_x = this->pan_x_,
 		.pan_y = this->pan_y_,
 		.angle = this->angle_,
-		.transfer = this->transfer_,
+		.profile_curves = true,
+		.output_encoding = dawn::ScaleEncoding::Linear,
 		.orientation = this->orientation_,
 		.checkerboard = this->checkerboard_,
 		.linear_blend = this->linear_blend_,
-		.checker_r = this->checker_[0],
-		.checker_g = this->checker_[1],
-		.checker_b = this->checker_[2],
+		.checker_r = checker[0],
+		.checker_g = checker[1],
+		.checker_b = checker[2],
 		.checker_size = float(this->checker_px_),
 		// The well is behind the image, so alpha resolves in the shader.
 		.composite = true,
 		.filter = this->filter_ ? this->preferred_ : dawn::Filter::Nearest,
 	};
-	const float clear[4] = {
-		this->well_[0], this->well_[1], this->well_[2], this->well_[3]};
-	const bool dither = dithering();
-	VkFramebuffer dest_fb =
-		dither ? this->compose_fb_ : this->framebuffers_[index];
+	const auto well = dawn::sample_curves(this->encoding_->encode,
+		{this->well_[0], this->well_[1], this->well_[2]});
+	const float clear[4] = {well[0], well[1], well[2], this->well_[3]};
+	VkFramebuffer dest_fb = this->compose_fb_;
 	string error;
 	const uint32_t inset =
 		(this->dest_inset_ > 0 && this->extent_.width > this->dest_inset_ * 2 &&
 			this->extent_.height > this->dest_inset_ * 2)
 		? this->dest_inset_
 		: 0;
-	if (inset > 0) {
-		const float none[4] = {0, 0, 0, 0};
-		this->engine_.set_dest_inset(0, 0, 0, 0);
-		if (!this->engine_.record_clear(this->cmd_, dest_fb,
-				this->extent_.width, this->extent_.height, none, &error))
-			die(error.c_str());
-		this->engine_.set_dest_inset(inset, inset, inset, inset);
-	} else {
-		this->engine_.set_dest_inset(0, 0, 0, 0);
-	}
+	this->engine_.set_dest_inset(inset, inset, inset, inset);
 	if (this->engine_.has_image()) {
 		if (!this->engine_.record(this->cmd_, dest_fb, this->extent_.width,
 				this->extent_.height, view, clear, &error))
 			die(error.c_str());
 	} else if (!this->engine_.record_clear(this->cmd_, dest_fb,
-				   this->extent_.width, this->extent_.height, clear, &error)) {
+				   this->extent_.width, this->extent_.height, this->well_,
+				   &error)) {
 		die(error.c_str());
 	}
-	this->overlay_.record(this->cmd_, dither ? 0 : index, mesh);
-	if (dither)
-		record_dither(this->cmd_, this->framebuffers_[index]);
+	this->overlay_.record(this->cmd_, 0, mesh);
+	record_presentation(this->cmd_, this->framebuffers_[index]);
 	CALL_VK(EndCommandBuffer, "", this->cmd_);
 
 	VkPipelineStageFlags wait_stage =
@@ -712,7 +713,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 }
 
 void
-Renderer::destroy_dither()
+Renderer::destroy_presentation()
 {
 	if (!this->device_)
 		return;
@@ -724,45 +725,47 @@ Renderer::destroy_dither()
 		vkDestroyImage(this->device_, this->compose_image_, nullptr);
 	if (this->compose_memory_)
 		vkFreeMemory(this->device_, this->compose_memory_, nullptr);
-	if (this->dither_pipe_)
-		vkDestroyPipeline(this->device_, this->dither_pipe_, nullptr);
-	if (this->dither_layout_)
-		vkDestroyPipelineLayout(this->device_, this->dither_layout_, nullptr);
-	if (this->dither_vert_)
-		vkDestroyShaderModule(this->device_, this->dither_vert_, nullptr);
-	if (this->dither_frag_)
-		vkDestroyShaderModule(this->device_, this->dither_frag_, nullptr);
-	if (this->dither_pool_)
-		vkDestroyDescriptorPool(this->device_, this->dither_pool_, nullptr);
-	if (this->dither_set_layout_)
+	if (this->presentation_pipe_)
+		vkDestroyPipeline(this->device_, this->presentation_pipe_, nullptr);
+	if (this->presentation_layout_)
+		vkDestroyPipelineLayout(
+			this->device_, this->presentation_layout_, nullptr);
+	if (this->presentation_vert_)
+		vkDestroyShaderModule(this->device_, this->presentation_vert_, nullptr);
+	if (this->presentation_frag_)
+		vkDestroyShaderModule(this->device_, this->presentation_frag_, nullptr);
+	if (this->presentation_pool_)
+		vkDestroyDescriptorPool(
+			this->device_, this->presentation_pool_, nullptr);
+	if (this->presentation_set_layout_)
 		vkDestroyDescriptorSetLayout(
-			this->device_, this->dither_set_layout_, nullptr);
-	if (this->dither_sampler_)
-		vkDestroySampler(this->device_, this->dither_sampler_, nullptr);
-	if (this->dither_rp_)
-		vkDestroyRenderPass(this->device_, this->dither_rp_, nullptr);
+			this->device_, this->presentation_set_layout_, nullptr);
+	if (this->presentation_sampler_)
+		vkDestroySampler(this->device_, this->presentation_sampler_, nullptr);
+	if (this->presentation_rp_)
+		vkDestroyRenderPass(this->device_, this->presentation_rp_, nullptr);
 	this->compose_fb_ = VK_NULL_HANDLE;
 	this->compose_view_ = VK_NULL_HANDLE;
 	this->compose_image_ = VK_NULL_HANDLE;
 	this->compose_memory_ = VK_NULL_HANDLE;
-	this->dither_pipe_ = VK_NULL_HANDLE;
-	this->dither_layout_ = VK_NULL_HANDLE;
-	this->dither_vert_ = VK_NULL_HANDLE;
-	this->dither_frag_ = VK_NULL_HANDLE;
-	this->dither_pool_ = VK_NULL_HANDLE;
-	this->dither_set_ = VK_NULL_HANDLE;
-	this->dither_set_layout_ = VK_NULL_HANDLE;
-	this->dither_sampler_ = VK_NULL_HANDLE;
-	this->dither_rp_ = VK_NULL_HANDLE;
+	this->presentation_pipe_ = VK_NULL_HANDLE;
+	this->presentation_layout_ = VK_NULL_HANDLE;
+	this->presentation_vert_ = VK_NULL_HANDLE;
+	this->presentation_frag_ = VK_NULL_HANDLE;
+	this->presentation_pool_ = VK_NULL_HANDLE;
+	this->presentation_set_ = VK_NULL_HANDLE;
+	this->presentation_set_layout_ = VK_NULL_HANDLE;
+	this->presentation_sampler_ = VK_NULL_HANDLE;
+	this->presentation_rp_ = VK_NULL_HANDLE;
 }
 
 void
-Renderer::create_dither()
+Renderer::create_presentation()
 {
-	destroy_dither();
+	destroy_presentation();
 	if (!this->device_ || !this->engine_.dest_render_pass() ||
 		!this->extent_.width || !this->extent_.height)
-		die("dither compose: missing dest pass or extent");
+		die("linear compose: missing dest pass or extent");
 
 	constexpr VkFormat kCompose = VK_FORMAT_R16G16B16A16_UNORM;
 	VkImageCreateInfo image_info{
@@ -787,7 +790,7 @@ Renderer::create_dither()
 		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr, nullptr);
 	if (type == UINT32_MAX)
-		die("dither compose: no device-local memory");
+		die("linear compose: no device-local memory");
 	VkMemoryAllocateInfo allocate{
 		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
 		.allocationSize = requirements.size,
@@ -856,8 +859,8 @@ Renderer::create_dither()
 		.dependencyCount = 1,
 		.pDependencies = &dependency,
 	};
-	CALL_VK(CreateRenderPass, " dither", this->device_, &rp_info, nullptr,
-		&this->dither_rp_);
+	CALL_VK(CreateRenderPass, " presentation", this->device_, &rp_info, nullptr,
+		&this->presentation_rp_);
 
 	VkSamplerCreateInfo sampler_info{
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
@@ -868,50 +871,50 @@ Renderer::create_dither()
 		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 	};
-	CALL_VK(CreateSampler, " dither", this->device_, &sampler_info, nullptr,
-		&this->dither_sampler_);
+	CALL_VK(CreateSampler, " presentation", this->device_, &sampler_info,
+		nullptr, &this->presentation_sampler_);
 
-	VkDescriptorSetLayoutBinding binding{
-		.binding = 0,
-		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 1,
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+	const VkDescriptorSetLayoutBinding bindings[] = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT,
+			nullptr},
 	};
 	VkDescriptorSetLayoutCreateInfo set_info{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 1,
-		.pBindings = &binding,
+		.bindingCount = 2,
+		.pBindings = bindings,
 	};
-	CALL_VK(CreateDescriptorSetLayout, " dither", this->device_, &set_info,
-		nullptr, &this->dither_set_layout_);
-	VkDescriptorPoolSize pool_size{
-		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 1,
+	CALL_VK(CreateDescriptorSetLayout, " presentation", this->device_,
+		&set_info, nullptr, &this->presentation_set_layout_);
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1},
 	};
 	VkDescriptorPoolCreateInfo pool_info{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.maxSets = 1,
-		.poolSizeCount = 1,
-		.pPoolSizes = &pool_size,
+		.poolSizeCount = 2,
+		.pPoolSizes = pool_sizes,
 	};
-	CALL_VK(CreateDescriptorPool, " dither", this->device_, &pool_info, nullptr,
-		&this->dither_pool_);
+	CALL_VK(CreateDescriptorPool, " presentation", this->device_, &pool_info,
+		nullptr, &this->presentation_pool_);
 	VkDescriptorSetAllocateInfo set_alloc{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool = this->dither_pool_,
+		.descriptorPool = this->presentation_pool_,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &this->dither_set_layout_,
+		.pSetLayouts = &this->presentation_set_layout_,
 	};
-	CALL_VK(AllocateDescriptorSets, " dither", this->device_, &set_alloc,
-		&this->dither_set_);
+	CALL_VK(AllocateDescriptorSets, " presentation", this->device_, &set_alloc,
+		&this->presentation_set_);
 	VkDescriptorImageInfo image_descriptor{
-		.sampler = this->dither_sampler_,
+		.sampler = this->presentation_sampler_,
 		.imageView = this->compose_view_,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkWriteDescriptorSet write{
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = this->dither_set_,
+		.dstSet = this->presentation_set_,
 		.dstBinding = 0,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -919,44 +922,54 @@ Renderer::create_dither()
 	};
 	vkUpdateDescriptorSets(this->device_, 1, &write, 0, nullptr);
 
+	const VkDescriptorBufferInfo curves = this->engine_.encoding_buffer();
+	VkWriteDescriptorSet curve_write{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = this->presentation_set_,
+		.dstBinding = 1,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+		.pBufferInfo = &curves};
+	vkUpdateDescriptorSets(this->device_, 1, &curve_write, 0, nullptr);
+
 	VkShaderModuleCreateInfo vert_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = fullscreen_vert_words * sizeof(uint32_t),
 		.pCode = fullscreen_vert,
 	};
-	CALL_VK(CreateShaderModule, " dither vert", this->device_, &vert_info,
-		nullptr, &this->dither_vert_);
+	CALL_VK(CreateShaderModule, " presentation vert", this->device_, &vert_info,
+		nullptr, &this->presentation_vert_);
 	VkShaderModuleCreateInfo frag_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dn_dither_frag_words * sizeof(uint32_t),
-		.pCode = dn_dither_frag,
+		.codeSize = dn_present_frag_words * sizeof(uint32_t),
+		.pCode = dn_present_frag,
 	};
-	CALL_VK(CreateShaderModule, " dither frag", this->device_, &frag_info,
-		nullptr, &this->dither_frag_);
+	CALL_VK(CreateShaderModule, " presentation frag", this->device_, &frag_info,
+		nullptr, &this->presentation_frag_);
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
-		.size = sizeof(float),
+		.size = sizeof(float) + 2 * sizeof(uint32_t),
 	};
 	VkPipelineLayoutCreateInfo layout_info{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
-		.pSetLayouts = &this->dither_set_layout_,
+		.pSetLayouts = &this->presentation_set_layout_,
 		.pushConstantRangeCount = 1,
 		.pPushConstantRanges = &push,
 	};
-	CALL_VK(CreatePipelineLayout, " dither", this->device_, &layout_info,
-		nullptr, &this->dither_layout_);
+	CALL_VK(CreatePipelineLayout, " presentation", this->device_, &layout_info,
+		nullptr, &this->presentation_layout_);
 
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	stages[0].module = this->dither_vert_;
+	stages[0].module = this->presentation_vert_;
 	stages[0].pName = "main";
 	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	stages[1].module = this->dither_frag_;
+	stages[1].module = this->presentation_frag_;
 	stages[1].pName = "main";
 	VkGraphicsPipelineCreateInfo pipeline_info{
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -969,11 +982,11 @@ Renderer::create_dither()
 		.pMultisampleState = &dawn::kNoMultisample,
 		.pColorBlendState = &dawn::kBlendReplace,
 		.pDynamicState = &dawn::kDynamicViewportScissor,
-		.layout = this->dither_layout_,
-		.renderPass = this->dither_rp_,
+		.layout = this->presentation_layout_,
+		.renderPass = this->presentation_rp_,
 	};
-	CALL_VK(CreateGraphicsPipelines, " dither", this->device_, VK_NULL_HANDLE,
-		1, &pipeline_info, nullptr, &this->dither_pipe_);
+	CALL_VK(CreateGraphicsPipelines, " presentation", this->device_,
+		VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &this->presentation_pipe_);
 }
 
 // Both passes cover the whole destination; the overlay sets its scissor per
@@ -998,9 +1011,9 @@ begin_render_pass(VkCommandBuffer cmd, VkRenderPass pass, VkFramebuffer dest,
 }
 
 void
-Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
+Renderer::record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const
 {
-	if (!cmd || !dest || !this->compose_image_ || !this->dither_pipe_)
+	if (!cmd || !dest || !this->compose_image_ || !this->presentation_pipe_)
 		return;
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -1018,20 +1031,45 @@ Renderer::record_dither(VkCommandBuffer cmd, VkFramebuffer dest) const
 	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 		&barrier);
-	begin_render_pass(cmd, this->dither_rp_, dest, this->extent_);
+	begin_render_pass(cmd, this->presentation_rp_, dest, this->extent_);
 	VkRect2D scissor{.extent = this->extent_};
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
-	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->dither_pipe_);
+	vkCmdBindPipeline(
+		cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->presentation_pipe_);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		this->dither_layout_, 0, 1, &this->dither_set_, 0, nullptr);
-	const float levels = float((1 << dither_bits(this->format_)) - 1);
-	vkCmdPushConstants(cmd, this->dither_layout_, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof levels, &levels);
+		this->presentation_layout_, 0, 1, &this->presentation_set_, 0, nullptr);
+	const struct {
+		float levels;
+		uint32_t premultiplied;
+		uint32_t srgb_attachment;
+	} push{
+		dithering() ? float((1 << dither_bits(this->format_)) - 1) : 0.f,
+		this->composite_alpha_ != VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+		this->format_ == VK_FORMAT_B8G8R8A8_SRGB ||
+			this->format_ == VK_FORMAT_R8G8B8A8_SRGB,
+	};
+	vkCmdPushConstants(cmd, this->presentation_layout_,
+		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
 
 // --- Overlay -----------------------------------------------------------------
+
+void
+OverlayVulkan::set_encoding_buffer(VkDescriptorBufferInfo info)
+{
+	for (VkDescriptorSet set : this->descriptor_sets_) {
+		VkWriteDescriptorSet write{
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = set,
+			.dstBinding = 1,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			.pBufferInfo = &info};
+		vkUpdateDescriptorSets(this->device_, 1, &write, 0, nullptr);
+	}
+}
 
 bool
 OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
@@ -1068,29 +1106,29 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	CALL_VK(CreateSampler, " overlay", this->device_, &sampler_info, nullptr,
 		&this->sampler_);
 
-	VkDescriptorSetLayoutBinding binding{
-		.binding = 0,
-		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 1,
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+	const VkDescriptorSetLayoutBinding bindings[] = {
+		{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
+		{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT,
+			nullptr},
 	};
 	VkDescriptorSetLayoutCreateInfo layout_info{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 1,
-		.pBindings = &binding,
+		.bindingCount = 2,
+		.pBindings = bindings,
 	};
 	CALL_VK(CreateDescriptorSetLayout, " overlay", this->device_, &layout_info,
 		nullptr, &this->set_layout_);
 
-	VkDescriptorPoolSize pool_size{
-		.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.descriptorCount = 2,
+	const VkDescriptorPoolSize pool_sizes[] = {
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
 	};
 	VkDescriptorPoolCreateInfo descriptor_pool_info{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 		.maxSets = 2,
-		.poolSizeCount = 1,
-		.pPoolSizes = &pool_size,
+		.poolSizeCount = 2,
+		.pPoolSizes = pool_sizes,
 	};
 	CALL_VK(CreateDescriptorPool, " overlay", this->device_,
 		&descriptor_pool_info, nullptr, &this->descriptor_pool_);
@@ -1225,7 +1263,7 @@ OverlayVulkan::create_pipeline()
 		.stride = sizeof(OverlayVertex),
 		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
 	};
-	VkVertexInputAttributeDescription attributes[6]{
+	VkVertexInputAttributeDescription attributes[5]{
 		{.location = 0,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32_SFLOAT,
@@ -1246,16 +1284,12 @@ OverlayVulkan::create_pipeline()
 			.binding = 0,
 			.format = VK_FORMAT_R32G32_SFLOAT,
 			.offset = offsetof(OverlayVertex, dest_w)},
-		{.location = 5,
-			.binding = 0,
-			.format = VK_FORMAT_R32_SFLOAT,
-			.offset = offsetof(OverlayVertex, transfer)},
 	};
 	VkPipelineVertexInputStateCreateInfo vertex_input{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1,
 		.pVertexBindingDescriptions = &binding,
-		.vertexAttributeDescriptionCount = 6,
+		.vertexAttributeDescriptionCount = 5,
 		.pVertexAttributeDescriptions = attributes,
 	};
 	VkGraphicsPipelineCreateInfo pipeline_info{
@@ -1787,8 +1821,6 @@ OverlayVulkan::record(
 		push.origin[0] = draw_cmd.background.origin_x;
 		push.origin[1] = draw_cmd.background.origin_y;
 		push.checker_size = max(1.f, draw_cmd.background.size);
-		// Enable only together with a linear composition target.
-		push.linear_output = 0;
 		vkCmdPushConstants(cmd, this->pipeline_layout_,
 			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 			sizeof push, &push);
