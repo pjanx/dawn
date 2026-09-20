@@ -260,7 +260,7 @@ Renderer::destroy_swapchain()
 		return;
 	vkDeviceWaitIdle(this->device_);
 	this->overlay_.set_target(VK_NULL_HANDLE, {});
-	destroy_presentation();
+	destroy_compose();
 	for (VkFramebuffer framebuffer : this->framebuffers_)
 		if (framebuffer)
 			vkDestroyFramebuffer(this->device_, framebuffer, nullptr);
@@ -288,6 +288,7 @@ Renderer::destroy()
 		vkDeviceWaitIdle(this->device_);
 		this->overlay_.destroy();
 		destroy_swapchain();
+		destroy_presentation();
 		this->engine_.destroy();
 		if (this->image_available_)
 			vkDestroySemaphore(this->device_, this->image_available_, nullptr);
@@ -378,6 +379,8 @@ Renderer::create_swapchain()
 	const VkSurfaceFormatKHR picked = pick_surface_format(formats);
 	this->format_ = picked.format;
 	this->color_space_ = picked.colorSpace;
+	if (this->format_ != old_format)
+		destroy_presentation_pipeline();
 	if (this->format_ != old_format || this->color_space_ != old_color_space) {
 		qInfo("swapchain: %s + %s (dither: %d bpc)",
 			vk_format_name(this->format_),
@@ -468,7 +471,11 @@ Renderer::create_swapchain()
 		CALL_VK(CreateImageView, " swap", this->device_, &view_info, nullptr,
 			&this->views_[i]);
 	}
-	create_presentation();
+	if (!this->presentation_pool_)
+		create_presentation();
+	if (!this->presentation_pipe_)
+		create_presentation_pipeline();
+	create_compose();
 	const VkRenderPass swap_rp = this->presentation_rp_;
 	for (uint32_t i = 0; i < count; i++) {
 		VkFramebufferCreateInfo framebuffer_info{
@@ -702,11 +709,11 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	return true;
 }
 
+// The composition image follows the window extent; the presentation pipeline
+// follows its format. Descriptors and layouts survive both kinds of change.
 void
-Renderer::destroy_presentation()
+Renderer::destroy_compose()
 {
-	if (!this->device_)
-		return;
 	if (this->compose_fb_)
 		vkDestroyFramebuffer(this->device_, this->compose_fb_, nullptr);
 	if (this->compose_view_)
@@ -715,42 +722,15 @@ Renderer::destroy_presentation()
 		vkDestroyImage(this->device_, this->compose_image_, nullptr);
 	if (this->compose_memory_)
 		vkFreeMemory(this->device_, this->compose_memory_, nullptr);
-	if (this->presentation_pipe_)
-		vkDestroyPipeline(this->device_, this->presentation_pipe_, nullptr);
-	if (this->presentation_layout_)
-		vkDestroyPipelineLayout(
-			this->device_, this->presentation_layout_, nullptr);
-	if (this->presentation_pool_)
-		vkDestroyDescriptorPool(
-			this->device_, this->presentation_pool_, nullptr);
-	if (this->presentation_set_layout_)
-		vkDestroyDescriptorSetLayout(
-			this->device_, this->presentation_set_layout_, nullptr);
-	if (this->presentation_sampler_)
-		vkDestroySampler(this->device_, this->presentation_sampler_, nullptr);
-	if (this->presentation_rp_)
-		vkDestroyRenderPass(this->device_, this->presentation_rp_, nullptr);
 	this->compose_fb_ = VK_NULL_HANDLE;
 	this->compose_view_ = VK_NULL_HANDLE;
 	this->compose_image_ = VK_NULL_HANDLE;
 	this->compose_memory_ = VK_NULL_HANDLE;
-	this->presentation_pipe_ = VK_NULL_HANDLE;
-	this->presentation_layout_ = VK_NULL_HANDLE;
-	this->presentation_pool_ = VK_NULL_HANDLE;
-	this->presentation_set_ = VK_NULL_HANDLE;
-	this->presentation_set_layout_ = VK_NULL_HANDLE;
-	this->presentation_sampler_ = VK_NULL_HANDLE;
-	this->presentation_rp_ = VK_NULL_HANDLE;
 }
 
 void
-Renderer::create_presentation()
+Renderer::create_compose()
 {
-	destroy_presentation();
-	if (!this->device_ || !this->engine_.dest_render_pass() ||
-		!this->extent_.width || !this->extent_.height)
-		die("linear compose: missing dest pass or extent");
-
 	constexpr VkFormat kCompose = VK_FORMAT_R16G16B16A16_UNORM;
 	VkImageCreateInfo image_info{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
@@ -807,45 +787,60 @@ Renderer::create_presentation()
 	CALL_VK(CreateFramebuffer, " compose", this->device_, &fb_info, nullptr,
 		&this->compose_fb_);
 
-	VkAttachmentDescription color{
-		.format = this->format_,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	VkDescriptorImageInfo image_descriptor{
+		.sampler = this->presentation_sampler_,
+		.imageView = this->compose_view_,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
-	VkAttachmentReference color_ref{
-		.attachment = 0,
-		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	VkWriteDescriptorSet write{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = this->presentation_set_,
+		.dstBinding = 0,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		.pImageInfo = &image_descriptor,
 	};
-	VkSubpassDescription subpass{
-		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
-		.colorAttachmentCount = 1,
-		.pColorAttachments = &color_ref,
-	};
-	VkSubpassDependency dependency{
-		.srcSubpass = VK_SUBPASS_EXTERNAL,
-		.dstSubpass = 0,
-		.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-		.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-	};
-	VkRenderPassCreateInfo rp_info{
-		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-		.attachmentCount = 1,
-		.pAttachments = &color,
-		.subpassCount = 1,
-		.pSubpasses = &subpass,
-		.dependencyCount = 1,
-		.pDependencies = &dependency,
-	};
-	CALL_VK(CreateRenderPass, " presentation", this->device_, &rp_info, nullptr,
-		&this->presentation_rp_);
+	vkUpdateDescriptorSets(this->device_, 1, &write, 0, nullptr);
+}
 
+void
+Renderer::destroy_presentation_pipeline()
+{
+	if (this->presentation_pipe_)
+		vkDestroyPipeline(this->device_, this->presentation_pipe_, nullptr);
+	if (this->presentation_rp_)
+		vkDestroyRenderPass(this->device_, this->presentation_rp_, nullptr);
+	this->presentation_pipe_ = VK_NULL_HANDLE;
+	this->presentation_rp_ = VK_NULL_HANDLE;
+}
+
+void
+Renderer::destroy_presentation()
+{
+	if (!this->device_)
+		return;
+	destroy_presentation_pipeline();
+	if (this->presentation_layout_)
+		vkDestroyPipelineLayout(
+			this->device_, this->presentation_layout_, nullptr);
+	if (this->presentation_pool_)
+		vkDestroyDescriptorPool(
+			this->device_, this->presentation_pool_, nullptr);
+	if (this->presentation_set_layout_)
+		vkDestroyDescriptorSetLayout(
+			this->device_, this->presentation_set_layout_, nullptr);
+	if (this->presentation_sampler_)
+		vkDestroySampler(this->device_, this->presentation_sampler_, nullptr);
+	this->presentation_layout_ = VK_NULL_HANDLE;
+	this->presentation_pool_ = VK_NULL_HANDLE;
+	this->presentation_set_ = VK_NULL_HANDLE;
+	this->presentation_set_layout_ = VK_NULL_HANDLE;
+	this->presentation_sampler_ = VK_NULL_HANDLE;
+}
+
+void
+Renderer::create_presentation()
+{
 	VkSamplerCreateInfo sampler_info{
 		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
 		.magFilter = VK_FILTER_NEAREST,
@@ -891,21 +886,6 @@ Renderer::create_presentation()
 	};
 	CALL_VK(AllocateDescriptorSets, " presentation", this->device_, &set_alloc,
 		&this->presentation_set_);
-	VkDescriptorImageInfo image_descriptor{
-		.sampler = this->presentation_sampler_,
-		.imageView = this->compose_view_,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-	};
-	VkWriteDescriptorSet write{
-		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-		.dstSet = this->presentation_set_,
-		.dstBinding = 0,
-		.descriptorCount = 1,
-		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.pImageInfo = &image_descriptor,
-	};
-	vkUpdateDescriptorSets(this->device_, 1, &write, 0, nullptr);
-
 	const VkDescriptorBufferInfo curves = this->engine_.encoding_buffer();
 	VkWriteDescriptorSet curve_write{
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -915,6 +895,64 @@ Renderer::create_presentation()
 		.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
 		.pBufferInfo = &curves};
 	vkUpdateDescriptorSets(this->device_, 1, &curve_write, 0, nullptr);
+
+	VkPushConstantRange push{
+		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+		.offset = 0,
+		.size = sizeof(float) + 2 * sizeof(uint32_t),
+	};
+	VkPipelineLayoutCreateInfo layout_info{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &this->presentation_set_layout_,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &push,
+	};
+	CALL_VK(CreatePipelineLayout, " presentation", this->device_, &layout_info,
+		nullptr, &this->presentation_layout_);
+}
+
+void
+Renderer::create_presentation_pipeline()
+{
+	VkAttachmentDescription color{
+		.format = this->format_,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+		.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+		.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+	};
+	VkAttachmentReference color_ref{
+		.attachment = 0,
+		.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+	};
+	VkSubpassDescription subpass{
+		.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+		.colorAttachmentCount = 1,
+		.pColorAttachments = &color_ref,
+	};
+	VkSubpassDependency dependency{
+		.srcSubpass = VK_SUBPASS_EXTERNAL,
+		.dstSubpass = 0,
+		.srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+		.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+		.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+	};
+	VkRenderPassCreateInfo rp_info{
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &color,
+		.subpassCount = 1,
+		.pSubpasses = &subpass,
+		.dependencyCount = 1,
+		.pDependencies = &dependency,
+	};
+	CALL_VK(CreateRenderPass, " presentation", this->device_, &rp_info, nullptr,
+		&this->presentation_rp_);
 
 	VkShaderModule presentation_vert = VK_NULL_HANDLE,
 				   presentation_frag = VK_NULL_HANDLE;
@@ -932,21 +970,6 @@ Renderer::create_presentation()
 	};
 	CALL_VK(CreateShaderModule, " presentation frag", this->device_, &frag_info,
 		nullptr, &presentation_frag);
-
-	VkPushConstantRange push{
-		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.offset = 0,
-		.size = sizeof(float) + 2 * sizeof(uint32_t),
-	};
-	VkPipelineLayoutCreateInfo layout_info{
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = &this->presentation_set_layout_,
-		.pushConstantRangeCount = 1,
-		.pPushConstantRanges = &push,
-	};
-	CALL_VK(CreatePipelineLayout, " presentation", this->device_, &layout_info,
-		nullptr, &this->presentation_layout_);
 
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

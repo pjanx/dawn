@@ -119,6 +119,10 @@ class Renderer
 	void create_swapchain();
 	void ensure_engine(VkFormat dest_format, VkImageLayout dest_layout);
 	void wait_idle() const;
+	void destroy_compose();
+	void create_compose();
+	void destroy_presentation_pipeline();
+	void create_presentation_pipeline();
 	void destroy_presentation();
 	void create_presentation();
 	void record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const;
