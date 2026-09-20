@@ -109,7 +109,7 @@ struct ThumbJob {
 	int thumb_size = 0;
 	float dpr = 1.f;
 	int atlas_max = 0;
-	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const ScreenColour> screen_colour;
 	bool skip_cache = false;
 	bool cacheable = false;
 	Thumbnailer::Reservation reservation = 0;
@@ -152,7 +152,7 @@ struct FinishJob {
 	uint32_t width = 0, height = 0;
 	shared_ptr<const vector<uint16_t>> pixels;
 	int tier = 0;
-	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const ScreenColour> screen_colour;
 };
 
 struct GpuFinish {
@@ -167,7 +167,7 @@ struct GpuFinish {
 	ThumbnailSource source;
 	uint32_t image_w = 0, image_h = 0;
 	int requested_tier = 0;
-	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const ScreenColour> screen_colour;
 };
 
 }  // namespace
@@ -541,7 +541,8 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 
 	const int tier = thumbnail_tier_for_height(
 		max(1, int(ceil(double(job.thumb_size) * double(job.dpr)))));
-	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
+	shared_ptr<dawn::Profile> screen =
+		profile_from_screen(*cmm, job.screen_colour);
 	const ThumbnailSource source =
 		thumbnail_source(QString::fromStdString(job.path), job.mtime, job.size);
 	if (job.pending) {
@@ -689,7 +690,8 @@ display_thumb(Browser *browser, FinishJob job)
 
 	auto cmm = worker_cmm();
 	shared_ptr<dawn::Profile> p3 = cmm->get_profile_display_p3();
-	shared_ptr<dawn::Profile> screen = profile_from_icc(*cmm, job.screen_icc);
+	shared_ptr<dawn::Profile> screen =
+		profile_from_screen(*cmm, job.screen_colour);
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
 	if (p3 && screen && !display.empty() &&
 		cmm->transform_bgra16(reinterpret_cast<uint8_t *>(display.data()),
@@ -757,7 +759,7 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			finish.image_w = update.geometry_w;
 			finish.image_h = update.geometry_h;
 			finish.requested_tier = update.tier;
-			finish.screen_icc = std::move(job.screen_icc);
+			finish.screen_colour = std::move(job.screen_colour);
 			update.gpu_pending = queue_gpu(thumbnailer, client, browser,
 				std::move(finish), std::move(gpu));
 			update.failed = !update.gpu_pending;
@@ -1037,7 +1039,7 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			display.height = pixels->height;
 			display.pixels = pixels->pixels;
 			display.tier = finish.requested_tier;
-			display.screen_icc = std::move(finish.screen_icc);
+			display.screen_colour = std::move(finish.screen_colour);
 			Browser *browser = &b;
 			if (!b.thumbnailer_.submit(
 					b.thumbnail_client_, finish.gen, finish.priority,
@@ -1252,7 +1254,7 @@ enqueue_thumbs(Browser &b)
 	proto.thumb_size = b.thumb_size_;
 	proto.dpr = b.kit_.dpr_;
 	proto.atlas_max = thumb_atlas_max(b);
-	proto.screen_icc = b.screen_icc_;
+	proto.screen_colour = b.screen_colour_;
 	auto push = [&](const vector<int> &idx, Thumbnailer::Priority priority) {
 		for (int i : idx) {
 			Browser::File &f = b.files_[size_t(i)];
@@ -2657,7 +2659,9 @@ Browser::paint(Kit &kit) const
 			draw_checkers(kit, {dx, dy, dw, dh});
 			kit.list_.add_rect_stroke(outer.box(), frame, border);
 			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh},
-				this->sheet_.uv(f.gpu), int(f.pixels.transfer), {1, 1, 1, 1});
+				this->sheet_.uv(f.gpu), int(f.pixels.transfer), {1, 1, 1, 1},
+				{kit.colours_[ColourWell], kit.colours_[ColourToolbarBottom],
+					float(dx), float(dy), float(max(1, kit.px(kCheckPts)))});
 		} else {
 			kit.list_.add_rect_filled({tx, ty, tx + tw, ty + thp},
 				focused ? kit.colours_[ColourPress]
@@ -2794,7 +2798,7 @@ Browser::screen_changed(
 	const bool reload = force_reload || changed;
 	this->cmm_ = state.cmm;
 	this->screen_profile_ = state.profile;
-	this->screen_icc_ = state.icc;
+	this->screen_colour_ = state.colour;
 
 	if (reload) {
 		invalidate_thumbs(*this);

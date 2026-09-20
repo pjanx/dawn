@@ -382,6 +382,73 @@ profile_transfer(const Profile *profile)
 	return Transfer::Srgb;
 }
 
+ProfileEncoding
+profile_encoding(const Profile *profile)
+{
+	ProfileEncoding result;
+	// A fully populated, explicitly labelled approximation on every failure.
+	for (size_t i = 0; i < ProfileEncoding::kSamples; i++) {
+		const float x = float(i) / float(ProfileEncoding::kSamples - 1);
+		result.decode[i].fill(transfer_decode(x, Transfer::Srgb));
+		result.encode[i].fill(transfer_encode(x, Transfer::Srgb));
+	}
+	if (!profile || !profile->profile_)
+		return result;
+
+	cmsHPROFILE h = cmsHPROFILE(profile->profile_);
+	if (cmsGetColorSpace(h) != cmsSigRgbData || cmsGetPCS(h) != cmsSigXYZData ||
+		!cmsIsMatrixShaper(h))
+		return result;
+	// A profile may contain both matrix/TRC tags and LUT transforms.
+	const cmsTagSignature luts[] = {cmsSigAToB0Tag, cmsSigAToB1Tag,
+		cmsSigAToB2Tag, cmsSigBToA0Tag, cmsSigBToA1Tag, cmsSigBToA2Tag,
+		cmsSigDToB0Tag, cmsSigDToB1Tag, cmsSigDToB2Tag, cmsSigDToB3Tag,
+		cmsSigBToD0Tag, cmsSigBToD1Tag, cmsSigBToD2Tag, cmsSigBToD3Tag};
+	for (auto tag : luts)
+		if (cmsIsTag(h, tag))
+			return result;
+
+	const cmsTagSignature trcs[] = {
+		cmsSigRedTRCTag, cmsSigGreenTRCTag, cmsSigBlueTRCTag};
+	const cmsTagSignature colorants[] = {
+		cmsSigRedColorantTag, cmsSigGreenColorantTag, cmsSigBlueColorantTag};
+	ProfileEncoding matrix;
+	for (int c = 0; c < 3; c++) {
+		auto *curve = (cmsToneCurve *) cmsReadTag(h, trcs[c]);
+		auto *xyz = (cmsCIEXYZ *) cmsReadTag(h, colorants[c]);
+		if (!curve || !xyz || !cmsIsToneCurveMonotonic(curve) ||
+			cmsIsToneCurveDescending(curve) || !isfinite(xyz->X) ||
+			!isfinite(xyz->Y) || !isfinite(xyz->Z))
+			return result;
+		matrix.rgb_to_xyz[c] = {xyz->X, xyz->Y, xyz->Z};
+		cmsToneCurve *inverse =
+			cmsReverseToneCurveEx(ProfileEncoding::kSamples, curve);
+		if (!inverse)
+			return result;
+		bool valid = true;
+		for (size_t i = 0; i < ProfileEncoding::kSamples; i++) {
+			const float x = float(i) / float(ProfileEncoding::kSamples - 1);
+			const float d = cmsEvalToneCurveFloat(curve, x);
+			const float e = cmsEvalToneCurveFloat(inverse, x);
+			valid &= isfinite(d) && isfinite(e) && d >= -1e-6f &&
+				d <= 1.000001f && e >= -1e-6f && e <= 1.000001f;
+			matrix.decode[i][c] = clamp(d, 0.f, 1.f);
+			matrix.encode[i][c] = clamp(e, 0.f, 1.f);
+		}
+		cmsFreeToneCurve(inverse);
+		if (!valid)
+			return result;
+	}
+	const auto &m = matrix.rgb_to_xyz;
+	const double det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+		m[1][0] * (m[0][1] * m[2][2] - m[0][2] * m[2][1]) +
+		m[2][0] * (m[0][1] * m[1][2] - m[0][2] * m[1][1]);
+	if (abs(det) < 1e-10)
+		return result;
+	matrix.matrix_trc = true;
+	return matrix;
+}
+
 // --- Colour management -------------------------------------------------------
 
 Cmm::Cmm()

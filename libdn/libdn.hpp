@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -101,12 +102,26 @@ struct Chromaticities {
 	double y[6] = {};
 };
 
+/// Matrix/TRC RGB profiles keep their display primaries. Other profiles use
+/// the legacy sRGB approximation in device RGB; this is not a colourimetric
+/// working space for arbitrary LUT profiles.
+struct ProfileEncoding {
+	bool matrix_trc = false;
+	/// Columns are the display RGB colourants in PCS (D50) XYZ.
+	std::array<std::array<double, 3>, 3> rgb_to_xyz{};
+	/// Uniform samples on [0, 1], indexed [sample][RGB channel].
+	static constexpr size_t kSamples = 4097;
+	std::array<std::array<float, 3>, kSamples> decode{};
+	std::array<std::array<float, 3>, kSamples> encode{};
+};
+
 class Cmm;
 
 class Profile
 {
 	friend class Cmm;
 	friend Transfer profile_transfer(const Profile *profile);
+	friend ProfileEncoding profile_encoding(const Profile *profile);
 	friend Chromaticities profile_chromaticities(const Profile *profile);
 	std::shared_ptr<Cmm> cmm_;
 	void *profile_ = nullptr;  ///< cmsHPROFILE
@@ -186,6 +201,7 @@ public:
 /// Exact match of the profile TRC to Linear / sRGB / gamma 2.2. Null, missing
 /// tags, mixed channels, or any other curve → Srgb.
 Transfer profile_transfer(const Profile *profile);
+ProfileEncoding profile_encoding(const Profile *profile);
 float transfer_decode(float encoded, Transfer transfer);
 float transfer_encode(float linear, Transfer transfer);
 

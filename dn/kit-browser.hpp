@@ -125,7 +125,7 @@ struct Browser : Widget {
 	QUrl dir_url_;
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
-	std::shared_ptr<const std::vector<uint8_t>> screen_icc_;
+	std::shared_ptr<const ScreenColour> screen_colour_;
 
 	bool show_names_ = true;
 	// The toolbar search field, whose text narrows the listing; it is

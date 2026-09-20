@@ -37,10 +37,17 @@ namespace dn
 class Renderer;
 struct Page;
 
+// Immutable colour data shared with jobs. Workers recreate their own lcms
+// profile from these bytes; curves and primaries always describe those bytes.
+struct ScreenColour {
+	std::vector<uint8_t> icc;
+	dawn::ProfileEncoding encoding;
+};
+
 struct ScreenState {
 	std::shared_ptr<dawn::Cmm> cmm;
 	std::shared_ptr<dawn::Profile> profile;
-	std::shared_ptr<const std::vector<uint8_t>> icc;
+	std::shared_ptr<const ScreenColour> colour;
 	bool fallback = true;
 };
 

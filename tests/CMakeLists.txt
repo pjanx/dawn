@@ -65,7 +65,7 @@ add_executable(test-channels test-channels.cpp)
 if (NOT CMAKE_CROSSCOMPILING)
 	add_dependencies(test-channels test-fixtures)
 endif()
-target_link_libraries(test-channels PRIVATE libdn)
+target_link_libraries(test-channels PRIVATE libdn dawn-lcms2)
 target_compile_definitions(test-channels PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
 )
@@ -110,7 +110,7 @@ add_test(NAME icns COMMAND test-icns)
 
 # Vulkan may be unavailable, and validation layers only exist where installed.
 add_executable(test-scale-scaler test-scale-scaler.cpp)
-target_link_libraries(test-scale-scaler PRIVATE libdn)
+target_link_libraries(test-scale-scaler PRIVATE libdn Vulkan::Vulkan)
 add_test(NAME scale_scaler COMMAND test-scale-scaler)
 set_tests_properties(scale_scaler PROPERTIES
 	SKIP_RETURN_CODE 77

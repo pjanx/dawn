@@ -202,8 +202,8 @@ struct PageSetup {
 };
 std::unique_ptr<Page> make_page(
 	Kit &kit, const HostActions &host, PageSetup setup);
-std::shared_ptr<dawn::Profile> profile_from_icc(
-	dawn::Cmm &cmm, const std::shared_ptr<const std::vector<uint8_t>> &icc);
+std::shared_ptr<dawn::Profile> profile_from_screen(
+	dawn::Cmm &cmm, const std::shared_ptr<const ScreenColour> &colour);
 
 Actor chain_actor(const HostActions &host, std::function<bool(Action)> apply,
 	std::function<bool(Action)> enabled, std::function<bool(Action)> checked);

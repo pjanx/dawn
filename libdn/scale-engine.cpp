@@ -1006,7 +1006,8 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 	pc.transfer = int32_t(view.transfer) |
 		(int32_t(orientation_or_0(view.orientation)) << 8) |
 		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
-		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0);
+		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0) |
+		(view.output_encoding == ScaleEncoding::Linear ? (1 << 20) : 0);
 	// Supply backgrounds in the selected compositing space.
 	auto background = [&](float encoded) {
 		return view.linear_blend ? transfer_decode(encoded, view.transfer)
@@ -1522,6 +1523,13 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		return false;
 	}
 
+	float target_clear[4];
+	copy_n(clear_rgba, 4, target_clear);
+	if (view.output_encoding == ScaleEncoding::Linear) {
+		for (int i = 0; i < 3; i++)
+			target_clear[i] = transfer_decode(clear_rgba[i], view.transfer);
+	}
+
 	Impl &e = *impl_;
 	if (view.filter == Filter::Nearest)
 		e.pipe_2d = e.pipeline_2d_nearest;
@@ -1532,7 +1540,7 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 	if (!use_separable(view)) {
 		const PushConstants pc =
 			e.make_push(view, viewport_w, viewport_h, clear_rgba);
-		e.cmd_2d_pass(cmd, pc, dest_fb, viewport_w, viewport_h, clear_rgba);
+		e.cmd_2d_pass(cmd, pc, dest_fb, viewport_w, viewport_h, target_clear);
 		return true;
 	}
 
@@ -1550,7 +1558,7 @@ ScaleEngine::record(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 	const auto [first_mid, last_mid] =
 		e.cmd_fill_visible_mid(cmd, pc, need, viewport_w, disp_h);
 	e.cmd_barrier_mid(cmd, first_mid, last_mid);
-	e.cmd_v_pass(cmd, pc, dest_fb, viewport_w, viewport_h, clear_rgba);
+	e.cmd_v_pass(cmd, pc, dest_fb, viewport_w, viewport_h, target_clear);
 	return true;
 }
 

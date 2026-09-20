@@ -44,6 +44,11 @@ int unpack_linear_blend(int packed)
 	return (packed >> 19) & 1;
 }
 
+int unpack_linear_output(int packed)
+{
+	return (packed >> 20) & 1;
+}
+
 #ifndef DN_COMPUTE
 // Squares of `size` device pixels, resolved from one design size by the
 // caller, as the browser's draw_checkers() resolves the same constant.
@@ -184,10 +189,11 @@ vec4 associated_to_working(vec4 t, int packed, bool opaque)
 
 #ifndef DN_COMPUTE
 // Alpha is resolved here because the image sits on a known background.
-// Filtering and composition use the same selected working space.
+// Filtering and composition retain their selected working space; output
+// encoding only changes the representation emitted after resolving alpha.
 vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
-		  bool composite, bool linear_blend, vec3 background,
-		  vec3 checker_background, float checker_size)
+		  bool composite, bool linear_blend, bool linear_output,
+		  vec3 background, vec3 checker_background, float checker_size)
 {
 	float a = clamp(premul.a, 0.0, 1.0);
 	// Nohalo takes minmod slopes per channel, so RGB can outrun alpha.
@@ -195,13 +201,16 @@ vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
 	if (checkerboard)
 		background = checker(background, checker_background, checker_size);
 	else if (!composite) {
-		if (!linear_blend)
+		if (linear_blend == linear_output)
 			return vec4(rgb, a);
-		return vec4(a > 0.0
-			? encode_rgb(rgb / a, transfer) * a : vec3(0.0), a);
+		vec3 straight = a > 0.0 ? rgb / a : vec3(0.0);
+		return vec4((linear_output ? decode_rgb(straight, transfer)
+			: encode_rgb(straight, transfer)) * a, a);
 	}
-	if (!linear_blend)
-		return vec4(background * (1.0 - a) + rgb, 1.0);
-	return vec4(encode_rgb(background * (1.0 - a) + rgb, transfer), 1.0);
+	rgb += background * (1.0 - a);
+	if (linear_blend == linear_output)
+		return vec4(rgb, 1.0);
+	return vec4(linear_output ? decode_rgb(rgb, transfer)
+		: encode_rgb(rgb, transfer), 1.0);
 }
 #endif

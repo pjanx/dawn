@@ -286,7 +286,7 @@ struct OpenJob {
 	uint64_t epoch = 0;
 	Viewer::OpenKey key;
 	string uri;
-	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const ScreenColour> screen_colour;
 	shared_ptr<const vector<string>> loaders;
 	int dpi = 96;
 	bool enable_cms = true;
@@ -304,7 +304,7 @@ struct ScaleJob {
 	uint64_t gen = 0;
 	dawn::ImagePtr page;
 	float scale = 1.f;
-	shared_ptr<const vector<uint8_t>> screen_icc;
+	shared_ptr<const ScreenColour> screen_colour;
 	bool enable_cms = true;
 };
 
@@ -862,8 +862,9 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	dawn::OpenContext ctx;
 	ctx.uri = open.uri;
 	ctx.cmm = cmm;
-	ctx.screen_profile =
-		open.enable_cms ? profile_from_icc(*cmm, open.screen_icc) : nullptr;
+	ctx.screen_profile = open.enable_cms
+		? profile_from_screen(*cmm, open.screen_colour)
+		: nullptr;
 	// What the pixels actually became, retained beside them: the fallback is
 	// a real profile too, and an export has to name the right one.
 	if (ctx.screen_profile)
@@ -993,7 +994,7 @@ worker_loop(Viewer &v, bool foreground)
 				ctx.cmm = cmm;
 				if (scale.enable_cms)
 					ctx.screen_profile =
-						profile_from_icc(*cmm, scale.screen_icc);
+						profile_from_screen(*cmm, scale.screen_colour);
 				image = scale.page->render->render(
 					ctx, double(scale.scale), nullptr);
 			}
@@ -1029,7 +1030,7 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 				  .toStdString();
 	job.dpi = v.kit_.dpi_;
 	job.enable_cms = v.enable_cms_;
-	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
+	job.screen_colour = v.enable_cms_ ? v.screen_colour_ : nullptr;
 	job.loaders = v.loaders_;
 	return job;
 }
@@ -1178,7 +1179,7 @@ post_scale(Viewer &v)
 	job.page = v.current_;
 	job.scale = v.scale_;
 	job.enable_cms = v.enable_cms_;
-	job.screen_icc = v.enable_cms_ ? v.screen_icc_ : nullptr;
+	job.screen_colour = v.enable_cms_ ? v.screen_colour_ : nullptr;
 	{
 		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale = std::move(job);
@@ -2087,7 +2088,7 @@ Viewer::screen_changed(
 		(force_reload || (this->enable_cms_ && changed));
 	this->cmm_ = state.cmm;
 	this->screen_profile_ = state.profile;
-	this->screen_icc_ = state.icc;
+	this->screen_colour_ = state.colour;
 	this->screen_profile_fallback_ = state.fallback;
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,

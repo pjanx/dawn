@@ -1275,10 +1275,11 @@ Page::key(Kit &kit, const Key &ev)
 }
 
 shared_ptr<dawn::Profile>
-profile_from_icc(dawn::Cmm &cmm, const shared_ptr<const vector<uint8_t>> &icc)
+profile_from_screen(
+	dawn::Cmm &cmm, const shared_ptr<const ScreenColour> &colour)
 {
-	if (icc && !icc->empty())
-		if (auto profile = cmm.get_profile(*icc))
+	if (colour && !colour->icc.empty())
+		if (auto profile = cmm.get_profile(colour->icc))
 			return profile;
 	return cmm.get_profile_sRGB();
 }

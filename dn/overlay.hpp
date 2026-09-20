@@ -18,6 +18,7 @@ struct Colour {
 	float g = 0;
 	float b = 0;
 	float a = 1;
+	bool operator==(const Colour &) const = default;
 };
 
 // Two corners in framebuffer pixels.  The overlay draws axis-aligned
@@ -57,11 +58,22 @@ struct OverlayVertex {
 constexpr uint32_t kOverlayTexFont = 0;
 constexpr uint32_t kOverlayTexThumbs = 1;
 
+// Encoded, opaque checker colours; size and origin are framebuffer pixels.
+struct ThumbBackground {
+	Colour odd{};
+	Colour even{};
+	float origin_x = 0;
+	float origin_y = 0;
+	float size = 1;
+	bool operator==(const ThumbBackground &) const = default;
+};
+
 struct OverlayCmd {
 	uint32_t idx_offset = 0;
 	uint32_t idx_count = 0;
 	Box clip{};
 	uint32_t tex = kOverlayTexFont;
+	ThumbBackground background{};
 };
 
 struct OverlayMesh {
@@ -79,6 +91,7 @@ class OverlayList
 	std::vector<Box> clip_stack_;
 	Uv white_{};
 	uint32_t tex_ = kOverlayTexFont;
+	ThumbBackground background_{};
 
 	void sync_clip();
 	void add_quad(Box b, Uv uv, Colour c00, Colour c10, Colour c11, Colour c01);
@@ -94,7 +107,8 @@ public:
 	// collapsed along one axis: there is no line primitive.
 	void add_rect_stroke(Box b, Colour col, int thickness);
 	void add_image(Box b, Uv uv, Colour col);
-	void add_thumb(Box b, Uv uv, int transfer, Colour col);
+	void add_thumb(Box b, Uv uv, int transfer, Colour col,
+		const ThumbBackground &background);
 
 	[[nodiscard]] const OverlayMesh &mesh() const { return this->mesh_; }
 };

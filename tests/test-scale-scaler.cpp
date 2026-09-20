@@ -5,15 +5,21 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "libdn/libdnvk.hpp"
 #include "libdn/scale-scaler.hpp"
+#include "libdn/vk-device.hpp"
 #include "test.hpp"
 
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
 using namespace std;
+using namespace dawn;
 
 /// One BGRA_PREMUL_4X16LE pixel, as the scaler takes them.
 struct Pixel {
@@ -55,6 +61,255 @@ pixel_is(const dawn::ScaleOutput &out, uint32_t x, uint32_t y, uint8_t r,
 	test::fail("pixel %u,%u is %u %u %u %u, want %u %u %u %u", x, y, p[0], p[1],
 		p[2], p[3], r, g, b, a);
 	return false;
+}
+
+// Read the engine's premultiplied RGBA16 output directly, before the
+// convenience scaler unassociates and quantizes it to RGBA8.
+namespace
+{
+struct EngineReadback {
+	VkInstance instance = VK_NULL_HANDLE;
+	VkPhysicalDevice phys = VK_NULL_HANDLE;
+	VkDevice device = VK_NULL_HANDLE;
+	VkQueue queue = VK_NULL_HANDLE;
+	VkCommandPool pool = VK_NULL_HANDLE;
+	VkCommandBuffer cmd = VK_NULL_HANDLE;
+	VkImage image = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkImageView image_view = VK_NULL_HANDLE;
+	VkFramebuffer fb = VK_NULL_HANDLE;
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory staging = VK_NULL_HANDLE;
+	dawn::ScaleEngine engine;
+
+	~EngineReadback();
+	bool init(string *error);
+	bool draw(const dawn::ScaleView &view, const float clear[4],
+		array<uint16_t, 16> *pixels, string *error);
+};
+}  // namespace
+
+EngineReadback::~EngineReadback()
+{
+	if (device) {
+		vkDeviceWaitIdle(device);
+		engine.destroy_offscreen(&image, &memory, &image_view, &fb);
+		engine.destroy();
+		vkDestroyBuffer(device, buffer, nullptr);
+		vkFreeMemory(device, staging, nullptr);
+		vkDestroyCommandPool(device, pool, nullptr);
+		vkDestroyDevice(device, nullptr);
+	}
+	vkDestroyInstance(instance, nullptr);
+}
+
+bool
+EngineReadback::init(string *error)
+{
+	VkApplicationInfo app{.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+		.apiVersion = VK_API_VERSION_1_1};
+	VkInstanceCreateInfo ici{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pApplicationInfo = &app};
+	uint32_t count = 0;
+	if (!CALL_VK(EnumerateInstanceExtensionProperties, " test", nullptr, &count,
+			nullptr))
+		return false;
+	vector<VkExtensionProperties> extensions(count);
+	if (!CALL_VK(EnumerateInstanceExtensionProperties, " test", nullptr, &count,
+			extensions.data()))
+		return false;
+	const char *portability = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+	for (const auto &ext : extensions) {
+		if (strcmp(ext.extensionName, portability) == 0) {
+			ici.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+			ici.enabledExtensionCount = 1;
+			ici.ppEnabledExtensionNames = &portability;
+		}
+	}
+	if (!CALL_VK(CreateInstance, " test", &ici, nullptr, &instance))
+		return false;
+	uint32_t family = 0;
+	if (!dawn::vk_create_graphics_device(instance, VK_NULL_HANDLE, nullptr, {},
+			&phys, &device, &queue, &family, error))
+		return false;
+	VkCommandPoolCreateInfo pci{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+		.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+		.queueFamilyIndex = family};
+	if (!CALL_VK(CreateCommandPool, " test", device, &pci, nullptr, &pool))
+		return false;
+	VkCommandBufferAllocateInfo cai{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = pool,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1};
+	if (!CALL_VK(AllocateCommandBuffers, " test", device, &cai, &cmd))
+		return false;
+	if (!engine.init(phys, device, queue, family, VK_FORMAT_R16G16B16A16_UNORM,
+			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, error) ||
+		!engine.create_offscreen(
+			2, 2, &image, &memory, &image_view, &fb, error))
+		return false;
+	VkBufferCreateInfo bci{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = 32,
+		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE};
+	if (!CALL_VK(CreateBuffer, " test", device, &bci, nullptr, &buffer))
+		return false;
+	VkMemoryRequirements mr{};
+	vkGetBufferMemoryRequirements(device, buffer, &mr);
+	const uint32_t type = dawn::vk_memory_type(phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		error, nullptr);
+	if (type == UINT32_MAX)
+		return false;
+	VkMemoryAllocateInfo mai{.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = mr.size,
+		.memoryTypeIndex = type};
+	return CALL_VK(AllocateMemory, " test", device, &mai, nullptr, &staging) &&
+		CALL_VK(BindBufferMemory, " test", device, buffer, staging, 0);
+}
+
+bool
+EngineReadback::draw(const dawn::ScaleView &view, const float clear[4],
+	array<uint16_t, 16> *pixels, string *error)
+{
+	if (!CALL_VK(ResetCommandBuffer, " test", cmd, 0))
+		return false;
+	VkCommandBufferBeginInfo begin{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+	if (!CALL_VK(BeginCommandBuffer, " test", cmd, &begin) ||
+		!engine.record(cmd, fb, 2, 2, view, clear, error))
+		return false;
+	VkImageMemoryBarrier barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = image,
+		.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+	VkBufferImageCopy copy{
+		.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+		.imageExtent = {2, 2, 1}};
+	vkCmdCopyImageToBuffer(
+		cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &copy);
+	if (!CALL_VK(EndCommandBuffer, " test", cmd))
+		return false;
+	VkSubmitInfo submit{.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		.commandBufferCount = 1,
+		.pCommandBuffers = &cmd};
+	if (!CALL_VK(QueueSubmit, " test", queue, 1, &submit, VK_NULL_HANDLE) ||
+		!CALL_VK(QueueWaitIdle, " test", queue))
+		return false;
+	void *mapped = nullptr;
+	if (!CALL_VK(
+			MapMemory, " test", device, staging, 0, VK_WHOLE_SIZE, 0, &mapped))
+		return false;
+	memcpy(pixels->data(), mapped, sizeof *pixels);
+	vkUnmapMemory(device, staging);
+	return true;
+}
+
+static void
+check_output(EngineReadback &gpu, const dawn::ScaleView &view,
+	const array<Pixel, 4> &src)
+{
+	const bool composite = view.composite || view.checkerboard;
+	const bool linear = view.output_encoding == dawn::ScaleEncoding::Linear;
+	const auto transfer = view.transfer;
+	// The destination uses source-over, so readback needs transparent black.
+	const array<float, 4> clear =
+		composite ? array<float, 4>{.8f, .6f, .4f, 1.f} : array<float, 4>{};
+	array<uint16_t, 16> actual{};
+	string error;
+	if (!gpu.draw(view, clear.data(), &actual, &error)) {
+		test::fail("engine draw: %s", error.c_str());
+		return;
+	}
+	for (int i = 0; i < 4; i++) {
+		const float a = src[i].a / 65535.f;
+		const float rgb[] = {
+			src[i].r / 65535.f, src[i].g / 65535.f, src[i].b / 65535.f};
+		for (int c = 0; c < 3; c++) {
+			const float straight = a > 0 ? rgb[c] / a : 0;
+			// Alpha-preserving output decodes straight colour, then
+			// re-associates; decoding premultiplied RGB would be wrong.
+			float expected = (linear ? dawn::transfer_decode(straight, transfer)
+									 : straight) *
+				a;
+			if (composite) {
+				float bg = view.checkerboard && (i == 0 || i == 3)
+					? view.checker_r
+					: clear[c];
+				expected = rgb[c];
+				if (view.linear_blend) {
+					bg = dawn::transfer_decode(bg, transfer);
+					expected = dawn::transfer_decode(straight, transfer) * a;
+				}
+				expected += (1 - a) * bg;
+				if (view.linear_blend != linear)
+					expected = linear
+						? dawn::transfer_decode(expected, transfer)
+						: dawn::transfer_encode(expected, transfer);
+			}
+			if (abs(actual[i * 4 + c] / 65535.f - expected) > .001f)
+				test::fail("filter %d transfer %d blend %d linear %d bg %d "
+						   "checker %d pixel %d channel %d: %.6f != %.6f",
+					int(view.filter), int(transfer), view.linear_blend, linear,
+					composite, view.checkerboard, i, c,
+					actual[i * 4 + c] / 65535.f, expected);
+		}
+		CHECK(
+			abs(actual[i * 4 + 3] / 65535.f - (composite ? 1.f : a)) < .0001f);
+	}
+}
+
+static void
+test_output_encoding()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error)) {
+		test::fail("engine readback init: %s", error.c_str());
+		return;
+	}
+	// Include coloured partial alpha, alpha zero, opaque grey and black.
+	const array<Pixel, 4> src{{{8192, 16384, 24576, 32768}, {},
+		{32768, 32768, 32768, 65535}, {0, 0, 0, 32768}}};
+	if (!gpu.engine.set_image(
+			2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error) ||
+		!gpu.engine.ensure_viewport(2, 2, &error)) {
+		test::fail("engine image: %s", error.c_str());
+		return;
+	}
+	CHECK(dawn::ScaleView{}.output_encoding == dawn::ScaleEncoding::Encoded);
+	// Bilinear uses H/V; nearest and expensive at 1:1 use the 2D shader.
+	for (auto filter : {dawn::Filter::Nearest, dawn::Filter::Bilinear,
+			 dawn::Filter::Expensive}) {
+		for (auto transfer : {dawn::Transfer::Linear, dawn::Transfer::Srgb,
+				 dawn::Transfer::AdobeRgb}) {
+			// Two independent policy bits, with each background choice.
+			for (int combination = 0; combination < 12; combination++) {
+				dawn::ScaleView view;
+				view.filter = filter;
+				view.transfer = transfer;
+				view.linear_blend = combination & 1;
+				view.output_encoding = (combination & 2)
+					? dawn::ScaleEncoding::Linear
+					: dawn::ScaleEncoding::Encoded;
+				view.composite = combination / 4 == 1;
+				view.checkerboard = combination / 4 == 2;
+				view.checker_size = 1;
+				check_output(gpu, view, src);
+			}
+		}
+	}
 }
 
 // --- Cases -------------------------------------------------------------------
@@ -169,5 +424,6 @@ main()
 		{"valid after rejected", test_rejected_then_valid},
 		{"orientation", test_orientation},
 		{"partial transparency", test_partial_transparency},
+		{"output encoding and composition", test_output_encoding},
 	});
 }

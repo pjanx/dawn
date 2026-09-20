@@ -11,6 +11,8 @@
 #include "libdn/libdn.hpp"
 #include "test.hpp"
 
+#include <lcms2.h>
+
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -927,6 +929,67 @@ test_profile_transfer()
 	CHECK(dawn::profile_transfer(g18.get()) == dawn::Transfer::Srgb);
 }
 
+static void
+test_profile_encoding()
+{
+	auto cmm = make_shared<dawn::Cmm>();
+	for (double gamma : {1.0, 1.8, 2.2, 2.6}) {
+		auto profile = cmm->get_profile_sRGB_gamma(gamma);
+		const auto encoding = dawn::profile_encoding(profile.get());
+		CHECK(encoding.matrix_trc);
+		CHECK(abs(encoding.decode[2048][0] - pow(.5, gamma)) < .0001);
+		CHECK(abs(encoding.encode[2048][0] - pow(.5, 1 / gamma)) < .0001);
+	}
+	const auto srgb = dawn::profile_encoding(cmm->get_profile_sRGB().get());
+	const auto p3 = dawn::profile_encoding(cmm->get_profile_display_p3().get());
+	CHECK(srgb.matrix_trc);
+	CHECK(p3.matrix_trc);
+	CHECK(abs(srgb.decode[2048][0] - .21404114) < .0001);
+	CHECK(abs(srgb.encode[2048][0] - .73535698) < .0001);
+	CHECK(abs(p3.decode[2048][0] - srgb.decode[2048][0]) < .0001);
+	CHECK(abs(p3.encode[2048][0] - srgb.encode[2048][0]) < .0001);
+	CHECK(abs(p3.rgb_to_xyz[0][0] - srgb.rgb_to_xyz[0][0]) > .05);
+	CHECK(!dawn::profile_encoding(nullptr).matrix_trc);
+
+	// Mixed TRCs must not collapse to a single guessed gamma.
+	cmsHPROFILE mixed = cmsCreate_sRGBProfile();
+	cmsSetProfileVersion(mixed, 4.3);
+	const cmsTagSignature tags[] = {
+		cmsSigRedTRCTag, cmsSigGreenTRCTag, cmsSigBlueTRCTag};
+	const double gammas[] = {1.3, 1.8, 2.6};
+	for (int c = 0; c < 3; c++) {
+		cmsToneCurve *curve = cmsBuildGamma(nullptr, gammas[c]);
+		CHECK(cmsWriteTag(mixed, tags[c], curve));
+		cmsFreeToneCurve(curve);
+	}
+	auto import = [&] {
+		cmsUInt32Number size = 0;
+		CHECK(cmsSaveProfileToMem(mixed, nullptr, &size));
+		vector<uint8_t> bytes(size);
+		CHECK(cmsSaveProfileToMem(mixed, bytes.data(), &size));
+		return cmm->get_profile(bytes);
+	};
+	const auto curves = dawn::profile_encoding(import().get());
+	CHECK(curves.matrix_trc);
+	for (int c = 0; c < 3; c++) {
+		CHECK(abs(curves.decode[2048][c] - pow(.5, gammas[c])) < .0001);
+		CHECK(abs(curves.encode[2048][c] - pow(.5, 1 / gammas[c])) < .0001);
+	}
+
+	// Even with valid matrix/TRC tags, a LUT profile is explicitly approximate.
+	cmsSetProfileVersion(mixed, 2.1);
+	cmsPipeline *lut = cmsPipelineAlloc(nullptr, 3, 3);
+	cmsUInt16Number table[24] = {};
+	CHECK(cmsPipelineInsertStage(
+		lut, cmsAT_END, cmsStageAllocCLut16bit(nullptr, 2, 3, 3, table)));
+	CHECK(cmsWriteTag(mixed, cmsSigAToB0Tag, lut));
+	cmsPipelineFree(lut);
+	const auto fallback = dawn::profile_encoding(import().get());
+	CHECK(!fallback.matrix_trc);
+	CHECK(fallback.decode == dawn::profile_encoding(nullptr).decode);
+	cmsCloseProfile(mixed);
+}
+
 int
 main()
 {
@@ -948,5 +1011,6 @@ main()
 		{"chromaticities", test_chromaticities},
 		{"PNG text", test_png_text_after_idat},
 		{"profile transfer", test_profile_transfer},
+		{"profile encoding", test_profile_encoding},
 	});
 }

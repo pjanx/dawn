@@ -32,7 +32,9 @@ OverlayList::sync_clip()
 {
 	const Box &clip = this->clip_stack_.back();
 	if (this->cmd_.idx_count > 0 &&
-		(!(this->cmd_.clip == clip) || this->cmd_.tex != this->tex_)) {
+		(!(this->cmd_.clip == clip) || this->cmd_.tex != this->tex_ ||
+			(this->tex_ == kOverlayTexThumbs &&
+				this->cmd_.background != this->background_))) {
 		this->mesh_.cmds.push_back(this->cmd_);
 		this->cmd_.idx_count = 0;
 	}
@@ -40,6 +42,7 @@ OverlayList::sync_clip()
 		this->cmd_.idx_offset = uint32_t(this->mesh_.indices.size());
 	this->cmd_.clip = clip;
 	this->cmd_.tex = this->tex_;
+	this->cmd_.background = this->background_;
 }
 
 void
@@ -52,6 +55,7 @@ OverlayList::begin(int width_px, int height_px, Uv white)
 	this->mesh_.display_h = float(height_px);
 	this->white_ = white;
 	this->tex_ = kOverlayTexFont;
+	this->background_ = {};
 	this->clip_stack_.clear();
 	this->clip_stack_.push_back({0, 0, width_px, height_px});
 	this->cmd_ = {};
@@ -156,9 +160,11 @@ OverlayList::add_image(Box b, Uv uv, Colour col)
 }
 
 void
-OverlayList::add_thumb(Box b, Uv uv, int transfer, Colour col)
+OverlayList::add_thumb(
+	Box b, Uv uv, int transfer, Colour col, const ThumbBackground &background)
 {
 	this->tex_ = kOverlayTexThumbs;
+	this->background_ = background;
 	add_quad(b, uv, col, col, col, col);
 	const size_t first = this->mesh_.vertices.size() - 4;
 	for (size_t i = first; i < this->mesh_.vertices.size(); i++) {

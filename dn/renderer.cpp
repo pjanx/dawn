@@ -165,7 +165,13 @@ namespace
 struct PushConstant {
 	float scale[2];
 	float translate[2];
+	Colour odd;
+	Colour even;
+	float origin[2];
+	float checker_size;
+	uint32_t linear_output;
 };
+static_assert(sizeof(PushConstant) == 64);
 }  // namespace
 
 static VkImageCreateInfo
@@ -1190,7 +1196,7 @@ OverlayVulkan::create_pipeline()
 		nullptr, &this->thumb_frag_);
 
 	VkPushConstantRange push{
-		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
 		.size = sizeof(PushConstant),
 	};
@@ -1750,8 +1756,6 @@ OverlayVulkan::record(
 	push.scale[1] = 2.f / mesh.display_h;
 	push.translate[0] = -1.f;
 	push.translate[1] = -1.f;
-	vkCmdPushConstants(cmd, this->pipeline_layout_, VK_SHADER_STAGE_VERTEX_BIT,
-		0, sizeof push, &push);
 
 	uint32_t bound_tex = ~0u;
 	VkPipeline bound_pipeline = VK_NULL_HANDLE;
@@ -1778,6 +1782,16 @@ OverlayVulkan::record(
 				&this->descriptor_sets_[draw_cmd.tex], 0, nullptr);
 			bound_tex = draw_cmd.tex;
 		}
+		push.odd = draw_cmd.background.odd;
+		push.even = draw_cmd.background.even;
+		push.origin[0] = draw_cmd.background.origin_x;
+		push.origin[1] = draw_cmd.background.origin_y;
+		push.checker_size = max(1.f, draw_cmd.background.size);
+		// Enable only together with a linear composition target.
+		push.linear_output = 0;
+		vkCmdPushConstants(cmd, this->pipeline_layout_,
+			VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+			sizeof push, &push);
 		const Box &clip = draw_cmd.clip;
 		const int x0 = max(0, clip.x0), y0 = max(0, clip.y0);
 		const int x1 = min(int(this->extent_.width), clip.x1);

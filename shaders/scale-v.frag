@@ -76,6 +76,7 @@ void main()
 	out_color = finish_scale(c, transfer, unpack_checker(pc.transfer) != 0,
 				 unpack_composite(pc.transfer) != 0,
 				 unpack_linear_blend(pc.transfer) != 0,
+				 unpack_linear_output(pc.transfer) != 0,
 				 vec3(pc.bg_r, pc.bg_g, pc.bg_b),
 				 vec3(pc.checker_r, pc.checker_g, pc.checker_b),
 				 pc.checker_size);

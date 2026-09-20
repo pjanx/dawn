@@ -25,12 +25,17 @@ enum class Filter : uint8_t { Nearest, Bilinear, Expensive };
 /// minify, NoHalo zoom).
 Filter preferred_filter(VkPhysicalDevice phys);
 
+enum class ScaleEncoding : uint8_t { Encoded, Linear };
+
 struct ScaleView {
 	float scale = 1.f;
 	float pan_x = 0.f;
 	float pan_y = 0.f;
 	float angle = 0.f;
 	Transfer transfer = Transfer::Srgb;
+	/// Output representation, independent of the image blending policy.
+	/// Non-composited output remains premultiplied in this space.
+	ScaleEncoding output_encoding = ScaleEncoding::Encoded;
 	Orientation orientation = Orientation::Rotate0;
 	bool checkerboard = false;
 	/// Resolve alpha in linear light. The default composites encoded values,
@@ -84,10 +89,13 @@ public:
 	void set_dest_inset(
 		uint32_t left, uint32_t top, uint32_t right, uint32_t bottom);
 
+	/// Clear/background RGB is encoded. Use transparent black for readback
+	/// that preserves image alpha; the destination uses source-over.
 	bool record(VkCommandBuffer cmd, VkFramebuffer dest_fb, uint32_t viewport_w,
 		uint32_t viewport_h, const ScaleView &view, const float clear_rgba[4],
 		std::string *error);
 	/// Dest-pass CLEAR only (no H/V). For presenting the well with no pixmap.
+	/// Here clear_rgba is already in the destination representation.
 	bool record_clear(VkCommandBuffer cmd, VkFramebuffer dest_fb,
 		uint32_t viewport_w, uint32_t viewport_h, const float clear_rgba[4],
 		std::string *error);

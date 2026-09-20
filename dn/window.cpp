@@ -794,11 +794,19 @@ Window::apply_screen_profile(QScreen *target_screen, bool force_reload)
 	// timestamps, so re-reading the same one does not count as a change.
 	const bool changed = refresh_screen_profile(target_screen);
 
-	auto icc = this->screen_profile_
-		? make_shared<const vector<uint8_t>>(this->screen_profile_->to_bytes())
-		: nullptr;
-	this->screen_state_ = {this->cmm_, this->screen_profile_, std::move(icc),
-		this->screen_profile_fallback_};
+	if (changed || !this->screen_state_.colour) {
+		auto colour = make_shared<ScreenColour>();
+		if (this->screen_profile_)
+			colour->icc = this->screen_profile_->to_bytes();
+		colour->encoding = profile_encoding(this->screen_profile_.get());
+		if (!colour->encoding.matrix_trc)
+			qWarning("screen profile: using approximate sRGB device curves; "
+					 "profile is not supported matrix/TRC RGB");
+		this->screen_state_.colour = std::move(colour);
+	}
+	this->screen_state_.cmm = this->cmm_;
+	this->screen_state_.profile = this->screen_profile_;
+	this->screen_state_.fallback = this->screen_profile_fallback_;
 
 	this->kit_.bake_colours(this->cmm_.get(), this->screen_profile_.get());
 	this->renderer_.set_transfer(profile_transfer(this->screen_profile_.get()));

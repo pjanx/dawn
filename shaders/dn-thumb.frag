@@ -14,6 +14,16 @@ layout(location = 4) flat in float vTransfer;
 
 layout(location = 0) out vec4 fColor;
 
+layout(push_constant) uniform Push {
+	vec2 scale;
+	vec2 translate;
+	vec4 odd;
+	vec4 even;
+	vec2 origin;
+	float checker_size;
+	uint linear_output;
+} pc;
+
 vec4 fetch_entry(ivec2 p, ivec2 lo, ivec2 hi, int transfer)
 {
 	vec4 encoded = texelFetch(sTexture, clamp(p, lo, hi), 0);
@@ -60,5 +70,13 @@ void main()
 	vec3 rgb = clamp(linear.rgb, vec3(0.0), vec3(a));
 	vec3 encoded = a > 0.0
 		? encode_rgb(rgb / a, transfer) * a : vec3(0.0);
-	fColor = vColor * vec4(encoded, a);
+	if (pc.linear_output != 0) {
+		vec2 tile = floor((gl_FragCoord.xy - pc.origin) / pc.checker_size);
+		vec3 bg = (int(tile.x + tile.y) & 1) == 0 ? pc.even.rgb : pc.odd.rgb;
+		// Image alpha resolves in encoded space; tile opacity follows it.
+		fColor = vColor * vec4(decode_rgb(encoded + (1.0 - a) * bg,
+			transfer), 1.0);
+	} else {
+		fColor = vColor * vec4(encoded, a);
+	}
 }
