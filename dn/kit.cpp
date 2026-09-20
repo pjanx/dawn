@@ -2492,6 +2492,7 @@ Scroll::motion(float y, Rect viewport)
 {
 	if (!this->dragging)
 		return false;
+
 	set_from_y(y, viewport);
 	reveal();
 	return true;
@@ -2502,6 +2503,7 @@ Scroll::release(Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton || !this->dragging)
 		return false;
+
 	this->dragging = false;
 	reveal();
 	return true;
@@ -2512,10 +2514,14 @@ Scroll::paint(Kit &kit, Rect viewport) const
 {
 	if (!visible())
 		return;
+
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.w <= 0 || thumb.h <= 0)
 		return;
-	kit.draw_fill(thumb, kit.colours_[ColourDivider]);
+
+	Colour c = kit.colours_[ColourInk];
+	c.a *= .25f;
+	kit.draw_fill(thumb, c);
 }
 
 void
