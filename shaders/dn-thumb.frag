@@ -30,9 +30,8 @@ vec4 fetch_entry(ivec2 p, ivec2 lo, ivec2 hi, int transfer)
 
 void main()
 {
-	ivec2 texture_size = textureSize(sTexture, 0);
-	ivec2 lo = ivec2(round(vAtlasRect.xy * vec2(texture_size)));
-	ivec2 end = ivec2(round(vAtlasRect.zw * vec2(texture_size)));
+	ivec2 lo = ivec2(vAtlasRect.xy);
+	ivec2 end = ivec2(vAtlasRect.zw);
 	ivec2 source_size = max(end - lo, ivec2(1));
 	ivec2 hi = lo + source_size - ivec2(1);
 	vec2 extent = max(vAtlasRect.zw - vAtlasRect.xy, vec2(1e-12));

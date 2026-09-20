@@ -334,16 +334,6 @@ Sheet::Packed::texels() const
 		float(this->y + this->h)};
 }
 
-// Thumbnails are packed before drawing; their filtering uses normalised UVs.
-Uv
-Sheet::uv(const Packed &slot) const
-{
-	const float aw = float(max(this->w, 1));
-	const float ah = float(max(this->h, 1));
-	return {float(slot.x) / aw, float(slot.y) / ah, float(slot.x + slot.w) / aw,
-		float(slot.y + slot.h) / ah};
-}
-
 bool
 Sheet::take_dirty()
 {

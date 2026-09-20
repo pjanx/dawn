@@ -569,14 +569,14 @@ Renderer::thumb_atlas_max() const
 
 bool
 Renderer::upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-	int dst_y, int atlas_side, bool *recreated)
+	int dst_y, int atlas_side)
 {
 	return this->overlay_.upload_thumb(
-		pixels, width, height, dst_x, dst_y, atlas_side, recreated);
+		pixels, width, height, dst_x, dst_y, atlas_side);
 }
 
 bool
-Renderer::rebuild_thumbs(const vector<ThumbUpload> &uploads, int atlas_side)
+Renderer::rebuild_thumbs(span<const AtlasUpload> uploads, int atlas_side)
 {
 	return this->overlay_.rebuild_thumbs(uploads, atlas_side);
 }
@@ -720,10 +720,6 @@ Renderer::destroy_presentation()
 	if (this->presentation_layout_)
 		vkDestroyPipelineLayout(
 			this->device_, this->presentation_layout_, nullptr);
-	if (this->presentation_vert_)
-		vkDestroyShaderModule(this->device_, this->presentation_vert_, nullptr);
-	if (this->presentation_frag_)
-		vkDestroyShaderModule(this->device_, this->presentation_frag_, nullptr);
 	if (this->presentation_pool_)
 		vkDestroyDescriptorPool(
 			this->device_, this->presentation_pool_, nullptr);
@@ -740,8 +736,6 @@ Renderer::destroy_presentation()
 	this->compose_memory_ = VK_NULL_HANDLE;
 	this->presentation_pipe_ = VK_NULL_HANDLE;
 	this->presentation_layout_ = VK_NULL_HANDLE;
-	this->presentation_vert_ = VK_NULL_HANDLE;
-	this->presentation_frag_ = VK_NULL_HANDLE;
 	this->presentation_pool_ = VK_NULL_HANDLE;
 	this->presentation_set_ = VK_NULL_HANDLE;
 	this->presentation_set_layout_ = VK_NULL_HANDLE;
@@ -922,20 +916,22 @@ Renderer::create_presentation()
 		.pBufferInfo = &curves};
 	vkUpdateDescriptorSets(this->device_, 1, &curve_write, 0, nullptr);
 
+	VkShaderModule presentation_vert = VK_NULL_HANDLE,
+				   presentation_frag = VK_NULL_HANDLE;
 	VkShaderModuleCreateInfo vert_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = fullscreen_vert_words * sizeof(uint32_t),
 		.pCode = fullscreen_vert,
 	};
 	CALL_VK(CreateShaderModule, " presentation vert", this->device_, &vert_info,
-		nullptr, &this->presentation_vert_);
+		nullptr, &presentation_vert);
 	VkShaderModuleCreateInfo frag_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = dn_present_frag_words * sizeof(uint32_t),
 		.pCode = dn_present_frag,
 	};
 	CALL_VK(CreateShaderModule, " presentation frag", this->device_, &frag_info,
-		nullptr, &this->presentation_frag_);
+		nullptr, &presentation_frag);
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -955,11 +951,11 @@ Renderer::create_presentation()
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	stages[0].module = this->presentation_vert_;
+	stages[0].module = presentation_vert;
 	stages[0].pName = "main";
 	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	stages[1].module = this->presentation_frag_;
+	stages[1].module = presentation_frag;
 	stages[1].pName = "main";
 	VkGraphicsPipelineCreateInfo pipeline_info{
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -977,6 +973,8 @@ Renderer::create_presentation()
 	};
 	CALL_VK(CreateGraphicsPipelines, " presentation", this->device_,
 		VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &this->presentation_pipe_);
+	vkDestroyShaderModule(this->device_, presentation_vert, nullptr);
+	vkDestroyShaderModule(this->device_, presentation_frag, nullptr);
 }
 
 // Both passes cover the whole destination; the overlay sets its scissor per
@@ -1177,6 +1175,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 bool
 OverlayVulkan::create_pipeline()
 {
+	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE,
+				   thumb_frag = VK_NULL_HANDLE;
 	VkShaderModuleCreateInfo vert_info{
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = dn_overlay_vert_words * sizeof(uint32_t),
@@ -1193,11 +1193,11 @@ OverlayVulkan::create_pipeline()
 		.pCode = dn_thumb_frag,
 	};
 	CALL_VK(CreateShaderModule, " overlay vert", this->device_, &vert_info,
-		nullptr, &this->vert_);
+		nullptr, &vert);
 	CALL_VK(CreateShaderModule, " overlay frag", this->device_, &frag_info,
-		nullptr, &this->frag_);
+		nullptr, &frag);
 	CALL_VK(CreateShaderModule, " thumb frag", this->device_, &thumb_frag_info,
-		nullptr, &this->thumb_frag_);
+		nullptr, &thumb_frag);
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -1217,11 +1217,11 @@ OverlayVulkan::create_pipeline()
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	stages[0].module = this->vert_;
+	stages[0].module = vert;
 	stages[0].pName = "main";
 	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	stages[1].module = this->frag_;
+	stages[1].module = frag;
 	stages[1].pName = "main";
 
 	VkVertexInputBindingDescription binding{
@@ -1274,9 +1274,12 @@ OverlayVulkan::create_pipeline()
 	};
 	CALL_VK(CreateGraphicsPipelines, " overlay", this->device_, VK_NULL_HANDLE,
 		1, &pipeline_info, nullptr, &this->pipeline_);
-	stages[1].module = this->thumb_frag_;
+	stages[1].module = thumb_frag;
 	CALL_VK(CreateGraphicsPipelines, " thumbnails", this->device_,
 		VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &this->thumb_pipeline_);
+	vkDestroyShaderModule(this->device_, vert, nullptr);
+	vkDestroyShaderModule(this->device_, frag, nullptr);
+	vkDestroyShaderModule(this->device_, thumb_frag, nullptr);
 	return true;
 }
 
@@ -1413,14 +1416,30 @@ OverlayVulkan::bind_sampled(VkImage image, VkImageView *view,
 }
 
 bool
-OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
-	VkImage image, VkImageLayout layout, int dst_x, int dst_y) const
+OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
+	int height, VkImage image, VkImageLayout layout) const
 {
-	if (!this->device_ || !pixels || !image || width <= 0 || height <= 0)
+	if (!this->device_ || !image || width <= 0 || height <= 0 ||
+		uploads.empty())
 		return false;
 
-	const VkDeviceSize size =
-		VkDeviceSize(width) * VkDeviceSize(height) * kOverlayBpp;
+	VkDeviceSize size = 0;
+	vector<VkBufferImageCopy> copies;
+	for (const AtlasUpload &upload : uploads) {
+		if (!upload.pixels || upload.width <= 0 || upload.height <= 0 ||
+			upload.x < 0 || upload.y < 0 || upload.x > width ||
+			upload.y > height || upload.width > width - upload.x ||
+			upload.height > height - upload.y)
+			return false;
+		copies.push_back({
+			.bufferOffset = size,
+			.imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.layerCount = 1},
+			.imageOffset = {upload.x, upload.y, 0},
+			.imageExtent = {uint32_t(upload.width), uint32_t(upload.height), 1},
+		});
+		size += VkDeviceSize(upload.width) * upload.height * kOverlayBpp;
+	}
 	VkBuffer staging = VK_NULL_HANDLE;
 	VkDeviceMemory staging_memory = VK_NULL_HANDLE;
 	VkBufferCreateInfo buffer_info{
@@ -1455,7 +1474,11 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 	void *mapped = nullptr;
 	CALL_VK(MapMemory, " overlay tex staging", this->device_, staging_memory, 0,
 		size, 0, &mapped);
-	memcpy(mapped, pixels, size_t(size));
+	for (size_t i = 0; i < uploads.size(); i++) {
+		const AtlasUpload &upload = uploads[i];
+		memcpy((uint8_t *) mapped + copies[i].bufferOffset, upload.pixels,
+			size_t(upload.width) * upload.height * kOverlayBpp);
+	}
 	vkUnmapMemory(this->device_, staging_memory);
 
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -1492,14 +1515,9 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 			? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
 			: VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_dst);
-	VkBufferImageCopy copy{
-		.imageSubresource = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.layerCount = 1},
-		.imageOffset = {int32_t(dst_x), int32_t(dst_y), 0},
-		.imageExtent = {uint32_t(width), uint32_t(height), 1},
-	};
-	vkCmdCopyBufferToImage(
-		cmd, staging, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+	vkCmdCopyBufferToImage(cmd, staging, image,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, uint32_t(copies.size()),
+		copies.data());
 	VkImageMemoryBarrier to_shader = to_dst;
 	to_shader.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	to_shader.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -1524,102 +1542,50 @@ OverlayVulkan::copy_rgba16(const void *pixels, int width, int height,
 }
 
 bool
-OverlayVulkan::upload_rgba16(const void *pixels, int width, int height,
-	VkImage *image, VkDeviceMemory *memory, VkImageView *view,
+OverlayVulkan::upload_rgba16(span<const AtlasUpload> uploads, int width,
+	int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
 	VkDescriptorSet set, VkComponentMapping swizzle) const
 {
-	if (!this->device_ || !pixels || width <= 0 || height <= 0 || !image ||
-		!memory || !view)
-		return false;
-	if (!create_sampled(width, height, image, memory))
+	VkImage fresh = VK_NULL_HANDLE;
+	VkDeviceMemory fresh_memory = VK_NULL_HANDLE;
+	VkImageView fresh_view = VK_NULL_HANDLE;
+	if (!create_sampled(width, height, &fresh, &fresh_memory))
 		return false;
 	if (!copy_rgba16(
-			pixels, width, height, *image, VK_IMAGE_LAYOUT_UNDEFINED, 0, 0)) {
-		destroy_sampled(image, memory, view);
+			uploads, width, height, fresh, VK_IMAGE_LAYOUT_UNDEFINED)) {
+		destroy_sampled(&fresh, &fresh_memory, &fresh_view);
 		return false;
 	}
+	// The upload's queue wait also finishes draws using the old atlas.
+	destroy_sampled(image, memory, view);
+	*image = fresh;
+	*memory = fresh_memory;
 	bind_sampled(*image, view, set, swizzle);
 	return true;
 }
 
 bool
 OverlayVulkan::upload_thumb(const uint16_t *pixels, int width, int height,
-	int dst_x, int dst_y, int atlas_side, bool *recreated)
+	int dst_x, int dst_y, int atlas_side)
 {
-	if (recreated)
-		*recreated = false;
-
-	if (!this->device_ || !pixels || width <= 0 || height <= 0 || dst_x < 0 ||
-		dst_y < 0 || atlas_side <= 0 || dst_x + width > atlas_side ||
-		dst_y + height > atlas_side)
-		return false;
-
-	const bool fresh = !this->thumb_image_ || this->thumb_side_ != atlas_side;
-	if (fresh) {
-		vkDeviceWaitIdle(this->device_);
-		destroy_thumbs();
-		if (!create_sampled(atlas_side, atlas_side, &this->thumb_image_,
-				&this->thumb_memory_))
-			return false;
-		this->thumb_side_ = atlas_side;
-	}
-	if (!copy_rgba16(pixels, width, height, this->thumb_image_,
-			fresh ? VK_IMAGE_LAYOUT_UNDEFINED
-				  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			dst_x, dst_y)) {
-		if (fresh)
-			destroy_thumbs();
-		return false;
-	}
-	if (fresh) {
-		const VkComponentMapping bgra{VK_COMPONENT_SWIZZLE_B,
-			VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_A};
-		bind_sampled(this->thumb_image_, &this->thumb_view_,
-			this->descriptor_sets_[kOverlayTexThumbs], bgra);
-		if (recreated)
-			*recreated = true;
-	}
-	return true;
+	const AtlasUpload upload{pixels, width, height, dst_x, dst_y};
+	if (!this->thumb_image_)
+		return rebuild_thumbs({&upload, 1}, atlas_side);
+	// Changing atlas dimensions requires replacing all entries together.
+	return atlas_side == this->thumb_side_ &&
+		copy_rgba16({&upload, 1}, atlas_side, atlas_side, this->thumb_image_,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 bool
-OverlayVulkan::rebuild_thumbs(
-	const vector<ThumbUpload> &uploads, int atlas_side)
+OverlayVulkan::rebuild_thumbs(span<const AtlasUpload> uploads, int atlas_side)
 {
-	if (!this->device_ || atlas_side <= 0 || uploads.empty())
-		return false;
-
-	VkImage image = VK_NULL_HANDLE;
-	VkDeviceMemory memory = VK_NULL_HANDLE;
-	VkImageView view = VK_NULL_HANDLE;
-	if (!create_sampled(atlas_side, atlas_side, &image, &memory))
-		return false;
-
-	bool first = true;
-	for (const ThumbUpload &upload : uploads) {
-		if (!upload.pixels || upload.width <= 0 || upload.height <= 0 ||
-			upload.x < 0 || upload.y < 0 ||
-			upload.x + upload.width > atlas_side ||
-			upload.y + upload.height > atlas_side ||
-			!copy_rgba16(upload.pixels, upload.width, upload.height, image,
-				first ? VK_IMAGE_LAYOUT_UNDEFINED
-					  : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				upload.x, upload.y)) {
-			destroy_sampled(&image, &memory, &view);
-			return false;
-		}
-		first = false;
-	}
-
 	const VkComponentMapping bgra{VK_COMPONENT_SWIZZLE_B,
 		VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A};
-	bind_sampled(image, &view, this->descriptor_sets_[kOverlayTexThumbs], bgra);
-	vkDeviceWaitIdle(this->device_);
-	destroy_thumbs();
-	this->thumb_image_ = image;
-	this->thumb_memory_ = memory;
-	this->thumb_view_ = view;
+	if (!upload_rgba16(uploads, atlas_side, atlas_side, &this->thumb_image_,
+			&this->thumb_memory_, &this->thumb_view_,
+			this->descriptor_sets_[kOverlayTexThumbs], bgra))
+		return false;
 	this->thumb_side_ = atlas_side;
 	return true;
 }
@@ -1635,19 +1601,10 @@ OverlayVulkan::reset_thumbs()
 bool
 OverlayVulkan::upload_font(const unsigned char *pixels, int width, int height)
 {
-	if (!this->device_ || !pixels || width <= 0 || height <= 0)
-		return false;
-	vkDeviceWaitIdle(this->device_);
-	destroy_font();
-	const VkComponentMapping identity{
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-		VK_COMPONENT_SWIZZLE_IDENTITY,
-	};
-	return upload_rgba16(pixels, width, height, &this->font_image_,
+	const AtlasUpload upload{(const uint16_t *) pixels, width, height, 0, 0};
+	return upload_rgba16({&upload, 1}, width, height, &this->font_image_,
 		&this->font_memory_, &this->font_view_,
-		this->descriptor_sets_[kOverlayTexFont], identity);
+		this->descriptor_sets_[kOverlayTexFont], {});
 }
 
 void
@@ -1862,18 +1819,9 @@ OverlayVulkan::destroy_pipeline()
 		vkDestroyPipeline(this->device_, this->thumb_pipeline_, nullptr);
 	if (this->pipeline_layout_)
 		vkDestroyPipelineLayout(this->device_, this->pipeline_layout_, nullptr);
-	if (this->vert_)
-		vkDestroyShaderModule(this->device_, this->vert_, nullptr);
-	if (this->frag_)
-		vkDestroyShaderModule(this->device_, this->frag_, nullptr);
-	if (this->thumb_frag_)
-		vkDestroyShaderModule(this->device_, this->thumb_frag_, nullptr);
 	this->pipeline_ = VK_NULL_HANDLE;
 	this->thumb_pipeline_ = VK_NULL_HANDLE;
 	this->pipeline_layout_ = VK_NULL_HANDLE;
-	this->vert_ = VK_NULL_HANDLE;
-	this->frag_ = VK_NULL_HANDLE;
-	this->thumb_frag_ = VK_NULL_HANDLE;
 }
 
 void

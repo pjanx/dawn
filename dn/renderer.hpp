@@ -20,12 +20,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace dn
 {
 
-struct ThumbUpload {
+struct AtlasUpload {
 	const uint16_t *pixels = nullptr;
 	int width = 0;
 	int height = 0;
@@ -46,11 +47,11 @@ class OverlayVulkan
 	void destroy_pipeline();
 	bool create_pipeline();
 	bool ensure_buffers(VkDeviceSize vertex_bytes, VkDeviceSize index_bytes);
-	bool upload_rgba16(const void *pixels, int width, int height,
-		VkImage *image, VkDeviceMemory *memory, VkImageView *view,
+	bool upload_rgba16(std::span<const AtlasUpload> uploads, int width,
+		int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
 		VkDescriptorSet set, VkComponentMapping swizzle) const;
-	bool copy_rgba16(const void *pixels, int width, int height, VkImage image,
-		VkImageLayout layout, int dst_x, int dst_y) const;
+	bool copy_rgba16(std::span<const AtlasUpload> uploads, int width,
+		int height, VkImage image, VkImageLayout layout) const;
 	bool create_sampled(
 		int width, int height, VkImage *image, VkDeviceMemory *memory) const;
 	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
@@ -71,9 +72,6 @@ class OverlayVulkan
 	VkSampler sampler_ = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet descriptor_sets_[2]{};
-	VkShaderModule vert_ = VK_NULL_HANDLE;
-	VkShaderModule frag_ = VK_NULL_HANDLE;
-	VkShaderModule thumb_frag_ = VK_NULL_HANDLE;
 
 	VkImage font_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory font_memory_ = VK_NULL_HANDLE;
@@ -111,9 +109,8 @@ public:
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side, bool *recreated);
-	bool rebuild_thumbs(
-		const std::vector<ThumbUpload> &uploads, int atlas_side);
+		int dst_y, int atlas_side);
+	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
 	void record(VkCommandBuffer cmd, const OverlayMesh &mesh);
 	void destroy();
@@ -181,8 +178,6 @@ class Renderer
 	VkSampler presentation_sampler_ = VK_NULL_HANDLE;
 	VkDescriptorPool presentation_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet presentation_set_ = VK_NULL_HANDLE;
-	VkShaderModule presentation_vert_ = VK_NULL_HANDLE;
-	VkShaderModule presentation_frag_ = VK_NULL_HANDLE;
 	bool needs_resize_ = false;
 	bool prefer_premultiplied_ = false;
 	bool dither_enabled_ = true;
@@ -229,9 +224,8 @@ public:
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;
 	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side, bool *recreated);
-	bool rebuild_thumbs(
-		const std::vector<ThumbUpload> &uploads, int atlas_side);
+		int dst_y, int atlas_side);
+	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.

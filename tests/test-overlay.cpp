@@ -56,13 +56,13 @@ test_thumbnails()
 {
 	dn::Sheet atlas(32, false);
 	const auto slot = atlas.alloc(8, 8);
-	const dn::Uv uv = atlas.uv(slot);
+	const dn::Uv uv = slot.texels();
 	dn::OverlayList list;
 	list.begin(100, 100, {.5f, .5f, .5f, .5f});
 	list.add_thumb({0, 0, 16, 16}, uv, {1, 1, 1, 1}, {});
 	list.add_rect_filled({20, 0, 30, 10}, {1, 1, 1, 1});
 	list.end();
-	CHECK(uv.u1 - uv.u0 == .25f);
+	CHECK(uv.u1 - uv.u0 == 8);
 	const auto &vertex = list.mesh().vertices.front();
 	CHECK(vertex.u == uv.u0);
 	CHECK(vertex.atlas_x1 == uv.u1);

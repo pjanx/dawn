@@ -32,7 +32,7 @@ struct Box {
 	bool operator==(const Box &) const = default;
 };
 
-// Texture coordinates: texels for the UI atlas, normalised for thumbnails.
+// Texture coordinates in atlas texels.
 struct Uv {
 	float u0 = 0;
 	float v0 = 0;
@@ -154,7 +154,6 @@ struct Sheet {
 	// (src_w * 8). No-op if this sheet has no CPU shadow.
 	void blit(
 		Packed slot, const uint16_t *src, int src_w, int src_h, int stride);
-	[[nodiscard]] Uv uv(const Packed &slot) const;
 	[[nodiscard]] bool take_dirty();
 };
 

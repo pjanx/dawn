@@ -889,29 +889,6 @@ trim_ram(Browser &b)
 }
 
 static bool
-push_gpu(Browser &b, Browser::File &f, const Sheet::Packed &slot)
-{
-	Renderer *r = b.kit_.renderer_;
-	if (!r)
-		return false;
-
-	bool recreated = false;
-	if (!r->upload_thumb(f.pixels.ram.data(), f.pixels.w, f.pixels.h, slot.x,
-			slot.y, b.sheet_.w, &recreated))
-		return false;
-	if (!recreated)
-		return true;
-	for (Browser::File &o : b.files_) {
-		if (o.gpu.empty() || o.pixels.ram.empty())
-			continue;
-		if (!r->upload_thumb(o.pixels.ram.data(), o.pixels.w, o.pixels.h,
-				o.gpu.x, o.gpu.y, b.sheet_.w, nullptr))
-			return false;
-	}
-	return true;
-}
-
-static bool
 repack_atlas(Browser &b, Browser::File &wanted)
 {
 	Renderer *renderer = b.kit_.renderer_;
@@ -950,7 +927,7 @@ repack_atlas(Browser &b, Browser::File &wanted)
 			}
 			if (!fits)
 				continue;
-			vector<ThumbUpload> uploads;
+			vector<AtlasUpload> uploads;
 			uploads.reserve(active.size());
 			for (size_t i = 0; i < active.size(); i++) {
 				Browser::File &f = *active[i];
@@ -983,7 +960,9 @@ try_upload(Browser &b, Browser::File &f)
 		repack_atlas(b, f);
 		return;
 	}
-	if (!push_gpu(b, f, slot)) {
+	if (!b.kit_.renderer_ ||
+		!b.kit_.renderer_->upload_thumb(f.pixels.ram.data(), f.pixels.w,
+			f.pixels.h, slot.x, slot.y, b.sheet_.w)) {
 		b.sheet_.release(slot);
 		return;
 	}
@@ -2620,8 +2599,8 @@ Browser::paint(Kit &kit) const
 				dx - border, dy - border, dw + 2 * border, dh + 2 * border};
 			kit.draw_glow(outer, focused ? glow_hot : glow_idle);
 			kit.list_.add_rect_stroke(outer.box(), frame, border);
-			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh},
-				this->sheet_.uv(f.gpu), {1, 1, 1, 1},
+			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh}, f.gpu.texels(),
+				{1, 1, 1, 1},
 				{kit.colours_[ColourWell], kit.colours_[ColourToolbarBottom],
 					float(dx), float(dy), float(max(1, kit.px(kCheckPts)))});
 		} else {

@@ -485,16 +485,15 @@ test_composition()
 	}
 	// A half-transparent black image resolves against encoded checkers.
 	const uint16_t thumbnail[] = {0, 0, 0, 32768};
-	bool recreated = false;
-	CHECK(gpu.overlay.upload_thumb(thumbnail, 1, 1, 0, 0, 2, &recreated));
+	CHECK(gpu.overlay.upload_thumb(thumbnail, 1, 1, 0, 0, 2));
 	const dn::ThumbBackground background{{.25f, .25f, .25f, 1}, white, 0, 0, 1};
 	begin();
-	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	list.add_thumb(box, {0, 0, 1, 1}, white, background);
 	render(true, 0);
 	near(0, 0, .5f);
 	near(1, 0, .268549f);
 	begin();
-	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	list.add_thumb(box, {0, 0, 1, 1}, white, background);
 	list.add_rect_filled(box, {1, 0, 0, .5f});
 	render(true, 0);
 	near(0, 0, .801881f);
@@ -507,7 +506,7 @@ test_composition()
 	auto shifted = background;
 	shifted.origin_x = -1;
 	list.push_clip({0, 0, 1, 2});
-	list.add_thumb(box, {0, 0, .5f, .5f}, white, shifted);
+	list.add_thumb(box, {0, 0, 1, 1}, white, shifted);
 	list.pop_clip();
 	render(true, 0);
 	near(0, 0, .268549f);
@@ -531,7 +530,7 @@ test_composition()
 	near(0, 1, .5f);
 	near(0, 2, .629961f);
 	begin();
-	list.add_thumb(box, {0, 0, .5f, .5f}, white, background);
+	list.add_thumb(box, {0, 0, 1, 1}, white, background);
 	render(true, 0);
 	near(0, 0, .5f);
 	near(0, 1, .5f);
@@ -546,6 +545,56 @@ test_composition()
 		render(true, levels);
 		near(0, 0, floorf(.25f * levels + .5f / 64) / levels);
 	}
+}
+
+static void
+test_atlas_uploads()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error) || !gpu.init_presentation(&error)) {
+		test::fail("atlas setup: %s", error.c_str());
+		return;
+	}
+	const array<Pixel, 2> top{kRed, kGreen};
+	const dn::AtlasUpload uploads[] = {
+		{(const uint16_t *) top.data(), 2, 1, 0, 0},
+		{(const uint16_t *) &kBlue, 1, 1, 0, 1},
+		{(const uint16_t *) &kWhite, 1, 1, 1, 1},
+	};
+	auto check = [&](array<Pixel, 4> expected) {
+		dn::OverlayList list;
+		list.begin(2, 2, {.5f, .5f, .5f, .5f});
+		list.add_thumb({0, 0, 2, 2}, {0, 0, 2, 2}, {1, 1, 1, 1}, {});
+		list.end();
+		array<uint16_t, 16> pixels{};
+		CHECK(gpu.compose(list.mesh(), true, 0, &pixels, &error));
+		for (size_t i = 0; i < expected.size(); i++) {
+			CHECK(pixels[i * 4] == expected[i].r);
+			CHECK(pixels[i * 4 + 1] == expected[i].g);
+			CHECK(pixels[i * 4 + 2] == expected[i].b);
+			CHECK(pixels[i * 4 + 3] == expected[i].a);
+		}
+	};
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
+	check({kRed, kGreen, kBlue, kWhite});
+	CHECK(gpu.overlay.upload_thumb((const uint16_t *) &kRed, 1, 1, 1, 1, 2));
+	check({kRed, kGreen, kBlue, kRed});
+
+	// A rejected replacement or incremental resize preserves every old entry.
+	const dn::AtlasUpload invalid[] = {uploads[0], {nullptr, 1, 1, 0, 1}};
+	CHECK(!gpu.overlay.rebuild_thumbs(invalid, 2));
+	CHECK(!gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 2, 0, 2));
+	CHECK(!gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 0, 0, 4));
+	check({kRed, kGreen, kBlue, kRed});
+
+	// Growing the atlas preserves texel coordinates; reset allows a fresh one.
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 4));
+	check({kRed, kGreen, kBlue, kWhite});
+	gpu.overlay.reset_thumbs();
+	CHECK(gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 0, 0, 2));
+	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
+	check({kRed, kGreen, kBlue, kWhite});
 }
 
 static void
@@ -826,5 +875,6 @@ main()
 		{"output encoding and composition", test_output_encoding},
 		{"linear GUI composition", test_composition},
 		{"viewer display curves", test_viewer_curves},
+		{"atlas uploads", test_atlas_uploads},
 	});
 }
