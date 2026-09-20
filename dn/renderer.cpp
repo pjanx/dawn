@@ -1433,7 +1433,8 @@ OverlayVulkan::queue_rgba16(span<const AtlasUpload> uploads, int width,
 			.imageOffset = {upload.x, upload.y, 0},
 			.imageExtent = {uint32_t(upload.width), uint32_t(upload.height), 1},
 		});
-		size += VkDeviceSize(upload.width) * upload.height * kOverlayBpp;
+		size += VkDeviceSize(upload.width) * VkDeviceSize(upload.height) *
+			kOverlayBpp;
 	}
 	UploadBatch batch;
 	batch.pixels.resize(size);
@@ -1441,7 +1442,7 @@ OverlayVulkan::queue_rgba16(span<const AtlasUpload> uploads, int width,
 		const AtlasUpload &upload = uploads[i];
 		const size_t row_bytes = size_t(upload.width) * kOverlayBpp;
 		const size_t stride = upload.stride ? upload.stride : row_bytes;
-		for (int y = 0; y < upload.height; y++)
+		for (size_t y = 0; y < size_t(upload.height); y++)
 			memcpy(batch.pixels.data() + copies[i].bufferOffset + y * row_bytes,
 				(const uint8_t *) upload.pixels + y * stride, row_bytes);
 	}
@@ -1597,8 +1598,8 @@ OverlayVulkan::upload_font(
 			return false;
 
 		const AtlasUpload upload{
-			pixels + (size_t(dirty.y) * width + dirty.x) * 4, dirty.w, dirty.h,
-			dirty.x, dirty.y, size_t(width) * kOverlayBpp};
+			pixels + (size_t(dirty.y) * size_t(width) + size_t(dirty.x)) * 4,
+			dirty.w, dirty.h, dirty.x, dirty.y, size_t(width) * kOverlayBpp};
 		return queue_rgba16(
 			{&upload, 1}, width, height, this->pending_font_, false);
 	}

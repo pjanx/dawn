@@ -455,7 +455,7 @@ test_composition()
 			levels, &pixels, &error));
 	};
 	auto near = [&](int pixel, int c, float want) {
-		const float actual = pixels[pixel * 4 + c] / 65535.f;
+		const float actual = pixels[size_t(pixel * 4 + c)] / 65535.f;
 		if (abs(actual - want) > .0003f)
 			test::fail("composition pixel %d channel %d: %.6f != %.6f", pixel,
 				c, actual, want);
@@ -553,7 +553,7 @@ test_composition()
 	auto custom = dawn::profile_encoding(nullptr);
 	for (size_t i = 0; i < custom.kSamples; i++) {
 		const float x = float(i) / float(custom.kSamples - 1);
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			custom.decode[i][c] = powf(x, float(c + 1));
 			custom.encode[i][c] = powf(x, 1.f / float(c + 1));
 		}
@@ -852,7 +852,7 @@ test_viewer_curves()
 	auto curves = dawn::profile_encoding(nullptr);
 	for (size_t i = 0; i < curves.kSamples; i++) {
 		const float x = float(i) / float(curves.kSamples - 1);
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			curves.decode[i][c] = powf(x, float(c + 1));
 			curves.encode[i][c] = powf(x, 1.f / float(c + 1));
 		}
@@ -878,7 +878,7 @@ test_viewer_curves()
 			const float clear[] = {bg, bg, bg, bg};
 			array<uint16_t, 16> pixels{};
 			CHECK(gpu.draw(view, clear, &pixels, &error));
-			for (int c = 0; c < 3; c++) {
+			for (size_t c = 0; c < 3; c++) {
 				const float gamma = float(c + 1);
 				float expected = .5f * (linear ? powf(.5f, gamma) : .5f);
 				if (view.composite) {
@@ -911,11 +911,11 @@ check_output(EngineReadback &gpu, const dawn::ScaleView &view,
 		test::fail("engine draw: %s", error.c_str());
 		return;
 	}
-	for (int i = 0; i < 4; i++) {
+	for (size_t i = 0; i < 4; i++) {
 		const float a = src[i].a / 65535.f;
 		const float rgb[] = {
 			src[i].r / 65535.f, src[i].g / 65535.f, src[i].b / 65535.f};
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			const float straight = a > 0 ? rgb[c] / a : 0;
 			// Alpha-preserving output decodes straight colour, then
 			// re-associates; decoding premultiplied RGB would be wrong.
@@ -941,7 +941,7 @@ check_output(EngineReadback &gpu, const dawn::ScaleView &view,
 				test::fail("filter %d transfer %d blend %d linear %d bg %d "
 						   "checker %d pixel %d channel %d: %.6f != %.6f",
 					int(view.filter), int(transfer), view.linear_blend, linear,
-					composite, view.checkerboard, i, c,
+					composite, view.checkerboard, int(i), int(c),
 					actual[i * 4 + c] / 65535.f, expected);
 		}
 		CHECK(

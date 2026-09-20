@@ -277,7 +277,7 @@ fill_picture(const Image &image, WebPPicture &picture)
 {
 	for (uint32_t y = 0; y < image.height; y++) {
 		const uint16_t *src = row_u16(image, y);
-		uint32_t *dst = picture.argb + size_t(y) * picture.argb_stride;
+		uint32_t *dst = picture.argb + size_t(y) * size_t(picture.argb_stride);
 		for (uint32_t x = 0; x < image.width; x++, src += 4) {
 			const uint32_t a = src[3];
 			uint32_t pixel = ((a * 255 + 0x7FFF) / 0xFFFF) << 24;

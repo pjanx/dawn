@@ -693,7 +693,7 @@ thumb_curves(vector<uint16_t> &pixels, const ScreenColour *colour, bool decode)
 			for (float &c : rgb)
 				c = decode ? dawn::transfer_decode(c, dawn::Transfer::Srgb)
 						   : dawn::transfer_encode(c, dawn::Transfer::Srgb);
-		for (int c = 0; c < 3; c++)
+		for (size_t c = 0; c < 3; c++)
 			pixels[i + 2 - c] = uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * a));
 	}
 }

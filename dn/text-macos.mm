@@ -102,8 +102,8 @@ mask_context(uint32_t *pixels, int width, int height)
 	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
 	if (!space)
 		return nullptr;
-	CGContextRef context = CGBitmapContextCreate(pixels, width, height, 8,
-		size_t(width) * sizeof *pixels, space,
+	CGContextRef context = CGBitmapContextCreate(pixels, size_t(width),
+		size_t(height), 8, size_t(width) * sizeof *pixels, space,
 		CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | kCGBitmapByteOrder32Host);
 	CGColorSpaceRelease(space);
 	if (!context)

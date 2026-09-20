@@ -44,7 +44,7 @@ test_growth()
 	CHECK(quads[1].uv.v1 == quads[2].uv.v1);
 	CHECK(quads[1].uv.u0 == float(glyph.x));
 	CHECK(quads[1].uv.v1 == float(glyph.y + glyph.h));
-	const size_t at = (size_t(white.y) * size_t(atlas.w) + white.x) * 4;
+	const size_t at = (size_t(white.y) * size_t(atlas.w) + size_t(white.x)) * 4;
 	CHECK(atlas.pixels[at] == 65535);
 	CHECK(atlas.pixels[at + 3] == 65535);
 	CHECK(list.mesh().cmds.size() == 1);

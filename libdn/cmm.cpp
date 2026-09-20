@@ -385,7 +385,7 @@ profile_transfer(const Profile *profile)
 array<float, 3>
 sample_curves(span<const array<float, 3>> curves, array<float, 3> rgb)
 {
-	for (int c = 0; c < 3; c++) {
+	for (size_t c = 0; c < 3; c++) {
 		const float x = clamp(rgb[c], 0.f, 1.f) * float(curves.size() - 1);
 		const size_t lo = min(size_t(x), curves.size() - 2);
 		rgb[c] = lerp(curves[lo][c], curves[lo + 1][c], x - float(lo));
@@ -424,7 +424,7 @@ profile_encoding(const Profile *profile)
 	const cmsTagSignature colorants[] = {
 		cmsSigRedColorantTag, cmsSigGreenColorantTag, cmsSigBlueColorantTag};
 	ProfileEncoding matrix;
-	for (int c = 0; c < 3; c++) {
+	for (size_t c = 0; c < 3; c++) {
 		auto *curve = (cmsToneCurve *) cmsReadTag(h, trcs[c]);
 		auto *xyz = (cmsCIEXYZ *) cmsReadTag(h, colorants[c]);
 		if (!curve || !xyz || !cmsIsToneCurveMonotonic(curve) ||

@@ -971,7 +971,7 @@ test_profile_encoding()
 	};
 	const auto curves = dawn::profile_encoding(import().get());
 	CHECK(curves.matrix_trc);
-	for (int c = 0; c < 3; c++) {
+	for (size_t c = 0; c < 3; c++) {
 		CHECK(abs(curves.decode[2048][c] - pow(.5, gammas[c])) < .0001);
 		CHECK(abs(curves.encode[2048][c] - pow(.5, 1 / gammas[c])) < .0001);
 	}

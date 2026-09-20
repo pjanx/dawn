@@ -233,12 +233,13 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 	const QImage img = src.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 	const int rows = min(rect.h, img.height());
 	const int cols = min(rect.w, img.width());
-	vector<uint16_t> pixels(size_t(cols) * rows * 4);
+	const size_t stride = size_t(cols) * 4;
+	vector<uint16_t> pixels(stride * size_t(rows));
 	for (int y = 0; y < rows; y++) {
 		const auto *row =
 			dawn::assume_aligned<const QRgb>(img.constScanLine(y));
-		for (int x = 0; x < cols; x++) {
-			uint16_t *p = pixels.data() + (size_t(y) * cols + x) * 4;
+		uint16_t *p = pixels.data() + size_t(y) * stride;
+		for (int x = 0; x < cols; x++, p += 4) {
 			p[0] = widen8(uint8_t(qBlue(row[x])));
 			p[1] = widen8(uint8_t(qGreen(row[x])));
 			p[2] = widen8(uint8_t(qRed(row[x])));
@@ -248,16 +249,17 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 	const auto &state = kit.screen_state_;
 	if (!coverage && state.cmm && state.profile) {
 		auto srgb = state.cmm->get_profile_sRGB();
-		state.cmm->transform_bgra16((uint8_t *) pixels.data(), cols, rows,
-			srgb.get(), state.profile.get(), true, true);
+		state.cmm->transform_bgra16((uint8_t *) pixels.data(), uint32_t(cols),
+			uint32_t(rows), srgb.get(), state.profile.get(), true, true);
 	}
+	const size_t atlas_stride = size_t(kit.atlas_.w) * 4;
 	for (int y = 0; y < rows; y++) {
 		uint16_t *dst = kit.atlas_.pixels.data() +
-			(size_t(rect.y + y) * kit.atlas_.w + rect.x) * 4;
-		for (int x = 0; x < cols; x++) {
-			const uint16_t *p = pixels.data() + (size_t(y) * cols + x) * 4;
+			size_t(rect.y + y) * atlas_stride + size_t(rect.x) * 4;
+		const uint16_t *p = pixels.data() + size_t(y) * stride;
+		for (int x = 0; x < cols; x++, dst += 4, p += 4) {
 			if (coverage) {
-				fill_n(dst + x * 4, 4, p[3]);
+				fill_n(dst, 4, p[3]);
 				continue;
 			}
 			array<float, 3> rgb{};
@@ -269,10 +271,9 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 			else
 				for (float &c : rgb)
 					c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
-			for (int c = 0; c < 3; c++)
-				dst[x * 4 + c] =
-					uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * p[3]));
-			dst[x * 4 + 3] = p[3];
+			for (size_t c = 0; c < 3; c++)
+				dst[c] = uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * p[3]));
+			dst[3] = p[3];
 		}
 	}
 	kit.atlas_.mark_dirty(rect);

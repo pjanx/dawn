@@ -24,7 +24,14 @@
 #define WUFFS_CONFIG__MODULE__WBMP
 #define WUFFS_CONFIG__MODULE__WEBP
 #define WUFFS_CONFIG__MODULE__ZLIB
+#ifdef __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wc99-extensions"
+#endif
 #include "wuffs-v0.4.c"
+#ifdef __clang__
+#pragma GCC diagnostic pop
+#endif
 
 #include <dawn-config.h>
 
