@@ -1196,7 +1196,7 @@ OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 		.stride = sizeof(OverlayQuad),
 		.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE,
 	};
-	VkVertexInputAttributeDescription attributes[4]{
+	VkVertexInputAttributeDescription attributes[5]{
 		{.location = 0,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SINT,
@@ -1213,12 +1213,16 @@ OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
 			.offset = offsetof(OverlayQuad, bottom)},
+		{.location = 4,
+			.binding = 0,
+			.format = VK_FORMAT_R32_SFLOAT,
+			.offset = offsetof(OverlayQuad, contrast)},
 	};
 	VkPipelineVertexInputStateCreateInfo vertex_input{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1,
 		.pVertexBindingDescriptions = &binding,
-		.vertexAttributeDescriptionCount = 4,
+		.vertexAttributeDescriptionCount = 5,
 		.pVertexAttributeDescriptions = attributes,
 	};
 	VkGraphicsPipelineCreateInfo pipeline_info{

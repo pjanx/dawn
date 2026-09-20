@@ -659,6 +659,47 @@ test_viewport_changes()
 }
 
 static void
+test_glyph_contrast()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error) || !gpu.init_presentation(&error)) {
+		test::fail("glyph contrast setup: %s", error.c_str());
+		return;
+	}
+	// Reuse one half-covered atlas texel for both polarities and opacity.
+	const dn::Uv uv{1.5f, .5f, 1.5f, .5f};
+	dn::OverlayList list;
+	list.begin(2, 2, {});
+	list.add_glyph({0, 0, 1, 1}, uv, {0, 0, 0, 1});
+	list.add_glyph({1, 0, 2, 1}, uv, {1, 1, 1, 1});
+	list.add_glyph({0, 1, 1, 2}, uv, {0, 0, 0, .5f});
+	list.add_image({1, 1, 2, 2}, uv, {0, 0, 0, 1});
+	list.end();
+	array<uint16_t, 16> pixels{};
+	CHECK(gpu.compose(
+		list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
+
+	// Don't be needlessly anal about the particular values.
+	const float dark = pixels[3] / 65535.f;
+	const float light = pixels[7] / 65535.f;
+	const float faded = pixels[11] / 65535.f;
+	const float image = pixels[15] / 65535.f;
+#if !defined _WIN32
+	CHECK(dark > image + .01f && dark < 1.f);
+#else
+	CHECK(abs(dark - image) < .0003f);
+#endif
+	CHECK(abs(faded - dark * .5f) < .0003f);
+	CHECK(abs(light - .5f) < .0003f);
+	CHECK(abs(image - .5f) < .0003f);
+	// Black stays premultiplied black, including at partial opacity.
+	for (size_t i : {0u, 2u, 3u})
+		CHECK(pixels[i * 4] == 0 && pixels[i * 4 + 1] == 0 &&
+			pixels[i * 4 + 2] == 0);
+}
+
+static void
 test_font_uploads()
 {
 	EngineReadback gpu;
@@ -1108,6 +1149,7 @@ main()
 		{"atlas uploads", test_atlas_uploads},
 		{"font atlas partial uploads", test_font_uploads},
 		{"image and overlay share a pass", test_image_overlay},
+		{"glyph contrast by colour", test_glyph_contrast},
 		{"viewport changes without setup", test_viewport_changes},
 	});
 	// Tear down Vulkan before the validation layer's process-exit cleanup.

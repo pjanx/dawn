@@ -15,7 +15,6 @@
 #import <CoreText/CoreText.h>
 
 #include <algorithm>
-#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstddef>
@@ -95,69 +94,6 @@ font_weight(int weight)
 	return NSFontWeightBlack;
 }
 
-// Opaque RGB is necessary for Core Graphics' native font smoothing.
-static CGContextRef
-mask_context(uint32_t *pixels, int width, int height)
-{
-	CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-	if (!space)
-		return nullptr;
-	CGContextRef context = CGBitmapContextCreate(pixels, size_t(width),
-		size_t(height), 8, size_t(width) * sizeof *pixels, space,
-		CGBitmapInfo(kCGImageAlphaNoneSkipFirst) | kCGBitmapByteOrder32Host);
-	CGColorSpaceRelease(space);
-	if (!context)
-		return nullptr;
-	CGContextSetAllowsAntialiasing(context, true);
-	CGContextSetShouldAntialias(context, true);
-	CGContextSetAllowsFontSmoothing(context, true);
-	CGContextSetAllowsFontSubpixelPositioning(context, true);
-	CGContextSetShouldSubpixelPositionFonts(context, true);
-	CGContextSetAllowsFontSubpixelQuantization(context, false);
-	CGContextSetShouldSubpixelQuantizeFonts(context, false);
-	CGContextSetGrayFillColor(context, 0, 1);
-	CGContextSetTextDrawingMode(context, kCGTextFill);
-	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
-	return context;
-}
-
-static bool
-font_smoothing_available()
-{
-	// Like SkCTFontGetSmoothBehavior, compare actual rasters rather than OS
-	// versions: disabled smoothing also disables CG's gamma-2 transfer.
-	CTFontRef font = CTFontCreateWithName(CFSTR("Helvetica"), 16, nullptr);
-	if (!font)
-		return false;
-	const UniChar characters[] = {'A', 'o'};
-	CGGlyph glyphs[2] = {};
-	if (!CTFontGetGlyphsForCharacters(font, characters, glyphs, 2)) {
-		CFRelease(font);
-		return false;
-	}
-	array<uint32_t, 48 * 32> pixels;
-	pixels.fill(0xFFFFFFFF);
-	CGContextRef context = mask_context(pixels.data(), 48, 32);
-	if (!context) {
-		CFRelease(font);
-		return false;
-	}
-	const CGPoint positions[] = {{4.25, 8}, {24.25, 8}};
-	CGContextSetShouldSmoothFonts(context, false);
-	CTFontDrawGlyphs(font, glyphs, positions, 2, context);
-	const auto unsmoothed = pixels;
-	pixels.fill(0xFFFFFFFF);
-	CGContextSetShouldSmoothFonts(context, true);
-	CTFontDrawGlyphs(font, glyphs, positions, 2, context);
-	CGContextRelease(context);
-	CFRelease(font);
-	for (size_t i = 0; i < pixels.size(); i++) {
-		if ((pixels[i] & 0xFFFFFF) != (unsmoothed[i] & 0xFFFFFF))
-			return true;
-	}
-	return false;
-}
-
 static CTFontRef
 make_font(const QFont &request, float device_scale, bool bold)
 {
@@ -220,7 +156,6 @@ make_font(const QFont &request, float device_scale, bool bold)
 
 struct TextBackendImpl {
 	uint64_t settings_generation = 0;
-	bool smooth_fonts = false;
 	CTFontRef regular = nullptr;
 	CTFontRef bold = nullptr;
 	vector<CTFontRef> fonts;
@@ -459,7 +394,6 @@ TextBackend::reset(const QFont &font, float device_scale, string *error)
 	this->impl_->clear();
 	this->impl_->regular = regular;
 	this->impl_->bold = bold;
-	this->impl_->smooth_fonts = font_smoothing_available();
 	this->impl_->settings_generation =
 		g_font_settings_generation.load(memory_order_relaxed);
 	this->generation_++;
@@ -758,7 +692,7 @@ TextLayout::range_rects(int start, int length) const
 }
 
 static GlyphImage
-raster_mask(CTFontRef font, CGGlyph glyph, float offset, int pad, bool smooth)
+raster_mask(CTFontRef font, CGGlyph glyph, float offset, int pad)
 {
 	GlyphImage result;
 	result.kind = GlyphImageKind::Mask;
@@ -790,39 +724,37 @@ raster_mask(CTFontRef font, CGGlyph glyph, float offset, int pad, bool smooth)
 	const int width = right - left;
 	const int height = top - bottom;
 	if (width <= 0 || height <= 0 || width > 65536 || height > 65536 ||
-		size_t(width) >
-			numeric_limits<size_t>::max() / sizeof(uint32_t) / size_t(height)) {
+		size_t(width) > numeric_limits<size_t>::max() / size_t(height)) {
 		result.kind = GlyphImageKind::Missing;
 		return result;
 	}
 
-	vector<uint32_t> rgb(size_t(width) * size_t(height), 0xFFFFFFFF);
-	CGContextRef context = mask_context(rgb.data(), width, height);
+	vector<uint8_t> pixels(size_t(width) * size_t(height));
+	CGContextRef context = CGBitmapContextCreate(pixels.data(), size_t(width),
+		size_t(height), 8, size_t(width), nullptr, kCGImageAlphaOnly);
 	if (!context) {
 		result.kind = GlyphImageKind::Missing;
 		return result;
 	}
-	CGContextSetShouldSmoothFonts(context, smooth);
+	CGContextSetBlendMode(context, kCGBlendModeNormal);
+	CGContextSetAlpha(context, 1);
+	// Keep raw coverage; colour-dependent contrast is applied when drawing.
+	CGContextSetAllowsFontSmoothing(context, false);
+	CGContextSetShouldSmoothFonts(context, false);
+	CGContextSetAllowsAntialiasing(context, true);
+	CGContextSetShouldAntialias(context, true);
+	CGContextSetAllowsFontSubpixelPositioning(context, true);
+	CGContextSetShouldSubpixelPositionFonts(context, true);
+	CGContextSetAllowsFontSubpixelQuantization(context, false);
+	CGContextSetShouldSubpixelQuantizeFonts(context, false);
+	CGContextClearRect(context, CGRectMake(0, 0, width, height));
+	CGContextSetFillColorWithColor(
+		context, CGColorGetConstantColor(kCGColorBlack));
+	CGContextSetTextDrawingMode(context, kCGTextFill);
+	CGContextSetTextMatrix(context, CGAffineTransformIdentity);
 	const CGPoint position = CGPointMake(offset - left, -bottom);
 	CTFontDrawGlyphs(font, &glyph, &position, 1, context);
 	CGContextRelease(context);
-
-	// Follow Skia's SkScalerContext_mac_ct.cpp: undo the smoothing transfer
-	// on RGB before inversion, then collapse to A8.  This is not an sRGB
-	// decode or a power curve on alpha, and preserves native stem darkening.
-	vector<uint8_t> pixels(rgb.size());
-	for (size_t i = 0; i < rgb.size(); i++) {
-		unsigned r = (rgb[i] >> 16) & 255;
-		unsigned g = (rgb[i] >> 8) & 255;
-		unsigned b = rgb[i] & 255;
-		if (smooth) {
-			r = (r * r + 128) / 255;
-			g = (g * g + 128) / 255;
-			b = (b * b + 128) / 255;
-		}
-		pixels[i] =
-			uint8_t((54 * (255 - r) + 183 * (255 - g) + 19 * (255 - b)) >> 8);
-	}
 
 	int ink_left = width, min_row = height, ink_right = -1, max_row = -1;
 	for (int y = 0; y < height; y++) {
@@ -841,7 +773,7 @@ raster_mask(CTFontRef font, CGGlyph glyph, float offset, int pad, bool smooth)
 	if ((ink_left == 0 || ink_right == width - 1 || min_row == 0 ||
 			max_row == height - 1) &&
 		pad < 16)
-		return raster_mask(font, glyph, offset, 16, smooth);
+		return raster_mask(font, glyph, offset, 16);
 
 	result.width = ink_right - ink_left + 1;
 	result.height = max_row - min_row + 1;
@@ -866,8 +798,8 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	if (font_id >= this->impl_->fonts.size() || phase < 0 || phase >= 4 ||
 		glyph_id > numeric_limits<CGGlyph>::max())
 		return {};
-	return raster_mask(this->impl_->fonts[font_id], CGGlyph(glyph_id),
-		float(phase) * .25f, 4, this->impl_->smooth_fonts);
+	return raster_mask(
+		this->impl_->fonts[font_id], CGGlyph(glyph_id), float(phase) * .25f, 4);
 }
 
 }  // namespace dn

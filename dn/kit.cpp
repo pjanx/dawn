@@ -502,7 +502,7 @@ Kit::emit_layout(float x, float y, const TextCache::Text &cached, Colour colour,
 		gx += glyph->bearing_x;
 		const int gy =
 			int(lround(double(y) + double(positioned.y))) + glyph->bearing_y;
-		this->list_.add_image({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
+		this->list_.add_glyph({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
 			glyph->rect.texels(), colour);
 	}
 	if (mnemonic < 0 || mnemonic >= text.size())

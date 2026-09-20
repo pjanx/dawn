@@ -146,6 +146,20 @@ OverlayList::add_image(Box b, Uv uv, Colour col)
 }
 
 void
+OverlayList::add_glyph(Box b, Uv uv, Colour col)
+{
+	add_image(b, uv, col);
+#if !defined _WIN32
+	// Native masks supply raw coverage. Boost dark text more than light text
+	// to compensate for thin strokes in linear light without bright halos.
+	// Use the straight colour so fading text does not change its weight.
+	const float luminance = .2126f * col.r + .7152f * col.g + .0722f * col.b;
+	this->mesh_.quads.back().contrast =
+		1.f * (1.f - clamp(luminance, 0.f, 1.f));
+#endif
+}
+
+void
 OverlayList::add_thumb(
 	Box b, Uv uv, Colour col, const ThumbBackground &background)
 {

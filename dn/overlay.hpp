@@ -48,8 +48,9 @@ struct OverlayQuad {
 	Uv uv{};
 	Colour top{};
 	Colour bottom{};
+	float contrast = 0;  // Scalar glyph coverage boost.
 };
-static_assert(sizeof(OverlayQuad) == 64);
+static_assert(sizeof(OverlayQuad) == 68);
 
 constexpr uint32_t kOverlayTexFont = 0;
 constexpr uint32_t kOverlayTexThumbs = 1;
@@ -102,6 +103,7 @@ public:
 	// collapsed along one axis: there is no line primitive.
 	void add_rect_stroke(Box b, Colour col, int thickness);
 	void add_image(Box b, Uv uv, Colour col);
+	void add_glyph(Box b, Uv uv, Colour col);
 	void add_thumb(Box b, Uv uv, Colour col, const ThumbBackground &background);
 
 	[[nodiscard]] const OverlayMesh &mesh() const { return this->mesh_; }
