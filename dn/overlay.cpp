@@ -31,15 +31,15 @@ void
 OverlayList::sync_clip()
 {
 	const Box &clip = this->clip_stack_.back();
-	if (this->cmd_.idx_count > 0 &&
+	if (this->cmd_.quad_count > 0 &&
 		(!(this->cmd_.clip == clip) || this->cmd_.tex != this->tex_ ||
 			(this->tex_ == kOverlayTexThumbs &&
 				this->cmd_.background != this->background_))) {
 		this->mesh_.cmds.push_back(this->cmd_);
-		this->cmd_.idx_count = 0;
+		this->cmd_.quad_count = 0;
 	}
-	if (this->cmd_.idx_count == 0)
-		this->cmd_.idx_offset = uint32_t(this->mesh_.indices.size());
+	if (this->cmd_.quad_count == 0)
+		this->cmd_.quad_offset = uint32_t(this->mesh_.quads.size());
 	this->cmd_.clip = clip;
 	this->cmd_.tex = this->tex_;
 	this->cmd_.background = this->background_;
@@ -48,8 +48,7 @@ OverlayList::sync_clip()
 void
 OverlayList::begin(int width_px, int height_px, Uv white)
 {
-	this->mesh_.vertices.clear();
-	this->mesh_.indices.clear();
+	this->mesh_.quads.clear();
 	this->mesh_.cmds.clear();
 	this->mesh_.display_w = float(width_px);
 	this->mesh_.display_h = float(height_px);
@@ -65,7 +64,7 @@ OverlayList::begin(int width_px, int height_px, Uv white)
 void
 OverlayList::end()
 {
-	if (this->cmd_.idx_count > 0)
+	if (this->cmd_.quad_count > 0)
 		this->mesh_.cmds.push_back(this->cmd_);
 	this->cmd_ = {};
 }
@@ -94,38 +93,25 @@ OverlayList::pop_clip()
 
 // The one funnel for geometry: everything else here ends up in this quad.
 void
-OverlayList::add_quad(
-	Box b, Uv uv, Colour c00, Colour c10, Colour c11, Colour c01)
+OverlayList::add_quad(Box b, Uv uv, Colour top, Colour bottom)
 {
 	sync_clip();
-	const float x0 = float(b.x0), y0 = float(b.y0);
-	const float x1 = float(b.x1), y1 = float(b.y1);
-	const uint32_t i = uint32_t(this->mesh_.vertices.size());
-	this->mesh_.vertices.push_back({x0, y0, uv.u0, uv.v0, premul(c00)});
-	this->mesh_.vertices.push_back({x1, y0, uv.u1, uv.v0, premul(c10)});
-	this->mesh_.vertices.push_back({x1, y1, uv.u1, uv.v1, premul(c11)});
-	this->mesh_.vertices.push_back({x0, y1, uv.u0, uv.v1, premul(c01)});
-	this->mesh_.indices.push_back(i);
-	this->mesh_.indices.push_back(i + 1);
-	this->mesh_.indices.push_back(i + 2);
-	this->mesh_.indices.push_back(i);
-	this->mesh_.indices.push_back(i + 2);
-	this->mesh_.indices.push_back(i + 3);
-	this->cmd_.idx_count += 6;
+	this->mesh_.quads.push_back({b, uv, premul(top), premul(bottom)});
+	this->cmd_.quad_count++;
 }
 
 void
 OverlayList::add_rect_filled(Box b, Colour col)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(b, this->white_, col, col, col, col);
+	add_quad(b, this->white_, col, col);
 }
 
 void
 OverlayList::add_rect_filled_vgradient(Box b, Colour top, Colour bottom)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(b, this->white_, top, top, bottom, bottom);
+	add_quad(b, this->white_, top, bottom);
 }
 
 void
@@ -156,7 +142,7 @@ void
 OverlayList::add_image(Box b, Uv uv, Colour col)
 {
 	this->tex_ = kOverlayTexFont;
-	add_quad(b, uv, col, col, col, col);
+	add_quad(b, uv, col, col);
 }
 
 void
@@ -165,17 +151,7 @@ OverlayList::add_thumb(
 {
 	this->tex_ = kOverlayTexThumbs;
 	this->background_ = background;
-	add_quad(b, uv, col, col, col, col);
-	const size_t first = this->mesh_.vertices.size() - 4;
-	for (size_t i = first; i < this->mesh_.vertices.size(); i++) {
-		OverlayVertex &vertex = this->mesh_.vertices[i];
-		vertex.atlas_x0 = uv.u0;
-		vertex.atlas_y0 = uv.v0;
-		vertex.atlas_x1 = uv.u1;
-		vertex.atlas_y1 = uv.v1;
-		vertex.dest_w = float(abs(b.x1 - b.x0));
-		vertex.dest_h = float(abs(b.y1 - b.y0));
-	}
+	add_quad(b, uv, col, col);
 }
 
 // --- Sheet -------------------------------------------------------------------

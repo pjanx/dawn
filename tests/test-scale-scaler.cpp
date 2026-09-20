@@ -470,6 +470,33 @@ test_composition()
 	near(0, 0, .880825f);
 	near(2, 0, .537099f);
 
+	// Rectangles in one batch have independent bounds. A clipped later batch
+	// starts at a nonzero instance and must preserve painter order.
+	begin();
+	list.add_rect_filled({-1, 0, 1, 2}, {1, 0, 0, 1});
+	list.add_rect_filled({1, 0, 3, 2}, {0, 1, 0, 1});
+	list.push_clip({0, 0, 1, 1});
+	list.add_rect_filled(box, {0, 0, 1, .5f});
+	list.pop_clip();
+	render(true, 0);
+	near(0, 0, .735357f);
+	near(0, 2, .735357f);
+	near(1, 0, 0);
+	near(1, 1, 1);
+	near(2, 0, 1);
+	near(2, 2, 0);
+	near(3, 1, 1);
+
+	// Interpolate associated colours: transparent blue contributes no blue.
+	begin();
+	list.add_rect_filled_vgradient(box, {1, 0, 0, 1}, {0, 0, 1, 0});
+	render(true, 0);
+	near(0, 0, .75f);
+	near(0, 2, 0);
+	near(0, 3, .75f);
+	near(2, 0, .25f);
+	near(2, 3, .25f);
+
 	for (bool premultiplied : {false, true}) {
 		begin();
 		list.add_rect_filled(box, {1, 0, 0, .25f});

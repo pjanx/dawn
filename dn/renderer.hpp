@@ -43,10 +43,10 @@ class OverlayVulkan
 	void destroy_thumbs();
 	void destroy_sampled(
 		VkImage *image, VkDeviceMemory *memory, VkImageView *view) const;
-	void destroy_buffers();
+	void destroy_buffer();
 	void destroy_pipeline();
 	bool create_pipeline();
-	bool ensure_buffers(VkDeviceSize vertex_bytes, VkDeviceSize index_bytes);
+	bool ensure_buffer(VkDeviceSize bytes);
 	bool upload_rgba16(std::span<const AtlasUpload> uploads, int width,
 		int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
 		VkDescriptorSet set, VkComponentMapping swizzle) const;
@@ -83,12 +83,9 @@ class OverlayVulkan
 	int thumb_side_ = 0;
 	int thumb_atlas_max_ = 2048;
 
-	VkBuffer vertex_buffer_ = VK_NULL_HANDLE;
-	VkDeviceMemory vertex_memory_ = VK_NULL_HANDLE;
-	VkDeviceSize vertex_size_ = 0;
-	VkBuffer index_buffer_ = VK_NULL_HANDLE;
-	VkDeviceMemory index_memory_ = VK_NULL_HANDLE;
-	VkDeviceSize index_size_ = 0;
+	VkBuffer quad_buffer_ = VK_NULL_HANDLE;
+	VkDeviceMemory quad_memory_ = VK_NULL_HANDLE;
+	VkDeviceSize quad_size_ = 0;
 
 	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
 

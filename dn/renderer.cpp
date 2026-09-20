@@ -1226,36 +1226,32 @@ OverlayVulkan::create_pipeline()
 
 	VkVertexInputBindingDescription binding{
 		.binding = 0,
-		.stride = sizeof(OverlayVertex),
-		.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+		.stride = sizeof(OverlayQuad),
+		.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE,
 	};
-	VkVertexInputAttributeDescription attributes[5]{
+	VkVertexInputAttributeDescription attributes[4]{
 		{.location = 0,
 			.binding = 0,
-			.format = VK_FORMAT_R32G32_SFLOAT,
-			.offset = offsetof(OverlayVertex, x)},
+			.format = VK_FORMAT_R32G32B32A32_SINT,
+			.offset = offsetof(OverlayQuad, box)},
 		{.location = 1,
 			.binding = 0,
-			.format = VK_FORMAT_R32G32_SFLOAT,
-			.offset = offsetof(OverlayVertex, u)},
+			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+			.offset = offsetof(OverlayQuad, uv)},
 		{.location = 2,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset = offsetof(OverlayVertex, col)},
+			.offset = offsetof(OverlayQuad, top)},
 		{.location = 3,
 			.binding = 0,
 			.format = VK_FORMAT_R32G32B32A32_SFLOAT,
-			.offset = offsetof(OverlayVertex, atlas_x0)},
-		{.location = 4,
-			.binding = 0,
-			.format = VK_FORMAT_R32G32_SFLOAT,
-			.offset = offsetof(OverlayVertex, dest_w)},
+			.offset = offsetof(OverlayQuad, bottom)},
 	};
 	VkPipelineVertexInputStateCreateInfo vertex_input{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
 		.vertexBindingDescriptionCount = 1,
 		.pVertexBindingDescriptions = &binding,
-		.vertexAttributeDescriptionCount = 5,
+		.vertexAttributeDescriptionCount = 4,
 		.pVertexAttributeDescriptions = attributes,
 	};
 	VkGraphicsPipelineCreateInfo pipeline_info{
@@ -1616,55 +1612,40 @@ OverlayVulkan::destroy_thumbs()
 }
 
 bool
-OverlayVulkan::ensure_buffers(
-	VkDeviceSize vertex_bytes, VkDeviceSize index_bytes)
+OverlayVulkan::ensure_buffer(VkDeviceSize bytes)
 {
-	auto recreate = [&](VkBuffer *buffer, VkDeviceMemory *memory,
-						VkDeviceSize *current, VkDeviceSize needed,
-						VkBufferUsageFlags usage) {
-		if (*current >= needed && *buffer)
-			return true;
-		if (*buffer) {
-			vkDestroyBuffer(this->device_, *buffer, nullptr);
-			*buffer = VK_NULL_HANDLE;
-		}
-		if (*memory) {
-			vkFreeMemory(this->device_, *memory, nullptr);
-			*memory = VK_NULL_HANDLE;
-		}
-		*current = needed + needed / 2;
-		VkBufferCreateInfo info{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.size = *current,
-			.usage = usage,
-		};
-		CALL_VK(
-			CreateBuffer, " overlay", this->device_, &info, nullptr, buffer);
-		VkMemoryRequirements requirements{};
-		vkGetBufferMemoryRequirements(this->device_, *buffer, &requirements);
-		const uint32_t type =
-			dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-				nullptr, nullptr);
-		if (type == UINT32_MAX)
-			return false;
-		VkMemoryAllocateInfo allocate{
-			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-			.allocationSize = requirements.size,
-			.memoryTypeIndex = type,
-		};
-		CALL_VK(AllocateMemory, " overlay", this->device_, &allocate, nullptr,
-			memory);
-		CALL_VK(
-			BindBufferMemory, " overlay", this->device_, *buffer, *memory, 0);
+	if (this->quad_size_ >= bytes)
 		return true;
+	destroy_buffer();
+	const VkDeviceSize capacity = bytes + bytes / 2;
+	VkBufferCreateInfo info{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = capacity,
+		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 	};
-	return recreate(&this->vertex_buffer_, &this->vertex_memory_,
-			   &this->vertex_size_, vertex_bytes,
-			   VK_BUFFER_USAGE_VERTEX_BUFFER_BIT) &&
-		recreate(&this->index_buffer_, &this->index_memory_, &this->index_size_,
-			index_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	CALL_VK(CreateBuffer, " overlay", this->device_, &info, nullptr,
+		&this->quad_buffer_);
+	VkMemoryRequirements requirements{};
+	vkGetBufferMemoryRequirements(
+		this->device_, this->quad_buffer_, &requirements);
+	const uint32_t type =
+		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			nullptr, nullptr);
+	if (type == UINT32_MAX)
+		return false;
+	VkMemoryAllocateInfo allocate{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = requirements.size,
+		.memoryTypeIndex = type,
+	};
+	CALL_VK(AllocateMemory, " overlay", this->device_, &allocate, nullptr,
+		&this->quad_memory_);
+	CALL_VK(BindBufferMemory, " overlay", this->device_, this->quad_buffer_,
+		this->quad_memory_, 0);
+	this->quad_size_ = capacity;
+	return true;
 }
 
 void
@@ -1672,34 +1653,25 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 {
 	if (!cmd || !this->framebuffer_ || !this->pipeline_ || !this->font_view_)
 		return;
-	if (mesh.vertices.empty() || mesh.indices.empty() || mesh.cmds.empty() ||
-		this->extent_.width == 0 || mesh.display_w <= 0.f ||
-		mesh.display_h <= 0.f)
+	if (mesh.quads.empty() || mesh.cmds.empty() || this->extent_.width == 0 ||
+		mesh.display_w <= 0.f || mesh.display_h <= 0.f)
 		return;
 
-	const VkDeviceSize vertex_bytes =
-		VkDeviceSize(mesh.vertices.size()) * sizeof(OverlayVertex);
-	const VkDeviceSize index_bytes =
-		VkDeviceSize(mesh.indices.size()) * sizeof(uint32_t);
-	if (!ensure_buffers(vertex_bytes, index_bytes))
+	const VkDeviceSize bytes =
+		VkDeviceSize(mesh.quads.size()) * sizeof(OverlayQuad);
+	if (!ensure_buffer(bytes))
 		return;
 
-	void *vertices = nullptr;
-	void *indices = nullptr;
-	CALL_VK(MapMemory, " overlay vtx", this->device_, this->vertex_memory_, 0,
-		vertex_bytes, 0, &vertices);
-	CALL_VK(MapMemory, " overlay idx", this->device_, this->index_memory_, 0,
-		index_bytes, 0, &indices);
-	memcpy(vertices, mesh.vertices.data(), size_t(vertex_bytes));
-	memcpy(indices, mesh.indices.data(), size_t(index_bytes));
-	vkUnmapMemory(this->device_, this->vertex_memory_);
-	vkUnmapMemory(this->device_, this->index_memory_);
+	void *mapped = nullptr;
+	CALL_VK(MapMemory, " overlay", this->device_, this->quad_memory_, 0, bytes,
+		0, &mapped);
+	memcpy(mapped, mesh.quads.data(), size_t(bytes));
+	vkUnmapMemory(this->device_, this->quad_memory_);
 
 	begin_render_pass(
 		cmd, this->render_pass_, this->framebuffer_, this->extent_);
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(cmd, 0, 1, &this->vertex_buffer_, &offset);
-	vkCmdBindIndexBuffer(cmd, this->index_buffer_, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdBindVertexBuffers(cmd, 0, 1, &this->quad_buffer_, &offset);
 
 	PushConstant push{};
 	push.scale[0] = 2.f / mesh.display_w;
@@ -1710,7 +1682,7 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 	uint32_t bound_tex = ~0u;
 	VkPipeline bound_pipeline = VK_NULL_HANDLE;
 	for (const OverlayCmd &draw_cmd : mesh.cmds) {
-		if (draw_cmd.idx_count == 0)
+		if (draw_cmd.quad_count == 0)
 			continue;
 		if (draw_cmd.tex == kOverlayTexThumbs && !this->thumb_view_)
 			continue;
@@ -1751,7 +1723,7 @@ OverlayVulkan::record(VkCommandBuffer cmd, const OverlayMesh &mesh)
 			.extent = {uint32_t(x1 - x0), uint32_t(y1 - y0)},
 		};
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
-		vkCmdDrawIndexed(cmd, draw_cmd.idx_count, 1, draw_cmd.idx_offset, 0, 0);
+		vkCmdDraw(cmd, 6, draw_cmd.quad_count, 0, draw_cmd.quad_offset);
 	}
 	vkCmdEndRenderPass(cmd);
 }
@@ -1788,24 +1760,17 @@ OverlayVulkan::destroy_font()
 }
 
 void
-OverlayVulkan::destroy_buffers()
+OverlayVulkan::destroy_buffer()
 {
 	if (!this->device_)
 		return;
-	if (this->vertex_buffer_)
-		vkDestroyBuffer(this->device_, this->vertex_buffer_, nullptr);
-	if (this->vertex_memory_)
-		vkFreeMemory(this->device_, this->vertex_memory_, nullptr);
-	if (this->index_buffer_)
-		vkDestroyBuffer(this->device_, this->index_buffer_, nullptr);
-	if (this->index_memory_)
-		vkFreeMemory(this->device_, this->index_memory_, nullptr);
-	this->vertex_buffer_ = VK_NULL_HANDLE;
-	this->vertex_memory_ = VK_NULL_HANDLE;
-	this->vertex_size_ = 0;
-	this->index_buffer_ = VK_NULL_HANDLE;
-	this->index_memory_ = VK_NULL_HANDLE;
-	this->index_size_ = 0;
+	if (this->quad_buffer_)
+		vkDestroyBuffer(this->device_, this->quad_buffer_, nullptr);
+	if (this->quad_memory_)
+		vkFreeMemory(this->device_, this->quad_memory_, nullptr);
+	this->quad_buffer_ = VK_NULL_HANDLE;
+	this->quad_memory_ = VK_NULL_HANDLE;
+	this->quad_size_ = 0;
 }
 
 void
@@ -1831,7 +1796,7 @@ OverlayVulkan::destroy()
 		return;
 	vkDeviceWaitIdle(this->device_);
 	destroy_target();
-	destroy_buffers();
+	destroy_buffer();
 	destroy_font();
 	destroy_thumbs();
 	destroy_pipeline();

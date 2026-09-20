@@ -1,10 +1,9 @@
 #version 450
 
-layout(location = 0) in vec2 aPos;
-layout(location = 1) in vec2 aUV;
-layout(location = 2) in vec4 aColor;
-layout(location = 3) in vec4 aAtlasRect;
-layout(location = 4) in vec2 aDestSize;
+layout(location = 0) in ivec4 aBox;
+layout(location = 1) in vec4 aUV;
+layout(location = 2) in vec4 aTop;
+layout(location = 3) in vec4 aBottom;
 
 layout(push_constant) uniform uPushConstant {
 	vec2 scale;
@@ -19,9 +18,14 @@ layout(location = 3) flat out vec2 vDestSize;
 void
 main()
 {
-	vUV = aUV;
-	vColor = aColor;
-	vAtlasRect = aAtlasRect;
-	vDestSize = aDestSize;
-	gl_Position = vec4(aPos * pc.scale + pc.translate, 0.0, 1.0);
+	const vec2 corners[6] = vec2[](
+		vec2(0, 0), vec2(1, 0), vec2(1, 1),
+		vec2(0, 0), vec2(1, 1), vec2(0, 1));
+	vec2 corner = corners[gl_VertexIndex];
+	vec2 pos = mix(vec2(aBox.xy), vec2(aBox.zw), corner);
+	vUV = mix(aUV.xy, aUV.zw, corner);
+	vColor = mix(aTop, aBottom, corner.y);
+	vAtlasRect = aUV;
+	vDestSize = abs(vec2(aBox.zw) - vec2(aBox.xy));
+	gl_Position = vec4(pos * pc.scale + pc.translate, 0.0, 1.0);
 }

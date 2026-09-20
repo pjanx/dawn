@@ -34,16 +34,16 @@ test_growth()
 	CHECK(!atlas.alloc(16, 16).empty());
 	list.add_image({30, 0, 33, 4}, glyph.texels(), {1, 1, 1, 1});
 	list.end();
-	const auto &vertices = list.mesh().vertices;
-	CHECK(vertices.size() == 12);
-	for (size_t i = 0; i < 4; i++) {
-		CHECK(vertices[i].u == u);
-		CHECK(vertices[i].v == v);
-		CHECK(vertices[i + 4].u == vertices[i + 8].u);
-		CHECK(vertices[i + 4].v == vertices[i + 8].v);
-	}
-	CHECK(vertices[4].u == float(glyph.x));
-	CHECK(vertices[6].v == float(glyph.y + glyph.h));
+	const auto &quads = list.mesh().quads;
+	CHECK(quads.size() == 3);
+	CHECK(quads[0].uv.u0 == u && quads[0].uv.u1 == u);
+	CHECK(quads[0].uv.v0 == v && quads[0].uv.v1 == v);
+	CHECK(quads[1].uv.u0 == quads[2].uv.u0);
+	CHECK(quads[1].uv.u1 == quads[2].uv.u1);
+	CHECK(quads[1].uv.v0 == quads[2].uv.v0);
+	CHECK(quads[1].uv.v1 == quads[2].uv.v1);
+	CHECK(quads[1].uv.u0 == float(glyph.x));
+	CHECK(quads[1].uv.v1 == float(glyph.y + glyph.h));
 	const size_t at = (size_t(white.y) * size_t(atlas.w) + white.x) * 4;
 	CHECK(atlas.pixels[at] == 65535);
 	CHECK(atlas.pixels[at + 3] == 65535);
@@ -63,10 +63,10 @@ test_thumbnails()
 	list.add_rect_filled({20, 0, 30, 10}, {1, 1, 1, 1});
 	list.end();
 	CHECK(uv.u1 - uv.u0 == 8);
-	const auto &vertex = list.mesh().vertices.front();
-	CHECK(vertex.u == uv.u0);
-	CHECK(vertex.atlas_x1 == uv.u1);
-	CHECK(vertex.dest_w == 16);
+	const auto &quad = list.mesh().quads.front();
+	CHECK(quad.uv.u0 == uv.u0);
+	CHECK(quad.uv.u1 == uv.u1);
+	CHECK(quad.box.x1 - quad.box.x0 == 16);
 	CHECK(list.mesh().cmds.size() == 2);
 	CHECK(list.mesh().cmds[0].tex == dn::kOverlayTexThumbs);
 	CHECK(list.mesh().cmds[1].tex == dn::kOverlayTexFont);
@@ -95,15 +95,15 @@ test_thumbnail_backgrounds()
 	list.end();
 	const auto &cmds = list.mesh().cmds;
 	CHECK(cmds.size() == 5);
-	CHECK(cmds[0].idx_count == 12);
+	CHECK(cmds[0].quad_count == 2);
 	CHECK(cmds[0].background.origin_x == 7);
 	CHECK(cmds[1].background.origin_x == 8);
 	CHECK(cmds[2].background.size == 6);
 	CHECK(cmds[3].background.even.r == .5f);
 	CHECK(cmds[4].clip.x1 == 10);
 	for (size_t i = 1; i < cmds.size(); i++)
-		CHECK(cmds[i].idx_offset ==
-			cmds[i - 1].idx_offset + cmds[i - 1].idx_count);
+		CHECK(cmds[i].quad_offset ==
+			cmds[i - 1].quad_offset + cmds[i - 1].quad_count);
 }
 
 int

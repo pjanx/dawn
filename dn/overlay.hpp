@@ -40,19 +40,14 @@ struct Uv {
 	float v1 = 0;
 };
 
-struct OverlayVertex {
-	float x = 0;
-	float y = 0;
-	float u = 0;
-	float v = 0;
-	Colour col{};
-	float atlas_x0 = 0;
-	float atlas_y0 = 0;
-	float atlas_x1 = 0;
-	float atlas_y1 = 0;
-	float dest_w = 0;
-	float dest_h = 0;
+// One instance per rectangle; colours are linear and premultiplied.
+struct OverlayQuad {
+	Box box{};
+	Uv uv{};
+	Colour top{};
+	Colour bottom{};
 };
+static_assert(sizeof(OverlayQuad) == 64);
 
 constexpr uint32_t kOverlayTexFont = 0;
 constexpr uint32_t kOverlayTexThumbs = 1;
@@ -68,16 +63,15 @@ struct ThumbBackground {
 };
 
 struct OverlayCmd {
-	uint32_t idx_offset = 0;
-	uint32_t idx_count = 0;
+	uint32_t quad_offset = 0;
+	uint32_t quad_count = 0;
 	Box clip{};
 	uint32_t tex = kOverlayTexFont;
 	ThumbBackground background{};
 };
 
 struct OverlayMesh {
-	std::vector<OverlayVertex> vertices;
-	std::vector<uint32_t> indices;
+	std::vector<OverlayQuad> quads;
 	std::vector<OverlayCmd> cmds;
 	float display_w = 0;
 	float display_h = 0;
@@ -93,7 +87,7 @@ class OverlayList
 	ThumbBackground background_{};
 
 	void sync_clip();
-	void add_quad(Box b, Uv uv, Colour c00, Colour c10, Colour c11, Colour c01);
+	void add_quad(Box b, Uv uv, Colour top, Colour bottom);
 
 public:
 	void begin(int width_px, int height_px, Uv white);
