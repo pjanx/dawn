@@ -556,13 +556,17 @@ if (WIN32)
 	target_sources(dn PRIVATE
 		dn/display-profile-windows.cpp
 		dn/assoc-windows.cpp
+		dn/text-windows.cpp
 		dn/volumes-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE
-		gdi32 shell32 shlwapi ole32 advapi32 user32)
+		dwrite gdi32 shell32 shlwapi ole32 advapi32 user32)
+	set(DN_TEXT_SOURCE dn/text-windows.cpp)
+	set(DN_TEXT_LIBRARIES dwrite)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
+	find_library(DN_CORETEXT_FRAMEWORK CoreText REQUIRED)
 	find_library(DN_COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
 	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
 	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
@@ -571,23 +575,34 @@ elseif (APPLE)
 		dn/display-profile-macos.mm
 		dn/assoc-macos.mm
 		dn/app-menu-macos.mm
+		dn/text-macos.mm
 		dn/window-appearance-macos.mm
 		dn/volumes-macos.mm
 	)
 	target_link_libraries(dn PRIVATE
 		"${DN_APPKIT_FRAMEWORK}"
 		"${DN_COREGRAPHICS_FRAMEWORK}"
+		"${DN_CORETEXT_FRAMEWORK}"
 		"${DN_CORESERVICES_FRAMEWORK}"
 		"${DN_UNIFORMTYPES_FRAMEWORK}"
 		"${DN_IOKIT_FRAMEWORK}")
+	set(DN_TEXT_SOURCE dn/text-macos.mm)
+	set(DN_TEXT_LIBRARIES
+		"${DN_APPKIT_FRAMEWORK}" "${DN_COREGRAPHICS_FRAMEWORK}"
+		"${DN_CORETEXT_FRAMEWORK}")
 else()
 	pkg_check_modules(COLORD REQUIRED IMPORTED_TARGET colord)
+	pkg_check_modules(PANGOFT2 REQUIRED IMPORTED_TARGET
+		pangoft2>=1.48 pangofc>=1.48 freetype2>=2.11)
 	target_sources(dn PRIVATE
 		dn/display-profile-linux.cpp
 		dn/assoc-unix.cpp
+		dn/text-linux.cpp
 		dn/volumes-unix.cpp
 	)
-	target_link_libraries(dn PRIVATE PkgConfig::COLORD)
+	target_link_libraries(dn PRIVATE PkgConfig::COLORD PkgConfig::PANGOFT2)
+	set(DN_TEXT_SOURCE dn/text-linux.cpp)
+	set(DN_TEXT_LIBRARIES PkgConfig::PANGOFT2)
 endif()
 
 target_sources(dn PRIVATE dn/instance.cpp)

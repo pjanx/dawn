@@ -75,6 +75,7 @@ accessible_activated(Window *)
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1913,15 +1914,37 @@ EntryAdapter::characterRect(int offset) const
 	Kit &kit = this->window_->kit();
 	const int n = int(entry->text.size());
 	offset = clamp(offset, 0, n);
-	const int from =
-		entry->text_cache_.caret_x(kit, entry->text, offset, false);
-	const int to = offset < n
-		? entry->text_cache_.caret_x(kit, entry->text, offset + 1, false)
-		: from + kit.hairline();
-	const int x = entry->r.x + kit.px(entry->pad_x) +
-		int(lround(-entry->scroll_ + float(min(from, to))));
-	const int w = max(1, to > from ? to - from : from - to);
-	return global_rect(*this->window_, {x, entry->r.y, w, entry->r.h});
+	const QString painted = entry->painted();
+	const int painted_offset =
+		offset >= entry->caret ? offset + int(entry->preedit.size()) : offset;
+	vector<TextRect> rects;
+	if (offset < n)
+		rects = entry->text_cache_.range_rects(
+			kit, painted, painted_offset, 1, false);
+	if (rects.empty())
+		rects.push_back(entry->text_cache_.caret_rect(
+			kit, painted, painted_offset, TextAffinity::Leading, false));
+
+	float left = numeric_limits<float>::infinity();
+	float top = numeric_limits<float>::infinity();
+	float right = -numeric_limits<float>::infinity();
+	float bottom = -numeric_limits<float>::infinity();
+	for (const TextRect &rect : rects) {
+		left = min(left, rect.x);
+		top = min(top, rect.y);
+		right = max(right, rect.x + rect.width);
+		bottom = max(bottom, rect.y + rect.height);
+	}
+	const int text_height =
+		entry->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const float tx = float(entry->r.x + kit.px(entry->pad_x)) - entry->scroll_;
+	const float ty = float(entry->r.y + (entry->r.h - text_height) / 2);
+	const int x = int(floor(tx + left));
+	const int y = int(floor(ty + top));
+	const int right_px = int(ceil(tx + right));
+	const int bottom_px = int(ceil(ty + bottom));
+	return global_rect(*this->window_,
+		{x, y, max(kit.hairline(), right_px - x), max(1, bottom_px - y)});
 }
 
 int
@@ -1933,9 +1956,20 @@ EntryAdapter::offsetAtPoint(const QPoint &point) const
 	Entry *entry = this->entry();
 	Kit &kit = this->window_->kit();
 	const QPoint at = kit_point(*this->window_, point.x(), point.y());
+	const QString painted = entry->painted();
+	const int text_height =
+		entry->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
 	const float x = float(at.x()) - float(entry->r.x + kit.px(entry->pad_x)) +
 		entry->scroll_;
-	return entry->text_cache_.index_at(kit, entry->text, x, false);
+	const float y = float(at.y() - entry->r.y - (entry->r.h - text_height) / 2);
+	const int painted_offset =
+		entry->text_cache_.hit_test(kit, painted, x, y, false).index;
+	const int preedit_end = entry->caret + int(entry->preedit.size());
+	if (painted_offset <= entry->caret)
+		return painted_offset;
+	if (painted_offset < preedit_end)
+		return entry->caret;
+	return painted_offset - int(entry->preedit.size());
 }
 
 void

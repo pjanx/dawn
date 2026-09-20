@@ -108,6 +108,7 @@ class Window final : public QWindow
 	bool exposed_ = false;
 	bool resize_pending_ = false;
 	bool settings_apply_pending_ = false;
+	bool font_change_pending_ = false;
 	bool update_pending_ = false;
 	bool screen_profile_fallback_ = true;
 	bool awaiting_view_ = false;

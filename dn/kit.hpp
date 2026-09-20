@@ -9,14 +9,13 @@
 
 #include "action.hpp"
 #include "overlay.hpp"
+#include "text.hpp"
 
 #include "libdn/libdn.hpp"
 
 #include <QFont>
 #include <QImage>
-#include <QRawFont>
 #include <QString>
-#include <QTextLayout>
 #include <Qt>
 
 #include <chrono>
@@ -157,7 +156,7 @@ struct TextTarget {
 // glyph atlas. Keep the variants used by the current and preceding frames.
 struct TextCache {
 	struct Text {
-		std::unique_ptr<QTextLayout> layout;
+		std::unique_ptr<TextLayout> layout;
 		int width = 0;
 		int height = 0;
 		uint64_t used = 0;
@@ -171,8 +170,12 @@ struct TextCache {
 		const Kit &kit, const QString &text, int wrap, bool bold, bool center);
 	int text_width(const Kit &kit, const QString &text, bool bold);
 	int text_height(const Kit &kit, const QString &text, int wrap, bool bold);
-	int caret_x(const Kit &kit, const QString &text, int index, bool bold);
-	int index_at(const Kit &kit, const QString &text, float x, bool bold);
+	TextRect caret_rect(const Kit &kit, const QString &text, int index,
+		TextAffinity affinity, bool bold);
+	TextHit hit_test(
+		const Kit &kit, const QString &text, float x, float y, bool bold);
+	std::vector<TextRect> range_rects(const Kit &kit, const QString &text,
+		int start, int length, bool bold);
 	QString elide_lines(
 		const Kit &kit, const QString &text, int wrap, int lines, bool bold);
 };
@@ -416,6 +419,7 @@ struct Entry : Widget {
 	// Uncommitted input-method text, shown at the caret but not part of text.
 	QString preedit;
 	int caret = 0;
+	TextAffinity caret_affinity = TextAffinity::Leading;
 	int preedit_caret = 0;
 	float min_w = 160.f;
 	float pad_x = kFramePadX;
@@ -466,6 +470,7 @@ struct Entry : Widget {
 	// Whole-value assignment, which leaves the caret at the end.
 	void set_text(Kit &kit, const QString &next);
 	void move_caret(Kit &kit, int to);
+	void move_caret_to_hit(Kit &kit, TextHit hit);
 	// Resets the blink, and re-scrolls to keep the caret in view.
 	void touch_caret(const Kit &kit);
 	// Just the scroll: arranging the field must not restart its blink.
@@ -930,19 +935,11 @@ struct Kit {
 	uint64_t font_epoch_ = 0;
 	uint64_t text_frame_ = 0;
 	mutable TextCache text_cache_;
+	mutable TextBackend text_backend_;
 	Packed white_{};
 	Packed glow_{};
-	QFont font_;
-	QFont font_bold_;
-	QFont font_px_;
-	QFont font_bold_px_;
-	QRawFont raw_;
-	QRawFont raw_bold_;
-	// kGlyphPhases where the engine honours fractional pens, else 1.
-	int glyph_phases_ = 1;
 	std::map<std::pair<std::string, int>, Packed> icons_;
 	std::unordered_map<uint64_t, Glyph> glyphs_;
-	std::vector<QRawFont> fonts_;
 	OverlayList list_;
 
 	Colour colours_[ColourCount]{};
@@ -1087,6 +1084,8 @@ struct Kit {
 		float x, float y, Qt::MouseButton button, unsigned mods);
 	bool set_dpr(float dpr);
 	bool set_host(float width_pts, float height_pts, float dpr);
+	bool reset_fonts();
+	[[nodiscard]] bool text_settings_changed() const;
 	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);
 	Packed pack_bitmap(const QImage &image);
@@ -1110,13 +1109,9 @@ struct Kit {
 	// Content update() runs before layout and placed() after it.
 	void frame_ui(Page &ui);
 	void paint();
-	// Text metrics, all in device pixels: the fonts are already rasterised at
-	// that size, so this is what Qt measures, without a round trip through
-	// points.  Extents round up, so a glyph is never clipped by a pixel.
+	// Native layout metrics in device pixels. Logical extents round outward
+	// when handed to widget layout; glyph bearings remain independent.
 	[[nodiscard]] int text_width(const QString &text, bool bold) const;
-	// Caret geometry, both in pixels, and both counting in UTF-16 units.
-	[[nodiscard]] int caret_x(const QString &text, int index, bool bold) const;
-	[[nodiscard]] int index_at(const QString &text, float x, bool bold) const;
 	[[nodiscard]] QString elide_lines(
 		const QString &text, int wrap_px, int max_lines, bool bold) const;
 	[[nodiscard]] int text_height(

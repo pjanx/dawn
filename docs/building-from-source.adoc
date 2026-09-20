@@ -10,7 +10,7 @@ package names:
 ```sh
 apt install build-essential cmake qt6-base-dev wayland-protocols glslang-tools \
   librsvg2-bin libwebp-dev libjpeg-dev libturbojpeg0-dev libcolord-dev \
-  shared-mime-info gettext
+  libpango1.0-dev shared-mime-info gettext
 ```
 
 .Optional dependencies
@@ -55,7 +55,8 @@ Windows
 -------
 Windows is cross-compiled in the CI pipeline.  Development can be done from
 _within_ an MSYS2 environment, but you'll have to go over the configuration
-script and do the equivalent steps manually.
+script and do the equivalent steps manually.  The native text backend requires
+Windows 8.1 or newer for grayscale DirectWrite glyph analysis.
 
 ```sh
 sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release

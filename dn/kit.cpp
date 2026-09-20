@@ -15,8 +15,6 @@
 #include <QFile>
 #include <QFontDatabase>
 #include <QFontInfo>
-#include <QFontMetricsF>
-#include <QGlyphRun>
 #include <QGuiApplication>
 #include <QImage>
 #include <QKeyEvent>
@@ -24,9 +22,6 @@
 #include <QPainter>
 #include <QPen>
 #include <QTextBoundaryFinder>
-#include <QTextLayout>
-#include <QTextLine>
-#include <QTextOption>
 
 #include <qnamespace.h>
 #include <resvg.h>
@@ -196,95 +191,6 @@ raster_window_button(const char *name, int px)
 	return image;
 }
 
-// boundingRect is the outline box, not the bitmap origin (Core Text pads).
-// The pen sits at a whole pixel plus phase; the returned origin is measured
-// from the whole pixel, so the phase survives only as coverage.
-static QImage
-raster_glyph(const QRawFont &raw, quint32 gid, float phase, QPoint *origin)
-{
-	constexpr int kPad = 4;
-	const QRect box = raw.boundingRect(gid).toAlignedRect().adjusted(
-		-kPad, -kPad, kPad, kPad);
-	if (box.isEmpty())
-		return {};
-	QImage img(box.size(), QImage::Format_ARGB32_Premultiplied);
-	img.fill(Qt::transparent);
-	QPainter painter(&img);
-	painter.setPen(Qt::black);
-	QGlyphRun run;
-	run.setRawFont(raw);
-	run.setGlyphIndexes({gid});
-	run.setPositions({QPointF(-box.topLeft()) + QPointF(phase, 0)});
-	painter.drawGlyphRun({}, run);
-	painter.end();
-
-	QRect ink;
-	for (int y = 0; y < img.height(); y++) {
-		const auto *row =
-			dawn::assume_aligned<const QRgb>(img.constScanLine(y));
-		for (int x = 0; x < img.width(); x++) {
-			if (qAlpha(row[x]))
-				ink |= QRect(x, y, 1, 1);
-		}
-	}
-	if (ink.isEmpty())
-		return {};
-	// Ink on the border: kPad did not cover the rasteriser's spread.
-	if (ink.left() == 0 || ink.top() == 0 || ink.right() == img.width() - 1 ||
-		ink.bottom() == img.height() - 1)
-		qWarning("glyph %u overflows its %d-pixel pad", gid, kPad);
-	*origin = box.topLeft() + ink.topLeft();
-	return img.copy(ink);
-}
-
-// Not every engine honours a fractional pen: FreeType needs light or no
-// hinting, DirectWrite antialiasing and less than full, GDI never had it.
-// Qt measures the same thing in QTextureGlyphCache, and so do we.
-static int
-probe_phases(const QRawFont &raw)
-{
-	if (!raw.isValid())
-		return 1;
-	for (char16_t probe : {u'n', u'o', u'H'}) {
-		const QList<quint32> gids =
-			raw.glyphIndexesForString(QString(QChar(probe)));
-		if (gids.isEmpty())
-			continue;
-		QPoint origin_a, origin_b;
-		const QImage a = raster_glyph(raw, gids.front(), 0.f, &origin_a);
-		const QImage b = raster_glyph(raw, gids.front(), .5f, &origin_b);
-		if (origin_a != origin_b || a != b)
-			return kGlyphPhases;
-	}
-	return 1;
-}
-
-static void
-layout_text(QTextLayout *layout, int wrap, bool center = false)
-{
-	if (wrap > 0) {
-		QTextOption opt = layout->textOption();
-		opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-		layout->setTextOption(opt);
-	}
-	layout->beginLayout();
-	float y = 0.f;
-	const float wrap_px = wrap > 0 ? float(wrap) : 1.0e8f;
-	while (true) {
-		QTextLine line = layout->createLine();
-		if (!line.isValid())
-			break;
-
-		line.setLineWidth(wrap_px);
-		float x = 0.f;
-		if (center)
-			x = (wrap_px - float(line.naturalTextWidth())) * 0.5f;
-		line.setPosition(QPointF(x, y));
-		y += float(line.height());
-	}
-	layout->endLayout();
-}
-
 static Qt::CursorShape
 resize_cursor(Qt::Edges edges)
 {
@@ -329,14 +235,10 @@ pack_or_grow(Kit &kit, int width, int height)
 }
 
 static void
-blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
+blit(Kit &kit, const Kit::Packed &rect, const QImage &src)
 {
 	QImage img = src;
-	if (coverage) {
-		if (img.format() != QImage::Format_Alpha8 &&
-			img.format() != QImage::Format_Grayscale8)
-			img = img.convertToFormat(QImage::Format_Alpha8);
-	} else if (img.format() != QImage::Format_ARGB32_Premultiplied)
+	if (img.format() != QImage::Format_ARGB32_Premultiplied)
 		img = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 
 	const int rows = min(rect.h, img.height());
@@ -344,62 +246,52 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 	for (int y = 0; y < rows; y++) {
 		uint16_t *dst = kit.atlas_.pixels.data() +
 			(size_t(rect.y + y) * size_t(kit.atlas_.w) + size_t(rect.x)) * 4;
-		if (coverage) {
-			const uchar *row = img.constScanLine(y);
-			for (int x = 0; x < cols; x++) {
-				const uint16_t a = widen8(row[x]);
-				fill_n(dst + x * 4, 4, a);
-			}
-		} else {
-			const auto *row =
-				dawn::assume_aligned<const QRgb>(img.constScanLine(y));
-			for (int x = 0; x < cols; x++) {
-				dst[x * 4 + 0] = widen8(uint8_t(qRed(row[x])));
-				dst[x * 4 + 1] = widen8(uint8_t(qGreen(row[x])));
-				dst[x * 4 + 2] = widen8(uint8_t(qBlue(row[x])));
-				dst[x * 4 + 3] = widen8(uint8_t(qAlpha(row[x])));
-			}
+		const auto *row =
+			dawn::assume_aligned<const QRgb>(img.constScanLine(y));
+		for (int x = 0; x < cols; x++) {
+			dst[x * 4 + 0] = widen8(uint8_t(qRed(row[x])));
+			dst[x * 4 + 1] = widen8(uint8_t(qGreen(row[x])));
+			dst[x * 4 + 2] = widen8(uint8_t(qBlue(row[x])));
+			dst[x * 4 + 3] = widen8(uint8_t(qAlpha(row[x])));
 		}
 	}
 	kit.atlas_.dirty = true;
 }
 
-static int
-font_id(Kit &kit, const QRawFont &raw)
-{
-	for (size_t i = 0; i < kit.fonts_.size(); i++) {
-		if (kit.fonts_[i] == raw)
-			return int(i);
-	}
-	kit.fonts_.push_back(raw);
-	return int(kit.fonts_.size()) - 1;
-}
-
 static const Kit::Glyph *
-cache_glyph(Kit &kit, const QRawFont &raw, quint32 gid, int phase)
+cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 {
-	if (!raw.isValid())
-		return nullptr;
 	// gid is 32 bits and the phase multiplies it, hence the two spare ones.
-	const uint64_t key = (uint64_t(font_id(kit, raw)) << 34) |
+	const uint64_t key = (uint64_t(font_id) << 34) |
 		(uint64_t(gid) * kGlyphPhases + uint64_t(phase));
 	if (auto it = kit.glyphs_.find(key); it != kit.glyphs_.end())
 		return &it->second;
-	QPoint origin;
-	QImage map = raster_glyph(raw, gid, float(phase) / kGlyphPhases, &origin);
-	if (map.isNull() || map.width() <= 0 || map.height() <= 0) {
+
+	const GlyphImage map = kit.text_backend_.rasterize(font_id, gid, phase);
+	if (map.kind != GlyphImageKind::Mask || map.width <= 0 || map.height <= 0 ||
+		map.stride < map.width || map.pixels.size() <
+			size_t(map.stride) * size_t(map.height - 1) + size_t(map.width)) {
 		Kit::Glyph glyph;
 		auto [it, _] = kit.glyphs_.emplace(key, glyph);
 		return &it->second;
 	}
-	const Kit::Packed packed = pack_or_grow(kit, map.width(), map.height());
+	const Kit::Packed packed = pack_or_grow(kit, map.width, map.height);
 	if (packed.empty())
 		return nullptr;
-	blit(kit, packed, map, true);
+	for (int y = 0; y < map.height; y++) {
+		uint16_t *dst = kit.atlas_.pixels.data() +
+			(size_t(packed.y + y) * size_t(kit.atlas_.w) +
+				size_t(packed.x)) * 4;
+		const uint8_t *src =
+			map.pixels.data() + size_t(y) * size_t(map.stride);
+		for (int x = 0; x < map.width; x++)
+			fill_n(dst + x * 4, 4, widen8(src[x]));
+	}
+	kit.atlas_.dirty = true;
 	Kit::Glyph glyph;
 	glyph.rect = packed;
-	glyph.bearing_x = origin.x();
-	glyph.bearing_y = origin.y();
+	glyph.bearing_x = map.origin_x;
+	glyph.bearing_y = map.origin_y;
 	auto [it, _] = kit.glyphs_.emplace(key, glyph);
 	return &it->second;
 }
@@ -426,22 +318,18 @@ TextCache::get(
 	if (!fresh)
 		return cached;
 
-	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
-	const QFontMetricsF metrics(font);
-	cached.layout = make_unique<QTextLayout>(text, font);
-	cached.layout->setCacheEnabled(true);
-	layout_text(cached.layout.get(), wrap, center);
-
-	// Widths have to come from the layout rather than from QFontMetricsF: the
-	// two can disagree by a pixel, and wrapping at the metrics' width then
-	// breaks text that had been measured as one line onto two.
-	double width = 0;
-	for (int i = 0; i < cached.layout->lineCount(); i++)
-		width = max(width, cached.layout->lineAt(i).naturalTextWidth());
-	cached.width = int(ceil(width));
-
-	const double height = cached.layout->boundingRect().height();
-	cached.height = int(ceil(height > 0 ? height : metrics.height()));
+	TextOptions options;
+	options.wrap_width = wrap;
+	options.bold = bold;
+	options.align = center ? TextAlign::Center : TextAlign::Start;
+	string error;
+	cached.layout = kit.text_backend_.layout(text, options, &error);
+	if (!cached.layout) {
+		qWarning("text layout failed: %s", error.c_str());
+		return cached;
+	}
+	cached.width = int(ceil(cached.layout->width()));
+	cached.height = int(ceil(cached.layout->height()));
 	return cached;
 }
 
@@ -457,26 +345,48 @@ TextCache::text_height(const Kit &kit, const QString &text, int wrap, bool bold)
 	return get(kit, text, wrap, bold, false).height;
 }
 
-int
-TextCache::caret_x(const Kit &kit, const QString &text, int index, bool bold)
+TextRect
+TextCache::caret_rect(const Kit &kit, const QString &text, int index,
+	TextAffinity affinity, bool bold)
 {
-	if (text.isEmpty())
-		return 0;
-
-	QTextLayout &layout = *get(kit, text, 0, bold, false).layout;
+	Text &cached = get(kit, text, 0, bold, false);
+	if (!cached.layout)
+		return {};
 	const int at = clamp(index, 0, int(text.size()));
-	const QTextLine line = layout.lineForTextPosition(at);
-	return line.isValid() ? int(lround(line.cursorToX(at))) : 0;
+	return cached.layout->caret(at, affinity);
 }
 
-int
-TextCache::index_at(const Kit &kit, const QString &text, float x, bool bold)
+TextHit
+TextCache::hit_test(
+	const Kit &kit, const QString &text, float x, float y, bool bold)
 {
-	if (text.isEmpty())
-		return 0;
+	Text &cached = get(kit, text, 0, bold, false);
+	if (!cached.layout)
+		return {};
+	TextHit hit = cached.layout->hit_test(x, y);
+	hit.index = clamp(hit.index, 0, int(text.size()));
+	if (hit.affinity == TextAffinity::Trailing)
+		hit.index = grapheme_at_or_after(text, hit.index);
+	else
+		hit.index = grapheme_at_or_before(text, hit.index);
+	return hit;
+}
 
-	QTextLayout &layout = *get(kit, text, 0, bold, false).layout;
-	return layout.lineCount() ? layout.lineAt(0).xToCursor(qreal(x)) : 0;
+vector<TextRect>
+TextCache::range_rects(const Kit &kit, const QString &text, int start,
+	int length, bool bold)
+{
+	if (length <= 0)
+		return {};
+	Text &cached = get(kit, text, 0, bold, false);
+	if (!cached.layout)
+		return {};
+	const int size = int(text.size());
+	start = clamp(start, 0, size);
+	const int end = start + min(length, size - start);
+	start = grapheme_at_or_before(text, start);
+	return cached.layout->range_rects(
+		start, grapheme_at_or_after(text, end) - start);
 }
 
 QString
@@ -490,32 +400,28 @@ TextCache::elide_lines(
 	auto [it, fresh] = cached.elided.try_emplace(lines);
 	if (!fresh)
 		return it->second;
-
-	QString &result = it->second;
-	const QFont &font = bold ? kit.font_bold_px_ : kit.font_px_;
-	const QFontMetricsF metrics(font);
-	const qreal limit = wrap > 0 ? qreal(wrap) : 1.0e8;
-	result = text;
-	if (lines == 1) {
-		if (metrics.horizontalAdvance(text) > limit)
-			result = metrics.elidedText(text, Qt::ElideRight, limit);
-	} else if (cached.layout->lineCount() > lines) {
-		const QTextLine last = cached.layout->lineAt(lines - 1);
-		const int start = last.textStart();
-		result = text.left(start) +
-			metrics.elidedText(text.mid(start), Qt::ElideRight, limit);
+	TextOptions options;
+	options.wrap_width = wrap;
+	options.max_lines = lines;
+	options.bold = bold;
+	string error;
+	unique_ptr<TextLayout> layout =
+		kit.text_backend_.layout(text, options, &error);
+	if (!layout) {
+		qWarning("text elision failed: %s", error.c_str());
+		it->second = text;
+	} else {
+		it->second = layout->text();
 	}
-	return result;
+	return it->second;
 }
 
 static void
 rebuild_atlas(Kit &kit)
 {
 	kit.atlas_epoch_++;
-	kit.font_epoch_++;
 	kit.icons_.clear();
 	kit.glyphs_.clear();
-	kit.fonts_.clear();
 	kit.glow_ = {};
 	kit.atlas_.clear();
 	kit.atlas_.grow(kAtlasStart);
@@ -560,25 +466,6 @@ rebuild_atlas(Kit &kit)
 		kit.atlas_.dirty = true;
 	}
 
-	QFont qfont = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
-	int logical_px = QFontInfo(qfont).pixelSize();
-	if (logical_px <= 0)
-		logical_px = 13;
-	// Keep font atlas an alpha map, at the cost of screwing up emoji.
-	const auto aa = QFont::StyleStrategy(
-		QFont::PreferAntialias | QFont::NoSubpixelAntialias);
-	kit.font_ = qfont;
-	kit.font_.setPixelSize(logical_px);
-	kit.font_.setStyleStrategy(aa);
-	kit.font_bold_ = kit.font_;
-	kit.font_bold_.setBold(true);
-	kit.font_px_ = kit.font_;
-	kit.font_px_.setPixelSize(kit.px(float(logical_px)));
-	kit.font_bold_px_ = kit.font_px_;
-	kit.font_bold_px_.setBold(true);
-	kit.raw_ = QRawFont::fromFont(kit.font_px_);
-	kit.raw_bold_ = QRawFont::fromFont(kit.font_bold_px_);
-	kit.glyph_phases_ = probe_phases(kit.raw_);
 }
 
 // The mnemonic is an index into text, and gets underlined; -1 for none.
@@ -586,59 +473,53 @@ static void
 emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 	Colour colour, bool bold, int mnemonic, int wrap = 0, bool center = false)
 {
-	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
-	if (!raw.isValid() || text.isEmpty())
+	if (text.isEmpty())
 		return;
 
-	QTextLayout &layout = *cache.get(kit, text, wrap, bold, center).layout;
-	const int phases = kit.glyph_phases_;
-	for (const QGlyphRun &run : layout.glyphRuns()) {
-		const QList<quint32> gids = run.glyphIndexes();
-		const QList<QPointF> pos = run.positions();
-		const int n = int(min(gids.size(), pos.size()));
-		for (int i = 0; i < n; i++) {
-			// The shaper positions the pen in fractions of a pixel, and
-			// kerning lives in those fractions.  Split one off into the
-			// phase the glyph was rasterised at, so that the quad can stay
-			// on the pixel grid and still blit 1:1.  Subtracting it back
-			// out rounds the quad onto the right pixel, and rounds the
-			// bare pen where there are no phases.
-			const double pen = double(x) + pos[i].x();
-			int phase = int(lround((pen - floor(pen)) * phases));
-			if (phase == phases)
-				phase = 0;
-			int gx = int(lround(pen - double(phase) / double(phases)));
-			const Kit::Glyph *glyph =
-				cache_glyph(kit, run.rawFont(), gids[i], phase);
-			if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
-				continue;
-			// Baselines, unlike pens, belong on whole pixel rows.
-			gx += glyph->bearing_x;
-			const int gy =
-				int(lround(double(y) + pos[i].y())) + glyph->bearing_y;
-			kit.list_.add_image(
-				{gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
-				glyph->rect.texels(), colour);
+	TextCache::Text &cached = cache.get(kit, text, wrap, bold, center);
+	if (!cached.layout)
+		return;
+	const TextLayout &layout = *cached.layout;
+	for (const TextGlyph &positioned : layout.glyphs()) {
+		const double pen = double(x) + double(positioned.x);
+		const double whole = floor(pen);
+		int phase = int(lround((pen - whole) * kGlyphPhases));
+		int gx = int(whole);
+		if (phase == kGlyphPhases) {
+			phase = 0;
+			gx++;
 		}
+		const Kit::Glyph *glyph = cache_glyph(
+			kit, positioned.font_id, positioned.glyph_id, phase);
+		if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
+			continue;
+		gx += glyph->bearing_x;
+		const int gy = int(lround(double(y) + double(positioned.y))) +
+			glyph->bearing_y;
+		kit.list_.add_image({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
+			glyph->rect.texels(), colour);
 	}
 	if (mnemonic < 0 || mnemonic >= text.size())
 		return;
-
-	const QTextLine line = layout.lineForTextPosition(mnemonic);
-	if (!line.isValid())
+	const int end = grapheme_after(text, mnemonic);
+	const TextLine *line = nullptr;
+	for (const TextLine &candidate : layout.lines()) {
+		if (mnemonic >= candidate.text_start &&
+			mnemonic < candidate.text_start + candidate.text_length) {
+			line = &candidate;
+			break;
+		}
+	}
+	if (!line)
 		return;
-
-	// cursorToX() runs backwards within an RTL run.
-	const float cx0 = float(line.cursorToX(mnemonic));
-	const float cx1 = float(line.cursorToX(mnemonic + 1));
-	// Both font metrics grow downwards from the baseline, which is where
-	// the glyphs of this line sit as well.
-	const int uy = int(
-		lround(double(y) + line.y() + line.ascent() + raw.underlinePosition()));
-	const int th = max(1, int(lround(raw.lineThickness())));
-	const int ux0 = int(lround(x + min(cx0, cx1)));
-	const int ux1 = int(lround(x + max(cx0, cx1)));
-	kit.list_.add_rect_filled({ux0, uy, ux1, uy + th}, colour);
+	for (const TextRect &rect : layout.range_rects(mnemonic, end - mnemonic)) {
+		const int ux0 = int(floor(double(x) + double(rect.x)));
+		const int ux1 = int(ceil(double(x) + double(rect.x + rect.width)));
+		const int uy = int(lround(double(y) + double(line->baseline) +
+			double(line->underline_position)));
+		const int th = max(1, int(lround(line->underline_thickness)));
+		kit.list_.add_rect_filled({ux0, uy, ux1, uy + th}, colour);
+	}
 }
 
 static void
@@ -1483,8 +1364,10 @@ Entry::rescroll(const Kit &kit)
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
+	const TextAffinity affinity =
+		this->preedit.isEmpty() ? this->caret_affinity : TextAffinity::Leading;
 	const float caret_x =
-		float(this->text_cache_.caret_x(kit, full, at, false));
+		this->text_cache_.caret_rect(kit, full, at, affinity, false).x;
 	const float text_w = float(this->text_cache_.text_width(kit, full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
@@ -1509,20 +1392,34 @@ Entry::reveal(const Kit &kit, int start, int end)
 		end = tmp;
 	}
 
+	const QString full = painted();
+	const int preedit_size = int(this->preedit.size());
+	if (start >= this->caret)
+		start += preedit_size;
+	if (end >= this->caret)
+		end += preedit_size;
 	const float text_w =
-		float(this->text_cache_.text_width(kit, this->text, false));
+		float(this->text_cache_.text_width(kit, full, false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
 		this->scroll_ = 0.f;
 		return;
 	}
 
-	const float left =
-		float(this->text_cache_.caret_x(kit, this->text, start, false));
-	const float right =
-		float(this->text_cache_.caret_x(kit, this->text, end, false));
-	const float from = min(left, right);
-	const float to = max(left, right);
+	float from = this->text_cache_
+		.caret_rect(kit, full, start, TextAffinity::Leading, false)
+		.x;
+	float to = from;
+	for (const TextRect &rect : this->text_cache_.range_rects(
+			 kit, full, start, end - start, false)) {
+		from = min(from, rect.x);
+		to = max(to, rect.x + rect.width);
+	}
+	const float end_x = this->text_cache_
+		.caret_rect(kit, full, end, TextAffinity::Trailing, false)
+		.x;
+	from = min(from, end_x);
+	to = max(to, end_x);
 	if (to - from >= view) {
 		this->scroll_ = clamp(from, 0.f, text_w - view);
 		return;
@@ -1539,6 +1436,20 @@ Entry::move_caret(Kit &kit, int to)
 {
 	this->caret =
 		grapheme_at_or_before(this->text, clamp(to, 0, int(this->text.size())));
+	this->caret_affinity = TextAffinity::Leading;
+	touch_caret(kit);
+	if (kit.input_method_changed)
+		kit.input_method_changed();
+	if (kit.notify)
+		kit.notify(Change::Text, this);
+}
+
+void
+Entry::move_caret_to_hit(Kit &kit, TextHit hit)
+{
+	this->caret = grapheme_at_or_before(
+		this->text, clamp(hit.index, 0, int(this->text.size())));
+	this->caret_affinity = hit.affinity;
 	touch_caret(kit);
 	if (kit.input_method_changed)
 		kit.input_method_changed();
@@ -1573,6 +1484,8 @@ Entry::splice(Kit &kit, int start, int end, const QString &with)
 
 	this->text.replace(start, end - start, with);
 	this->caret = start + int(with.size());
+	this->caret_affinity =
+		with.isEmpty() ? TextAffinity::Leading : TextAffinity::Trailing;
 
 	// Tell the host before on_change, which may rebuild the listing around
 	// this field: the old string is still on the adapter, the new one here.
@@ -1656,26 +1569,53 @@ Entry::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], kit.ink_alpha()), false, -1);
 	}
 
-	// The preedit is underlined for its whole length, the way every other
-	// toolkit marks text the input method still owns.
+	// The preedit is underlined using the same native layout and metrics that
+	// positioned its glyphs.
 	if (!this->preedit.isEmpty()) {
-		const float x0 = tx +
-			float(this->text_cache_.caret_x(kit, full, this->caret, false));
-		const float x1 = tx +
-			float(this->text_cache_.caret_x(
-				kit, full, this->caret + int(this->preedit.size()), false));
-		const int uy = ty + th - hair;
-		kit.list_.add_rect_filled(
-			{int(lround(min(x0, x1))), uy, int(lround(max(x0, x1))), uy + hair},
-			col(kit.colours_[ColourInk], kit.ink_alpha()));
+		TextCache::Text &cached =
+			this->text_cache_.get(kit, full, 0, false, false);
+		if (cached.layout) {
+			const TextLayout &layout = *cached.layout;
+			for (const TextRect &rect : layout.range_rects(
+					 this->caret, int(this->preedit.size()))) {
+				const TextLine *line = nullptr;
+				float top = 0.f;
+				for (const TextLine &candidate : layout.lines()) {
+					const float mid = rect.y + rect.height * 0.5f;
+					if (mid >= top && mid <= top + candidate.height) {
+						line = &candidate;
+						break;
+					}
+					top += candidate.height;
+				}
+				if (!line)
+					continue;
+				const int x0 = int(floor(double(tx) + double(rect.x)));
+				const int x1 =
+					int(ceil(double(tx) + double(rect.x + rect.width)));
+				const int uy = int(lround(double(ty) +
+					double(line->baseline + line->underline_position)));
+				const int thickness =
+					max(1, int(lround(line->underline_thickness)));
+				kit.list_.add_rect_filled({x0, uy, x1, uy + thickness},
+					col(kit.colours_[ColourInk], kit.ink_alpha()));
+			}
+		}
 	}
 
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-		const int cx = int(lround(
-			tx + float(this->text_cache_.caret_x(kit, full, at, false))));
-		kit.list_.add_rect_filled({cx, ty, cx + hair, ty + th},
+		const TextAffinity affinity = this->preedit.isEmpty()
+			? this->caret_affinity
+			: TextAffinity::Leading;
+		const TextRect caret =
+			this->text_cache_.caret_rect(kit, full, at, affinity, false);
+		const int cx = int(lround(double(tx) + double(caret.x)));
+		const int cy = int(floor(double(ty) + double(caret.y)));
+		const int cy1 =
+			int(ceil(double(ty) + double(caret.y + caret.height)));
+		kit.list_.add_rect_filled({cx, cy, cx + hair, max(cy + 1, cy1)},
 			col(kit.colours_[ColourInk], kit.ink_alpha()));
 	}
 
@@ -1740,9 +1680,12 @@ Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	// method still owns; let it finish rather than fighting over the caret.
 	if (this->preedit.isEmpty()) {
 		const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
-		move_caret(kit,
-			this->text_cache_.index_at(
-				kit, this->text, x - float(in.x) + this->scroll_, false));
+		const int th = this->text_cache_.text_height(
+			kit, QStringLiteral("Ag"), 0, false);
+		const int ty = this->r.y + (this->r.h - th) / 2;
+		const TextHit hit = this->text_cache_.hit_test(kit, this->text,
+			x - float(in.x) + this->scroll_, y - float(ty), false);
+		move_caret_to_hit(kit, hit);
 	}
 	return true;
 }
@@ -1866,10 +1809,17 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	const QString full = painted();
 	const int at =
 		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const int cx = this->r.x + kit.px(this->pad_x) +
-		int(lround(-this->scroll_ +
-			float(this->text_cache_.caret_x(kit, full, at, false))));
-	out.caret_rect = {cx, this->r.y, 1, this->r.h};
+	const TextAffinity affinity =
+		this->preedit.isEmpty() ? this->caret_affinity : TextAffinity::Leading;
+	const TextRect caret =
+		this->text_cache_.caret_rect(kit, full, at, affinity, false);
+	const int tx = this->r.x + kit.px(this->pad_x);
+	const int th =
+		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int ty = this->r.y + (this->r.h - th) / 2;
+	out.caret_rect = {int(lround(double(tx) - double(this->scroll_) +
+			double(caret.x))),
+		ty + int(floor(caret.y)), 1, max(1, int(ceil(caret.height)))};
 	return true;
 }
 
@@ -4435,7 +4385,7 @@ Kit::pack_bitmap(const QImage &image)
 	if (packed.empty())
 		return {};
 
-	blit(*this, packed, image, false);
+	blit(*this, packed, image);
 	return packed;
 }
 
@@ -4524,8 +4474,38 @@ Kit::set_dpr(float dpr)
 		return false;
 	this->dpr_ = next;
 	if (this->inited_)
-		rebuild_atlas(*this);
+		reset_fonts();
 	return true;
+}
+
+bool
+Kit::reset_fonts()
+{
+	QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
+	int logical_px = QFontInfo(font).pixelSize();
+	if (logical_px <= 0)
+		logical_px = 13;
+	font.setPixelSize(logical_px);
+
+	// Mask keys contain generation-local font IDs and must be gone before the
+	// backend releases that generation's font table. Retained layouts keep
+	// their native run fonts and become unreachable when their cache epoch is
+	// next observed.
+	rebuild_atlas(*this);
+	this->text_cache_.texts.clear();
+	string error;
+	if (!this->text_backend_.reset(font, this->dpr_, &error)) {
+		qWarning("font backend reset failed: %s", error.c_str());
+		return false;
+	}
+	this->font_epoch_ = this->text_backend_.generation();
+	return true;
+}
+
+bool
+Kit::text_settings_changed() const
+{
+	return this->text_backend_.settings_changed();
 }
 
 bool
@@ -4550,18 +4530,6 @@ int
 Kit::text_width(const QString &text, bool bold) const
 {
 	return this->text_cache_.text_width(*this, text, bold);
-}
-
-int
-Kit::caret_x(const QString &text, int index, bool bold) const
-{
-	return this->text_cache_.caret_x(*this, text, index, bold);
-}
-
-int
-Kit::index_at(const QString &text, float x, bool bold) const
-{
-	return this->text_cache_.index_at(*this, text, x, bold);
 }
 
 QString
@@ -5148,7 +5116,7 @@ Kit::init(float dpr)
 {
 	destroy();
 	this->dpr_ = dpr > 0.f ? dpr : 1.f;
-	rebuild_atlas(*this);
+	reset_fonts();
 	bake_colours(nullptr, nullptr);
 	this->inited_ = true;
 }
@@ -5169,11 +5137,8 @@ Kit::destroy()
 	this->atlas_epoch_++;
 	this->icons_.clear();
 	this->glyphs_.clear();
-	this->fonts_.clear();
 	this->atlas_.clear();
 	this->glow_ = {};
-	this->raw_ = QRawFont();
-	this->raw_bold_ = QRawFont();
 	this->root_ = nullptr;
 	set_focus(nullptr, false);
 	this->default_focus_ = nullptr;

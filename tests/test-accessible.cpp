@@ -624,6 +624,38 @@ caret_offset(AtspiAccessible *obj)
 	return at;
 }
 
+static AtspiRect
+character_extents(AtspiAccessible *obj, int offset)
+{
+	AtspiRect result{};
+	AtspiText *text = atspi_accessible_get_text_iface(obj);
+	if (!text)
+		return result;
+
+	atspi_accessible_clear_cache_single(obj);
+	if (AtspiRect *rect = atspi_text_get_character_extents(
+			text, offset, ATSPI_COORD_TYPE_SCREEN, nullptr)) {
+		result = *rect;
+		g_free(rect);
+	}
+	g_object_unref(text);
+	return result;
+}
+
+static int
+offset_at_text_point(AtspiAccessible *obj, int x, int y)
+{
+	AtspiText *text = atspi_accessible_get_text_iface(obj);
+	if (!text)
+		return -1;
+
+	atspi_accessible_clear_cache_single(obj);
+	const int result = atspi_text_get_offset_at_point(
+		text, x, y, ATSPI_COORD_TYPE_SCREEN, nullptr);
+	g_object_unref(text);
+	return result;
+}
+
 static bool
 set_text_contents(AtspiAccessible *obj, const char *value)
 {
@@ -1548,6 +1580,41 @@ case_filter()
 	CHECK(text_range(field, 2, 3) == "\xCC\x81");
 	CHECK(text_range(field, 1, 2) != text_range(field, 2, 3));
 
+	// Geometry crosses the AT-SPI bridge in UTF-16 offsets, but comes from the
+	// same native layout that paints and hit-tests the Entry.  The combining
+	// mark and the low surrogate are not valid insertion points.  The Hebrew
+	// character boxes run in the opposite visual direction.
+	if (!replace_and_wait(field, "Ae\xCC\x81😀אבZ")) {
+		g_object_unref(field);
+		if (list)
+			g_object_unref(list);
+		return;
+	}
+	CHECK(character_count(field) == 8);
+	const AtspiRect combining_base = character_extents(field, 1);
+	const AtspiRect combining_mark = character_extents(field, 2);
+	const AtspiRect surrogate_first = character_extents(field, 3);
+	const AtspiRect surrogate_second = character_extents(field, 4);
+	const AtspiRect hebrew_first = character_extents(field, 5);
+	const AtspiRect hebrew_second = character_extents(field, 6);
+	for (const AtspiRect &rect : {combining_base, combining_mark,
+			 surrogate_first, surrogate_second, hebrew_first, hebrew_second}) {
+		CHECK(rect.width > 0 && rect.height > 0);
+		const int hit = offset_at_text_point(
+			field, rect.x + rect.width / 2, rect.y + rect.height / 2);
+		CHECK(hit >= 0 && hit <= 8);
+		CHECK(hit != 2 && hit != 4);
+	}
+	CHECK(hebrew_first.x > hebrew_second.x);
+	const int combining_hit =
+		offset_at_text_point(field, combining_base.x + combining_base.width / 2,
+			combining_base.y + combining_base.height / 2);
+	CHECK(combining_hit == 1 || combining_hit == 3);
+	const int surrogate_hit = offset_at_text_point(field,
+		surrogate_second.x + surrogate_second.width / 2,
+		surrogate_second.y + surrogate_second.height / 2);
+	CHECK(surrogate_hit == 3 || surrogate_hit == 5);
+
 	if (!replace_and_wait(field, "abc")) {
 		g_object_unref(field);
 		if (list)
@@ -1558,6 +1625,21 @@ case_filter()
 	int attr_end = -1;
 	CHECK(attribute_range(field, 1, &attr_start, &attr_end));
 	CHECK(attr_start == 0 && attr_end == 3);
+	const AtspiRect field_box = extents_of(field, ATSPI_COORD_TYPE_SCREEN);
+	AtspiRect previous{};
+	for (int i = 0; i < 3; i++) {
+		const AtspiRect rect = character_extents(field, i);
+		CHECK(rect.width > 0 && rect.height > 0);
+		CHECK(rect.x >= field_box.x && rect.y >= field_box.y);
+		CHECK(rect.x + rect.width <= field_box.x + field_box.width);
+		CHECK(rect.y + rect.height <= field_box.y + field_box.height);
+		if (i)
+			CHECK(rect.x >= previous.x);
+		const int hit = offset_at_text_point(
+			field, rect.x + rect.width / 4, rect.y + rect.height / 2);
+		CHECK(hit == i);
+		previous = rect;
+	}
 
 	const int caret_before_scroll = caret_offset(field);
 	CHECK(scroll_substring(field, 0, 1));

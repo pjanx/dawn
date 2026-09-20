@@ -1002,7 +1002,14 @@ Window::render()
 	const float dpr = host_dpr(*this);
 	this->kit_.dpi_ = host_dpi(*this);
 	const bool fullscreen = bool(shell()->windowState() & Qt::WindowFullScreen);
-	if (this->kit_.set_host(w, h, dpr))
+	bool rescale = this->kit_.set_host(w, h, dpr);
+	if (this->font_change_pending_) {
+		this->font_change_pending_ = false;
+		if (!rescale)
+			rescale = this->kit_.reset_fonts();
+	} else if (this->kit_.text_settings_changed())
+		rescale = this->kit_.reset_fonts() || rescale;
+	if (rescale)
 		for (auto &page : this->pages_)
 			if (page && page->content)
 				page->content->rescale(this->kit_);
@@ -1175,6 +1182,11 @@ Window::event(QEvent *event)
 		this->resize_pending_ = true;
 		request_render();
 		break;
+	case QEvent::ApplicationFontChange:
+	case QEvent::FontChange:
+		this->font_change_pending_ = true;
+		request_render();
+		break;
 	case QEvent::PlatformSurface: {
 		auto *surface_event = (QPlatformSurfaceEvent *) event;
 		if (surface_event->surfaceEventType() ==
@@ -1260,6 +1272,12 @@ Window::focus_lost()
 bool
 Window::eventFilter(QObject *watched, QEvent *event)
 {
+	if ((watched == qGuiApp || watched == this || watched == shell()) &&
+		(event->type() == QEvent::ApplicationFontChange ||
+			event->type() == QEvent::FontChange)) {
+		this->font_change_pending_ = true;
+		request_render();
+	}
 	if (watched != this && watched != shell())
 		return false;
 
