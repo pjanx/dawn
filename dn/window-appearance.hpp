@@ -1,5 +1,5 @@
 //
-// window-appearance-macos.hpp: native window behaviour Qt does not cover
+// window-appearance.hpp: native window behaviour Qt does not cover
 //
 // Copyright The Dawn Authors
 // SPDX-License-Identifier: MPL-2.0
@@ -17,11 +17,11 @@ namespace dn
 // QStyleHints::setColorScheme() is process-wide, and each dn::Window keeps
 // its own independent dark/light state, so the native titlebar has to be
 // driven per window instead.
-#ifdef __APPLE__
-void sync_macos_window_appearance(QWindow *window, bool dark);
+#if defined __APPLE__ || defined _WIN32
+void sync_window_appearance(QWindow *window, bool dark);
 #else
 inline void
-sync_macos_window_appearance(QWindow *, bool)
+sync_window_appearance(QWindow *, bool)
 {
 }
 #endif

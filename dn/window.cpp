@@ -17,7 +17,7 @@
 #include "app.hpp"
 #include "display-profile.hpp"
 #include "url.hpp"
-#include "window-appearance-macos.hpp"
+#include "window-appearance.hpp"
 
 #if DN_WITH_WAYLAND
 #include "wayland-window.hpp"
@@ -246,9 +246,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 	this->mode_ = mode;
 	QVulkanInstance *const instance = &this->app_->vulkan_instance;
 	create();
-#ifdef Q_OS_MACOS
-	sync_macos_window_appearance(this, this->kit_.dark_);
-#endif
+	sync_window_appearance(this, this->kit_.dark_);
 	this->surface_ = QVulkanInstance::surfaceForWindow(this);
 	if (!this->surface_) {
 		qWarning("Qt failed to create a Vulkan window surface");
@@ -888,9 +886,7 @@ Window::apply_dark(bool dark)
 {
 	this->kit_.dark_ = dark;
 	this->kit_.bake_colours(this->screen_state_);
-#ifdef Q_OS_MACOS
-	sync_macos_window_appearance(this, dark);
-#endif
+	sync_window_appearance(this, dark);
 	request_render();
 }
 

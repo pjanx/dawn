@@ -40,7 +40,7 @@
 
 #ifdef Q_OS_MACOS
 #include "app-menu-macos.hpp"
-#include "window-appearance-macos.hpp"
+#include "window-appearance.hpp"
 
 #include <dlfcn.h>
 #endif

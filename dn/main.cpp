@@ -20,7 +20,7 @@
 #include "xdg.hpp"
 
 #ifdef Q_OS_MACOS
-#include "window-appearance-macos.hpp"
+#include "window-appearance.hpp"
 #endif
 
 #include <QCommandLineOption>

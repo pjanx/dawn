@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "window-appearance-macos.hpp"
+#include "window-appearance.hpp"
 
 #include <QWindow>
 
@@ -17,7 +17,7 @@ namespace dn
 {
 
 void
-sync_macos_window_appearance(QWindow *window, bool dark)
+sync_window_appearance(QWindow *window, bool dark)
 {
 	if (!window)
 		return;
