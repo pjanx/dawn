@@ -12,7 +12,6 @@
 #include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
-#include FT_PARAMETER_TAGS_H
 #include <pango/pangofc-font.h>
 #include <pango/pangofc-fontmap.h>
 #include <pango/pangoft2.h>
@@ -338,6 +337,7 @@ TextLayout::caret(int index, TextAffinity affinity) const
 {
 	if (!this->impl_->layout || this->lines_.empty())
 		return {};
+
 	index = clamp(index, 0, int(this->text_.size()));
 	int byte = utf16_to_utf8(*this->impl_, index);
 	gboolean trailing = FALSE;
@@ -359,6 +359,7 @@ TextLayout::hit_test(float x, float y) const
 {
 	if (!this->impl_->layout)
 		return {};
+
 	int byte = 0, trailing = 0;
 	pango_layout_xy_to_index(this->impl_->layout, int(lround(x * kPangoScale)),
 		int(lround(y * kPangoScale)), &byte, &trailing);
@@ -378,6 +379,7 @@ TextLayout::range_rects(int start, int length) const
 	vector<TextRect> result;
 	if (!this->impl_->layout || length <= 0)
 		return result;
+
 	start = clamp(start, 0, int(this->text_.size()));
 	const int end = clamp(start + length, start, int(this->text_.size()));
 	const int first = utf16_to_utf8(*this->impl_, start);
@@ -461,6 +463,7 @@ TextBackend::settings_changed() const
 {
 	if (!this->impl_)
 		return false;
+
 	FcConfig *config =
 		pango_fc_font_map_get_config(PANGO_FC_FONT_MAP(this->impl_->font_map));
 	if (!config)
@@ -495,6 +498,7 @@ TextBackend::layout_native(
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
+
 static FT_Face
 lock_face(PangoFont *font)
 {
@@ -506,6 +510,7 @@ unlock_face(PangoFont *font)
 {
 	pango_fc_font_unlock_face(PANGO_FC_FONT(font));
 }
+
 #if defined __GNUC__
 #pragma GCC diagnostic pop
 #endif
@@ -586,15 +591,6 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	LockedFace locked(font);
 	if (!locked.face)
 		return result;
-
-#if 0
-	// It appears that linear composition is being difficult.
-	// But it doesn't combine well with our contrast enhancement in dark mode.
-	FT_Bool darken_stems = true;
-	FT_Parameter darkening{FT_PARAM_TAG_STEM_DARKENING, &darken_stems};
-	if (FT_Face_Properties(locked.face, 1, &darkening))
-		return result;
-#endif
 
 	FT_Matrix matrix{};
 	FT_Vector delta{};
