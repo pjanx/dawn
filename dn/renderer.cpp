@@ -202,7 +202,7 @@ Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
 	destroy();
 	this->surface_ = surface;
 	this->phys_ = gpu.phys();
-	this->preferred_ = dawn::preferred_filter(this->phys_);
+	this->preferred_filter = dawn::preferred_filter(this->phys_);
 	this->device_ = gpu.device();
 	this->queue_ = gpu.queue();
 	this->queue_family_ = gpu.queue_family();
@@ -485,12 +485,6 @@ Renderer::create_swapchain()
 			nullptr, &this->framebuffers_[i]);
 	}
 	this->overlay_.set_encoding_buffer(this->engine_.encoding_buffer());
-	if (this->engine_.has_image()) {
-		string error;
-		if (!this->engine_.ensure_viewport(
-				this->extent_.width, this->extent_.height, &error))
-			die(error.c_str());
-	}
 }
 
 void
@@ -512,10 +506,6 @@ Renderer::set_image(
 	string error;
 	if (!this->engine_.set_image(width, height, pixels, stride, &error))
 		die(error.c_str());
-	if (this->extent_.width && this->extent_.height &&
-		!this->engine_.ensure_viewport(
-			this->extent_.width, this->extent_.height, &error))
-		die(error.c_str());
 }
 
 void
@@ -525,17 +515,6 @@ Renderer::clear_image()
 		return;
 	wait_idle();
 	this->engine_.clear_image();
-}
-
-void
-Renderer::set_view(float scale, float pan_x, float pan_y,
-	dawn::Orientation orientation, float angle)
-{
-	this->scale_ = scale;
-	this->pan_x_ = pan_x;
-	this->pan_y_ = pan_y;
-	this->angle_ = angle;
-	this->orientation_ = orientation;
 }
 
 void
@@ -627,24 +606,14 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	CALL_VK(BeginCommandBuffer, "", this->cmd_, &begin_info);
 	const auto checker = dawn::sample_curves(this->encoding_->encode,
 		{this->checker_[0], this->checker_[1], this->checker_[2]});
-	dawn::ScaleView view{
-		.scale = this->scale_,
-		.pan_x = this->pan_x_,
-		.pan_y = this->pan_y_,
-		.angle = this->angle_,
-		.profile_curves = true,
-		.output_encoding = dawn::ScaleEncoding::Linear,
-		.orientation = this->orientation_,
-		.checkerboard = this->checkerboard_,
-		.linear_blend = this->linear_blend_,
-		.checker_r = checker[0],
-		.checker_g = checker[1],
-		.checker_b = checker[2],
-		.checker_size = float(this->checker_px_),
-		// The well is behind the image, so alpha resolves in the shader.
-		.composite = true,
-		.filter = this->filter_ ? this->preferred_ : dawn::Filter::Nearest,
-	};
+	dawn::ScaleView view = this->view;
+	// dn composes in linear light; image alpha resolves against the well.
+	view.profile_curves = true;
+	view.output_encoding = dawn::ScaleEncoding::Linear;
+	view.composite = true;
+	view.checker_r = checker[0];
+	view.checker_g = checker[1];
+	view.checker_b = checker[2];
 	const auto well = dawn::sample_curves(this->encoding_->encode,
 		{this->well_[0], this->well_[1], this->well_[2]});
 	const float clear[4] = {well[0], well[1], well[2], this->well_[3]};

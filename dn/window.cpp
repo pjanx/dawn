@@ -288,7 +288,6 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		if (change == SettingsChange::Preferences) {
 			this->renderer_.set_dither_enabled(
 				!this->app_->settings.disable_dithering);
-			this->resize_pending_ = true;
 			this->settings_apply_pending_ = true;
 		}
 		if (this->browser_)
@@ -998,10 +997,8 @@ Window::render()
 	}
 	if (this->settings_apply_pending_ && this->renderer_.extent().width &&
 		this->renderer_.extent().height) {
-		this->kit_.atlas_.dirty = true;
 		if (this->viewer_)
 			this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
-		// Dithering may have replaced the renderer target and its uploads.
 		apply_screen_profile(screen(), true);
 		this->settings_apply_pending_ = false;
 	}

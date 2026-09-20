@@ -129,13 +129,11 @@ struct ScaleEngine::Impl {
 
 	VkRenderPass dest_render_pass = VK_NULL_HANDLE;
 	VkRenderPass mid_render_pass = VK_NULL_HANDLE;
-	VkDescriptorSetLayout dset_layout_tiles = VK_NULL_HANDLE;
-	VkDescriptorSetLayout dset_layout_horiz = VK_NULL_HANDLE;
+	VkDescriptorSetLayout dset_layout = VK_NULL_HANDLE;
 	VkDescriptorPool dset_pool = VK_NULL_HANDLE;
 	VkDescriptorSet dset_tiles = VK_NULL_HANDLE;
 	VkDescriptorSet dset_horiz = VK_NULL_HANDLE;
-	VkPipelineLayout pipeline_layout_tiles = VK_NULL_HANDLE;
-	VkPipelineLayout pipeline_layout_horiz = VK_NULL_HANDLE;
+	VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 	VkPipeline pipeline_h = VK_NULL_HANDLE;
 	VkPipeline pipeline_v = VK_NULL_HANDLE;
 	VkPipeline pipeline_2d_nearest = VK_NULL_HANDLE;
@@ -166,9 +164,6 @@ struct ScaleEngine::Impl {
 	uint32_t grid_cols = 1;
 	uint32_t grid_rows = 1;
 	bool image_opaque = true;
-
-	uint32_t viewport_w = 0;
-	uint32_t viewport_h = 0;
 
 	bool ready = false;
 
@@ -269,13 +264,9 @@ ScaleEngine::Impl::destroy_pipeline()
 	kill(pipeline_2d_nearest);
 	kill(pipeline_2d_bilinear);
 	kill(pipeline_2d_nohalo);
-	if (pipeline_layout_tiles) {
-		vkDestroyPipelineLayout(device, pipeline_layout_tiles, nullptr);
-		pipeline_layout_tiles = VK_NULL_HANDLE;
-	}
-	if (pipeline_layout_horiz) {
-		vkDestroyPipelineLayout(device, pipeline_layout_horiz, nullptr);
-		pipeline_layout_horiz = VK_NULL_HANDLE;
+	if (pipeline_layout) {
+		vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+		pipeline_layout = VK_NULL_HANDLE;
 	}
 	if (dest_render_pass) {
 		vkDestroyRenderPass(device, dest_render_pass, nullptr);
@@ -301,13 +292,9 @@ ScaleEngine::Impl::destroy_all()
 		vkDestroyDescriptorPool(device, dset_pool, nullptr);
 		dset_pool = VK_NULL_HANDLE;
 	}
-	if (dset_layout_tiles) {
-		vkDestroyDescriptorSetLayout(device, dset_layout_tiles, nullptr);
-		dset_layout_tiles = VK_NULL_HANDLE;
-	}
-	if (dset_layout_horiz) {
-		vkDestroyDescriptorSetLayout(device, dset_layout_horiz, nullptr);
-		dset_layout_horiz = VK_NULL_HANDLE;
+	if (dset_layout) {
+		vkDestroyDescriptorSetLayout(device, dset_layout, nullptr);
+		dset_layout = VK_NULL_HANDLE;
 	}
 	if (sampler) {
 		vkDestroySampler(device, sampler, nullptr);
@@ -325,7 +312,6 @@ ScaleEngine::Impl::destroy_all()
 	phys = VK_NULL_HANDLE;
 	device = VK_NULL_HANDLE;
 	queue = VK_NULL_HANDLE;
-	viewport_w = viewport_h = 0;
 	ready = false;
 }
 
@@ -385,19 +371,15 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 		.offset = 0,
 		.size = sizeof(PushConstants),
 	};
-	auto make_layout = [&](VkDescriptorSetLayout set_layout,
-						   VkPipelineLayout *out) -> bool {
-		VkPipelineLayoutCreateInfo plci{
-			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-			.setLayoutCount = 1,
-			.pSetLayouts = &set_layout,
-			.pushConstantRangeCount = 1,
-			.pPushConstantRanges = &pcr,
-		};
-		return CALL_VK(CreatePipelineLayout, "", device, &plci, nullptr, out);
+	VkPipelineLayoutCreateInfo plci{
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &dset_layout,
+		.pushConstantRangeCount = 1,
+		.pPushConstantRanges = &pcr,
 	};
-	if (!make_layout(dset_layout_tiles, &pipeline_layout_tiles) ||
-		!make_layout(dset_layout_horiz, &pipeline_layout_horiz))
+	if (!CALL_VK(
+			CreatePipelineLayout, "", device, &plci, nullptr, &pipeline_layout))
 		return false;
 
 	VkShaderModule vert =
@@ -408,8 +390,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 	// H-pass writes the mid buffer as-is. V-pass is premul-over the
 	// dest clear (view well, or transparent for offscreen readback) so
 	// SVG/PNG alpha sits on that background instead of replacing it.
-	auto make_pipe = [&](VkShaderModule frag, VkPipelineLayout layout,
-						 VkRenderPass rp,
+	auto make_pipe = [&](VkShaderModule frag, VkRenderPass rp,
 						 const VkPipelineColorBlendStateCreateInfo *cb,
 						 VkPipeline *out) -> bool {
 		VkPipelineShaderStageCreateInfo stages[2] = {
@@ -437,7 +418,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			.pMultisampleState = &kNoMultisample,
 			.pColorBlendState = cb,
 			.pDynamicState = &kDynamicViewportScissor,
-			.layout = layout,
+			.layout = pipeline_layout,
 			.renderPass = rp,
 			.subpass = 0,
 		};
@@ -447,22 +428,21 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 
 	const struct {
 		VkPipeline *out;
-		VkPipelineLayout layout;
 		VkRenderPass rp;
 		const VkPipelineColorBlendStateCreateInfo *blend;
 		const uint32_t *code;
 		uint32_t words;
 	} variants[] = {
-		{&pipeline_h, pipeline_layout_tiles, mid_render_pass, &kBlendReplace,
-			scale_h_bilinear, scale_h_bilinear_words},
-		{&pipeline_v, pipeline_layout_horiz, dest_render_pass,
-			&kBlendPremulOver, scale_v_bilinear, scale_v_bilinear_words},
-		{&pipeline_2d_nearest, pipeline_layout_tiles, dest_render_pass,
-			&kBlendPremulOver, scale_2d_nearest, scale_2d_nearest_words},
-		{&pipeline_2d_bilinear, pipeline_layout_tiles, dest_render_pass,
-			&kBlendPremulOver, scale_2d_bilinear, scale_2d_bilinear_words},
-		{&pipeline_2d_nohalo, pipeline_layout_tiles, dest_render_pass,
-			&kBlendPremulOver, scale_2d_nohalo, scale_2d_nohalo_words},
+		{&pipeline_h, mid_render_pass, &kBlendReplace, scale_h_bilinear,
+			scale_h_bilinear_words},
+		{&pipeline_v, dest_render_pass, &kBlendPremulOver, scale_v_bilinear,
+			scale_v_bilinear_words},
+		{&pipeline_2d_nearest, dest_render_pass, &kBlendPremulOver,
+			scale_2d_nearest, scale_2d_nearest_words},
+		{&pipeline_2d_bilinear, dest_render_pass, &kBlendPremulOver,
+			scale_2d_bilinear, scale_2d_bilinear_words},
+		{&pipeline_2d_nohalo, dest_render_pass, &kBlendPremulOver,
+			scale_2d_nohalo, scale_2d_nohalo_words},
 	};
 
 	bool ok = true;
@@ -472,7 +452,7 @@ ScaleEngine::Impl::create_pipeline_objects(string *error)
 			ok = false;
 			break;
 		}
-		ok = make_pipe(frag, v.layout, v.rp, v.blend, v.out);
+		ok = make_pipe(frag, v.rp, v.blend, v.out);
 		vkDestroyShaderModule(device, frag, nullptr);
 		if (!ok)
 			break;
@@ -1089,9 +1069,9 @@ ScaleEngine::Impl::cmd_h_pass(
 	vkCmdSetScissor(cmd, 0, 1, &scissor);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_h);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipeline_layout_tiles, 0, 1, &dset_tiles, 0, nullptr);
-	vkCmdPushConstants(cmd, pipeline_layout_tiles, VK_SHADER_STAGE_FRAGMENT_BIT,
-		0, sizeof pc, &pc);
+		pipeline_layout, 0, 1, &dset_tiles, 0, nullptr);
+	vkCmdPushConstants(
+		cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 	vkCmdEndRenderPass(cmd);
 }
@@ -1264,10 +1244,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.bindingCount = 2,
 		.pBindings = bindings,
 	};
-	if (!CALL_VK(CreateDescriptorSetLayout, " tiles", device, &dlci, nullptr,
-			&e.dset_layout_tiles) ||
-		!CALL_VK(CreateDescriptorSetLayout, " horiz", device, &dlci, nullptr,
-			&e.dset_layout_horiz)) {
+	if (!CALL_VK(CreateDescriptorSetLayout, " scale", device, &dlci, nullptr,
+			&e.dset_layout)) {
 		e.destroy_all();
 		return false;
 	}
@@ -1291,7 +1269,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = e.dset_pool,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &e.dset_layout_tiles,
+		.pSetLayouts = &e.dset_layout,
 	};
 	if (!CALL_VK(AllocateDescriptorSets, " tiles", device, &tiles_ai,
 			&e.dset_tiles)) {
@@ -1302,7 +1280,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
 		.descriptorPool = e.dset_pool,
 		.descriptorSetCount = 1,
-		.pSetLayouts = &e.dset_layout_horiz,
+		.pSetLayouts = &e.dset_layout,
 	};
 	if (!CALL_VK(AllocateDescriptorSets, " horiz", device, &horiz_ai,
 			&e.dset_horiz)) {
@@ -1427,7 +1405,6 @@ ScaleEngine::clear_image()
 	impl_->image_w = impl_->image_h = 0;
 	impl_->grid_cols = impl_->grid_rows = 1;
 	impl_->destroy_mid();
-	impl_->viewport_w = impl_->viewport_h = 0;
 }
 
 uint32_t
@@ -1449,26 +1426,6 @@ ScaleEngine::has_image() const
 }
 
 bool
-ScaleEngine::ensure_viewport(
-	uint32_t viewport_w, uint32_t viewport_h, string *error)
-{
-	if (!impl_ || !impl_->ready) {
-		if (error)
-			*error = "ScaleEngine not initialized";
-		return false;
-	}
-	if (!has_image()) {
-		if (error)
-			*error = "no image loaded";
-		return false;
-	}
-	Impl &e = *impl_;
-	e.viewport_w = viewport_w;
-	e.viewport_h = viewport_h;
-	return true;
-}
-
-bool
 ScaleEngine::prepare(VkCommandBuffer cmd, uint32_t viewport_w,
 	uint32_t viewport_h, const ScaleView &view, string *error)
 {
@@ -1477,7 +1434,7 @@ ScaleEngine::prepare(VkCommandBuffer cmd, uint32_t viewport_w,
 			*error = "ScaleEngine not initialized";
 		return false;
 	}
-	if (!cmd) {
+	if (!cmd || !viewport_w || !viewport_h) {
 		if (error)
 			*error = "invalid prepare parameters";
 		return false;
@@ -1485,11 +1442,6 @@ ScaleEngine::prepare(VkCommandBuffer cmd, uint32_t viewport_w,
 	if (!has_image()) {
 		if (error)
 			*error = "no image loaded";
-		return false;
-	}
-	if (viewport_w != impl_->viewport_w || viewport_h != impl_->viewport_h) {
-		if (error)
-			*error = "viewport size mismatch; call ensure_viewport first";
 		return false;
 	}
 
@@ -1527,8 +1479,6 @@ ScaleEngine::draw(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,
 		pipeline = e.pipeline_2d_nearest;
 	else if (view.filter == Filter::Expensive && view.scale >= 1.f)
 		pipeline = e.pipeline_2d_nohalo;
-	const VkPipelineLayout layout =
-		separable ? e.pipeline_layout_horiz : e.pipeline_layout_tiles;
 	const VkDescriptorSet set = separable ? e.dset_horiz : e.dset_tiles;
 	const PushConstants pc =
 		e.make_push(view, viewport_w, viewport_h, background);
@@ -1538,10 +1488,10 @@ ScaleEngine::draw(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,
 	vkCmdSetViewport(cmd, 0, 1, &vp);
 	vkCmdSetScissor(cmd, 0, 1, &clip);
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-	vkCmdBindDescriptorSets(
-		cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, &set, 0, nullptr);
-	vkCmdPushConstants(
-		cmd, layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, &pc);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+		e.pipeline_layout, 0, 1, &set, 0, nullptr);
+	vkCmdPushConstants(cmd, e.pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+		sizeof pc, &pc);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 

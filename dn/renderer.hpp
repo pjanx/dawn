@@ -149,21 +149,11 @@ class Renderer
 
 	dawn::ScaleEngine engine_;
 	OverlayVulkan overlay_;
-	float scale_ = 1.f;
-	float pan_x_ = 0.f;
-	float pan_y_ = 0.f;
-	float angle_ = 0.f;
-	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
-	bool checkerboard_ = false;
-	bool linear_blend_ = false;
-	bool filter_ = true;
-	dawn::Filter preferred_ = dawn::Filter::Expensive;
 	std::shared_ptr<const dawn::ProfileEncoding> encoding_;
 	VkCompositeAlphaFlagBitsKHR composite_alpha_ =
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	float well_[4] = {0xE8 / 255.f, 0xE8 / 255.f, 0xE8 / 255.f, 1.f};
 	float checker_[3] = {0xF0 / 255.f, 0xF0 / 255.f, 0xF0 / 255.f};
-	int checker_px_ = 20;
 	VkImage compose_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory compose_memory_ = VK_NULL_HANDLE;
 	VkImageView compose_view_ = VK_NULL_HANDLE;
@@ -183,6 +173,11 @@ class Renderer
 	std::function<void()> present_queued_;
 
 public:
+	// Updated by the active image view. Output encoding and background colours
+	// belong to the renderer; checker_size is in device pixels.
+	dawn::ScaleView view;
+	dawn::Filter preferred_filter = dawn::Filter::Expensive;
+
 	Renderer() = default;
 	~Renderer() { destroy(); }
 
@@ -196,8 +191,6 @@ public:
 	void set_image(
 		uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride);
 	void clear_image();
-	void set_view(float scale, float pan_x, float pan_y,
-		dawn::Orientation orientation, float angle);
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled)
 	{
@@ -206,17 +199,6 @@ public:
 	void set_dither_enabled(bool enabled) { this->dither_enabled_ = enabled; }
 	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
-	/// `size` is one checkerboard square in device pixels: kCheckPts run
-	/// through Kit::px(), like every other design size.
-	void set_checkerboard(bool enabled, int size)
-	{
-		this->checkerboard_ = enabled;
-		this->checker_px_ = size;
-	}
-	void set_blend_linear_light(bool enabled) { this->linear_blend_ = enabled; }
-	/// Smooth toggle: on = preferred (Bilinear on CPU, Expensive on GPU), off =
-	/// Nearest.
-	void set_filter(bool enabled) { this->filter_ = enabled; }
 	void set_encoding(std::shared_ptr<const dawn::ProfileEncoding> encoding);
 	bool upload_font(const unsigned char *pixels, int width, int height);
 	[[nodiscard]] int thumb_atlas_max() const;

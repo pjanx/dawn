@@ -1270,8 +1270,6 @@ toggle_filter(Viewer &v)
 	if (v.current_ && v.current_->render)
 		return;
 	v.filter_ = !v.filter_;
-	if (v.kit_.renderer_)
-		v.kit_.renderer_->set_filter(v.filter_);
 	request_render(v);
 }
 
@@ -1775,15 +1773,10 @@ apply_action(Viewer &v, Action action)
 		return true;
 	case Action::Checkerboard:
 		v.checkerboard_ = !v.checkerboard_;
-		if (v.kit_.renderer_)
-			v.kit_.renderer_->set_checkerboard(
-				v.checkerboard_, v.kit_.px(kCheckPts));
 		request_render(v);
 		return true;
 	case Action::BlendLinearLight:
 		v.blend_linear_light_ = !v.blend_linear_light_;
-		if (v.kit_.renderer_)
-			v.kit_.renderer_->set_blend_linear_light(v.blend_linear_light_);
 		request_render(v);
 		return true;
 	case Action::RotateLeft:
@@ -1894,10 +1887,17 @@ apply_view(const Viewer &v)
 			snap_pan_to_pixels(&pan_y, float(dh), float(vp.height), gpu_scale);
 		}
 	}
-	renderer.set_filter(v.filter_);
-	renderer.set_checkerboard(v.checkerboard_, v.kit_.px(kCheckPts));
-	renderer.set_blend_linear_light(v.blend_linear_light_);
-	renderer.set_view(gpu_scale, pan_x, pan_y, v.orientation_, v.angle_);
+	renderer.view = {
+		.scale = gpu_scale,
+		.pan_x = pan_x,
+		.pan_y = pan_y,
+		.angle = v.angle_,
+		.orientation = v.orientation_,
+		.checkerboard = v.checkerboard_,
+		.linear_blend = v.blend_linear_light_,
+		.checker_size = float(v.kit_.px(kCheckPts)),
+		.filter = v.filter_ ? renderer.preferred_filter : dawn::Filter::Nearest,
+	};
 }
 
 Viewer::Viewer(Kit &kit) : kit_(kit)

@@ -585,7 +585,6 @@ test_image_overlay()
 	const array<Pixel, 4> source{kRed, kRed, kRed, kRed};
 	CHECK(gpu.engine.set_image(
 		2, 2, (const uint8_t *) source.data(), 2 * sizeof(Pixel), &error));
-	CHECK(gpu.engine.ensure_viewport(2, 2, &error));
 	dn::OverlayList list;
 	list.begin(2, 2, {.5f, .5f, .5f, .5f});
 	list.add_rect_filled({0, 0, 2, 1}, {0, 0, 1, .5f});
@@ -606,6 +605,46 @@ test_image_overlay()
 		CHECK(pixels[7] == 65535);
 		CHECK(pixels[8] == 0 && pixels[11] == 0);
 		CHECK(pixels[12] == 65535 && pixels[15] == 65535);
+	}
+}
+
+static void
+test_viewport_changes()
+{
+	EngineReadback gpu;
+	string error;
+	const array<Pixel, 4> source{kRed, kRed, kRed, kRed};
+	if (!gpu.init(&error) ||
+		!gpu.engine.set_image(
+			2, 2, (const uint8_t *) source.data(), 2 * sizeof(Pixel), &error)) {
+		test::fail("viewport setup: %s", error.c_str());
+		return;
+	}
+	// Resize without replacing the source or announcing the viewport first.
+	// Exercise both the intermediate-image and direct drawing paths.
+	for (auto filter : {dawn::Filter::Bilinear, dawn::Filter::Nearest}) {
+		for (VkExtent2D extent : {VkExtent2D{1, 1}, {2, 2}, {1, 2}, {2, 1}}) {
+			dawn::ScaleView view;
+			view.filter = filter;
+			CHECK(vkResetCommandBuffer(gpu.cmd, 0) == VK_SUCCESS);
+			const VkCommandBufferBeginInfo begin{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+			CHECK(vkBeginCommandBuffer(gpu.cmd, &begin) == VK_SUCCESS);
+			CHECK(!gpu.engine.prepare(gpu.cmd, 0, extent.height, view, &error));
+			CHECK(!gpu.engine.prepare(gpu.cmd, extent.width, 0, view, &error));
+			const float clear[4] = {};
+			CHECK(gpu.engine.record(gpu.cmd, gpu.fb, extent.width,
+				extent.height, view, clear, &error));
+			array<uint16_t, 16> pixels{};
+			CHECK(gpu.readback(gpu.image, &pixels, &error));
+			for (uint32_t y = 0; y < extent.height; y++) {
+				for (uint32_t x = 0; x < extent.width; x++) {
+					const size_t i = (y * 2 + x) * 4;
+					CHECK(pixels[i] == 65535 && pixels[i + 1] == 0 &&
+						pixels[i + 2] == 0 && pixels[i + 3] == 65535);
+				}
+			}
+		}
 	}
 }
 
@@ -683,7 +722,6 @@ test_viewer_curves()
 			{16384, 16384, 16384, 32768}, {16384, 16384, 16384, 32768}}};
 	CHECK(gpu.engine.set_image(
 		2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error));
-	CHECK(gpu.engine.ensure_viewport(2, 2, &error));
 	for (auto filter : {dawn::Filter::Nearest, dawn::Filter::Bilinear,
 			 dawn::Filter::Expensive}) {
 		for (int flags = 0; flags < 8; flags++) {
@@ -783,8 +821,7 @@ test_output_encoding()
 	const array<Pixel, 4> src{{{8192, 16384, 24576, 32768}, {},
 		{32768, 32768, 32768, 65535}, {0, 0, 0, 32768}}};
 	if (!gpu.engine.set_image(
-			2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error) ||
-		!gpu.engine.ensure_viewport(2, 2, &error)) {
+			2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error)) {
 		test::fail("engine image: %s", error.c_str());
 		return;
 	}
@@ -929,5 +966,6 @@ main()
 		{"viewer display curves", test_viewer_curves},
 		{"atlas uploads", test_atlas_uploads},
 		{"image and overlay share a pass", test_image_overlay},
+		{"viewport changes without setup", test_viewport_changes},
 	});
 }

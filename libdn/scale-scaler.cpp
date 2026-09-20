@@ -463,8 +463,6 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 
 	if (!s.engine.set_image(src_w, src_h, pixels, stride, error))
 		return false;
-	if (!s.engine.ensure_viewport(want_out_w, want_out_h, error))
-		return false;
 
 	ScaleView view{};
 	view.scale = float(want_out_w) / float(disp_w);

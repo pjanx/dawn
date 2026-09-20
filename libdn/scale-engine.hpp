@@ -91,8 +91,6 @@ public:
 	[[nodiscard]] uint32_t image_height() const;
 	[[nodiscard]] bool has_image() const;
 
-	bool ensure_viewport(
-		uint32_t viewport_w, uint32_t viewport_h, std::string *error);
 	/// Record intermediate scaling outside a render pass. Call draw() next
 	/// with the same view and viewport, without changing the source image.
 	bool prepare(VkCommandBuffer cmd, uint32_t viewport_w, uint32_t viewport_h,

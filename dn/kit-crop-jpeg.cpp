@@ -467,12 +467,13 @@ Cropper::paint(Kit &kit) const
 
 		auto &renderer = *kit.renderer_;
 		auto vp = renderer.extent();
-		renderer.set_filter(false);
-		renderer.set_checkerboard(false, kit.px(kCheckPts));
-		renderer.set_view(float(this->zoom_),
-			float((vp.width * .5 - ox) / this->zoom_ - w * .5),
-			float((vp.height * .5 - oy) / this->zoom_ - h * .5), this->exif_,
-			0);
+		renderer.view = {
+			.scale = float(this->zoom_),
+			.pan_x = float((vp.width * .5 - ox) / this->zoom_ - w * .5),
+			.pan_y = float((vp.height * .5 - oy) / this->zoom_ - h * .5),
+			.orientation = this->exif_,
+			.filter = dawn::Filter::Nearest,
+		};
 	}
 
 	double x0, y0, x1, y1;
