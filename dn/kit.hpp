@@ -249,25 +249,51 @@ struct Widget {
 	// Below this->r. Empty (w <= 0) means follow the pointer.
 	[[nodiscard]] virtual Rect tip_anchor() const { return this->r; }
 	virtual void prepare(Kit &kit);
-	virtual bool press(Kit &kit, float x, float y, Qt::MouseButton button);
-	virtual bool release(Kit &kit, float x, float y, Qt::MouseButton button);
-	virtual bool motion(Kit &kit, float x, float y);
-	virtual bool scroll(Kit &kit, float x, float y, int delta);
-	virtual bool pan(Kit &kit, float x, float y, float dx, float dy);
+
+	virtual bool press(Kit &, float x, float y, Qt::MouseButton)
+	{
+		return false;
+	}
+	virtual bool release(Kit &, float x, float y, Qt::MouseButton)
+	{
+		return false;
+	}
+	virtual bool double_click(
+		Kit &, float x, float y, Qt::MouseButton, unsigned mods)
+	{
+		return false;
+	}
+	virtual bool motion(Kit &, float x, float y) { return false; }
+
+	virtual bool scroll(Kit &, float x, float y, int delta) { return false; }
+	virtual bool pan(Kit &, float x, float y, float dx, float dy)
+	{
+		return false;
+	}
 	virtual bool gesture(
-		Kit &kit, float x, float y, float scale_factor, float angle_delta);
-	virtual bool key(Kit &kit, const Key &ev);
-	// Delivered after input dispatch, while the widget tree is idle.
-	virtual void focus_lost(Kit &) {}
+		Kit &, float x, float y, float scale_factor, float angle_delta)
+	{
+		return false;
+	}
+
+	virtual bool key(Kit &, const Key &) { return false; }
 	// An input method updated its preedit, or committed to it.
 	virtual bool input_method(
-		Kit &kit, const QString &commit, const QString &preedit, int caret);
+		Kit &, const QString &commit, const QString &preedit, int caret)
+	{
+		return false;
+	}
 	// The other half of that channel: what the input method may ask back.
 	// Returning false means this widget does not take text.
-	virtual bool text_target(const Kit &kit, TextTarget &out) const;
-	virtual bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button, unsigned mods);
+	virtual bool text_target(const Kit &, TextTarget &out) const
+	{
+		return false;
+	}
+
+	// Delivered after input dispatch, while the widget tree is idle.
+	virtual void focus_lost(Kit &) {}
 	[[nodiscard]] virtual int wake_ms() const { return -1; }
+
 	virtual std::size_t child_count() const { return 0; }
 	virtual Widget *child(std::size_t) const { return nullptr; }
 	void paint_children(Kit &kit) const;
@@ -629,7 +655,6 @@ struct Popup : Panel {
 	Popup();
 	void open(Kit &kit, Button *anchor);
 	void open_at(Kit &kit, Rect anchor);
-	void open_sub(Kit &kit, Popup &owner, Button &anchor);
 	void close(Kit &kit);
 	// Content cleanup after removal from the stack, before settling focus.
 	// This hook must not open or close popups.
@@ -639,7 +664,6 @@ struct Popup : Panel {
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
 	void place_below(Kit &kit, int x, Size size);
-	virtual void place_sub(Kit &kit);
 	bool traps_focus() const override { return true; }
 	virtual bool captures_keys() const { return false; }
 	// Focus loss dismisses transient popups; a dialog waits for Escape
@@ -700,10 +724,10 @@ struct Overflow : MenuPopup {
 	// Whose items col is currently holding.  One Overflow serves all three
 	// slots, so this, not the slot asking, says who to hand them back to.
 	ToolbarSlot *lender = nullptr;
-	std::function<void()> refill;
 
 	Overflow();
 	~Overflow() override;
+	void open_slot(Kit &kit, ToolbarSlot &slot);
 	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -729,6 +753,7 @@ struct Menu : MenuPopup {
 	MenuItem *add_item_with_mnemonic(const char *label);
 	void add_sep();
 	void clear(Kit &kit);
+	void place(Kit &kit) override;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
@@ -770,7 +795,6 @@ struct ComboPopup : MenuPopup {
 	ComboPopup();
 	bool restores_focus() const override { return true; }
 	void place(Kit &kit) override;
-	void place_sub(Kit &kit) override;
 };
 
 // A closed choice: a bordered label with a chevron.  Nothing here is
@@ -849,7 +873,6 @@ struct Toolbar : Panel {
 private:
 	std::unique_ptr<Overflow> overflow_owned_;
 	void place_slots(Kit &kit);
-	ToolbarSlot *slot_for_more(const Button *more) const;
 };
 
 // Client-side decorations: shown only while Kit::csd_ is on.
@@ -956,6 +979,8 @@ struct Kit {
 	Widget *touch_target_ = nullptr;
 	Widget *pressed_ = nullptr;
 	unsigned mods_ = 0;
+	// Non-null, unique, open popups: dialogs followed by transient popups.
+	// Closing an entry closes its entire tail, innermost first.
 	std::vector<Popup *> popups_;
 	// Dialogs are opened, not owned by whoever opens them: one stacks over
 	// another, and the one underneath has to outlive the click that did it.
@@ -1020,6 +1045,9 @@ struct Kit {
 	void prepare_popups();
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
+	// Popups accepting input: the transient tail, or the topmost dialog.
+	[[nodiscard]] std::span<Popup *const> input_popups() const;
+	[[nodiscard]] bool in_input_scope(const Widget *w) const;
 	Widget *hit(float x, float y);
 	bool track_popups(float x, float y);
 

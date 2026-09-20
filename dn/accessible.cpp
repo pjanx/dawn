@@ -216,50 +216,6 @@ window_active(Window *window)
 	return (shell && shell->isActive()) || window->isActive();
 }
 
-// Which subtrees take input right now, mirroring Kit::hit(): a transient
-// popup owns the pointer for as long as it is up, and a dialog otherwise
-// claims everything under it.  Kit::activate() does not check any of this,
-// so an accessible action that skipped it could press a button underneath a
-// modal dialog--which no click, and no keystroke, could ever do.
-static bool
-in_input_scope(const Kit &kit, const Widget *w)
-{
-	bool any_open = false, transient_open = false;
-	const Popup *top = nullptr;
-	for (const Popup *p : kit.popups_) {
-		if (!p || !p->shown())
-			continue;
-
-		any_open = true;
-		if (p->transient())
-			transient_open = true;
-		top = p;
-	}
-	if (!any_open)
-		return true;
-
-	for (const Popup *p : kit.popups_) {
-		if (!p || !p->shown())
-			continue;
-
-		// What Kit::hit lets the pointer reach, and for the same reasons: a
-		// transient popup owns input for as long as it is up, and where
-		// there is none the topmost dialog does -- one dialog stacked over
-		// another covers it whole.
-		if (transient_open ? !p->transient() : p != top)
-			continue;
-		for (const Widget *a = w; a; a = a->parent_) {
-			if (a == p)
-				return true;
-		}
-
-		// Pressing the button a list came out of is what shuts it again.
-		if (p->opener == w && p->opener->shown())
-			return true;
-	}
-	return false;
-}
-
 // Whether an accessible mutation on this widget may go through at all: it
 // has to be really visible, in the tree this window is showing right now,
 // and within whatever popup owns input.  Every action, every text edit and
@@ -269,7 +225,7 @@ static bool
 operable(Window *window, const Widget *w)
 {
 	return window && w && effectively_shown(w) && in_exposed_tree(window, w) &&
-		in_input_scope(window->kit(), w);
+		window->kit().in_input_scope(w);
 }
 
 // --- Semantic properties -----------------------------------------------------

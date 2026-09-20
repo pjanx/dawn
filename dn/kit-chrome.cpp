@@ -751,8 +751,6 @@ modifier_only(int key)
 
 Hint::Hint()
 {
-	this->hittable = true;
-	this->visible = false;
 	this->fill = Fill::None;
 }
 

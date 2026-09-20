@@ -1294,6 +1294,16 @@ case_settings()
 		return;
 	}
 
+	// The opener still toggles the list, but other dialog controls are
+	// blocked until it closes, just as they are for pointer input.
+	filenames = find_role(dialog, "check box", "Show filenames by default");
+	if (filenames) {
+		CHECK(!has_action(filenames, "Toggle"));
+		CHECK(!do_action(filenames, "Toggle"));
+		g_object_unref(filenames);
+	}
+	CHECK(has_action(combo, "ShowMenu"));
+
 	AtspiAccessible *huge = find_role(g_window, "list item", "Huge");
 	if (!huge) {
 		g_object_unref(combo);
@@ -2025,6 +2035,14 @@ case_chooser()
 	} else {
 		CHECK(has_named(prompt, "Create"));
 		CHECK(has_named(chooser, "cmyk-lab.icc"));
+		CHECK(!has_action(icc, "SetFocus"));
+		AtspiAccessible *cancel = find_one(chooser, "Cancel");
+		if (cancel) {
+			CHECK(!has_action(cancel, "Press"));
+			CHECK(!do_action(cancel, "Press"));
+			g_object_unref(cancel);
+		}
+
 		CHECK(act_named(prompt, "Cancel", "Press"));
 		g_object_unref(prompt);
 		CHECK(wait_until(
@@ -2277,6 +2295,33 @@ case_overflow()
 		CHECK(path_of(restored) == filter_path);
 		g_object_unref(restored);
 	}
+
+	// Resize with the popup still open: its real children must return to
+	// the toolbar, keeping both their text and their accessible identity.
+	CHECK(compositor_resize("shrink"));
+	CHECK(wait_until([] { return has_named(g_window, "More"); }));
+	CHECK(act_named(g_window, "More", "ShowMenu"));
+	CHECK(wait_until([] { return count_named(g_window, "Filter") == 1; }));
+	CHECK(set_text_contents(filter, "overflow-resize"));
+	CHECK(wait_until(
+		[filter] { return text_contents(filter) == "overflow-resize"; }));
+	CHECK(compositor_resize("wide"));
+	CHECK(wait_until([] { return !has_named(g_window, "More"); }));
+	CHECK(count_named(g_window, "Filter") == 1);
+	CHECK(cached_has_named(toolbar, "Filter"));
+	CHECK(path_of(filter) == filter_path);
+	CHECK(text_contents(filter) == "overflow-resize");
+	CHECK(set_text_contents(filter, ""));
+
+	// Reopen after reclaiming, catching stale lender/borrower links.
+	CHECK(compositor_resize("shrink"));
+	CHECK(wait_until([] { return has_named(g_window, "More"); }));
+	CHECK(act_named(g_window, "More", "ShowMenu"));
+	CHECK(wait_until([] { return count_named(g_window, "Filter") == 1; }));
+	CHECK(path_of(filter) == filter_path);
+	CHECK(compositor_resize("restore"));
+	CHECK(wait_until([] { return !has_named(g_window, "More"); }));
+	CHECK(count_named(g_window, "Filter") == 1);
 
 	g_object_unref(filter);
 	g_object_unref(toolbar);

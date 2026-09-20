@@ -833,66 +833,6 @@ Widget::prepare(Kit &kit)
 	}
 }
 
-bool
-Widget::press(Kit &, float, float, Qt::MouseButton)
-{
-	return false;
-}
-
-bool
-Widget::release(Kit &, float, float, Qt::MouseButton)
-{
-	return false;
-}
-
-bool
-Widget::motion(Kit &, float, float)
-{
-	return false;
-}
-
-bool
-Widget::scroll(Kit &, float, float, int)
-{
-	return false;
-}
-
-bool
-Widget::pan(Kit &, float, float, float, float)
-{
-	return false;
-}
-
-bool
-Widget::gesture(Kit &, float, float, float, float)
-{
-	return false;
-}
-
-bool
-Widget::key(Kit &, const Key &)
-{
-	return false;
-}
-
-bool
-Widget::input_method(Kit &, const QString &, const QString &, int)
-{
-	return false;
-}
-
-bool
-Widget::text_target(const Kit &, TextTarget &) const
-{
-	return false;
-}
-
-bool
-Widget::double_click(Kit &, float, float, Qt::MouseButton, unsigned)
-{
-	return false;
-}
-
 Rect
 visible_rect(const Widget *w, Rect host)
 {
@@ -2905,10 +2845,20 @@ Popup::Popup()
 	this->visible = false;
 }
 
+static Popup *
+owning_popup(Widget *w)
+{
+	for (Widget *p = w; p; p = p->parent_) {
+		if (auto *pop = dynamic_cast<Popup *>(p))
+			return pop;
+	}
+	return nullptr;
+}
+
 void
 Popup::open(Kit &kit, Button *anchor)
 {
-	kit.open_popup(*this, nullptr, anchor, {});
+	kit.open_popup(*this, owning_popup(anchor), anchor, {});
 	place(kit);
 }
 
@@ -2917,13 +2867,6 @@ Popup::open_at(Kit &kit, Rect anchor)
 {
 	kit.open_popup(*this, nullptr, nullptr, anchor);
 	place(kit);
-}
-
-void
-Popup::open_sub(Kit &kit, Popup &owner, Button &anchor)
-{
-	kit.open_popup(*this, &owner, &anchor, {});
-	place_sub(kit);
 }
 
 void
@@ -2971,26 +2914,6 @@ Popup::place(Kit &kit)
 	place_below(kit, max(0, x), size);
 }
 
-void
-Popup::place_sub(Kit &kit)
-{
-	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
-	const Size size = measure(kit, cap, kUnlim);
-	const Popup *owner = this->parent_popup;
-	const Widget *anchor = this->opener;
-	int x = owner ? owner->r.x + owner->r.w : 0;
-	if (x + size.w > kit.host_w_)
-		x = owner ? owner->r.x - size.w : 0;
-	if (x < 0)
-		x = 0;
-	int y = anchor ? anchor->r.y : 0;
-	if (y + size.h > kit.host_h_)
-		y = max(0, kit.host_h_ - size.h);
-	if (y < 0)
-		y = 0;
-	arrange(kit, {x, y, size.w, size.h});
-}
-
 // Alt has already been offered to the mnemonics by the time anything gets
 // here, and everything but Escape is left to whatever the popup holds;
 // MenuPopup adds navigation on top of this.
@@ -3009,8 +2932,6 @@ Popup::key(Kit &kit, const Key &ev)
 
 Dialog::Dialog()
 {
-	this->hittable = true;
-	this->visible = false;
 	this->fill = Fill::None;
 	auto f = make_unique<Panel>();
 	f->pad_x = kDialogPad;
@@ -3270,7 +3191,7 @@ MenuPopup::reveal(Kit &kit, Widget *w)
 	auto *item = dynamic_cast<MenuItem *>(w);
 	if (item && item->sub) {
 		if (!item->sub->visible)
-			item->sub->open_sub(kit, *this, *item);
+			item->sub->open(kit, item);
 		kit.set_focus(item->sub, false);
 		return;
 	}
@@ -3381,8 +3302,6 @@ Overflow::Overflow()
 	this->pad_y = kMenuPad;
 	this->fill = Fill::Panel;
 	this->stroke = Stroke::All;
-	this->hittable = true;
-	this->visible = false;
 	add_child(std::move(column), size_t(-1));
 }
 
@@ -3392,6 +3311,14 @@ Overflow::~Overflow()
 {
 	if (this->lender)
 		this->lender->reclaim();
+}
+
+void
+Overflow::open_slot(Kit &kit, ToolbarSlot &slot)
+{
+	close(kit);
+	this->lender = &slot;
+	Popup::open(kit, slot.more);
 }
 
 void
@@ -3405,8 +3332,14 @@ Overflow::after_close(Kit &)
 void
 Overflow::place(Kit &kit)
 {
-	if (this->refill)
-		this->refill();
+	this->lender->lend_to(*this);
+	if (none_of(this->col->kids.begin(), this->col->kids.end(),
+			[](const auto &item) {
+				return item->shown() && !is_sep(item.get());
+			})) {
+		close(kit);
+		return;
+	}
 	if (this->opener)
 		this->at = this->opener->r;
 
@@ -3534,8 +3467,6 @@ Menu::Menu()
 	this->pad_y = kMenuPad;
 	this->fill = Fill::Panel;
 	this->stroke = Stroke::All;
-	this->hittable = true;
-	this->visible = false;
 	add_child(std::move(c), size_t(-1));
 }
 
@@ -3646,6 +3577,32 @@ Menu::sync()
 		if (sub)
 			sub->sync();
 	}
+}
+
+void
+Menu::place(Kit &kit)
+{
+	const auto *item = dynamic_cast<MenuItem *>(this->opener);
+	if (!item || item->sub != this || !this->parent_popup) {
+		Popup::place(kit);
+		return;
+	}
+
+	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
+	const Size size = measure(kit, cap, kUnlim);
+	const Popup *owner = this->parent_popup;
+	const Widget *anchor = this->opener;
+	int x = owner->r.right();
+	if (x + size.w > kit.host_w_)
+		x = owner->r.x - size.w;
+	if (x < 0)
+		x = 0;
+	int y = anchor->r.y;
+	if (y + size.h > kit.host_h_)
+		y = max(0, kit.host_h_ - size.h);
+	if (y < 0)
+		y = 0;
+	arrange(kit, {x, y, size.w, size.h});
 }
 
 Size
@@ -3775,16 +3732,9 @@ MenuItem::activate(Kit &kit)
 {
 	if (!this->sub)
 		return Button::activate(kit);
-	Popup *owner = nullptr;
-	for (Widget *w = this->parent_; w; w = w->parent_) {
-		if (auto *p = dynamic_cast<Popup *>(w)) {
-			owner = p;
-			break;
-		}
-	}
-	if (!owner)
+	if (!owning_popup(this))
 		return false;
-	this->sub->open_sub(kit, *owner, *this);
+	this->sub->open(kit, this);
 	kit.focus_first(this->sub);
 	return true;
 }
@@ -3887,8 +3837,6 @@ ComboPopup::ComboPopup()
 	this->pad_y = kMenuPad;
 	this->fill = Fill::Panel;
 	this->stroke = Stroke::All;
-	this->hittable = true;
-	this->visible = false;
 	add_child(std::move(c), size_t(-1));
 }
 
@@ -3926,14 +3874,6 @@ ComboPopup::place(Kit &kit)
 	y = min(y, kit.host_h_ - this->r.h);
 	y = max(0, y);
 	arrange(kit, {x, y, this->r.w, this->r.h});
-}
-
-// A list dropped over a dialog is a sub-popup, but it is not a submenu, and
-// must not be placed off to the side like one.
-void
-ComboPopup::place_sub(Kit &kit)
-{
-	place(kit);
 }
 
 Combo::Combo()
@@ -4045,19 +3985,7 @@ Combo::activate(Kit &kit)
 	}
 
 	fill_combo_popup(kit, *this);
-	// A list dropped from within a popup is that popup's child, and is
-	// placed beside it rather than merely stacked on it.
-	Popup *owner = nullptr;
-	for (Widget *w = this->parent_; w; w = w->parent_) {
-		if (auto *p = dynamic_cast<Popup *>(w)) {
-			owner = p;
-			break;
-		}
-	}
-	if (owner)
-		this->popup_->open_sub(kit, *owner, *this);
-	else
-		this->popup_->open(kit, this);
+	this->popup_->open(kit, this);
 
 	// The current item is what the list was centred on, so it is also what
 	// the pointer is over and what the arrows step from.
@@ -4146,8 +4074,6 @@ ToolbarSlot::sync_layout_visible()
 void
 ToolbarSlot::lend_to(Overflow &overflow)
 {
-	if (!overflow.col)
-		return;
 	if (overflow.lender && overflow.lender != this)
 		overflow.lender->reclaim();
 	// Separators are what a run happens to start or end with, never worth a
@@ -4162,16 +4088,8 @@ ToolbarSlot::lend_to(Overflow &overflow)
 		this->lent_last_ == b)
 		return;
 	reclaim();
-	for (size_t i = a; i < b; i++) {
-		Widget *item = this->items_[i];
-		// Ownership follows the widget: whoever lays it out holds it.
-		for (size_t j = 0; j < this->kids.size(); j++) {
-			if (this->kids[j].get() != item)
-				continue;
-			overflow.col->add_child(take_child(j), size_t(-1));
-			break;
-		}
-	}
+	for (size_t i = a; i < b; i++)
+		overflow.col->add_child(take_child(a), size_t(-1));
 	this->lent_first_ = a;
 	this->lent_last_ = b;
 	this->borrower_ = &overflow;
@@ -4188,23 +4106,13 @@ ToolbarSlot::reclaim()
 	this->borrower_ = nullptr;
 	const size_t first = this->lent_first_, last = this->lent_last_;
 	this->lent_first_ = this->lent_last_ = 0;
-	if (!overflow || !overflow->col || first >= last)
+	if (!overflow)
 		return;
-	if (overflow->lender == this)
-		overflow->lender = nullptr;
+	overflow->lender = nullptr;
 
-	// Back in bar order, ahead of more, which is the last child throughout.
-	// Everything below the run stayed here, so that is where it resumes.
-	size_t at = first;
-	for (size_t i = first; i < last; i++) {
-		Widget *item = this->items_[i];
-		for (size_t j = 0; j < overflow->col->kids.size(); j++) {
-			if (overflow->col->kids[j].get() != item)
-				continue;
-			Composite::add_child(overflow->col->take_child(j), at++);
-			break;
-		}
-	}
+	// The lent run returns ahead of the items and More button left here.
+	for (size_t i = first; i < last; i++)
+		Composite::add_child(overflow->col->take_child(0), i);
 	sync_layout_visible();
 }
 
@@ -4316,30 +4224,17 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	this->overflow_owned_ = make_unique<Overflow>();
 	this->overflow_owned_->pad_y = kWinPadY;
 	this->overflow = this->overflow_owned_.get();
-	// Laying out the bar decides the split; this then hands over what fell
-	// past it, every time the popup is placed, so that resizing the window
-	// with it open moves items in and out rather than stranding them.
-	this->overflow->refill = [this] {
-		if (Button *m = this->overflow->opener) {
-			if (ToolbarSlot *slot = slot_for_more(m))
-				slot->lend_to(*this->overflow);
-		}
-	};
-
-	auto bind_more = [this](Button *m) {
-		if (!m)
-			return;
-		m->activate_on_press = true;
-		m->on_click = [this, m](Kit &kit) {
-			if (this->overflow->visible && this->overflow->opener == m)
+	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
+		if (!slot)
+			continue;
+		slot->more->activate_on_press = true;
+		slot->more->on_click = [this, slot](Kit &kit) {
+			if (this->overflow->visible && this->overflow->lender == slot)
 				this->overflow->close(kit);
 			else
-				this->overflow->open(kit, m);
+				this->overflow->open_slot(kit, *slot);
 		};
-	};
-	bind_more(this->left ? this->left->more : nullptr);
-	bind_more(this->mid ? this->mid->more : nullptr);
-	bind_more(this->right ? this->right->more : nullptr);
+	}
 }
 
 void
@@ -4482,18 +4377,6 @@ Toolbar::place_slots(Kit &kit)
 	}
 	if (this->right)
 		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
-}
-
-ToolbarSlot *
-Toolbar::slot_for_more(const Button *more) const
-{
-	if (!more)
-		return nullptr;
-	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (slot && more == slot->more)
-			return slot;
-	}
-	return nullptr;
 }
 
 // --- Titlebar --------------------------------------------------------------
@@ -4889,23 +4772,13 @@ focus_in_visible_tree(Widget *w, const Widget *root)
 	return false;
 }
 
-static Popup *
-owning_popup(Widget *w)
-{
-	for (Widget *p = w; p; p = p->parent_) {
-		if (auto *pop = dynamic_cast<Popup *>(p))
-			return pop;
-	}
-	return nullptr;
-}
-
 static bool
 is_popup_opener(const Kit &kit, const Widget *w)
 {
 	if (!w)
 		return false;
 	for (Popup *p : kit.popups_) {
-		if (p && p->opener == w)
+		if (p->opener == w)
 			return true;
 	}
 	return false;
@@ -4924,7 +4797,7 @@ popup_for_hit(const Kit &kit, Widget *h)
 		return p;
 	if (h) {
 		for (Popup *p : kit.popups_) {
-			if (p && p->opener == h)
+			if (p->opener == h)
 				return p;
 		}
 	}
@@ -5345,9 +5218,11 @@ Kit::touch_pan(float x, float y)
 bool
 Kit::track_popups(float x, float y)
 {
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
-		if (*it && (*it)->motion(*this, x, y))
+	for (size_t i = this->popups_.size(); i > 0;) {
+		Popup *p = this->popups_[--i];
+		if (p->motion(*this, x, y))
 			return true;
+		i = min(i, this->popups_.size());
 	}
 	return false;
 }
@@ -5509,17 +5384,15 @@ Kit::forget_tree(Widget *tree)
 	// hangs off: left on the stack, it would be placed and painted through
 	// freed memory every frame.  Closing is safe here, as callers forget a
 	// subtree before dropping it, not after.
-	vector<Popup *> doomed;
 	for (Popup *p : this->popups_) {
-		for (const Widget *w = p ? p->opener : nullptr; w; w = w->parent_) {
-			if (w == tree) {
-				doomed.push_back(p);
-				break;
-			}
+		bool doomed = p == tree;
+		for (const Widget *w = p->opener; w; w = w->parent_)
+			doomed |= w == tree;
+		if (doomed) {
+			p->close(*this);
+			break;
 		}
 	}
-	for (Popup *p : doomed)
-		p->close(*this);
 
 	for (Widget *&w : this->lost_focus_)
 		forget(w);
@@ -5774,7 +5647,7 @@ bool
 Kit::modal() const
 {
 	for (const Popup *p : this->popups_) {
-		if (p && !p->transient())
+		if (!p->transient())
 			return true;
 	}
 	return false;
@@ -5804,12 +5677,7 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 	p.set_visible(true);
 
 	// A submenu continues the gesture; a list over a dialog starts one.
-	bool gesture_open = false;
-	for (const Popup *q : this->popups_) {
-		if (q->transient())
-			gesture_open = true;
-	}
-	if (!gesture_open)
+	if (!top_popup() || !top_popup()->transient())
 		this->popup_at_ = chrono::steady_clock::now();
 
 	this->popups_.push_back(&p);
@@ -5854,20 +5722,16 @@ void
 Kit::close_popups()
 {
 	close_popup_tail(*this, 0, false);
-	sync_focus();
 }
 
 // A dialog stays when dismissing menus, combo lists, or hints above it.
 void
 Kit::close_transient_popups()
 {
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
-		if (!(*it)->transient()) {
-			close_above(*it);
-			return;
-		}
-	}
-	close_popups();
+	size_t keep = this->popups_.size();
+	while (keep && this->popups_[keep - 1]->transient())
+		keep--;
+	close_popup_tail(*this, keep, false);
 }
 
 void
@@ -5895,34 +5759,47 @@ Kit::top_popup() const
 	return this->popups_.empty() ? nullptr : this->popups_.back();
 }
 
+span<Popup *const>
+Kit::input_popups() const
+{
+	const span<Popup *const> stack = this->popups_;
+	if (stack.empty())
+		return stack;
+	size_t first = stack.size() - 1;
+	while (first && stack[first - 1]->transient())
+		first--;
+	return stack.subspan(first);
+}
+
+bool
+Kit::in_input_scope(const Widget *w) const
+{
+	if (this->popups_.empty())
+		return true;
+	for (const Popup *p : input_popups()) {
+		for (const Widget *a = w; a; a = a->parent_) {
+			if (a == p)
+				return true;
+		}
+		if (p->opener == w && w && w->shown())
+			return true;
+	}
+	return false;
+}
+
 Widget *
 Kit::hit(float x, float y)
 {
-	// A transient popup owns the pointer for as long as it is up, standing
-	// in for the grab we cannot take.  What lies under it is therefore not
-	// hit at all -- a dialog included, which would otherwise claim the whole
-	// window and swallow the press -- so that anything missing the popup
-	// falls through to the scrim, and merely dismisses it.
-	bool transient_open = false;
-	for (const Popup *p : this->popups_) {
-		if (p && p->shown() && p->transient())
-			transient_open = true;
-	}
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
-		Popup *p = *it;
-		if (!p || !p->shown() || (transient_open && !p->transient()))
-			continue;
-		if (Widget *h = p->hit_at(x, y))
+	const auto popups = input_popups();
+	for (auto it = popups.rbegin(); it != popups.rend(); it++) {
+		if (Widget *h = (*it)->hit_at(x, y))
 			return h;
 	}
-	// Before the scrim: pressing the button a list came out of has to reach
-	// the button, which is what closes it again.
-	for (auto it = this->popups_.rbegin(); it != this->popups_.rend(); it++) {
-		Popup *p = *it;
-		if (!p || !p->shown())
-			continue;
-		if (p->opener && p->opener->shown() && p->opener->r.contains(x, y))
-			return p->opener;
+	// The opener remains reachable so a second press can toggle its popup.
+	for (auto it = popups.rbegin(); it != popups.rend(); it++) {
+		Button *opener = (*it)->opener;
+		if (opener && opener->shown() && opener->r.contains(x, y))
+			return opener;
 	}
 	if (this->scrim_ && this->scrim_->visible)
 		return this->scrim_.get();
@@ -6005,31 +5882,16 @@ void
 Kit::relayout_popups()
 {
 	sync_scrim(*this);
-	vector<Popup *> stale;
-	for (Popup *p : this->popups_) {
-		if (!p)
-			continue;
+	for (size_t i = 0; i < this->popups_.size();) {
+		Popup *p = this->popups_[i];
 		if (p->opener && !p->opener->shown()) {
-			stale.push_back(p);
-			continue;
+			p->close(*this);
+			break;
 		}
-		if (p->parent_popup && p->opener)
-			p->place_sub(*this);
-		else
-			p->place(*this);
-		if (auto *o = dynamic_cast<Overflow *>(p)) {
-			bool has = false;
-			for (const auto &item : o->col->kids) {
-				Widget *k = item.get();
-				if (k && k->shown() && !is_sep(k))
-					has = true;
-			}
-			if (!has)
-				stale.push_back(p);
-		}
+		p->place(*this);
+		if (i < this->popups_.size() && this->popups_[i] == p)
+			i++;
 	}
-	for (Popup *p : stale)
-		p->close(*this);
 }
 
 void
@@ -6037,9 +5899,11 @@ Kit::prepare_popups()
 {
 	if (this->scrim_ && this->scrim_->visible)
 		this->scrim_->prepare(*this);
-	for (Popup *p : this->popups_) {
-		if (p)
-			p->prepare(*this);
+	for (size_t i = 0; i < this->popups_.size();) {
+		Popup *p = this->popups_[i];
+		p->prepare(*this);
+		if (i < this->popups_.size() && this->popups_[i] == p)
+			i++;
 	}
 }
 
@@ -6116,10 +5980,8 @@ Kit::paint()
 		this->root_->paint(*this);
 	if (this->scrim_ && this->scrim_->visible)
 		this->scrim_->paint(*this);
-	for (Popup *p : this->popups_) {
-		if (p && p->shown())
-			p->paint(*this);
-	}
+	for (Popup *p : this->popups_)
+		p->paint(*this);
 	paint_tooltip(*this);
 	this->list_.end();
 	if (this->renderer_ && take_atlas_dirty()) {
