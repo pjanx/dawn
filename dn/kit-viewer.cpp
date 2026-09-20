@@ -1794,8 +1794,10 @@ apply_action(Viewer &v, Action action)
 		snap_view(v, SnapDir::Right);
 		return true;
 	case Action::Information:
-		if (v.page_)
+		if (v.page_) {
 			v.page_->sidebar_open = !v.page_->sidebar_open;
+			v.page_->invalidate_arrange();
+		}
 		request_render(v);
 		return true;
 	case Action::PageFirst:
@@ -1917,15 +1919,6 @@ Size
 Viewer::measure_content(Kit &, int max_w, int max_h)
 {
 	return {max_w, max_h};
-}
-
-void
-Viewer::arrange_content(Kit &kit, Rect alloc)
-{
-	this->r = alloc;
-	if (this->scale_to_fit_)
-		fit_to_well(*this);
-	clamp_view(*this);
 }
 
 bool
@@ -2103,17 +2096,22 @@ Viewer::screen_changed(
 }
 
 void
-Viewer::present(Kit &, Page &ui)
+Viewer::update(Kit &)
 {
-	invalidate_arrange();
 	animate(*this);
-	if (!this->kit_.inited_)
-		return;
-	sync_ui(*this, ui);
-	// The label reserves its width when measured, so settle it beforehand;
-	// only fit-to-well, which needs the well, still has to follow layout.
+	sync_ui(*this, *this->page_);
+	// Reserve the scale label's width before layout.
 	sync_scale_label(*this);
-	this->kit_.frame_ui(ui, [this] { sync_scale_label(*this); });
+}
+
+void
+Viewer::placed(Kit &)
+{
+	// Fitting depends on both the image and the freshly allocated well.
+	if (this->scale_to_fit_)
+		fit_to_well(*this);
+	clamp_view(*this);
+	sync_scale_label(*this);
 }
 
 int

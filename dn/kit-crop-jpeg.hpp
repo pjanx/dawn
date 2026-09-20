@@ -50,7 +50,7 @@ struct Cropper : Widget {
 	Size measure_content(Kit &, int max_w, int max_h) override;
 	void arrange_content(Kit &, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void present(Kit &kit, Page &ui) override;
+	void update(Kit &kit) override;
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	bool focusable() const override { return shown(); }

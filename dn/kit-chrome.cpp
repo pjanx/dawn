@@ -1047,6 +1047,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 				? float(frame.right()) - mx
 				: mx - float(frame.x);
 			this->sidebar_w = clamp(want, min_side, max_side) / kit.dpr_;
+			invalidate_arrange();
 		};
 		add_child(std::move(split), size_t(-1));
 	}
@@ -1163,7 +1164,6 @@ Page::arrange_content(Kit &kit, Rect alloc)
 {
 	if (!this->visible) {
 		this->r = {};
-		this->well_ = {};
 		return;
 	}
 	this->r = alloc;
@@ -1212,23 +1212,21 @@ Page::arrange_content(Kit &kit, Rect alloc)
 			this->sidebar->r = {};
 		}
 	}
-	this->well_ = {frame.x, body_y, frame.w, body_h};
+	Rect well = {frame.x, body_y, frame.w, body_h};
 	if (this->sidebar && this->sidebar->visible) {
 		if (this->sidebar_side == Side::Left)
-			this->well_.x += side_w;
-		this->well_.w = max(0, this->well_.w - side_w);
+			well.x += side_w;
+		well.w = max(0, well.w - side_w);
 	}
 	if (this->content && this->content->visible)
-		this->content->arrange(kit, this->well_);
-	kit.default_focus_ = this->content;
+		this->content->arrange(kit, well);
 	if (this->splitter) {
 		this->splitter->set_visible(this->sidebar && this->sidebar->visible);
 		if (this->splitter->visible) {
 			const int sw = kit.px(this->splitter->min_w);
 			// The grab strip straddles the boundary, half on each side.
-			const int sx = (this->sidebar_side == Side::Right
-								   ? this->well_.x + this->well_.w
-								   : this->well_.x) -
+			const int sx =
+				(this->sidebar_side == Side::Right ? well.x + well.w : well.x) -
 				sw / 2;
 			this->splitter->arrange(kit, {sx, body_y, sw, body_h});
 		} else {

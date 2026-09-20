@@ -183,7 +183,6 @@ private:
 	std::unique_ptr<Menu> app_menu_owned_;
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;
-	Rect well_{};
 };
 
 enum class Slot : uint8_t { Left, Middle, Right };

@@ -200,7 +200,7 @@ struct Widget {
 
 	// After changing public sizing fields, invalidate the widget. Construction
 	// needs no invalidation; adding/removing children does it automatically.
-	void invalidate_measure();
+	virtual void invalidate_measure();
 	// For placement alone, such as scrolling or changing alignment.
 	void invalidate_arrange();
 	void arrange(Kit &kit, Rect alloc);
@@ -208,7 +208,9 @@ struct Widget {
 	Size measure(Kit &kit, int max_w, int max_h);
 
 	virtual ~Widget() = default;
-	virtual void present(Kit &kit, Page &page);
+	// Content updates precede layout; placed() sees the resulting geometry.
+	virtual void update(Kit &) {}
+	virtual void placed(Kit &) {}
 	virtual bool busy() const { return false; }
 	virtual void screen_changed(const ScreenState &, bool, bool) {}
 	virtual void rescale(Kit &) {}
@@ -490,14 +492,22 @@ struct Splitter : Widget {
 };
 
 struct Container : Composite {
+	bool horizontal = false;
+	Align align = Align::Start;
 	float gap = 0;
 	float pad_x = 0;
 	float pad_y = 0;
 
-	// Returns the requested size; optionally records child allocations.
-	Size measure_pack(
-		Kit &kit, int max_w, int max_h, bool hz, std::vector<Size> *sizes);
-	void arrange_pack(Kit &kit, Rect alloc, bool hz, Align align);
+	// Retain the packing result independently of the parent's position.
+	std::vector<Size> sizes_;
+	Size packed_;
+	int packed_w_ = -1, packed_h_ = -1;
+	uint64_t packed_epoch_ = 0;
+
+	void invalidate_measure() override;
+	bool packing_valid(const Kit &kit, int max_w, int max_h);
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
 inline bool
@@ -515,15 +525,10 @@ context_key(int key, unsigned mods)
 }
 
 struct Row : Container {
-	Align align = Align::Start;
-
-	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
+	Row() { this->horizontal = true; }
 };
 
 struct Column : Container {
-	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
 // A row whose first cell is sized by the GutterColumn that owns it, so that
@@ -551,20 +556,9 @@ struct Flow : Container {
 	void arrange_content(Kit &kit, Rect alloc) override;
 
 private:
-	// One wrapped line.  Indices are into kids, and the run may contain
-	// hidden children; count is the extent, not a population.
-	struct Line {
-		std::size_t first = 0;
-		std::size_t count = 0;
-		int y = 0;
-		int h = 0;
-	};
-
-	// Measures the children and breaks them into lines for an inner width,
-	// answering the width of the widest one produced.  Both passes need the
-	// measuring and the widths; only arrange() needs the lines themselves.
-	int wrap(Kit &kit, int inner_w, int *total_h, std::vector<Line> *lines,
-		std::vector<Size> *sizes = nullptr);
+	// Child allocations relative to the padded content origin.
+	std::vector<Rect> cells_;
+	Size wrap(Kit &kit, int inner_w);
 };
 
 struct Scroll {
@@ -622,8 +616,8 @@ struct ScrollColumn : Column {
 	[[nodiscard]] int wake_ms() const override;
 };
 
-// Decorated vertical stack. Subclasses with overlay/custom layout override
-// arrange.
+// Decorated single-child wrapper. Use a Column to stack children.
+// Subclasses with custom layout override measure_content/arrange_content.
 struct Panel : Composite {
 	float pad_x = 0;
 	float pad_y = 0;
@@ -1110,9 +1104,8 @@ struct Kit {
 	[[nodiscard]] int wake_ms() const;
 	// One frame of the widget tree: lay it out, settle what the layout may
 	// have moved -- popups, focus, the hover under the pointer -- and paint.
-	// Between arranging and settling, the caller does whatever depends on the
-	// fresh geometry but has to precede prepare().
-	void frame_ui(Page &ui, const std::function<void()> &placed);
+	// Content update() runs before layout and placed() after it.
+	void frame_ui(Page &ui);
 	void paint();
 	// Text metrics, all in device pixels: the fonts are already rasterised at
 	// that size, so this is what Qt measures, without a round trip through

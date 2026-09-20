@@ -1605,6 +1605,50 @@ case_filter()
 		g_object_unref(list);
 }
 
+// These change geometry without resizing the window. A retained layout must
+// be invalidated by the action, rather than repaired by the next paint.
+static void
+case_layout()
+{
+	if (!g_window)
+		return;
+	AtspiAccessible *list = find_role(g_window, "list", nullptr);
+	if (!list)
+		return;
+
+	const AtspiRect before = extents_of(list, ATSPI_COORD_TYPE_SCREEN);
+	CHECK(act_named(g_window, "Show Sidebar", "Press"));
+	CHECK(wait_until([list, before] {
+		return extents_of(list, ATSPI_COORD_TYPE_SCREEN).width != before.width;
+	}));
+	CHECK(act_named(g_window, "Show Sidebar", "Press"));
+	CHECK(wait_until([list, before] {
+		const AtspiRect after = extents_of(list, ATSPI_COORD_TYPE_SCREEN);
+		return after.x == before.x && after.width == before.width;
+	}));
+
+	// The first fixture is square, so its image rectangle grows with the
+	// thumbnail size, independently of when its pixels arrive.
+	CHECK(act_named(g_window, "Grid View", "Press"));
+	AtspiAccessible *first = live_child(list, 0);
+	if (first) {
+		CHECK(do_action(first, "SetFocus"));
+		CHECK(wait_until([first] { return !empty_extents(first); }));
+		const int height = extents_of(first, ATSPI_COORD_TYPE_SCREEN).height;
+		CHECK(act_named(g_window, "Larger Thumbnails", "Press"));
+		CHECK(wait_until([first, height] {
+			return extents_of(first, ATSPI_COORD_TYPE_SCREEN).height != height;
+		}));
+		CHECK(act_named(g_window, "Smaller Thumbnails", "Press"));
+		CHECK(wait_until([first, height] {
+			return extents_of(first, ATSPI_COORD_TYPE_SCREEN).height == height;
+		}));
+		g_object_unref(first);
+	}
+	CHECK(act_named(g_window, "Tiled View", "Press"));
+	g_object_unref(list);
+}
+
 static void
 case_files()
 {
@@ -2435,6 +2479,7 @@ main(int argc, char *argv[])
 		{"settings", case_settings},
 		{"location", case_location},
 		{"filter", case_filter},
+		{"layout", case_layout},
 		{"files", case_files},
 		{"chooser", case_chooser},
 		{"export", case_export},

@@ -1016,7 +1016,11 @@ Window::render()
 	this->kit_.fullscreen_ = fullscreen;
 	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
 	this->kit_.csd_ = this->csd_ && !fullscreen;
-	this->kit_.csd_shadow_ = this->kit_.csd_ && !this->kit_.maximized_;
+	const bool shadow = this->kit_.csd_ && !this->kit_.maximized_;
+	if (this->kit_.csd_shadow_ != shadow) {
+		this->kit_.csd_shadow_ = shadow;
+		ui->invalidate_arrange();
+	}
 	this->kit_.active_ =
 		this->system_grab_ || shell()->isActive() || isActive();
 	sync_title();
@@ -1024,7 +1028,7 @@ Window::render()
 		ui->titlebar->sync(this->kit_);
 	if (ui->toolbar)
 		ui->toolbar->busy = this->awaiting_view_ || ui->content->busy();
-	ui->content->present(this->kit_, *ui);
+	this->kit_.frame_ui(*ui);
 	sync_csd();
 	if (this->viewer_ && this->viewer_->consume_open_done() &&
 		this->awaiting_view_) {

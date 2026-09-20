@@ -499,7 +499,7 @@ Cropper::paint(Kit &kit) const
 }
 
 void
-Cropper::present(Kit &kit, Page &ui)
+Cropper::update(Kit &kit)
 {
 	this->error_->set_visible(
 		!this->message_.empty() && !this->message_dismissed_);
@@ -531,8 +531,6 @@ Cropper::present(Kit &kit, Page &ui)
 	}
 	this->scale_label_->min_w =
 		kit.pts(kit.text_width(QStringLiteral("1600%"), false));
-
-	kit.frame_ui(ui, {});
 }
 
 constexpr ToolbarSpec kItems[] = {

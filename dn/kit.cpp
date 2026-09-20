@@ -2021,17 +2021,37 @@ share_slack(int slack, int growers, int i)
 	return slack / growers + (i < slack % growers ? 1 : 0);
 }
 
-Size
-Container::measure_pack(
-	Kit &kit, int max_w, int max_h, bool hz, vector<Size> *sizes)
+void
+Container::invalidate_measure()
 {
+	this->packed_w_ = -1;
+	Widget::invalidate_measure();
+}
+
+bool
+Container::packing_valid(const Kit &kit, int max_w, int max_h)
+{
+	if (this->packed_w_ == max_w && this->packed_h_ == max_h &&
+		this->packed_epoch_ == kit.font_epoch_)
+		return true;
+	this->packed_w_ = max_w;
+	this->packed_h_ = max_h;
+	this->packed_epoch_ = kit.font_epoch_;
+	return false;
+}
+
+Size
+Container::measure_content(Kit &kit, int max_w, int max_h)
+{
+	const bool hz = this->horizontal;
+	if (packing_valid(kit, max_w, max_h))
+		return this->packed_;
+	this->sizes_.assign(this->kids.size(), {});
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
 	const int ih = max_h < kUnlim ? max(0, max_h - pad_y * 2) : kUnlim;
 	int growers = 0, vis = 0;
 	int used = 0, cross = 0;
-	if (sizes)
-		sizes->resize(this->kids.size());
 	for (size_t i = 0; i < this->kids.size(); i++) {
 		Widget *k = this->kids[i].get();
 		if (!k || !k->shown())
@@ -2042,8 +2062,7 @@ Container::measure_pack(
 			continue;
 		}
 		const Size size = k->measure(kit, hz ? kUnlim : iw, hz ? ih : kUnlim);
-		if (sizes)
-			(*sizes)[i] = size;
+		this->sizes_[i] = size;
 		used += hz ? size.w : size.h;
 		cross = max(cross, hz ? size.h : size.w);
 		vis++;
@@ -2067,19 +2086,21 @@ Container::measure_pack(
 			const Size size = k->measure(kit, hz ? got : iw, hz ? ih : got);
 			used += hz ? size.w : size.h;
 			cross = max(cross, hz ? size.h : size.w);
-			if (sizes)
-				(*sizes)[i] = hz ? Size{got, size.h} : Size{size.w, got};
+			this->sizes_[i] = hz ? Size{got, size.h} : Size{size.w, got};
 		}
 	}
 	used += gaps;
-	return {
-		this->grow && max_w < kUnlim ? max_w : pad_x * 2 + (hz ? used : cross),
-		pad_y * 2 + (hz ? cross : used)};
+	return this->packed_ = {this->grow && max_w < kUnlim
+				   ? max_w
+				   : pad_x * 2 + (hz ? used : cross),
+			   pad_y * 2 + (hz ? cross : used)};
 }
 
 void
-Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
+Container::arrange_content(Kit &kit, Rect alloc)
 {
+	const bool hz = this->horizontal;
+	const Align align = this->align;
 	if (!shown()) {
 		this->r = {};
 		return;
@@ -2088,8 +2109,8 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 	const int gap = kit.px(this->gap), pad_y = kit.px(this->pad_y);
 	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
 	const int imain = hz ? in.w : in.h;
-	vector<Size> sizes;
-	(void) measure_pack(kit, alloc.w, alloc.h, hz, &sizes);
+	(void) Container::measure_content(kit, alloc.w, alloc.h);
+	const auto &sizes = this->sizes_;
 	int packed = 0;
 	int nv = 0;
 	for (size_t i = 0; i < this->kids.size(); i++) {
@@ -2127,34 +2148,6 @@ Container::arrange_pack(Kit &kit, Rect alloc, bool hz, Align align)
 			bottom = max(bottom, k->r.y + k->r.h);
 	}
 	this->r.h = max(this->r.h, bottom + pad_y - this->r.y);
-}
-
-// --- Row ---------------------------------------------------------------------
-
-Size
-Row::measure_content(Kit &kit, int max_w, int max_h)
-{
-	return measure_pack(kit, max_w, max_h, true, nullptr);
-}
-
-void
-Row::arrange_content(Kit &kit, Rect alloc)
-{
-	arrange_pack(kit, alloc, true, this->align);
-}
-
-// --- Column ------------------------------------------------------------------
-
-Size
-Column::measure_content(Kit &kit, int max_w, int max_h)
-{
-	return measure_pack(kit, max_w, max_h, false, nullptr);
-}
-
-void
-Column::arrange_content(Kit &kit, Rect alloc)
-{
-	arrange_pack(kit, alloc, false, Align::Start);
 }
 
 // --- Gutter ------------------------------------------------------------------
@@ -2242,28 +2235,41 @@ GutterRow::arrange_content(Kit &kit, Rect alloc)
 
 // --- Flow --------------------------------------------------------------------
 
-int
-Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines,
-	vector<Size> *sizes)
+Size
+Flow::wrap(Kit &kit, int inner_w)
 {
+	if (packing_valid(kit, inner_w, kUnlim))
+		return this->packed_;
 	const int gap = kit.px(this->gap);
-	if (lines)
-		lines->clear();
-	if (sizes)
-		sizes->assign(this->kids.size(), {});
+	this->cells_.assign(this->kids.size(), {});
 
 	int widest = 0, y = 0;
 	size_t first = 0;
-	int line_w = 0, line_h = 0, kept = 0;
+	int line_w = 0, line_h = 0, kept = 0, growers = 0;
 	auto flush = [&](size_t end) {
 		if (!kept)
 			return;
-		if (lines)
-			lines->push_back({first, end - first, y, line_h});
+		// Growing controls share the remainder of their own line. Items of
+		// different heights ride its middle; separators span its height.
+		const int slack = inner_w < kUnlim ? max(0, inner_w - line_w) : 0;
+		int x = 0, got = 0;
+		for (size_t i = first; i < end; i++) {
+			Widget *k = this->kids[i].get();
+			if (!k || !k->shown())
+				continue;
+			Rect &cell = this->cells_[i];
+			if (k->grow)
+				cell.w += share_slack(slack, growers, got++);
+			if (is_sep(k))
+				cell.h = line_h;
+			cell.x = x;
+			cell.y = y + (line_h - cell.h) / 2;
+			x += cell.w + gap;
+		}
 		widest = max(widest, line_w);
 		y += line_h + gap;
 		first = end;
-		line_w = line_h = kept = 0;
+		line_w = line_h = kept = growers = 0;
 	};
 
 	const size_t n = this->kids.size();
@@ -2279,23 +2285,21 @@ Flow::wrap(Kit &kit, int inner_w, int *total_h, vector<Line> *lines,
 		// than that would have it hanging out of the frame.
 		if (inner_w < kUnlim && size.w > inner_w)
 			size.w = inner_w;
-		if (sizes)
-			(*sizes)[i] = size;
 		const int need = size.w + (kept ? gap : 0);
 		// A child too wide for the line still gets one, rather than
 		// vanishing into a break that can never be satisfied.
 		if (kept && line_w + need > inner_w)
 			flush(i);
+		this->cells_[i] = {0, 0, size.w, size.h};
 		line_w += kept ? need : size.w;
 		line_h = max(line_h, size.h);
+		growers += k->grow;
 		kept++;
 	}
 	flush(n);
 	if (y)
 		y -= gap;
-	if (total_h)
-		*total_h = max(0, y);
-	return widest;
+	return this->packed_ = {widest, max(0, y)};
 }
 
 Size
@@ -2303,15 +2307,14 @@ Flow::measure_content(Kit &kit, int max_w, int)
 {
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
-	int used_h = 0;
 	// Only as wide as the wrap actually came out: this popup is anchored by
 	// its right edge, so claiming the whole offer would shove it off-screen.
-	const int used_w = wrap(kit, iw, &used_h, nullptr);
+	const Size used = wrap(kit, iw);
 	// The height offered is not a limit to honour: Panel::arrange re-measures
 	// its child against its own inner height, which is itself derived from
 	// this answer.  Clamping here would cut the lower lines out of r, and
 	// hit_at rejects a whole subtree whose parent does not contain the point.
-	return {this->grow ? max_w : pad_x * 2 + used_w, pad_y * 2 + used_h};
+	return {this->grow ? max_w : pad_x * 2 + used.w, pad_y * 2 + used.h};
 }
 
 void
@@ -2323,40 +2326,13 @@ Flow::arrange_content(Kit &kit, Rect alloc)
 	}
 	this->r = alloc;
 	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
-	const int gap = kit.px(this->gap);
-	vector<Line> lines;
-	vector<Size> sizes;
-	wrap(kit, in.w, nullptr, &lines, &sizes);
-	for (const Line &line : lines) {
-		// What the line does not spend, the growers on it share -- a search
-		// field then fills its line the way it fills the bar, instead of
-		// sitting at its minimum with a ragged gap after it.
-		int used = 0, growers = 0, vis = 0;
-		for (size_t i = line.first; i < line.first + line.count; i++) {
-			Widget *k = this->kids[i].get();
-			if (!k || !k->shown())
-				continue;
-			used += sizes[i].w;
-			vis++;
-			if (k->grow)
-				growers++;
-		}
-		const int slack = max(0, in.w - used - gap * max(0, vis - 1));
-
-		int x = in.x, got = 0;
-		for (size_t i = line.first; i < line.first + line.count; i++) {
-			Widget *k = this->kids[i].get();
-			if (!k || !k->shown())
-				continue;
-			int w = sizes[i].w;
-			if (k->grow)
-				w += share_slack(slack, growers, got++);
-			// Items of a line differ in height -- an Entry is taller than an
-			// icon button -- so they ride its middle rather than its top.
-			const int h = is_sep(k) ? line.h : sizes[i].h;
-			k->arrange(kit, {x, in.y + line.y + (line.h - h) / 2, w, h});
-			x = k->r.right() + gap;
-		}
+	(void) wrap(kit, in.w);
+	for (size_t i = 0; i < this->kids.size(); i++) {
+		Widget *k = this->kids[i].get();
+		if (!k || !k->shown())
+			continue;
+		const Rect cell = this->cells_[i];
+		k->arrange(kit, {in.x + cell.x, in.y + cell.y, cell.w, cell.h});
 	}
 }
 
@@ -2674,16 +2650,13 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 	const int max_h = kit.px(this->max_h);
 	const int iw = avail_w < kUnlim ? max(0, avail_w - pad_x * 2) : kUnlim;
 	const int ih = avail_h < kUnlim ? max(0, avail_h - pad_y * 2) : kUnlim;
-	int w = min_w, h = 0;
-	for (auto &k : this->kids) {
-		if (!k || !k->shown())
-			continue;
-		const Size child_size = k->measure(kit, iw, ih);
-		w = max(w, child_size.w);
-		h += child_size.h;
-	}
-	size.w = this->grow && avail_w < kUnlim ? avail_w : pad_x * 2 + w;
-	size.h = pad_y * 2 + h;
+	Q_ASSERT(this->kids.size() <= 1);
+	Widget *content = child(0);
+	const Size wanted =
+		content && content->shown() ? content->measure(kit, iw, ih) : Size{};
+	size.w = this->grow && avail_w < kUnlim ? avail_w
+											: pad_x * 2 + max(min_w, wanted.w);
+	size.h = pad_y * 2 + wanted.h;
 	if (min_h > 0)
 		size.h = max(size.h, min_h);
 	if (max_h > 0)
@@ -2709,13 +2682,11 @@ Panel::arrange_content(Kit &kit, Rect alloc)
 	if (min_h > 0 && this->r.h < min_h)
 		this->r.h = min_h;
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
-	int y = in.y;
-	for (auto &k : this->kids) {
-		if (!k || !k->shown())
-			continue;
-		const Size size = k->measure(kit, in.w, in.h);
-		k->arrange(kit, {in.x, y, in.w, k->grow ? in.h : size.h});
-		y += k->r.h;
+	Q_ASSERT(this->kids.size() <= 1);
+	if (Widget *content = child(0); content && content->shown()) {
+		const int h =
+			content->grow ? in.h : content->measure(kit, in.w, in.h).h;
+		content->arrange(kit, {in.x, in.y, in.w, h});
 	}
 }
 
@@ -5749,12 +5720,6 @@ Kit::prepare_popups()
 	}
 }
 
-void
-Widget::present(Kit &kit, Page &page)
-{
-	kit.frame_ui(page, {});
-}
-
 bool
 Kit::set_host(float width_pts, float height_pts, float dpr)
 {
@@ -5765,7 +5730,7 @@ Kit::set_host(float width_pts, float height_pts, float dpr)
 }
 
 void
-Kit::frame_ui(Page &ui, const function<void()> &placed)
+Kit::frame_ui(Page &ui)
 {
 	if (!this->inited_)
 		return;
@@ -5780,17 +5745,19 @@ Kit::frame_ui(Page &ui, const function<void()> &placed)
 		return true;
 	});
 
+	// An inactive page may have missed a change to the window chrome.
+	if (this->root_ != &ui)
+		ui.invalidate_arrange();
+	this->root_ = &ui;
+	this->default_focus_ = ui.content;
+	ui.content->update(*this);
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
 	ui.sync_app_menu();
 
 	this->text_frame_++;
-	this->root_ = &ui;
-	// The page settles window chrome and sidebar allocation each frame.
-	ui.invalidate_arrange();
 	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});
-	if (placed)
-		placed();
+	ui.content->placed(*this);
 	relayout_popups();
 	sync_focus();
 	ui.prepare(*this);

@@ -216,7 +216,8 @@ struct Browser : Widget {
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
-	void present(Kit &kit, Page &ui) override;
+	void update(Kit &kit) override;
+	void placed(Kit &kit) override;
 	bool busy() const override { return thumbs_busy(); }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;

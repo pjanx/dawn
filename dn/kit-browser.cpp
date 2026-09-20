@@ -1138,6 +1138,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.regen_failed = true;
 			break;
 		}
+		const auto old_w = f.image_w, old_h = f.image_h;
 		f.progress.failed = update.failed;
 		f.progress.persistent_checked |= update.persistent_checked;
 		f.progress.generation_needed = update.generation_needed;
@@ -1151,6 +1152,8 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			b.size_cache_[f.path] = {
 				f.mtime, f.size, update.geometry_w, update.geometry_h};
 		}
+		if (f.image_w != old_w || f.image_h != old_h)
+			b.invalidate_arrange();
 		if (update.failed || !update.ram.empty() || update.gpu_pending) {
 			if (!update.gpu_pending && !f.gpu.empty()) {
 				b.sheet_.release(f.gpu);
@@ -1391,6 +1394,7 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	else if (float(row.y + row.h) > b.scroll_.offset + vis)
 		b.scroll_.offset = max(0.f, float(row.y + row.h) - vis);
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
+	b.invalidate_arrange();
 }
 
 static void
@@ -1401,6 +1405,7 @@ page_scroll(Browser &b, int dir)
 	const float step = vis > rh ? vis - rh : vis;
 	b.scroll_.offset = clamp(
 		b.scroll_.offset + float(dir) * step, 0.f, b.scroll_.max_offset());
+	b.invalidate_arrange();
 	request_render(b);
 }
 
@@ -2090,8 +2095,10 @@ open_directory(
 	b.thumb_inflight_.clear();
 	reset_thumb_atlas(b);
 	b.scroll_.offset = 0;
-	if (b.places_)
+	if (b.places_) {
 		b.places_->scroll_.offset = side_scroll;
+		b.places_->invalidate_arrange();
+	}
 	scan_dir(b);
 	enqueue_thumbs(b);
 	request_render(b);
@@ -2103,6 +2110,7 @@ set_thumb_size(Browser &b, int size)
 	if (size == b.thumb_size_)
 		return;
 	b.thumb_size_ = size;
+	b.invalidate_arrange();
 	b.thumb_gen_++;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
@@ -2126,6 +2134,7 @@ set_view(Browser &b, BrowserView view)
 	if (view == b.view_)
 		return;
 	b.view_ = view;
+	b.invalidate_arrange();
 	request_render(b);
 }
 
@@ -2327,8 +2336,10 @@ apply_action(Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		if (b.page_)
+		if (b.page_) {
 			b.page_->sidebar_open = !b.page_->sidebar_open;
+			b.page_->invalidate_arrange();
+		}
 		request_render(b);
 		return true;
 	case Action::DirPrev: {
@@ -2380,6 +2391,7 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::Filenames:
 		b.show_names_ = !b.show_names_;
+		b.invalidate_arrange();
 		request_render(b);
 		return true;
 	case Action::Search: {
@@ -2518,6 +2530,7 @@ void
 Browser::set_files(vector<File> files)
 {
 	this->files_ = std::move(files);
+	invalidate_arrange();
 	this->file_by_path_.clear();
 	this->file_by_path_.reserve(this->files_.size());
 	for (int i = 0; i < int(this->files_.size()); i++)
@@ -2791,13 +2804,15 @@ Browser::screen_changed(
 }
 
 void
-Browser::present(Kit &, Page &ui)
+Browser::update(Kit &)
 {
-	invalidate_arrange();
-	if (!this->kit_.inited_)
-		return;
 	sync_ui(*this);
-	this->kit_.frame_ui(ui, [this] { sync_thumbs(*this); });
+}
+
+void
+Browser::placed(Kit &)
+{
+	sync_thumbs(*this);
 }
 
 bool
@@ -2851,10 +2866,12 @@ Browser::key(Kit &kit, const Key &ev)
 		switch (ev.key) {
 		case Qt::Key_Up:
 			this->scroll_.offset = 0;
+			invalidate_arrange();
 			request_render(*this);
 			return true;
 		case Qt::Key_Down:
 			this->scroll_.offset = this->scroll_.max_offset();
+			invalidate_arrange();
 			request_render(*this);
 			return true;
 		}
@@ -2895,6 +2912,7 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button != Qt::LeftButton)
 		return false;
 	if (this->scroll_.press(x, y, button, this->r)) {
+		invalidate_arrange();
 		kit.set_focus(this, false);
 		kit.pressed_ = this;
 		return true;
@@ -2988,8 +3006,12 @@ drag_thumbnail(const Browser::File &f)
 bool
 Browser::motion(Kit &kit, float x, float y)
 {
-	if (this->scroll_.dragging)
-		return this->scroll_.motion(y, this->r);
+	if (this->scroll_.dragging) {
+		const bool moved = this->scroll_.motion(y, this->r);
+		if (moved)
+			invalidate_arrange();
+		return moved;
+	}
 
 	// Motion also bubbles up from a plain hover, and a release can go
 	// missing -- see the fullscreen workaround in Window::event.
@@ -3023,6 +3045,7 @@ Browser::scroll(Kit &, float, float, int delta)
 {
 	this->scroll_.wheel(delta, row_h(*this));
 	this->scroll_.clamp();
+	invalidate_arrange();
 	return true;
 }
 
@@ -3031,6 +3054,7 @@ Browser::pan(Kit &, float, float, float, float dy)
 {
 	this->scroll_.pan(dy);
 	this->scroll_.clamp();
+	invalidate_arrange();
 	return true;
 }
 

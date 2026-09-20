@@ -137,7 +137,6 @@ struct Viewer : Widget {
 	~Viewer() override;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	void prepare(Kit &kit) override;
 	[[nodiscard]] bool focusable() const override;
@@ -151,7 +150,8 @@ struct Viewer : Widget {
 	[[nodiscard]] bool consume_open_done();
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
-	void present(Kit &kit, Page &ui) override;
+	void update(Kit &kit) override;
+	void placed(Kit &kit) override;
 	bool busy() const override { return opening_; }
 	[[nodiscard]] int wake_ms() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
