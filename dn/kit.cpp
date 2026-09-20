@@ -72,11 +72,13 @@ bake_rgb(dawn::Cmm *cmm, dawn::Profile *target, uint8_t r, uint8_t g, uint8_t b)
 	Colour colour = u8_colour(r, g, b);
 	if (!cmm || !target)
 		return colour;
+
 	uint16_t pixel[4] = {
 		uint16_t(b * 257), uint16_t(g * 257), uint16_t(r * 257), 65535};
 	auto srgb = cmm->get_profile_sRGB();
 	if (!srgb)
 		return colour;
+
 	if (!cmm->transform_bgra16(
 			(uint8_t *) pixel, 1, 1, srgb.get(), target, false, false))
 		return colour;
@@ -5161,6 +5163,8 @@ Kit::bake_colours(const ScreenState &state)
 		this->colours_[ColourPanel] = bake_grey(cmm, target, 0xf0);
 		this->colours_[ColourHint] = bake_rgb(cmm, target, 0xff, 0xee, 0x00);
 	}
+
+	this->colours_[ColourMidGrey] = bake_grey(cmm, target, 188);
 
 	// Convert straight palette RGB before vertex premultiplication and
 	// interpolation. Atlas coverage is independent of these transforms.

@@ -127,6 +127,7 @@ enum : uint8_t {
 	ColourEntryBottom,
 	ColourPanel,
 	ColourHint,
+	ColourMidGrey,
 	ColourCount,
 };
 

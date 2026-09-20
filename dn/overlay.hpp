@@ -13,6 +13,8 @@
 namespace dn
 {
 
+// OverlayList accepts straight RGB in the linear display colour space.
+// OverlayQuad stores it premultiplied; alpha is always linear opacity.
 struct Colour {
 	float r = 0;
 	float g = 0;

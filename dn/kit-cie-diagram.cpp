@@ -33,7 +33,6 @@ constexpr float kD65y = 0.3290f;
 constexpr int kRasterW = 256;
 constexpr int kRasterH = 288;
 constexpr float kCapGap = 4.f;
-constexpr Colour kMidGreyCol{188 / 255.f, 188 / 255.f, 188 / 255.f, 1.f};
 constexpr Colour kBlackCol{0.f, 0.f, 0.f, 1.f};
 constexpr Colour kWhiteCol{1.f, 1.f, 1.f, 1.f};
 
@@ -307,7 +306,8 @@ CieDiagram::paint(Kit &kit) const
 	const int y = cap_y0 + kit.px(kCapGap);
 	const int th = kit.text_height(source_label(), 0, true);
 	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
-	kit.list_.add_rect_filled({x0, y, x0 + cap_w, y + th}, kMidGreyCol);
+	kit.list_.add_rect_filled(
+		{x0, y, x0 + cap_w, y + th}, kit.colours_[ColourMidGrey]);
 	if (plot.w >= 8 && plot.h >= 8 && !this->slot_.empty())
 		kit.list_.add_image(plot.box(), this->slot_.texels(), {1, 1, 1, 1});
 
