@@ -148,21 +148,28 @@ offscreen(const Widget *w, const Kit &kit)
 		visible_rect(w, {0, 0, kit.host_w_, kit.host_h_}).empty();
 }
 
+static TextCache::Text &
+file_name_layout(const Kit &kit, const FileRow &row)
+{
+	const int pad = kit.px(kFramePadX) * 2 + kit.icon_px() + kit.px(4.f);
+	return row.text_cache_.get(
+		kit, row.text, max(1, row.list->col_w[ColName] - pad), 1, false, false);
+}
+
 void
 FileRow::prepare(Kit &kit)
 {
 	if (offscreen(this, kit))
 		return;
 
-	const int pad = kit.px(kFramePadX) * 2 + kit.icon_px() + kit.px(4.f);
-	this->shown_ = kit.elide_lines(
-		this->text, max(1, this->list->col_w[ColName] - pad), 1, false);
+	const auto &cached = file_name_layout(kit, *this);
+	this->elided_ = cached.layout && cached.layout->text() != this->text;
 }
 
 QString
 FileRow::tip() const
 {
-	return this->shown_ == this->text ? QString() : this->text;
+	return this->elided_ ? this->text : QString();
 }
 
 void
@@ -185,8 +192,8 @@ FileRow::paint(Kit &kit) const
 	kit.draw_icon(this->r.x + pad, this->r.y + (this->r.h - icon) / 2, icon,
 		this->icon, fg);
 
-	kit.emit_text(float(this->r.x + pad + icon + kit.px(4.f)), float(ty),
-		this->shown_, fg, false);
+	kit.emit_layout(float(this->r.x + pad + icon + kit.px(4.f)), float(ty),
+		file_name_layout(kit, *this), fg, -1);
 
 	// Both are quantities, and read down a right-aligned column.
 	int x = this->r.x + this->list->col_w[ColName];

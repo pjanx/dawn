@@ -1579,12 +1579,10 @@ layout_grid(Browser &b, Rect area)
 		const int ow = (grid ? th : tw) + 2 * ch;
 		if (!b.show_names_) {
 			f.cap = {};
-			f.cap_text.clear();
 		} else if (f.cap.w != ow) {
-			f.cap_text =
-				b.kit_.elide_lines(caption_name(f.name), ow, kCapLines, false);
-			f.cap = {0, 0, ow,
-				b.kit_.text_height(f.cap_text, ow, false) + b.kit_.px(kCapPad)};
+			const auto &cached = b.text_cache_.get(
+				b.kit_, caption_name(f.name), ow, kCapLines, false, true);
+			f.cap = {0, 0, ow, cached.height + b.kit_.px(kCapPad)};
 		}
 		if (!row.empty() && row_w + gap + ow > avail)
 			flush();
@@ -2136,7 +2134,6 @@ Browser::rescale(Kit &)
 		enqueue_thumbs(*this);
 		for (File &f : this->files_) {
 			f.cap = {};
-			f.cap_text.clear();
 		}
 	}
 }
@@ -2583,26 +2580,6 @@ Browser::file_gone(const QUrl &url)
 }
 
 void
-Browser::prepare(Kit &kit)
-{
-	for (File &f : this->files_) {
-		if (!this->show_names_ || !thumb_in_band(*this, f, 0.f) ||
-			f.cap.h <= 0) {
-			f.caption.reset();
-			continue;
-		}
-		if (!f.caption) {
-			f.caption = make_unique<Label>();
-			f.caption->align = Align::Center;
-			f.caption->wrap = true;
-			f.caption->pad_y = kCapPad * 0.5f;
-		}
-		f.caption->set_text(f.cap_text);
-		f.caption->r = f.cap;
-	}
-}
-
-void
 Browser::paint(Kit &kit) const
 {
 	if (kit.renderer_)
@@ -2655,9 +2632,13 @@ Browser::paint(Kit &kit) const
 			kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
 				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
 		}
-		if (f.caption) {
+		if (this->show_names_ && f.cap.h > 0) {
+			const auto &cached = this->text_cache_.get(
+				kit, caption_name(f.name), f.cap.w, kCapLines, false, true);
 			kit.clip_to(f.cap);
-			f.caption->paint(kit);
+			kit.emit_layout(float(f.cap.x),
+				float(f.cap.y + (f.cap.h - cached.height) / 2), cached,
+				glow_hot, -1);
 			kit.clip_pop();
 		}
 	}

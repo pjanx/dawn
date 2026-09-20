@@ -317,8 +317,8 @@ cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 }
 
 TextCache::Text &
-TextCache::get(
-	const Kit &kit, const QString &text, int wrap, bool bold, bool center)
+TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
+	bool bold, bool center)
 {
 	if (this->epoch != kit.font_epoch_) {
 		this->texts.clear();
@@ -332,7 +332,8 @@ TextCache::get(
 		});
 	}
 
-	auto [it, fresh] = this->texts.try_emplace({text, wrap, bold, center});
+	auto [it, fresh] =
+		this->texts.try_emplace({text, wrap, max_lines, bold, center});
 	Text &cached = it->second;
 	cached.used = this->frame;
 	if (!fresh)
@@ -340,6 +341,7 @@ TextCache::get(
 
 	TextOptions options;
 	options.wrap_width = wrap;
+	options.max_lines = max_lines;
 	options.bold = bold;
 	options.align = center ? TextAlign::Center : TextAlign::Start;
 	string error;
@@ -350,26 +352,37 @@ TextCache::get(
 	}
 	cached.width = int(ceil(cached.layout->width()));
 	cached.height = int(ceil(cached.layout->height()));
+	// A single-line control positions the text itself. Native leading
+	// alignment may have placed RTL text at the far edge of the width limit.
+	if (max_lines == 1 && !center) {
+		const auto rects =
+			cached.layout->range_rects(0, int(cached.layout->text().size()));
+		if (!rects.empty()) {
+			cached.x = rects.front().x;
+			for (const TextRect &rect : rects)
+				cached.x = min(cached.x, rect.x);
+		}
+	}
 	return cached;
 }
 
 int
 TextCache::text_width(const Kit &kit, const QString &text, bool bold)
 {
-	return get(kit, text, 0, bold, false).width;
+	return get(kit, text, 0, 0, bold, false).width;
 }
 
 int
 TextCache::text_height(const Kit &kit, const QString &text, int wrap, bool bold)
 {
-	return get(kit, text, wrap, bold, false).height;
+	return get(kit, text, wrap, 0, bold, false).height;
 }
 
 TextRect
 TextCache::caret_rect(const Kit &kit, const QString &text, int index,
 	TextAffinity affinity, bool bold)
 {
-	Text &cached = get(kit, text, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, false);
 	if (!cached.layout)
 		return {};
 	const int at = clamp(index, 0, int(text.size()));
@@ -380,7 +393,7 @@ TextHit
 TextCache::hit_test(
 	const Kit &kit, const QString &text, float x, float y, bool bold)
 {
-	Text &cached = get(kit, text, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, false);
 	if (!cached.layout)
 		return {};
 	TextHit hit = cached.layout->hit_test(x, y);
@@ -398,7 +411,7 @@ TextCache::range_rects(
 {
 	if (length <= 0)
 		return {};
-	Text &cached = get(kit, text, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, false);
 	if (!cached.layout)
 		return {};
 	const int size = int(text.size());
@@ -407,33 +420,6 @@ TextCache::range_rects(
 	start = grapheme_at_or_before(text, start);
 	return cached.layout->range_rects(
 		start, grapheme_at_or_after(text, end) - start);
-}
-
-QString
-TextCache::elide_lines(
-	const Kit &kit, const QString &text, int wrap, int lines, bool bold)
-{
-	if (text.isEmpty() || lines < 1)
-		return text;
-
-	Text &cached = get(kit, text, wrap, bold, false);
-	auto [it, fresh] = cached.elided.try_emplace(lines);
-	if (!fresh)
-		return it->second;
-	TextOptions options;
-	options.wrap_width = wrap;
-	options.max_lines = lines;
-	options.bold = bold;
-	string error;
-	unique_ptr<TextLayout> layout =
-		kit.text_backend_.layout(text, options, &error);
-	if (!layout) {
-		qWarning("text elision failed: %s", error.c_str());
-		it->second = text;
-	} else {
-		it->second = layout->text();
-	}
-	return it->second;
 }
 
 static void
@@ -487,18 +473,16 @@ rebuild_atlas(Kit &kit)
 	}
 }
 
-// The mnemonic is an index into text, and gets underlined; -1 for none.
-static void
-emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
-	Colour colour, bool bold, int mnemonic, int wrap = 0, bool center = false)
+// The mnemonic is an index into the displayed text; -1 for none.
+void
+Kit::emit_layout(float x, float y, const TextCache::Text &cached, Colour colour,
+	int mnemonic)
 {
-	if (text.isEmpty())
-		return;
-
-	TextCache::Text &cached = cache.get(kit, text, wrap, bold, center);
 	if (!cached.layout)
 		return;
 	const TextLayout &layout = *cached.layout;
+	const QString &text = layout.text();
+	x -= cached.x;
 	for (const TextGlyph &positioned : layout.glyphs()) {
 		const double pen = double(x) + double(positioned.x);
 		const double whole = floor(pen);
@@ -509,13 +493,13 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 			gx++;
 		}
 		const Kit::Glyph *glyph =
-			cache_glyph(kit, positioned.font_id, positioned.glyph_id, phase);
+			cache_glyph(*this, positioned.font_id, positioned.glyph_id, phase);
 		if (!glyph || glyph->rect.w <= 0 || glyph->rect.h <= 0)
 			continue;
 		gx += glyph->bearing_x;
 		const int gy =
 			int(lround(double(y) + double(positioned.y))) + glyph->bearing_y;
-		kit.list_.add_image({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
+		this->list_.add_image({gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
 			glyph->rect.texels(), colour);
 	}
 	if (mnemonic < 0 || mnemonic >= text.size())
@@ -537,8 +521,17 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 		const int uy = int(lround(double(y) + double(line->baseline) +
 			double(line->underline_position)));
 		const int th = max(1, int(lround(line->underline_thickness)));
-		kit.list_.add_rect_filled({ux0, uy, ux1, uy + th}, colour);
+		this->list_.add_rect_filled({ux0, uy, ux1, uy + th}, colour);
 	}
+}
+
+static void
+emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
+	Colour colour, bool bold, int mnemonic)
+{
+	if (!text.isEmpty())
+		kit.emit_layout(
+			x, y, cache.get(kit, text, 0, 0, bold, false), colour, mnemonic);
 }
 
 static void
@@ -742,19 +735,13 @@ button_text_avail(const Kit &kit, const Button &b)
 	return max(1, b.r.w - left - px);
 }
 
-static QString
-button_shown(const Kit &kit, const Button &b)
-{
-	if (b.text.isEmpty())
-		return b.text;
-	return b.text_cache_.elide_lines(
-		kit, b.text, button_text_avail(kit, b), 1, false);
-}
-
 // Right-eliding can cut the mnemonic off, or replace it with an ellipsis.
 static int
-shown_mnemonic(const QString &full, int mnemonic, const QString &shown)
+shown_mnemonic(const QString &full, int mnemonic, const TextCache::Text &cached)
 {
+	if (!cached.layout)
+		return -1;
+	const QString &shown = cached.layout->text();
 	if (mnemonic < 0 || mnemonic >= full.size() || mnemonic >= shown.size() ||
 		shown[mnemonic] != full[mnemonic])
 		return -1;
@@ -768,14 +755,6 @@ checkbox_text_avail(const Kit &kit, const Checkbox &c, int width)
 	const int box = kit.icon_px() + kit.hairline() * 2;
 	const int used = px * 2 + box + kit.px(4.f);
 	return max(1, width - used);
-}
-
-static QString
-checkbox_shown(const Kit &kit, const Checkbox &c)
-{
-	return c.wrap ? c.text
-				  : c.text_cache_.elide_lines(kit, c.text,
-						checkbox_text_avail(kit, c, c.r.w), 1, false);
 }
 
 void
@@ -833,13 +812,12 @@ Button::paint(Kit &kit) const
 			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
-		const int th =
-			this->text_cache_.text_height(kit, this->text, 0, this->bold);
-		const QString shown = button_shown(kit, *this);
-		emit_text(kit, this->text_cache_, float(tx),
-			float(this->r.y + (this->r.h - th) / 2), shown,
-			col(kit.colours_[ColourInk], ink_a), this->bold,
-			shown_mnemonic(this->text, this->mnemonic, shown));
+		const auto &cached = this->text_cache_.get(kit, this->text,
+			button_text_avail(kit, *this), 1, this->bold, false);
+		kit.emit_layout(float(tx),
+			float(this->r.y + (this->r.h - cached.height) / 2), cached,
+			col(kit.colours_[ColourInk], ink_a),
+			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -989,15 +967,13 @@ Checkbox::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
-		const int wrap =
-			this->wrap ? checkbox_text_avail(kit, *this, this->r.w) : 0;
-		const int th =
-			this->text_cache_.text_height(kit, this->text, wrap, false);
-		const QString shown = checkbox_shown(kit, *this);
-		emit_text(kit, this->text_cache_, float(tx),
-			float(this->r.y + (this->r.h - th) / 2), shown,
-			col(kit.colours_[ColourInk], ink_a), false,
-			shown_mnemonic(this->text, this->mnemonic, shown), wrap);
+		const auto &cached = this->text_cache_.get(kit, this->text,
+			checkbox_text_avail(kit, *this, this->r.w), this->wrap ? 0 : 1,
+			false, false);
+		kit.emit_layout(float(tx),
+			float(this->r.y + (this->r.h - cached.height) / 2), cached,
+			col(kit.colours_[ColourInk], ink_a),
+			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
@@ -1015,15 +991,6 @@ Checkbox::activate(Kit &kit)
 }
 
 // --- Label -------------------------------------------------------------------
-
-static QString
-label_shown(const Kit &kit, const Label &label)
-{
-	return label.wrap
-		? label.text
-		: label.text_cache_.elide_lines(kit, label.text,
-			  max(1, label.r.w - kit.px(label.pad_x) * 2), 1, label.bold);
-}
 
 void
 Label::set_text(const QString &value)
@@ -1057,30 +1024,28 @@ Label::paint(Kit &kit) const
 		return;
 
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
-	const QString shown = label_shown(kit, *this);
+	const auto &cached = this->text_cache_.get(kit, this->text,
+		max(1, this->r.w - pad_x * 2), this->wrap ? 0 : 1, this->bold,
+		this->wrap && this->align == Align::Center);
 	int tx = this->r.x + pad_x;
-	const bool wrap_center = this->wrap && this->align == Align::Center;
 	if (!this->wrap && this->align != Align::Start) {
-		const int tw = this->text_cache_.text_width(kit, shown, this->bold);
+		const int tw = cached.width;
 		// Centring ignores the padding, as it always has; ending against
 		// the far edge cannot, or the text would sit outside it.
 		tx = this->align == Align::Center
 			? this->r.x + max(0, (this->r.w - tw) / 2)
 			: this->r.x + max(pad_x, this->r.w - pad_x - tw);
 	}
-	const int wrap_w = this->wrap ? max(1, this->r.w - pad_x * 2) : 0;
-	const int th =
-		this->text_cache_.text_height(kit, this->text, wrap_w, this->bold);
+	const int th = cached.height;
 	int ty = this->r.y + pad_y;
 	if (this->valign == Align::Center)
 		ty = this->r.y + (this->r.h - th) / 2;
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - pad_y - th;
-	emit_text(kit, this->text_cache_, float(tx), float(ty), shown,
+	kit.emit_layout(float(tx), float(ty), cached,
 		col(kit.colours_[ColourInk],
 			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
-		this->bold, shown_mnemonic(this->text, this->mnemonic, shown), wrap_w,
-		wrap_center);
+		shown_mnemonic(this->text, this->mnemonic, cached));
 }
 
 bool
@@ -1592,7 +1557,7 @@ Entry::paint(Kit &kit) const
 	// positioned its glyphs.
 	if (!this->preedit.isEmpty()) {
 		TextCache::Text &cached =
-			this->text_cache_.get(kit, full, 0, false, false);
+			this->text_cache_.get(kit, full, 0, 0, false, false);
 		if (cached.layout) {
 			const TextLayout &layout = *cached.layout;
 			for (const TextRect &rect :
@@ -2991,15 +2956,6 @@ menu_cols(const Kit &kit, const MenuItem &m)
 	return c;
 }
 
-static QString
-menu_shown(const Kit &kit, const MenuItem &m)
-{
-	if (m.text.isEmpty())
-		return m.text;
-	return m.text_cache_.elide_lines(
-		kit, m.text, menu_cols(kit, m).avail, 1, false);
-}
-
 static void
 collect_focusable(Widget *w, vector<Widget *> &out)
 {
@@ -3549,10 +3505,6 @@ MenuItem::paint(Kit &kit) const
 	const int lead_x = this->r.x + pad_x;
 	const int label_x = this->r.x + cols.label_x;
 	const int accel_x = this->r.x + cols.accel_x;
-	const int th = this->text.isEmpty()
-		? 0
-		: this->text_cache_.text_height(kit, this->text, 0, false);
-	const int ty = this->r.y + (this->r.h - th) / 2;
 	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f);
@@ -3560,9 +3512,11 @@ MenuItem::paint(Kit &kit) const
 	if (this->checkable && this->checked)
 		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
-		const QString shown = menu_shown(kit, *this);
-		emit_text(kit, this->text_cache_, float(label_x), float(ty), shown,
-			label_c, false, shown_mnemonic(this->text, this->mnemonic, shown));
+		const auto &cached =
+			this->text_cache_.get(kit, this->text, cols.avail, 1, false, false);
+		kit.emit_layout(float(label_x),
+			float(this->r.y + (this->r.h - cached.height) / 2), cached, label_c,
+			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (!this->accel.isEmpty()) {
 		const int tw = this->text_cache_.text_width(kit, this->accel, false);
@@ -3607,23 +3561,6 @@ MenuItem::accel_width(const Kit &kit) const
 
 constexpr const char *kComboIcon = "disclose-arrow-down-symbolic";
 
-static QString
-combo_item_shown(const Kit &kit, const ComboItem &c)
-{
-	const int pad_x = kit.px(kFramePadX);
-	return c.text_cache_.elide_lines(
-		kit, c.text, max(1, c.r.w - pad_x * 2), 1, false);
-}
-
-static QString
-combo_shown(const Kit &kit, const Combo &c)
-{
-	const int pad_x = kit.px(kFramePadX + c.pad_x);
-	const int used = pad_x * 2 + kit.px(4.f) + kit.icon_px();
-	return c.text_cache_.elide_lines(
-		kit, c.current_text(), max(1, c.r.w - used), 1, false);
-}
-
 // Rebuilt on every open: the item list is the caller's to change, and it
 // costs nothing to stop caring when it does.
 static void
@@ -3666,11 +3603,12 @@ ComboItem::paint(Kit &kit) const
 	if (this->text.isEmpty())
 		return;
 
-	const QString shown = combo_item_shown(kit, *this);
-	const int th = this->text_cache_.text_height(kit, shown, 0, false);
-	emit_text(kit, this->text_cache_, float(this->r.x + kit.px(kFramePadX)),
-		float(this->r.y + (this->r.h - th) / 2), shown,
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), false, -1);
+	const int pad = kit.px(kFramePadX);
+	const auto &cached = this->text_cache_.get(
+		kit, this->text, max(1, this->r.w - pad * 2), 1, false, false);
+	kit.emit_layout(float(this->r.x + pad),
+		float(this->r.y + (this->r.h - cached.height) / 2), cached,
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), -1);
 }
 
 ComboPopup::ComboPopup()
@@ -3773,13 +3711,11 @@ Combo::paint(Kit &kit) const
 		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
 		col(kit.colours_[ColourInk], ink_a));
 
-	const QString shown_text = combo_shown(kit, *this);
-	if (!shown_text.isEmpty()) {
-		const int th = this->text_cache_.text_height(kit, shown_text, 0, false);
-		emit_text(kit, this->text_cache_, float(this->r.x + pad_x),
-			float(this->r.y + (this->r.h - th) / 2), shown_text,
-			col(kit.colours_[ColourInk], ink_a), false, -1);
-	}
+	const auto &cached = this->text_cache_.get(kit, current_text(),
+		max(1, this->r.w - pad_x * 2 - kit.px(4.f) - icon), 1, false, false);
+	kit.emit_layout(float(this->r.x + pad_x),
+		float(this->r.y + (this->r.h - cached.height) / 2), cached,
+		col(kit.colours_[ColourInk], ink_a), -1);
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
 }
@@ -4314,8 +4250,7 @@ Titlebar::arrange_content(Kit &kit, Rect alloc)
 		const int left = bar.x;
 		const int right = x;
 		const int avail = max(0, right - left);
-		this->title->set_text(this->text_cache_.elide_lines(
-			kit, this->text, avail, 1, this->title->bold));
+		this->title->set_text(this->text);
 		const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
 		int tx = this->r.x + (this->r.w - tw) / 2;
 		if (tx < left)
@@ -4548,13 +4483,6 @@ int
 Kit::text_width(const QString &text, bool bold) const
 {
 	return this->text_cache_.text_width(*this, text, bold);
-}
-
-QString
-Kit::elide_lines(
-	const QString &text, int wrap_px, int max_lines, bool bold) const
-{
-	return this->text_cache_.elide_lines(*this, text, wrap_px, max_lines, bold);
 }
 
 int

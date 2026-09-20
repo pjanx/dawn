@@ -37,11 +37,7 @@ struct FileRows : ScrollColumn {
 struct FileRow : Button {
 	FileList *list = nullptr;
 	FileEntry entry;
-	// The name as it fits the Name column, shaped by prepare() and emitted
-	// by paint(): the two must not measure it apart, or paint would draw
-	// glyphs that were never cached.  Its differing from the name is also
-	// the only time there is anything a tooltip could add.
-	QString shown_;
+	bool elided_ = false;
 
 	FileRow();
 	Size measure_content(Kit &kit, int max_w, int max_h) override;

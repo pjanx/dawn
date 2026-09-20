@@ -84,8 +84,6 @@ struct Browser : Widget {
 
 		Rect tile{};
 		Rect cell{};
-		QString cap_text;
-		std::unique_ptr<Label> caption;
 		Rect cap{};
 	};
 	struct DirRow {
@@ -188,7 +186,6 @@ struct Browser : Widget {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	[[nodiscard]] bool focusable() const override;
 	[[nodiscard]] Qt::CursorShape cursor() const override;
 	[[nodiscard]] QString tip() const override;
