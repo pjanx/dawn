@@ -9,6 +9,7 @@
 
 #include <QFont>
 #include <QString>
+#include <QTextBoundaryFinder>
 
 #include <algorithm>
 #include <cmath>
@@ -93,6 +94,94 @@ check_raster_sizes(
 	return true;
 }
 
+static bool
+check_truncation(TextBackend &backend)
+{
+	string error;
+	const QString ellipsis(QChar(0x2026));
+	TextOptions options;
+	options.wrap_width = 1000;
+	options.max_lines = 1;
+	for (const QString &source : {QString(), QStringLiteral("head  "),
+			 QStringLiteral("office e\u0301 😀 אבג")}) {
+		auto layout = backend.layout(source, options, &error);
+		if (!check(layout && layout->text() == source,
+				"fitting text was changed by truncation"))
+			return false;
+	}
+	for (const QString &separator : {QStringLiteral("\n"),
+			 QStringLiteral("\r\n"), QStringLiteral("\u2029")}) {
+		for (const QString &tail : {QString(), QStringLiteral("tail")}) {
+			const QString source = QStringLiteral("head  ") + separator + tail;
+			auto layout = backend.layout(source, options, &error);
+			if (!check(layout &&
+						layout->text() == QStringLiteral("head") + ellipsis &&
+						layout->lines().size() == 1,
+					"truncation mishandled whitespace or a terminal newline"))
+				return false;
+		}
+	}
+	options.max_lines = 2;
+	const QString terminal = QStringLiteral("head\n");
+	auto layout = backend.layout(terminal, options, &error);
+	if (!check(
+			layout && layout->text() == terminal && layout->lines().size() == 2,
+			"a permitted terminal empty line was lost"))
+		return false;
+	options.max_lines = 0;
+	layout = backend.layout(QStringLiteral("a\nb\nc"), options, &error);
+	if (!check(layout && layout->text() == QStringLiteral("a\nb\nc"),
+			"unlimited lines were truncated"))
+		return false;
+	options.max_lines = 1;
+	options.wrap_width = 0;
+	layout = backend.layout(QStringLiteral("a\nb\nc"), options, &error);
+	if (!check(layout && layout->text() == QStringLiteral("a\nb\nc"),
+			"unbounded width was truncated"))
+		return false;
+
+	// Sweep widths across cluster boundaries and line limits, with both
+	// alignments. No fixed font metrics or particular fallback fonts needed.
+	for (const QString &source : {QString::fromUtf8("Ae\u0301😀Z long caption"),
+			 QString::fromUtf8("אבג office e\u0301 Ελληνικά long caption"),
+			 QString::fromUtf8(
+				 "A👨‍👩‍👧‍👦🇨🇿Z long caption"),
+			 QStringLiteral("head\nwide wide wide\ntail\n")}) {
+		QTextBoundaryFinder boundaries(QTextBoundaryFinder::Grapheme, source);
+		for (int lines : {1, 2}) {
+			for (TextAlign align : {TextAlign::Start, TextAlign::Center}) {
+				options.max_lines = lines;
+				options.align = align;
+				for (int width = 1; width <= 160; width += 3) {
+					options.wrap_width = width;
+					layout = backend.layout(source, options, &error);
+					if (!check(layout && int(layout->lines().size()) <= lines,
+							"truncation exceeded the line limit"))
+						return false;
+					for (const TextLine &line : layout->lines()) {
+						if (!check(line.advance <= float(width) + .01f,
+								"truncation left an over-wide line"))
+							return false;
+					}
+					const QString &shown = layout->text();
+					if (shown == source || shown.isEmpty())
+						continue;
+					const int cut = int(shown.size()) - 1;
+					boundaries.setPosition(cut);
+					if (!check(shown.endsWith(ellipsis) &&
+								shown.left(cut) == source.left(cut) &&
+								boundaries.isAtBoundary() &&
+								(!cut || !shown[cut - 1].isSpace()),
+							"truncation split a grapheme or kept trailing "
+							"whitespace"))
+						return false;
+				}
+			}
+		}
+	}
+	return true;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -106,6 +195,9 @@ main(int argc, char **argv)
 	if (!check(backend.reset(font, 1.f, &error), error.c_str()))
 		return 1;
 	if (!check(backend.generation() == 1, "reset did not advance generation"))
+		return 1;
+
+	if (!check_truncation(backend))
 		return 1;
 
 	TextOptions plain;

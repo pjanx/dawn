@@ -66,7 +66,10 @@ struct TextLine {
 
 struct TextOptions {
 	int wrap_width = 0;  // <= 0 means an unbounded line
-	int max_lines = 0;   // <= 0 means unlimited; truncation adds an ellipsis
+	// With a positive wrap_width, truncate to this many lines and append an
+	// ellipsis after trimming trailing whitespace. <= 0 means unlimited.
+	// If the ellipsis cannot fit, the displayed string is empty.
+	int max_lines = 0;
 	bool bold = false;
 	TextAlign align = TextAlign::Start;
 };
@@ -101,6 +104,8 @@ class TextLayout
 	float height_ = 0;
 
 	TextLayout();
+	// Sorted native cut positions in UTF-16, including zero and text end.
+	bool cut_positions(std::vector<int> &out, std::string *error) const;
 	friend class TextBackend;
 
 public:
@@ -132,6 +137,9 @@ class TextBackend
 	std::unique_ptr<TextBackendImpl> impl_;
 	uint64_t generation_ = 0;
 	friend class TextLayout;
+
+	std::unique_ptr<TextLayout> layout_native(
+		const QString &text, const TextOptions &options, std::string *error);
 
 public:
 	TextBackend();

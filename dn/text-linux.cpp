@@ -223,75 +223,19 @@ make_layout(
 	return layout;
 }
 
-static vector<int>
-cursor_boundaries(PangoLayout *layout, const QString &text)
+bool
+TextLayout::cut_positions(vector<int> &out, string *) const
 {
 	gint count = 0;
 	const PangoLogAttr *attrs =
-		pango_layout_get_log_attrs_readonly(layout, &count);
-	vector<int> result;
-	result.reserve(size_t(max(0, count)));
-	TextLayoutImpl indexes;
-	map_indexes(indexes, text);
-	const int limit = min(count, int(indexes.scalar_utf16.size()));
-	for (int i = 0; i < limit; i++) {
+		pango_layout_get_log_attrs_readonly(this->impl_->layout, &count);
+	out.clear();
+	const auto &indexes = this->impl_->scalar_utf16;
+	for (int i = 0; i < min(count, int(indexes.size())); i++) {
 		if (attrs[i].is_cursor_position)
-			result.push_back(indexes.scalar_utf16[size_t(i)]);
+			out.push_back(indexes[size_t(i)]);
 	}
-	if (result.empty() || result.back() != text.size())
-		result.push_back(int(text.size()));
-	return result;
-}
-
-static QString
-elide(TextBackendImpl &backend, const QString &text, const TextOptions &options)
-{
-	if (options.max_lines <= 0 || options.wrap_width <= 0)
-		return text;
-	TextOptions unlimited = options;
-	unlimited.max_lines = 0;
-	PangoLayout *source = make_layout(backend, text, unlimited);
-	auto fits = [&](PangoLayout *layout) {
-		if (pango_layout_get_line_count(layout) > options.max_lines)
-			return false;
-		PangoLayoutIter *iter = pango_layout_get_iter(layout);
-		bool result = true;
-		do {
-			PangoRectangle logical{};
-			pango_layout_iter_get_line_extents(iter, nullptr, &logical);
-			result &= logical.width <= options.wrap_width * PANGO_SCALE;
-		} while (result && pango_layout_iter_next_line(iter));
-		pango_layout_iter_free(iter);
-		return result;
-	};
-	if (fits(source)) {
-		g_object_unref(source);
-		return text;
-	}
-	const vector<int> boundaries = cursor_boundaries(source, text);
-	g_object_unref(source);
-
-	const QString ellipsis(QChar(0x2026));
-	PangoLayout *minimum = make_layout(backend, ellipsis, unlimited);
-	const bool minimum_fits = fits(minimum);
-	g_object_unref(minimum);
-	if (!minimum_fits)
-		return {};
-	size_t low = 0;
-	size_t high = boundaries.size();
-	while (low < high) {
-		const size_t middle = low + (high - low) / 2;
-		const QString candidate = text.left(boundaries[middle]) + ellipsis;
-		PangoLayout *probe = make_layout(backend, candidate, unlimited);
-		const bool candidate_fits = fits(probe);
-		g_object_unref(probe);
-		if (candidate_fits)
-			low = middle + 1;
-		else
-			high = middle;
-	}
-	const size_t chosen = low ? low - 1 : 0;
-	return text.left(boundaries[chosen]) + ellipsis;
+	return true;
 }
 
 static void
@@ -527,7 +471,7 @@ TextBackend::settings_changed() const
 }
 
 unique_ptr<TextLayout>
-TextBackend::layout(
+TextBackend::layout_native(
 	const QString &text, const TextOptions &options, string *error)
 {
 	if (!this->impl_) {
@@ -536,7 +480,7 @@ TextBackend::layout(
 		return {};
 	}
 	auto result = unique_ptr<TextLayout>(new TextLayout);
-	result->text_ = elide(*this->impl_, text, options);
+	result->text_ = text;
 	map_indexes(*result->impl_, result->text_);
 	result->impl_->layout = make_layout(*this->impl_, result->text_, options);
 	collect_layout(*this->impl_, *result->impl_, options, result->glyphs_,

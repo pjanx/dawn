@@ -512,6 +512,7 @@ qt_add_executable(dn
 	dn/main.cpp
 	dn/overlay.cpp
 	dn/renderer.cpp
+	dn/text.cpp
 	dn/thumbnail-cache.cpp
 	dn/thumbnailer.cpp
 	dn/url.cpp

@@ -353,146 +353,42 @@ first_cluster(CTTypesetterRef typesetter, CFIndex start)
 	return count;
 }
 
-static bool
-fits_lines(const QString &text, CTFontRef font, const TextOptions &options)
+bool
+TextLayout::cut_positions(vector<int> &out, string *error) const
 {
-	CFAttributedStringRef attributed = make_attributed(text, font);
-	CTTypesetterRef typesetter = attributed
-		? CTTypesetterCreateWithAttributedString(attributed)
-		: nullptr;
-	if (!typesetter) {
-		if (attributed)
-			CFRelease(attributed);
+	CFStringRef text = cf_string(this->text_);
+	if (!text) {
+		set_error(error, "Core Text could not create a string");
 		return false;
 	}
-
-	CFIndex start = 0;
-	bool last_within_width = true;
-	for (int line = 0; line < options.max_lines && start < text.size();
-		line++) {
-		CFIndex count =
-			CTTypesetterSuggestLineBreak(typesetter, start, options.wrap_width);
-		if (!count)
-			count = first_cluster(typesetter, start);
-		if (!count)
-			break;
-		CTLineRef native =
-			CTTypesetterCreateLine(typesetter, CFRangeMake(start, count));
-		if (!native)
-			break;
-		last_within_width = CTLineGetTypographicBounds(native, nullptr, nullptr,
-								nullptr) <= double(options.wrap_width) + .01;
-		CFRelease(native);
-		start += count;
-	}
-	const bool fits = start == text.size() && last_within_width;
-	CFRelease(typesetter);
-	CFRelease(attributed);
-	return fits;
-}
-
-static CFIndex
-previous_cluster(
-	CTTypesetterRef typesetter, CFIndex start, CFIndex current, double width)
-{
-	double low = 0;
-	double high = width;
-	CFIndex previous = 0;
-	for (int i = 0; i < 24; i++) {
-		const double middle = (low + high) * .5;
-		const CFIndex candidate =
-			CTTypesetterSuggestClusterBreak(typesetter, start, middle);
-		if (candidate < current) {
-			previous = max(previous, candidate);
-			low = middle;
-		} else
-			high = middle;
-	}
-	return previous;
-}
-
-static QString
-materialize_text(
-	const QString &text, CTFontRef font, const TextOptions &options)
-{
-	if (options.max_lines <= 0 || options.wrap_width <= 0 || text.isEmpty())
-		return text;
-	CFAttributedStringRef attributed = make_attributed(text, font);
-	CTTypesetterRef typesetter = attributed
-		? CTTypesetterCreateWithAttributedString(attributed)
-		: nullptr;
-	if (!typesetter) {
-		if (attributed)
-			CFRelease(attributed);
-		return text;
-	}
-
-	CFIndex start = 0;
-	for (int line = 0; line < options.max_lines && start < text.size();
-		line++) {
-		CFIndex count =
-			CTTypesetterSuggestLineBreak(typesetter, start, options.wrap_width);
-		if (count <= 0)
-			count = first_cluster(typesetter, start);
-		if (!count)
-			break;
-		CTLineRef proposed =
-			CTTypesetterCreateLine(typesetter, CFRangeMake(start, count));
-		const bool too_wide = !proposed ||
-			CTLineGetTypographicBounds(proposed, nullptr, nullptr, nullptr) >
-				double(options.wrap_width) + .01;
-		if (proposed)
-			CFRelease(proposed);
-		const bool terminal_empty = start + count == text.size() && count &&
-			line_separator(text.at(start + count - 1));
-		if ((line + 1 != options.max_lines && !too_wide) ||
-			(start + count >= text.size() && !terminal_empty && !too_wide)) {
-			start += count;
+	out = {0, int(this->text_.size())};
+	for (const auto &native : this->impl_->lines) {
+		if (!native.line)
 			continue;
+		CFArrayRef runs = CTLineGetGlyphRuns(native.line);
+		for (CFIndex r = 0; r < CFArrayGetCount(runs); r++) {
+			CTRunRef run = CTRunRef(CFArrayGetValueAtIndex(runs, r));
+			const CFIndex count = CTRunGetGlyphCount(run);
+			vector<CFIndex> indexes((size_t(count)));
+			if (count)
+				CTRunGetStringIndices(run, CFRangeMake(0, 0), indexes.data());
+			const CFRange range = CTRunGetStringRange(run);
+			indexes.push_back(range.location);
+			indexes.push_back(range.location + range.length);
+			for (CFIndex index : indexes) {
+				// A glyph boundary must also be a composed-character boundary:
+				// separate marks can have their own glyphs and string indexes.
+				if (index >= 0 && index < this->text_.size() &&
+					CFStringGetRangeOfComposedCharactersAtIndex(text, index)
+							.location == index)
+					out.push_back(int(index));
+			}
 		}
-
-		CFAttributedStringRef ellipsis_text =
-			make_attributed(QString(QChar(0x2026)), font);
-		CTLineRef ellipsis = ellipsis_text
-			? CTLineCreateWithAttributedString(ellipsis_text)
-			: nullptr;
-		const double ellipsis_width = ellipsis
-			? CTLineGetTypographicBounds(ellipsis, nullptr, nullptr, nullptr)
-			: 0;
-		if (!ellipsis || ellipsis_width > double(options.wrap_width) + .01) {
-			if (ellipsis)
-				CFRelease(ellipsis);
-			if (ellipsis_text)
-				CFRelease(ellipsis_text);
-			CFRelease(typesetter);
-			CFRelease(attributed);
-			return text.left(start);
-		}
-		const double available =
-			max(0., double(options.wrap_width) - ellipsis_width);
-		CFIndex keep =
-			CTTypesetterSuggestClusterBreak(typesetter, start, available);
-		CFIndex line_content = count;
-		while (
-			line_content && line_separator(text.at(start + line_content - 1)))
-			line_content--;
-		keep = min(keep, line_content);
-		QString candidate = text.left(start + keep) + QChar(0x2026);
-		while (keep && !fits_lines(candidate, font, options)) {
-			keep = previous_cluster(typesetter, start, keep, available);
-			candidate = text.left(start + keep) + QChar(0x2026);
-		}
-		if (ellipsis)
-			CFRelease(ellipsis);
-		if (ellipsis_text)
-			CFRelease(ellipsis_text);
-		CFRelease(typesetter);
-		CFRelease(attributed);
-		return candidate;
 	}
-	CFRelease(typesetter);
-	CFRelease(attributed);
-	return text;
+	CFRelease(text);
+	sort(out.begin(), out.end());
+	out.erase(unique(out.begin(), out.end()), out.end());
+	return true;
 }
 
 static void
@@ -580,7 +476,7 @@ TextBackend::settings_changed() const
 }
 
 unique_ptr<TextLayout>
-TextBackend::layout(
+TextBackend::layout_native(
 	const QString &text, const TextOptions &options, string *error)
 {
 	CTFontRef base = options.bold ? this->impl_->bold : this->impl_->regular;
@@ -589,8 +485,7 @@ TextBackend::layout(
 		return nullptr;
 	}
 
-	const QString displayed = materialize_text(text, base, options);
-	CFAttributedStringRef attributed = make_attributed(displayed, base);
+	CFAttributedStringRef attributed = make_attributed(text, base);
 	CTTypesetterRef typesetter = attributed
 		? CTTypesetterCreateWithAttributedString(attributed)
 		: nullptr;
@@ -605,8 +500,8 @@ TextBackend::layout(
 
 	auto result = unique_ptr<TextLayout>(new TextLayout);
 	result->impl_ = make_unique<TextLayoutImpl>();
-	result->text_ = displayed;
-	const CFIndex text_length = displayed.size();
+	result->text_ = text;
+	const CFIndex text_length = text.size();
 	const double wrap =
 		options.wrap_width > 0 ? double(options.wrap_width) : 1.0e8;
 	CFIndex start = 0;
@@ -674,8 +569,7 @@ TextBackend::layout(
 		if (!count)
 			break;
 	} while (start < text_length || !line_number ||
-		(start == text_length && text_length &&
-			line_separator(displayed.back())));
+		(start == text_length && text_length && line_separator(text.back())));
 
 	result->height_ = top;
 	CFRelease(typesetter);

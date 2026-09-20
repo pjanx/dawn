@@ -432,110 +432,32 @@ line_metrics(IDWriteTextLayout *layout, vector<DWRITE_LINE_METRICS> *out)
 	return layout->GetLineMetrics(out->data(), count, &count);
 }
 
-static HRESULT
-cluster_boundaries(IDWriteTextLayout *layout, vector<int> *out)
+bool
+TextLayout::cut_positions(vector<int> &out, string *error) const
 {
 	UINT32 count = 0;
-	HRESULT hr = layout->GetClusterMetrics(nullptr, 0, &count);
-	if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER)
-		return hr;
+	HRESULT hr = this->impl_->layout->GetClusterMetrics(nullptr, 0, &count);
+	if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) {
+		set_error(error, "cannot obtain DirectWrite cluster metrics", hr);
+		return false;
+	}
 	vector<DWRITE_CLUSTER_METRICS> metrics(count);
 	if (count) {
-		hr = layout->GetClusterMetrics(metrics.data(), count, &count);
-		if (FAILED(hr))
-			return hr;
+		hr = this->impl_->layout->GetClusterMetrics(
+			metrics.data(), count, &count);
+		if (FAILED(hr)) {
+			set_error(error, "cannot obtain DirectWrite cluster metrics", hr);
+			return false;
+		}
 	}
-	out->clear();
-	out->push_back(0);
+	out.clear();
+	out.push_back(0);
 	int offset = 0;
 	for (const DWRITE_CLUSTER_METRICS &metric : metrics) {
 		offset += metric.length;
-		out->push_back(offset);
+		out.push_back(offset);
 	}
-	return S_OK;
-}
-
-static int
-previous_boundary(const vector<int> &boundaries, int before)
-{
-	auto it = lower_bound(boundaries.begin(), boundaries.end(), before);
-	if (it == boundaries.begin())
-		return 0;
-	it--;
-	return *it;
-}
-
-static int
-trim_space(const QString &text, int length)
-{
-	length = min(length, int(text.size()));
-	while (length > 0 && text[length - 1].isSpace())
-		length--;
-	return length;
-}
-
-static HRESULT
-elide_layout(TextBackendImpl &backend, const QString &source,
-	const TextOptions &options, QString *text, IDWriteTextLayout **layout)
-{
-	HRESULT hr = make_layout(backend, source, options, layout);
-	if (FAILED(hr) || options.max_lines <= 0 || options.wrap_width <= 0)
-		return hr;
-
-	vector<DWRITE_LINE_METRICS> lines;
-	hr = line_metrics(*layout, &lines);
-	DWRITE_TEXT_METRICS metrics{};
-	if (SUCCEEDED(hr))
-		hr = (*layout)->GetMetrics(&metrics);
-	if (FAILED(hr) ||
-		(int(lines.size()) <= options.max_lines &&
-			metrics.widthIncludingTrailingWhitespace <=
-				float(options.wrap_width)))
-		return hr;
-
-	vector<int> boundaries;
-	hr = cluster_boundaries(*layout, &boundaries);
-	if (FAILED(hr))
-		return hr;
-	int cut = 0;
-	for (int i = 0; i < min(options.max_lines, int(lines.size())); i++)
-		cut += int(lines[size_t(i)].length);
-	cut = trim_space(source, cut);
-
-	while (true) {
-		const QString candidate = source.left(cut) + QChar(0x2026);
-		IDWriteTextLayout *candidate_layout = nullptr;
-		hr = make_layout(backend, candidate, options, &candidate_layout);
-		if (FAILED(hr))
-			return hr;
-		vector<DWRITE_LINE_METRICS> candidate_lines;
-		hr = line_metrics(candidate_layout, &candidate_lines);
-		if (SUCCEEDED(hr))
-			hr = candidate_layout->GetMetrics(&metrics);
-		if (FAILED(hr)) {
-			candidate_layout->Release();
-			return hr;
-		}
-		if (int(candidate_lines.size()) <= options.max_lines &&
-			metrics.widthIncludingTrailingWhitespace <=
-				float(options.wrap_width)) {
-			(*layout)->Release();
-			*layout = candidate_layout;
-			*text = candidate;
-			return S_OK;
-		}
-		candidate_layout->Release();
-		if (!cut) {
-			hr = make_layout(backend, {}, options, &candidate_layout);
-			if (FAILED(hr))
-				return hr;
-			(*layout)->Release();
-			*layout = candidate_layout;
-			text->clear();
-			return S_OK;
-		}
-		cut = trim_space(source, previous_boundary(boundaries, cut));
-	}
+	return true;
 }
 
 static vector<DWRITE_HIT_TEST_METRICS>
@@ -702,7 +624,7 @@ TextBackend::settings_changed() const
 }
 
 unique_ptr<TextLayout>
-TextBackend::layout(
+TextBackend::layout_native(
 	const QString &text, const TextOptions &options, string *error)
 {
 	if (!this->impl_->factory || !this->impl_->normal || !this->impl_->bold) {
@@ -712,8 +634,8 @@ TextBackend::layout(
 	auto result = unique_ptr<TextLayout>(new TextLayout);
 	result->impl_ = make_unique<TextLayoutImpl>();
 	result->text_ = text;
-	HRESULT hr = elide_layout(
-		*this->impl_, text, options, &result->text_, &result->impl_->layout);
+	HRESULT hr =
+		make_layout(*this->impl_, text, options, &result->impl_->layout);
 	if (FAILED(hr)) {
 		set_error(error, "cannot create DirectWrite text layout", hr);
 		return {};
