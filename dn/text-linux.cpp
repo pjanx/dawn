@@ -601,11 +601,14 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 	if (!locked.face)
 		return result;
 
+#if 0
 	// It appears that linear composition is being difficult.
+	// But it doesn't combine well with our contrast enhancement in dark mode.
 	FT_Bool darken_stems = true;
 	FT_Parameter darkening{FT_PARAM_TAG_STEM_DARKENING, &darken_stems};
 	if (FT_Face_Properties(locked.face, 1, &darkening))
 		return result;
+#endif
 
 	FT_Matrix matrix{};
 	FT_Vector delta{};

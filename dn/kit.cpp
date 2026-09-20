@@ -2454,7 +2454,7 @@ Scroll::paint(Kit &kit, Rect viewport) const
 		return;
 
 	Colour c = kit.colours_[ColourInk];
-	c.a *= .25f;
+	c.a *= .375f;
 	kit.draw_fill(thumb, c);
 }
 
@@ -2502,6 +2502,7 @@ ScrollColumn::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
+
 	kit.clip_to(this->r);
 	paint_children(kit);
 	this->scroll_.paint(kit, this->r);
