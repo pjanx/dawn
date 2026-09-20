@@ -18,6 +18,7 @@
 #include <pango/pangoft2.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <utility>
@@ -598,20 +599,24 @@ LockedFace::~LockedFace()
 static FT_Int32
 load_flags(PangoFont *font, FT_Face face)
 {
+	FcPattern *pattern = pango_fc_font_get_pattern(PANGO_FC_FONT(font));
+
+	FcBool hinting = FcTrue;
+	FcPatternGetBool(pattern, FC_HINTING, 0, &hinting);
+
+	int style = FC_HINT_FULL;
+	FcPatternGetInteger(pattern, FC_HINT_STYLE, 0, &style);
+
+	// Match Skia's grayscale load policy; full hinting also uses NORMAL.
 	FT_Int32 flags = FT_LOAD_DEFAULT | FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL;
 	if (FT_IS_SCALABLE(face))
 		flags |= FT_LOAD_NO_BITMAP;
-	FcPattern *pattern = pango_fc_font_get_pattern(PANGO_FC_FONT(font));
-	FcBool hinting = FcTrue;
-	if (FcPatternGetBool(pattern, FC_HINTING, 0, &hinting) == FcResultMatch &&
-		!hinting)
-		return flags | FT_LOAD_NO_HINTING;
-	int style = FC_HINT_FULL;
-	FcPatternGetInteger(pattern, FC_HINT_STYLE, 0, &style);
-	if (style == FC_HINT_NONE)
-		return flags | FT_LOAD_NO_HINTING;
-	if (style == FC_HINT_SLIGHT)
+
+	if (!hinting || style == FC_HINT_NONE)
+		flags |= FT_LOAD_NO_HINTING;
+	else if (style == FC_HINT_SLIGHT)
 		flags |= FT_LOAD_TARGET_LIGHT;
+
 	FcBool autohint = FcFalse;
 	if (FcPatternGetBool(pattern, FC_AUTOHINT, 0, &autohint) == FcResultMatch &&
 		autohint)
@@ -627,6 +632,19 @@ bitmap_row(const FT_Bitmap &bitmap, int y)
 		return bitmap.buffer + size_t(y) * size_t(pitch);
 	return bitmap.buffer + size_t(int(bitmap.rows) - 1 - y) * size_t(pitch);
 }
+
+static const array<uint8_t, 256> kLinearTextContrast = [] {
+	// Skia enables SK_GAMMA_APPLY_TO_A8 in its build.  Linear destinations
+	// retain kBoostContrast; ignoreGamma() sets gamma=1 and luminance=black.
+	// Its default contrast of 0.5 is quantized to 128/255 in the scaler record.
+	array<uint8_t, 256> result;
+	for (size_t i = 0; i < result.size(); i++) {
+		const float a = float(i) / 255.f;
+		const float boosted = a + ((1.f - a) * (128.f / 255.f) * a);
+		result[i] = uint8_t(lround(255.f * boosted));
+	}
+	return result;
+}();
 
 GlyphImage
 TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
@@ -719,6 +737,10 @@ TextBackend::rasterize(uint32_t font_id, uint32_t glyph_id, int phase) const
 					unsigned(bitmap.num_grays - 1));
 		} else {
 			memcpy(dst, src + left, size_t(result.width));
+		}
+		if (!colour) {
+			for (int x = 0; x < result.width; x++)
+				dst[x] = kLinearTextContrast[dst[x]];
 		}
 	}
 	return result;
