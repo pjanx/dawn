@@ -1029,6 +1029,9 @@ Window::render()
 	if (!ui)
 		return;
 
+	// Completing an open below may change the mode after this page is drawn.
+	const bool show_image = this->mode_ == Mode::View;
+
 	this->kit_.fullscreen_ = fullscreen;
 	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
 	this->kit_.csd_ = this->csd_ && !fullscreen;
@@ -1054,8 +1057,8 @@ Window::render()
 	}
 
 	const bool deferred = this->present_retry_.isActive();
-	const bool presented =
-		!deferred && this->renderer_.draw_frame(this->kit_.list_.mesh());
+	const bool presented = !deferred &&
+		this->renderer_.draw_frame(this->kit_.list_.mesh(), show_image);
 	if (presented) {
 		if (QWindow *shell = parent()) {
 			QEvent commit(QEvent::UpdateRequest);

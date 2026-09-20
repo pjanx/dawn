@@ -226,7 +226,7 @@ public:
 	void reset_thumbs();
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.
-	bool draw_frame(const OverlayMesh &mesh);
+	bool draw_frame(const OverlayMesh &mesh, bool show_image);
 	void destroy();
 
 	[[nodiscard]] Extent extent() const

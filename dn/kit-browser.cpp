@@ -2561,8 +2561,6 @@ Browser::file_gone(const QUrl &url)
 void
 Browser::paint(Kit &kit) const
 {
-	if (kit.renderer_)
-		kit.renderer_->set_view(1.f, 0.f, 0.f, dawn::Orientation::Rotate0, 0.f);
 	kit.clip_to(this->r);
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
 	const int th = kit.px(float(this->thumb_size_));

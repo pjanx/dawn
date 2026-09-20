@@ -597,7 +597,7 @@ Renderer::resize(Extent pixel)
 }
 
 bool
-Renderer::draw_frame(const OverlayMesh &mesh)
+Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 {
 	if (!this->device_ || !this->swapchain_ || !this->extent_.width ||
 		!this->extent_.height)
@@ -656,7 +656,7 @@ Renderer::draw_frame(const OverlayMesh &mesh)
 		? this->dest_inset_
 		: 0;
 	this->engine_.set_dest_inset(inset, inset, inset, inset);
-	if (this->engine_.has_image()) {
+	if (show_image && this->engine_.has_image()) {
 		if (!this->engine_.record(this->cmd_, dest_fb, this->extent_.width,
 				this->extent_.height, view, clear, &error))
 			die(error.c_str());
