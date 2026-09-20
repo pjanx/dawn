@@ -192,7 +192,7 @@ Sheet::clear()
 	this->h = 0;
 	this->pixels.clear();
 	this->shelves_.clear();
-	this->dirty = false;
+	this->dirty = {};
 }
 
 void
@@ -219,7 +219,7 @@ Sheet::grow(int side)
 	}
 	this->w = nw;
 	this->h = nh;
-	this->dirty = true;
+	mark_dirty({0, 0, nw, nh});
 }
 
 Sheet::Packed
@@ -300,7 +300,7 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 		const auto *row = (const uint8_t *) src + size_t(y) * size_t(stride);
 		memcpy(dst, row, size_t(cols) * 4 * sizeof(uint16_t));
 	}
-	this->dirty = true;
+	mark_dirty({slot.x, slot.y, cols, rows});
 }
 
 Uv
@@ -310,12 +310,20 @@ Sheet::Packed::texels() const
 		float(this->y + this->h)};
 }
 
-bool
-Sheet::take_dirty()
+void
+Sheet::mark_dirty(Packed slot)
 {
-	const bool d = this->dirty;
-	this->dirty = false;
-	return d;
+	if (slot.empty() || !this->keep_pixels_)
+		return;
+	if (this->dirty.empty()) {
+		this->dirty = slot;
+		return;
+	}
+	const int x = min(this->dirty.x, slot.x);
+	const int y = min(this->dirty.y, slot.y);
+	this->dirty = {x, y,
+		max(this->dirty.x + this->dirty.w, slot.x + slot.w) - x,
+		max(this->dirty.y + this->dirty.h, slot.y + slot.h) - y};
 }
 
 }  // namespace dn

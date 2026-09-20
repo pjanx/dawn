@@ -32,6 +32,9 @@ struct AtlasUpload {
 	int height = 0;
 	int x = 0;
 	int y = 0;
+	// Bytes per source row; zero means tightly packed. Regions must not
+	// overlap.
+	size_t stride = 0;
 };
 
 // The overlay half of the renderer: it owns the font and thumbnail atlases,
@@ -48,14 +51,16 @@ class OverlayVulkan
 	bool ensure_buffer(VkDeviceSize bytes);
 	bool upload_rgba16(std::span<const AtlasUpload> uploads, int width,
 		int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
-		VkDescriptorSet set, VkComponentMapping swizzle) const;
+		VkDescriptorSet set, VkComponentMapping swizzle);
 	bool copy_rgba16(std::span<const AtlasUpload> uploads, int width,
-		int height, VkImage image, VkImageLayout layout) const;
+		int height, VkImage image, VkImageLayout layout);
 	bool create_sampled(
 		int width, int height, VkImage *image, VkDeviceMemory *memory) const;
 	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
 		VkComponentMapping swizzle) const;
 	void compute_thumb_atlas_max();
+	bool ensure_staging(VkDeviceSize bytes);
+	void destroy_staging();
 
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
 	VkDevice device_ = VK_NULL_HANDLE;
@@ -73,6 +78,8 @@ class OverlayVulkan
 	VkImage font_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory font_memory_ = VK_NULL_HANDLE;
 	VkImageView font_view_ = VK_NULL_HANDLE;
+	int font_width_ = 0;
+	int font_height_ = 0;
 
 	VkImage thumb_image_ = VK_NULL_HANDLE;
 	VkDeviceMemory thumb_memory_ = VK_NULL_HANDLE;
@@ -85,6 +92,10 @@ class OverlayVulkan
 	VkDeviceSize quad_size_ = 0;
 
 	VkCommandPool upload_pool_ = VK_NULL_HANDLE;
+	VkCommandBuffer upload_cmd_ = VK_NULL_HANDLE;
+	VkBuffer staging_ = VK_NULL_HANDLE;
+	VkDeviceMemory staging_memory_ = VK_NULL_HANDLE;
+	VkDeviceSize staging_size_ = 0;
 
 public:
 	OverlayVulkan() = default;
@@ -96,10 +107,10 @@ public:
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkRenderPass render_pass);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
-	bool upload_font(const unsigned char *pixels, int width, int height);
+	bool upload_font(
+		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
 	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
-	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side);
+	bool upload_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
 	// Draw inside the caller's composition pass.
@@ -200,10 +211,10 @@ public:
 	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
 	void set_encoding(std::shared_ptr<const dawn::ProfileEncoding> encoding);
-	bool upload_font(const unsigned char *pixels, int width, int height);
+	bool upload_font(
+		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
 	[[nodiscard]] int thumb_atlas_max() const;
-	bool upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-		int dst_y, int atlas_side);
+	bool upload_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
 	void resize(Extent pixel);

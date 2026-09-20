@@ -182,7 +182,7 @@ EngineReadback::init(string *error)
 	overlay.set_encoding_buffer(engine.encoding_buffer());
 	const uint16_t atlas[] = {
 		65535, 65535, 65535, 65535, 32768, 32768, 32768, 32768};
-	if (!overlay.upload_font((const unsigned char *) atlas, 2, 1))
+	if (!overlay.upload_font(atlas, 2, 1, {0, 0, 2, 1}))
 		return false;
 	VkBufferCreateInfo bci{.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = 32,
@@ -513,7 +513,8 @@ test_composition()
 	}
 	// A half-transparent black image resolves against encoded checkers.
 	const uint16_t thumbnail[] = {0, 0, 0, 32768};
-	CHECK(gpu.overlay.upload_thumb(thumbnail, 1, 1, 0, 0, 2));
+	const dn::AtlasUpload thumbnail_upload{thumbnail, 1, 1, 0, 0};
+	CHECK(gpu.overlay.upload_thumbs({&thumbnail_upload, 1}, 2));
 	const dn::ThumbBackground background{{.25f, .25f, .25f, 1}, white, 0, 0, 1};
 	begin();
 	list.add_thumb(box, {0, 0, 1, 1}, white, background);
@@ -649,6 +650,72 @@ test_viewport_changes()
 }
 
 static void
+test_font_uploads()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error) || !gpu.init_presentation(&error)) {
+		test::fail("font atlas setup: %s", error.c_str());
+		return;
+	}
+	dn::Sheet atlas(2, true);
+	const array<uint16_t, 4> red{65535, 0, 0, 65535};
+	const array<uint16_t, 4> green{0, 65535, 0, 65535};
+	const array<uint16_t, 4> blue{0, 0, 65535, 65535};
+	const array<uint16_t, 4> white{65535, 65535, 65535, 65535};
+	auto upload = [&] {
+		CHECK(gpu.overlay.upload_font(
+			atlas.pixels.data(), atlas.w, atlas.h, atlas.dirty));
+		atlas.dirty = {};
+	};
+	auto check = [&](array<Pixel, 4> expected) {
+		dn::OverlayList list;
+		list.begin(2, 2, {});
+		list.add_image({0, 0, 2, 2}, {0, 0, 2, 2}, {1, 1, 1, 1});
+		list.end();
+		array<uint16_t, 16> pixels{};
+		CHECK(gpu.compose(
+			list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
+		for (size_t i = 0; i < expected.size(); i++) {
+			CHECK(pixels[i * 4] == expected[i].r);
+			CHECK(pixels[i * 4 + 1] == expected[i].g);
+			CHECK(pixels[i * 4 + 2] == expected[i].b);
+			CHECK(pixels[i * 4 + 3] == expected[i].a);
+		}
+	};
+	for (int y = 0; y < 2; y++)
+		for (int x = 0; x < 2; x++)
+			atlas.blit({x, y, 1, 1}, red.data(), 1, 1, 0);
+	upload();
+	check({kRed, kRed, kRed, kRed});
+
+	// Poison untouched CPU pixels: a partial upload must leave the GPU's
+	// left column alone, and copy both rows using the CPU atlas stride.
+	atlas.pixels.assign(atlas.pixels.size(), 0);
+	atlas.blit({1, 0, 1, 1}, green.data(), 1, 1, 0);
+	atlas.blit({1, 1, 1, 1}, blue.data(), 1, 1, 0);
+	upload();
+	check({kRed, kGreen, kRed, kBlue});
+	CHECK(!gpu.overlay.upload_font(atlas.pixels.data(), 2, 2, {2, 0, 1, 1}));
+	check({kRed, kGreen, kRed, kBlue});
+
+	// Growth uploads the entire shadow, including the poisoned left column.
+	atlas.grow(4);
+	upload();
+	check({Pixel{}, kGreen, Pixel{}, kBlue});
+	// A same-size reset replaces old contents without replacing storage.
+	atlas.clear();
+	atlas.grow(4);
+	atlas.blit({0, 0, 1, 1}, white.data(), 1, 1, 0);
+	upload();
+	check({kWhite, Pixel{}, Pixel{}, Pixel{}});
+	atlas.clear();
+	atlas.grow(2);
+	upload();
+	check({});
+}
+
+static void
 test_atlas_uploads()
 {
 	EngineReadback gpu;
@@ -680,21 +747,35 @@ test_atlas_uploads()
 	};
 	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
 	check({kRed, kGreen, kBlue, kWhite});
-	CHECK(gpu.overlay.upload_thumb((const uint16_t *) &kRed, 1, 1, 1, 1, 2));
+	const dn::AtlasUpload red{(const uint16_t *) &kRed, 1, 1, 1, 1};
+	CHECK(gpu.overlay.upload_thumbs({&red, 1}, 2));
 	check({kRed, kGreen, kBlue, kRed});
+	const array<Pixel, 4> padded{kWhite, kRed, kGreen, kRed};
+	const dn::AtlasUpload batch[] = {
+		{(const uint16_t *) padded.data(), 1, 2, 0, 0, 2 * sizeof(Pixel)},
+		{(const uint16_t *) &kBlue, 1, 1, 1, 1},
+	};
+	CHECK(gpu.overlay.upload_thumbs(batch, 2));
+	check({kWhite, kGreen, kGreen, kBlue});
 
 	// A rejected replacement or incremental resize preserves every old entry.
 	const dn::AtlasUpload invalid[] = {uploads[0], {nullptr, 1, 1, 0, 1}};
 	CHECK(!gpu.overlay.rebuild_thumbs(invalid, 2));
-	CHECK(!gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 2, 0, 2));
-	CHECK(!gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 0, 0, 4));
-	check({kRed, kGreen, kBlue, kRed});
+	CHECK(!gpu.overlay.upload_thumbs(invalid, 2));
+	auto bad_stride = batch[0];
+	bad_stride.stride = 1;
+	CHECK(!gpu.overlay.upload_thumbs({&bad_stride, 1}, 2));
+	const dn::AtlasUpload outside{(const uint16_t *) &kWhite, 1, 1, 2, 0};
+	CHECK(!gpu.overlay.upload_thumbs({&outside, 1}, 2));
+	const dn::AtlasUpload white{(const uint16_t *) &kWhite, 1, 1, 0, 0};
+	CHECK(!gpu.overlay.upload_thumbs({&white, 1}, 4));
+	check({kWhite, kGreen, kGreen, kBlue});
 
 	// Growing the atlas preserves texel coordinates; reset allows a fresh one.
 	CHECK(gpu.overlay.rebuild_thumbs(uploads, 4));
 	check({kRed, kGreen, kBlue, kWhite});
 	gpu.overlay.reset_thumbs();
-	CHECK(gpu.overlay.upload_thumb((const uint16_t *) &kWhite, 1, 1, 0, 0, 2));
+	CHECK(gpu.overlay.upload_thumbs({&white, 1}, 2));
 	CHECK(gpu.overlay.rebuild_thumbs(uploads, 2));
 	check({kRed, kGreen, kBlue, kWhite});
 }
@@ -965,6 +1046,7 @@ main()
 		{"linear GUI composition", test_composition},
 		{"viewer display curves", test_viewer_curves},
 		{"atlas uploads", test_atlas_uploads},
+		{"font atlas partial uploads", test_font_uploads},
 		{"image and overlay share a pass", test_image_overlay},
 		{"viewport changes without setup", test_viewport_changes},
 	});

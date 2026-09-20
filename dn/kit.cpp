@@ -275,7 +275,7 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 			dst[x * 4 + 3] = p[3];
 		}
 	}
-	kit.atlas_.dirty = true;
+	kit.atlas_.mark_dirty(rect);
 }
 
 static const Kit::Glyph *
@@ -307,7 +307,7 @@ cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 		for (int x = 0; x < map.width; x++)
 			fill_n(dst + x * 4, 4, widen8(src[x]));
 	}
-	kit.atlas_.dirty = true;
+	kit.atlas_.mark_dirty(packed);
 	Kit::Glyph glyph;
 	glyph.rect = packed;
 	glyph.bearing_x = map.origin_x;
@@ -447,7 +447,7 @@ rebuild_atlas(Kit &kit)
 			dst[x * 4 + 3] = 65535;
 		}
 	}
-	kit.atlas_.dirty = true;
+	kit.atlas_.mark_dirty(white);
 
 	const int gn = max(1, kit.px(kGlowPts));
 	const Kit::Packed glow = pack_or_grow(kit, gn, gn);
@@ -469,7 +469,7 @@ rebuild_atlas(Kit &kit)
 				fill_n(dst + x * 4, 4, widen8(a));
 			}
 		}
-		kit.atlas_.dirty = true;
+		kit.atlas_.mark_dirty(glow);
 	}
 }
 
@@ -4461,24 +4461,6 @@ Kit::text_settings_changed() const
 	return this->text_backend_.settings_changed();
 }
 
-bool
-Kit::font_pixels(unsigned char **out_pixels, int *width, int *height) const
-{
-	if (!out_pixels || !width || !height || this->atlas_.pixels.empty() ||
-		this->atlas_.w <= 0 || this->atlas_.h <= 0)
-		return false;
-	*out_pixels = (unsigned char *) this->atlas_.pixels.data();
-	*width = this->atlas_.w;
-	*height = this->atlas_.h;
-	return true;
-}
-
-bool
-Kit::take_atlas_dirty()
-{
-	return this->atlas_.take_dirty();
-}
-
 int
 Kit::text_width(const QString &text, bool bold) const
 {
@@ -5725,12 +5707,10 @@ Kit::paint()
 		p->paint(*this);
 	paint_tooltip(*this);
 	this->list_.end();
-	if (this->renderer_ && take_atlas_dirty()) {
-		unsigned char *pixels = nullptr;
-		int width = 0, height = 0;
-		if (font_pixels(&pixels, &width, &height))
-			this->renderer_->upload_font(pixels, width, height);
-	}
+	if (this->renderer_ && !this->atlas_.dirty.empty() &&
+		this->renderer_->upload_font(this->atlas_.pixels.data(), this->atlas_.w,
+			this->atlas_.h, this->atlas_.dirty))
+		this->atlas_.dirty = {};
 }
 
 }  // namespace dn

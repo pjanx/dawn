@@ -949,24 +949,47 @@ repack_atlas(Browser &b, Browser::File &wanted)
 }
 
 static void
-try_upload(Browser &b, Browser::File &f)
+upload_thumbs(Browser &b)
 {
-	if (f.pixels.ram.empty() || f.pixels.w <= 0 || f.pixels.h <= 0 ||
-		!f.gpu.empty())
+	Renderer *renderer = b.kit_.renderer_;
+	if (!renderer)
 		return;
 
-	Sheet::Packed slot = b.sheet_.alloc(f.pixels.w, f.pixels.h);
-	if (slot.empty()) {
-		repack_atlas(b, f);
-		return;
+	vector<Browser::File *> pending;
+	const auto flush = [&] {
+		if (pending.empty())
+			return;
+
+		vector<AtlasUpload> uploads;
+		for (const Browser::File *f : pending)
+			uploads.push_back({f->pixels.ram.data(), f->pixels.w, f->pixels.h,
+				f->gpu.x, f->gpu.y});
+		if (!renderer->upload_thumbs(uploads, b.sheet_.w)) {
+			for (Browser::File *f : pending) {
+				b.sheet_.release(f->gpu);
+				f->gpu = {};
+			}
+		}
+		pending.clear();
+	};
+	const float pad = row_h(b) * kPrefetchRows;
+	for (Browser::File &f : b.files_) {
+		if (!thumb_in_band(b, f, pad) || !f.gpu.empty() ||
+			f.pixels.ram.empty() || f.pixels.w <= 0 || f.pixels.h <= 0)
+			continue;
+
+		const Sheet::Packed slot = b.sheet_.alloc(f.pixels.w, f.pixels.h);
+		if (slot.empty()) {
+			// A repack changes every placement. Finish the batch first.
+			flush();
+			repack_atlas(b, f);
+			continue;
+		}
+		f.gpu = slot;
+		pending.push_back(&f);
 	}
-	if (!b.kit_.renderer_ ||
-		!b.kit_.renderer_->upload_thumb(f.pixels.ram.data(), f.pixels.w,
-			f.pixels.h, slot.x, slot.y, b.sheet_.w)) {
-		b.sheet_.release(slot);
-		return;
-	}
-	f.gpu = slot;
+	// Pixels and file addresses stay owned by the browser until this returns.
+	flush();
 }
 
 static void
@@ -1094,11 +1117,7 @@ sync_thumbs(Browser &b)
 		b.sheet_.release(f.gpu);
 		f.gpu = {};
 	}
-	for (Browser::File &f : b.files_) {
-		if (!thumb_in_band(b, f, pad))
-			continue;
-		try_upload(b, f);
-	}
+	upload_thumbs(b);
 	trim_ram(b);
 	enqueue_thumbs(b);
 }
@@ -1171,8 +1190,6 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.interim = update.interim;
 			f.progress.pending = false;
 			f.progress.regen_failed = false;
-			if (thumb_in_band(b, f, row_h(b) * kPrefetchRows))
-				try_upload(b, f);
 			trim_ram(b);
 		}
 		break;

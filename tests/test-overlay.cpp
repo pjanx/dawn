@@ -52,6 +52,28 @@ test_growth()
 }
 
 static void
+test_dirty_regions()
+{
+	dn::Sheet atlas(8, true);
+	CHECK(atlas.dirty.x == 0 && atlas.dirty.y == 0 && atlas.dirty.w == 8 &&
+		atlas.dirty.h == 8);
+	atlas.dirty = {};
+	const array<uint16_t, 4> pixel{65535, 0, 0, 65535};
+	atlas.blit({5, 2, 1, 1}, pixel.data(), 1, 1, 0);
+	atlas.blit({2, 4, 1, 1}, pixel.data(), 1, 1, 0);
+	CHECK(atlas.dirty.x == 2 && atlas.dirty.y == 2 && atlas.dirty.w == 4 &&
+		atlas.dirty.h == 3);
+	atlas.grow(16);
+	CHECK(atlas.dirty.x == 0 && atlas.dirty.y == 0 && atlas.dirty.w == 16 &&
+		atlas.dirty.h == 16);
+	CHECK(atlas.pixels[(2 * 16 + 5) * 4] == 65535);
+	atlas.clear();
+	CHECK(atlas.dirty.empty());
+	dn::Sheet logical(8, false);
+	CHECK(logical.dirty.empty());
+}
+
+static void
 test_thumbnails()
 {
 	dn::Sheet atlas(32, false);
@@ -111,6 +133,7 @@ main()
 {
 	return test::run({
 		{"growth during painting", test_growth},
+		{"atlas dirty regions", test_dirty_regions},
 		{"thumbnail coordinates", test_thumbnails},
 		{"thumbnail background batches", test_thumbnail_backgrounds},
 	});

@@ -1147,11 +1147,6 @@ struct Kit {
 	// One icon square, in device pixels: the size draw_icon() rasterises at,
 	// and the size the quad that samples it is drawn at.
 	[[nodiscard]] int icon_px() const { return std::max(px(kIconPts), 16); }
-
-	// Raw atlas bytes: 16-bit RGBA UNORM, 8 bytes/pixel, row-major.
-	[[nodiscard]] bool font_pixels(
-		unsigned char **out_pixels, int *width, int *height) const;
-	[[nodiscard]] bool take_atlas_dirty();
 };
 
 }  // namespace dn

@@ -133,7 +133,7 @@ struct Sheet {
 	int w = 0;
 	int h = 0;
 	std::vector<uint16_t> pixels;  // 4 channels / pixel; empty if !keep_pixels_
-	bool dirty = false;
+	Packed dirty;
 	bool keep_pixels_ = true;
 	std::vector<Shelf> shelves_;
 
@@ -148,7 +148,7 @@ struct Sheet {
 	// (src_w * 8). No-op if this sheet has no CPU shadow.
 	void blit(
 		Packed slot, const uint16_t *src, int src_w, int src_h, int stride);
-	[[nodiscard]] bool take_dirty();
+	void mark_dirty(Packed slot);
 };
 
 }  // namespace dn

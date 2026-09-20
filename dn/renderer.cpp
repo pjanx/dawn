@@ -535,9 +535,10 @@ Renderer::set_checker_colour(float r, float g, float b)
 }
 
 bool
-Renderer::upload_font(const unsigned char *pixels, int width, int height)
+Renderer::upload_font(
+	const uint16_t *pixels, int width, int height, Sheet::Packed dirty)
 {
-	return this->overlay_.upload_font(pixels, width, height);
+	return this->overlay_.upload_font(pixels, width, height, dirty);
 }
 
 int
@@ -547,11 +548,9 @@ Renderer::thumb_atlas_max() const
 }
 
 bool
-Renderer::upload_thumb(const uint16_t *pixels, int width, int height, int dst_x,
-	int dst_y, int atlas_side)
+Renderer::upload_thumbs(span<const AtlasUpload> uploads, int atlas_side)
 {
-	return this->overlay_.upload_thumb(
-		pixels, width, height, dst_x, dst_y, atlas_side);
+	return this->overlay_.upload_thumbs(uploads, atlas_side);
 }
 
 bool
@@ -1085,11 +1084,20 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 
 	VkCommandPoolCreateInfo pool_info{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-		.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+		.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+			VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
 		.queueFamilyIndex = this->queue_family_,
 	};
 	CALL_VK(CreateCommandPool, " overlay upload", this->device_, &pool_info,
 		nullptr, &this->upload_pool_);
+	VkCommandBufferAllocateInfo cmd_info{
+		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+		.commandPool = this->upload_pool_,
+		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+		.commandBufferCount = 1,
+	};
+	CALL_VK(AllocateCommandBuffers, " overlay upload", this->device_, &cmd_info,
+		&this->upload_cmd_);
 	compute_thumb_atlas_max();
 
 	VkSamplerCreateInfo sampler_info{
@@ -1363,8 +1371,61 @@ OverlayVulkan::bind_sampled(VkImage image, VkImageView *view,
 }
 
 bool
+OverlayVulkan::ensure_staging(VkDeviceSize bytes)
+{
+	if (this->staging_size_ >= bytes)
+		return true;
+
+	destroy_staging();
+	const VkDeviceSize size = bytes + bytes / 2;
+	VkBufferCreateInfo buffer_info{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+	};
+	CALL_VK(CreateBuffer, " overlay tex staging", this->device_, &buffer_info,
+		nullptr, &this->staging_);
+
+	VkMemoryRequirements requirements{};
+	vkGetBufferMemoryRequirements(this->device_, this->staging_, &requirements);
+	const uint32_t host_type =
+		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			nullptr, nullptr);
+	if (host_type == UINT32_MAX) {
+		destroy_staging();
+		return false;
+	}
+
+	VkMemoryAllocateInfo allocate{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = requirements.size,
+		.memoryTypeIndex = host_type,
+	};
+	CALL_VK(AllocateMemory, " overlay tex staging", this->device_, &allocate,
+		nullptr, &this->staging_memory_);
+	CALL_VK(BindBufferMemory, " overlay tex staging", this->device_,
+		this->staging_, this->staging_memory_, 0);
+	this->staging_size_ = size;
+	return true;
+}
+
+void
+OverlayVulkan::destroy_staging()
+{
+	if (this->staging_)
+		vkDestroyBuffer(this->device_, this->staging_, nullptr);
+	if (this->staging_memory_)
+		vkFreeMemory(this->device_, this->staging_memory_, nullptr);
+	this->staging_ = VK_NULL_HANDLE;
+	this->staging_memory_ = VK_NULL_HANDLE;
+	this->staging_size_ = 0;
+}
+
+bool
 OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
-	int height, VkImage image, VkImageLayout layout) const
+	int height, VkImage image, VkImageLayout layout)
 {
 	if (!this->device_ || !image || width <= 0 || height <= 0 ||
 		uploads.empty())
@@ -1376,7 +1437,9 @@ OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
 		if (!upload.pixels || upload.width <= 0 || upload.height <= 0 ||
 			upload.x < 0 || upload.y < 0 || upload.x > width ||
 			upload.y > height || upload.width > width - upload.x ||
-			upload.height > height - upload.y)
+			upload.height > height - upload.y ||
+			(upload.stride &&
+				upload.stride < size_t(upload.width) * kOverlayBpp))
 			return false;
 		copies.push_back({
 			.bufferOffset = size,
@@ -1387,56 +1450,23 @@ OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
 		});
 		size += VkDeviceSize(upload.width) * upload.height * kOverlayBpp;
 	}
-	VkBuffer staging = VK_NULL_HANDLE;
-	VkDeviceMemory staging_memory = VK_NULL_HANDLE;
-	VkBufferCreateInfo buffer_info{
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = size,
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	};
-	CALL_VK(CreateBuffer, " overlay tex staging", this->device_, &buffer_info,
-		nullptr, &staging);
-
-	VkMemoryRequirements requirements{};
-	vkGetBufferMemoryRequirements(this->device_, staging, &requirements);
-	const uint32_t host_type =
-		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			nullptr, nullptr);
-	if (host_type == UINT32_MAX) {
-		vkDestroyBuffer(this->device_, staging, nullptr);
+	if (!ensure_staging(size))
 		return false;
-	}
-
-	VkMemoryAllocateInfo allocate{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = requirements.size,
-		.memoryTypeIndex = host_type,
-	};
-	CALL_VK(AllocateMemory, " overlay tex staging", this->device_, &allocate,
-		nullptr, &staging_memory);
-	CALL_VK(BindBufferMemory, " overlay tex staging", this->device_, staging,
-		staging_memory, 0);
 	void *mapped = nullptr;
-	CALL_VK(MapMemory, " overlay tex staging", this->device_, staging_memory, 0,
-		size, 0, &mapped);
+	CALL_VK(MapMemory, " overlay tex staging", this->device_,
+		this->staging_memory_, 0, size, 0, &mapped);
 	for (size_t i = 0; i < uploads.size(); i++) {
 		const AtlasUpload &upload = uploads[i];
-		memcpy((uint8_t *) mapped + copies[i].bufferOffset, upload.pixels,
-			size_t(upload.width) * upload.height * kOverlayBpp);
+		const size_t row_bytes = size_t(upload.width) * kOverlayBpp;
+		const size_t stride = upload.stride ? upload.stride : row_bytes;
+		for (int y = 0; y < upload.height; y++)
+			memcpy((uint8_t *) mapped + copies[i].bufferOffset + y * row_bytes,
+				(const uint8_t *) upload.pixels + y * stride, row_bytes);
 	}
-	vkUnmapMemory(this->device_, staging_memory);
+	vkUnmapMemory(this->device_, this->staging_memory_);
 
-	VkCommandBuffer cmd = VK_NULL_HANDLE;
-	VkCommandBufferAllocateInfo cmd_info{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-		.commandPool = this->upload_pool_,
-		.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-		.commandBufferCount = 1,
-	};
-	CALL_VK(
-		AllocateCommandBuffers, " overlay tex", this->device_, &cmd_info, &cmd);
+	const VkCommandBuffer cmd = this->upload_cmd_;
+	CALL_VK(ResetCommandBuffer, " overlay tex", cmd, 0);
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
@@ -1462,7 +1492,7 @@ OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
 			? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
 			: VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &to_dst);
-	vkCmdCopyBufferToImage(cmd, staging, image,
+	vkCmdCopyBufferToImage(cmd, this->staging_, image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, uint32_t(copies.size()),
 		copies.data());
 	VkImageMemoryBarrier to_shader = to_dst;
@@ -1482,16 +1512,13 @@ OverlayVulkan::copy_rgba16(span<const AtlasUpload> uploads, int width,
 	CALL_VK(
 		QueueSubmit, " overlay tex", this->queue_, 1, &submit, VK_NULL_HANDLE);
 	CALL_VK(QueueWaitIdle, " overlay tex", this->queue_);
-	vkFreeCommandBuffers(this->device_, this->upload_pool_, 1, &cmd);
-	vkDestroyBuffer(this->device_, staging, nullptr);
-	vkFreeMemory(this->device_, staging_memory, nullptr);
 	return true;
 }
 
 bool
 OverlayVulkan::upload_rgba16(span<const AtlasUpload> uploads, int width,
 	int height, VkImage *image, VkDeviceMemory *memory, VkImageView *view,
-	VkDescriptorSet set, VkComponentMapping swizzle) const
+	VkDescriptorSet set, VkComponentMapping swizzle)
 {
 	VkImage fresh = VK_NULL_HANDLE;
 	VkDeviceMemory fresh_memory = VK_NULL_HANDLE;
@@ -1512,21 +1539,21 @@ OverlayVulkan::upload_rgba16(span<const AtlasUpload> uploads, int width,
 }
 
 bool
-OverlayVulkan::upload_thumb(const uint16_t *pixels, int width, int height,
-	int dst_x, int dst_y, int atlas_side)
+OverlayVulkan::upload_thumbs(span<const AtlasUpload> uploads, int atlas_side)
 {
-	const AtlasUpload upload{pixels, width, height, dst_x, dst_y};
 	if (!this->thumb_image_)
-		return rebuild_thumbs({&upload, 1}, atlas_side);
+		return rebuild_thumbs(uploads, atlas_side);
 	// Changing atlas dimensions requires replacing all entries together.
 	return atlas_side == this->thumb_side_ &&
-		copy_rgba16({&upload, 1}, atlas_side, atlas_side, this->thumb_image_,
+		copy_rgba16(uploads, atlas_side, atlas_side, this->thumb_image_,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
 bool
 OverlayVulkan::rebuild_thumbs(span<const AtlasUpload> uploads, int atlas_side)
 {
+	if (this->thumb_image_ && this->thumb_side_ == atlas_side)
+		return upload_thumbs(uploads, atlas_side);
 	const VkComponentMapping bgra{VK_COMPONENT_SWIZZLE_B,
 		VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A};
 	if (!upload_rgba16(uploads, atlas_side, atlas_side, &this->thumb_image_,
@@ -1546,12 +1573,36 @@ OverlayVulkan::reset_thumbs()
 }
 
 bool
-OverlayVulkan::upload_font(const unsigned char *pixels, int width, int height)
+OverlayVulkan::upload_font(
+	const uint16_t *pixels, int width, int height, Sheet::Packed dirty)
 {
-	const AtlasUpload upload{(const uint16_t *) pixels, width, height, 0, 0};
-	return upload_rgba16({&upload, 1}, width, height, &this->font_image_,
-		&this->font_memory_, &this->font_view_,
-		this->descriptor_sets_[kOverlayTexFont], {});
+	if (!pixels || width <= 0 || height <= 0)
+		return false;
+
+	if (this->font_image_ && this->font_width_ == width &&
+		this->font_height_ == height) {
+		if (dirty.empty() || dirty.x < 0 || dirty.y < 0 || dirty.x > width ||
+			dirty.y > height || dirty.w > width - dirty.x ||
+			dirty.h > height - dirty.y)
+			return false;
+
+		const AtlasUpload upload{
+			pixels + (size_t(dirty.y) * width + dirty.x) * 4, dirty.w, dirty.h,
+			dirty.x, dirty.y, size_t(width) * kOverlayBpp};
+		return copy_rgba16({&upload, 1}, width, height, this->font_image_,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
+	// Growth changes row stride as well as dimensions: upload the CPU shadow.
+	const AtlasUpload upload{pixels, width, height, 0, 0};
+	if (!upload_rgba16({&upload, 1}, width, height, &this->font_image_,
+			&this->font_memory_, &this->font_view_,
+			this->descriptor_sets_[kOverlayTexFont], {}))
+		return false;
+
+	this->font_width_ = width;
+	this->font_height_ = height;
+	return true;
 }
 
 void
@@ -1702,6 +1753,7 @@ void
 OverlayVulkan::destroy_font()
 {
 	destroy_sampled(&this->font_image_, &this->font_memory_, &this->font_view_);
+	this->font_width_ = this->font_height_ = 0;
 }
 
 void
@@ -1741,6 +1793,7 @@ OverlayVulkan::destroy()
 		return;
 	vkDeviceWaitIdle(this->device_);
 	destroy_buffer();
+	destroy_staging();
 	destroy_font();
 	destroy_thumbs();
 	destroy_pipeline();
@@ -1758,6 +1811,7 @@ OverlayVulkan::destroy()
 	this->set_layout_ = VK_NULL_HANDLE;
 	this->sampler_ = VK_NULL_HANDLE;
 	this->upload_pool_ = VK_NULL_HANDLE;
+	this->upload_cmd_ = VK_NULL_HANDLE;
 	this->phys_ = VK_NULL_HANDLE;
 	this->device_ = VK_NULL_HANDLE;
 	this->queue_ = VK_NULL_HANDLE;
