@@ -127,6 +127,12 @@ target_include_directories(test-xdg PRIVATE
 target_link_libraries(test-xdg PRIVATE Qt6::Gui)
 add_test(NAME xdg COMMAND test-xdg)
 
+add_executable(test-overlay test-overlay.cpp
+	"${PROJECT_SOURCE_DIR}/dn/overlay.cpp")
+target_include_directories(test-overlay PRIVATE
+	"${PROJECT_SOURCE_DIR}/dn" "${PROJECT_BINARY_DIR}")
+add_test(NAME overlay COMMAND test-overlay)
+
 add_executable(test-thumbnail-cache
 	test-thumbnail-cache.cpp
 	"${PROJECT_SOURCE_DIR}/dn/thumbnail-cache.cpp")

@@ -114,7 +114,6 @@ struct Hint : Popup {
 	void open(Kit &kit);
 	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
-	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool captures_keys() const override { return true; }
 	bool key(Kit &kit, const Key &ev) override;
@@ -179,11 +178,8 @@ struct Page : Composite {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	bool key(Kit &kit, const Key &ev) override;
-	std::size_t child_count() const override;
-	Widget *child(std::size_t i) const override;
 
 private:
-	std::unique_ptr<Widget> banner_owned_;
 	std::unique_ptr<Menu> app_menu_owned_;
 	std::unique_ptr<Hint> hint_owned_;
 	std::unique_ptr<ContextMenu> context_owned_;

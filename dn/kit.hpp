@@ -215,7 +215,7 @@ struct Widget {
 	// At least as of now, we don't seem to need baseline measurements.
 	// Returns the requested size without changing arranged geometry.
 	virtual Size measure_content(Kit &kit, int max_w, int max_h) = 0;
-	virtual void arrange_content(Kit &kit, Rect alloc) = 0;
+	virtual void arrange_content(Kit &kit, Rect alloc);
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
 	[[nodiscard]] bool shown() const
@@ -294,8 +294,11 @@ struct Widget {
 	virtual void focus_lost(Kit &) {}
 	[[nodiscard]] virtual int wake_ms() const { return -1; }
 
-	virtual std::size_t child_count() const { return 0; }
-	virtual Widget *child(std::size_t) const { return nullptr; }
+	virtual std::span<const std::unique_ptr<Widget>> children() const
+	{
+		return {};
+	}
+	Widget *child(std::size_t i) const;
 	void paint_children(Kit &kit) const;
 };
 
@@ -314,10 +317,9 @@ struct Composite : Widget {
 	// Forgets toolkit state pointing into the removed subtrees before
 	// releasing their ownership.
 	void erase_children(Kit &kit, std::size_t from);
-	std::size_t child_count() const override { return this->kids.size(); }
-	Widget *child(std::size_t i) const override
+	std::span<const std::unique_ptr<Widget>> children() const override
 	{
-		return i < this->kids.size() ? this->kids[i].get() : nullptr;
+		return this->kids;
 	}
 };
 
@@ -346,9 +348,7 @@ struct Button : Widget {
 	bool sync_action();
 	void set_text(const QString &value);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	QString tip() const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 	bool focusable() const override;
@@ -365,7 +365,6 @@ struct Checkbox : Button {
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
 };
 
@@ -387,9 +386,7 @@ struct Label : Widget {
 
 	void set_text(const QString &value);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
 	[[nodiscard]] QChar mnemonic_key() const override;
 	QString tip() const override { return this->tip_text; }
@@ -477,7 +474,6 @@ struct Entry : Widget {
 
 struct Sep : Widget {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 };
 
@@ -486,7 +482,6 @@ struct Splitter : Widget {
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -768,7 +763,6 @@ struct MenuItem : Button {
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
 	int label_width(const Kit &kit) const;
 	int accel_width(const Kit &kit) const;
@@ -783,7 +777,6 @@ struct Combo;
 struct ComboItem : Button {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 };
 
 // The list a Combo drops.  Menu navigation applies to it unchanged; all
@@ -812,7 +805,6 @@ struct Combo : Button {
 	Combo();
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	bool activate(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
 	// Clamps, and notifies only on an actual change.
@@ -891,7 +883,6 @@ struct Titlebar : Panel {
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
-	void prepare(Kit &kit) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
@@ -952,7 +943,7 @@ struct Kit {
 	QRawFont raw_bold_;
 	// kGlyphPhases where the engine honours fractional pens, else 1.
 	int glyph_phases_ = 1;
-	std::unordered_map<std::string, Packed> icons_;
+	std::map<std::pair<std::string, int>, Packed> icons_;
 	std::unordered_map<uint64_t, Glyph> glyphs_;
 	std::vector<QRawFont> fonts_;
 	OverlayList list_;
@@ -1100,10 +1091,8 @@ struct Kit {
 	bool set_dpr(float dpr);
 	bool set_host(float width_pts, float height_pts, float dpr);
 	void bake_colours(dawn::Cmm *cmm, dawn::Profile *target);
-	void pack_icon(const char *name, int px);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);
 	Packed pack_bitmap(const QImage &image);
-	void cache_text(const QString &text, bool bold);
 	void emit_text(
 		float x, float y, const QString &text, Colour colour, bool bold);
 	void draw_glow(Rect w, Colour col);
@@ -1156,7 +1145,7 @@ struct Kit {
 	// An appropriately thick rule, border or caret, in device pixels.
 	[[nodiscard]] int hairline() const { return std::max(px(1.f), 1); }
 
-	// One icon square, in device pixels: the size pack_icon() rasterises at,
+	// One icon square, in device pixels: the size draw_icon() rasterises at,
 	// and the size the quad that samples it is drawn at.
 	[[nodiscard]] int icon_px() const { return std::max(px(kIconPts), 16); }
 

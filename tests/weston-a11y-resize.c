@@ -13,13 +13,16 @@
 //   shrink   configure a width that packs the toolbar into overflow
 //   wide     configure at least 1600 px, enough to unpack it
 //   restore  configure the size snapshotted before the first change
+//   next-pane  send F6 to exercise the application's keyboard traversal
 //
 
+#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <libweston/desktop.h>
@@ -106,6 +109,24 @@ apply(struct resize_mod *mod, const char *cmd)
 	struct weston_desktop_surface *ds = first_toplevel(mod->ec);
 	int32_t width;
 	int32_t height;
+
+	if (strcmp(cmd, "next-pane") == 0) {
+		struct weston_seat *seat;
+		struct timespec now;
+
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		wl_list_for_each (seat, &mod->ec->seat_list, link) {
+			struct weston_keyboard *keyboard = weston_seat_get_keyboard(seat);
+			if (!keyboard || !keyboard->focus)
+				continue;
+			weston_keyboard_send_key(
+				keyboard, &now, KEY_F6, WL_KEYBOARD_KEY_STATE_PRESSED);
+			weston_keyboard_send_key(
+				keyboard, &now, KEY_F6, WL_KEYBOARD_KEY_STATE_RELEASED);
+			break;
+		}
+		return;
+	}
 
 	if (!ds)
 		return;

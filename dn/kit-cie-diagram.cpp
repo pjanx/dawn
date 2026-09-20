@@ -262,9 +262,6 @@ CieDiagram::arrange_content(Kit &kit, Rect alloc)
 void
 CieDiagram::prepare(Kit &kit)
 {
-	kit.cache_text(source_label(), false);
-	kit.cache_text(target_label(), false);
-
 	const int cap = caption_h(kit);
 	const Rect plot =
 		plot_rect({this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
@@ -309,8 +306,7 @@ CieDiagram::paint(Kit &kit) const
 	const int cap_w = plot.w >= 8 ? plot.w : this->r.w;
 	kit.list_.add_rect_filled({x0, y, x0 + cap_w, y + th}, kMidGreyCol);
 	if (plot.w >= 8 && plot.h >= 8 && !this->slot_.empty())
-		kit.list_.add_image(
-			plot.box(), kit.atlas_.uv(this->slot_), {1, 1, 1, 1});
+		kit.list_.add_image(plot.box(), this->slot_.texels(), {1, 1, 1, 1});
 
 	const int cx = x0 + cap_w / 2;
 	const int gap = kit.px(4.f);

@@ -2131,14 +2131,6 @@ set_view(Browser &b, BrowserView view)
 
 // --- Toolbar -----------------------------------------------------------------
 
-static void
-pack_standin_icons(Browser &b)
-{
-	const int px = max(1, b.kit_.px(float(b.thumb_size_) * 0.5f));
-	b.kit_.pack_icon(kPendingIcon, px);
-	b.kit_.pack_icon(kMissingIcon, px);
-}
-
 void
 Browser::rescale(Kit &)
 {
@@ -2592,7 +2584,6 @@ Browser::file_gone(const QUrl &url)
 void
 Browser::prepare(Kit &kit)
 {
-	pack_standin_icons(*this);
 	for (File &f : this->files_) {
 		if (!this->show_names_ || !thumb_in_band(*this, f, 0.f) ||
 			f.cap.h <= 0) {
@@ -2607,7 +2598,6 @@ Browser::prepare(Kit &kit)
 		}
 		f.caption->set_text(f.cap_text);
 		f.caption->r = f.cap;
-		f.caption->prepare(kit);
 	}
 }
 

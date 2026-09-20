@@ -1017,6 +1017,61 @@ case_startup()
 }
 
 static void
+case_panes()
+{
+	if (!g_window)
+		return;
+
+	AtspiAccessible *computer = find_one(g_window, "Computer");
+	AtspiAccessible *list = find_role(g_window, "list", nullptr);
+	if (computer && list) {
+		AtspiAccessible *side = atspi_accessible_get_parent(computer, nullptr);
+		if (side) {
+			CHECK(atspi_accessible_get_index_in_parent(side, nullptr) <
+				atspi_accessible_get_index_in_parent(list, nullptr));
+			g_object_unref(side);
+		}
+		// Browser order is toolbar, left sidebar, listing. F6 must follow
+		// that same order, rather than an independent ownership order.
+		CHECK(act_named(g_window, "Filter", "SetFocus"));
+		CHECK(compositor_resize("next-pane"));
+		CHECK(wait_until(
+			[computer] { return has_state(computer, ATSPI_STATE_FOCUSED); }));
+		CHECK(compositor_resize("next-pane"));
+		CHECK(wait_until(
+			[list] { return has_state(list, ATSPI_STATE_FOCUSED); }));
+	}
+	g_clear_object(&computer);
+	g_clear_object(&list);
+
+	CHECK(act_named(g_window, "black.png", "Press"));
+	CHECK(wait_until([] { return has_role(g_window, "image", "black.png"); }));
+	CHECK(act_named(g_window, "Show Information", "Press"));
+	CHECK(wait_until([] { return has_named(g_window, "Name:"); }));
+	AtspiAccessible *name = find_one(g_window, "Name:");
+	AtspiAccessible *view = find_role(g_window, "image", "black.png");
+	if (name && view) {
+		AtspiAccessible *side = atspi_accessible_get_parent(name, nullptr);
+		if (side) {
+			CHECK(atspi_accessible_get_index_in_parent(view, nullptr) <
+				atspi_accessible_get_index_in_parent(side, nullptr));
+			g_object_unref(side);
+		}
+		// The viewer has its sidebar on the right, so its image is the
+		// first pane after the toolbar, not the sidebar constructed with it.
+		CHECK(act_named(g_window, "Browse", "SetFocus"));
+		CHECK(compositor_resize("next-pane"));
+		CHECK(wait_until(
+			[view] { return has_state(view, ATSPI_STATE_FOCUSED); }));
+	}
+	g_clear_object(&name);
+	g_clear_object(&view);
+	CHECK(act_named(g_window, "Show Information", "Press"));
+	CHECK(act_named(g_window, "Browse", "Press"));
+	CHECK(wait_until([] { return has_named(g_window, "Filter"); }));
+}
+
+static void
 case_button()
 {
 	if (!g_window)
@@ -2373,6 +2428,7 @@ main(int argc, char *argv[])
 
 	const int failures = test::run({
 		{"startup", case_startup},
+		{"panes", case_panes},
 		{"button", case_button},
 		{"extents", case_extents},
 		{"dialog", case_dialog},

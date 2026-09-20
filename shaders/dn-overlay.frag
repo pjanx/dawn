@@ -10,5 +10,5 @@ layout(location = 0) out vec4 fColor;
 void
 main()
 {
-	fColor = vColor * texture(sTexture, vUV);
+	fColor = vColor * texture(sTexture, vUV / vec2(textureSize(sTexture, 0)));
 }

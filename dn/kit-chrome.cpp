@@ -710,9 +710,8 @@ collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 
 	if (w->focusable() && visible_rect(w, host).w > 0)
 		out.push_back(w);
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++)
-		collect_targets(w->child(i), host, out);
+	for (const auto &k : w->children())
+		collect_targets(k.get(), host, out);
 }
 
 static QString
@@ -780,15 +779,6 @@ Hint::place(Kit &kit)
 	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	refresh_rects();
 	layout_chips(kit);
-}
-
-void
-Hint::prepare(Kit &kit)
-{
-	for (const Target &t : this->targets_) {
-		if (matches(t))
-			kit.cache_text(t.label, true);
-	}
 }
 
 void
@@ -1030,7 +1020,14 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	this->toolbar = tb.get();
 	add_child(std::move(tb), size_t(-1));
 	this->sidebar = sb.get();
-	add_child(std::move(sb), size_t(-1));
+	this->content = body.get();
+	if (s == Side::Right) {
+		add_child(std::move(body), size_t(-1));
+		add_child(std::move(sb), size_t(-1));
+	} else {
+		add_child(std::move(sb), size_t(-1));
+		add_child(std::move(body), size_t(-1));
+	}
 	if (this->sidebar) {
 		auto split = make_unique<Splitter>();
 		split->min_w = kSplitW;
@@ -1053,8 +1050,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		};
 		add_child(std::move(split), size_t(-1));
 	}
-	this->content = body.get();
-	add_child(std::move(body), size_t(-1));
 
 	// macOS has a real menu bar for this; everywhere else it is a button
 	// at the far end of the toolbar.
@@ -1100,10 +1095,8 @@ bind_tree_actions(Widget &w, const Actor &actor)
 	if (auto *button = dynamic_cast<Button *>(&w);
 		button && button->action != Action::None)
 		button->actor = &actor;
-	for (size_t i = 0; i < w.child_count(); i++) {
-		if (Widget *child = w.child(i))
-			bind_tree_actions(*child, actor);
-	}
+	for (const auto &child : w.children())
+		bind_tree_actions(*child, actor);
 }
 
 void
@@ -1151,18 +1144,12 @@ Page::sync_app_menu()
 void
 Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 {
-	invalidate_measure();
+	const size_t at = 1 + bool(this->toolbar);
 	if (this->banner) {
-		// The assignment below destroys it, and the registry the host keeps
-		// is keyed by live widget pointers: every destruction path has to
-		// go through here first, while the subtree is still whole.
 		kit.forget_tree(this->banner);
-		this->banner->parent_ = nullptr;
+		(void) take_child(at);
 	}
-	this->banner = w.get();
-	if (this->banner)
-		this->banner->parent_ = this;
-	this->banner_owned_ = std::move(w);
+	this->banner = add_child(std::move(w), at);
 }
 
 Size
@@ -1272,8 +1259,8 @@ Page::key(Kit &kit, const Key &ev)
 	}
 	Widget *panes[3];
 	int n = 0, i = 0;
-	for (size_t c = 0; c < child_count(); c++) {
-		Widget *k = child(c);
+	for (const auto &child : this->kids) {
+		Widget *k = child.get();
 		if (!k || !k->visible ||
 			(k != this->toolbar && k != this->sidebar && k != this->content))
 			continue;
@@ -1287,34 +1274,6 @@ Page::key(Kit &kit, const Key &ev)
 	const int dir = a == Action::PrevPane ? -1 : 1;
 	kit.focus_first(panes[(i + dir + n) % n]);
 	return true;
-}
-
-size_t
-Page::child_count() const
-{
-	return 6;
-}
-
-Widget *
-Page::child(size_t i) const
-{
-	const bool right = this->sidebar_side == Side::Right;
-	switch (i) {
-	case 0:
-		return this->titlebar;
-	case 1:
-		return this->toolbar;
-	case 2:
-		return this->banner;
-	case 3:
-		return right ? this->content : this->sidebar;
-	case 4:
-		return right ? this->sidebar : this->content;
-	case 5:
-		return this->splitter;
-	default:
-		return nullptr;
-	}
 }
 
 shared_ptr<dawn::Profile>

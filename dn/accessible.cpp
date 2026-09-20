@@ -131,9 +131,8 @@ flattened(const Widget *w)
 static void
 semantic_children(const Widget *w, vector<Widget *> &out)
 {
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++) {
-		Widget *k = w->child(i);
+	for (const auto &child : w->children()) {
+		Widget *k = child.get();
 		if (!k || !k->shown() || suppressed(k))
 			continue;
 
@@ -286,9 +285,8 @@ static Label *
 buddy_label(const Widget *w)
 {
 	for (Widget *p = w->parent_; p; p = p->parent_) {
-		const size_t n = p->child_count();
-		for (size_t i = 0; i < n; i++) {
-			auto *label = dynamic_cast<Label *>(p->child(i));
+		for (const auto &child : p->children()) {
+			auto *label = dynamic_cast<Label *>(child.get());
 			if (label && label->buddy == w)
 				return label;
 		}
@@ -414,9 +412,9 @@ combo_list_of(const Widget *w, int *index)
 	if (!list || list->col != column)
 		return nullptr;
 
-	const size_t n = column->child_count();
-	for (size_t i = 0; i < n; i++) {
-		if (column->child(i) == w) {
+	const auto kids = column->children();
+	for (size_t i = 0; i < kids.size(); i++) {
+		if (kids[i].get() == w) {
 			*index = int(i);
 			return list;
 		}
@@ -2510,11 +2508,8 @@ owned_popups(const Widget *w, vector<Widget *> &out)
 static void
 retire_subtree(Registry &registry, Widget *w)
 {
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++) {
-		if (Widget *k = w->child(i))
-			retire_subtree(registry, k);
-	}
+	for (const auto &k : w->children())
+		retire_subtree(registry, k.get());
 
 	vector<Widget *> owned;
 	owned_popups(w, owned);

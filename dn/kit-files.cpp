@@ -154,13 +154,9 @@ FileRow::prepare(Kit &kit)
 	if (offscreen(this, kit))
 		return;
 
-	kit.pack_icon(this->icon, kit.icon_px());
 	const int pad = kit.px(kFramePadX) * 2 + kit.icon_px() + kit.px(4.f);
 	this->shown_ = kit.elide_lines(
 		this->text, max(1, this->list->col_w[ColName] - pad), 1, false);
-	kit.cache_text(this->shown_, false);
-	kit.cache_text(this->entry.size, false);
-	kit.cache_text(this->entry.modified, false);
 }
 
 QString
@@ -379,7 +375,7 @@ FileList::current(const Kit &kit) const
 void
 FileList::step(Kit &kit, int to)
 {
-	const int n = int(this->rows->child_count());
+	const int n = int(this->rows->kids.size());
 	if (!n)
 		return;
 	auto *row = (FileRow *) this->rows->child(size_t(clamp(to, 0, n - 1)));
@@ -393,7 +389,7 @@ FileList::key(Kit &kit, const Key &ev)
 	if (ev.mods || this->rows->kids.empty())
 		return false;
 
-	const int n = int(this->rows->child_count());
+	const int n = int(this->rows->kids.size());
 	const int at = focused(kit);
 	// A page of rows, not of pixels: the focus is what moves.
 	const int page =

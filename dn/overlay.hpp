@@ -31,7 +31,7 @@ struct Box {
 	bool operator==(const Box &) const = default;
 };
 
-// The same rectangle in normalised texture coordinates.
+// Texture coordinates: texels for the UI atlas, normalised for thumbnails.
 struct Uv {
 	float u0 = 0;
 	float v0 = 0;
@@ -108,6 +108,7 @@ struct Sheet {
 		int y = 0;
 		int w = 0;
 		int h = 0;
+		[[nodiscard]] Uv texels() const;
 		[[nodiscard]] bool empty() const
 		{
 			return this->w <= 0 || this->h <= 0;

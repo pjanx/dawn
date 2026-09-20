@@ -404,22 +404,6 @@ cache_glyph(Kit &kit, const QRawFont &raw, quint32 gid, int phase)
 	return &it->second;
 }
 
-static void
-cache_ascii(Kit &kit, bool bold)
-{
-	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
-	if (!raw.isValid())
-		return;
-	for (int cp = 0x20; cp <= 0x7E; cp++) {
-		const QList<quint32> indexes =
-			raw.glyphIndexesForString(QString(QChar(cp)));
-		if (indexes.isEmpty())
-			continue;
-		for (int phase = 0; phase < kit.glyph_phases_; phase++)
-			cache_glyph(kit, raw, indexes.front(), phase);
-	}
-}
-
 TextCache::Text &
 TextCache::get(
 	const Kit &kit, const QString &text, int wrap, bool bold, bool center)
@@ -525,22 +509,6 @@ TextCache::elide_lines(
 }
 
 static void
-cache_text(Kit &kit, TextCache &cache, const QString &text, bool bold, int wrap)
-{
-	const QRawFont &raw = bold ? kit.raw_bold_ : kit.raw_;
-	if (!raw.isValid() || text.isEmpty())
-		return;
-
-	QTextLayout &layout = *cache.get(kit, text, wrap, bold, false).layout;
-	for (const QGlyphRun &run : layout.glyphRuns()) {
-		for (quint32 gid : run.glyphIndexes()) {
-			for (int phase = 0; phase < kit.glyph_phases_; phase++)
-				cache_glyph(kit, run.rawFont(), gid, phase);
-		}
-	}
-}
-
-static void
 rebuild_atlas(Kit &kit)
 {
 	kit.atlas_epoch_++;
@@ -611,8 +579,6 @@ rebuild_atlas(Kit &kit)
 	kit.raw_ = QRawFont::fromFont(kit.font_px_);
 	kit.raw_bold_ = QRawFont::fromFont(kit.font_bold_px_);
 	kit.glyph_phases_ = probe_phases(kit.raw_);
-	cache_ascii(kit, false);
-	cache_ascii(kit, true);
 }
 
 // The mnemonic is an index into text, and gets underlined; -1 for none.
@@ -652,7 +618,7 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 				int(lround(double(y) + pos[i].y())) + glyph->bearing_y;
 			kit.list_.add_image(
 				{gx, gy, gx + glyph->rect.w, gy + glyph->rect.h},
-				kit.atlas_.uv(glyph->rect), colour);
+				glyph->rect.texels(), colour);
 		}
 	}
 	if (mnemonic < 0 || mnemonic >= text.size())
@@ -681,12 +647,22 @@ emit_icon(Kit &kit, int x, int y, int size, const char *name, Colour colour)
 	if (!name)
 		return;
 
-	auto it = kit.icons_.find(name);
-	if (it == kit.icons_.end())
-		return;
+	const auto key = make_pair(string(name), size);
+	auto it = kit.icons_.find(key);
+	if (it == kit.icons_.end()) {
+		QImage image = raster_symbolic(name, size);
+		if (image.isNull())
+			image = raster_window_button(name, size);
+		if (image.isNull())
+			return;
+		const Kit::Packed packed = kit.pack_bitmap(image);
+		if (packed.empty())
+			return;
+		it = kit.icons_.emplace(key, packed).first;
+	}
 
 	kit.list_.add_image(
-		{x, y, x + size, y + size}, kit.atlas_.uv(it->second), colour);
+		{x, y, x + size, y + size}, it->second.texels(), colour);
 }
 
 // --- Layout kit --------------------------------------------------------------
@@ -790,13 +766,23 @@ Widget::measure(Kit &kit, int max_w, int max_h)
 }
 
 void
+Widget::arrange_content(Kit &, Rect alloc)
+{
+	this->r = shown() ? alloc : Rect{};
+}
+
+Widget *
+Widget::child(size_t i) const
+{
+	const auto kids = children();
+	return i < kids.size() ? kids[i].get() : nullptr;
+}
+
+void
 Widget::paint_children(Kit &kit) const
 {
-	const size_t n = child_count();
-	for (size_t i = 0; i < n; i++) {
-		if (const Widget *k = child(i))
-			k->paint(kit);
-	}
+	for (const auto &k : children())
+		k->paint(kit);
 }
 
 void
@@ -812,10 +798,10 @@ Widget::hit_at(float x, float y)
 	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
 
-	for (size_t i = child_count(); i > 0; --i) {
-		if (Widget *k = child(i - 1))
-			if (Widget *h = k->hit_at(x, y))
-				return h;
+	const auto kids = children();
+	for (size_t i = kids.size(); i > 0; --i) {
+		if (Widget *h = kids[i - 1]->hit_at(x, y))
+			return h;
 	}
 	return this->hittable ? this : nullptr;
 }
@@ -826,11 +812,8 @@ Widget::prepare(Kit &kit)
 	if (!shown())
 		return;
 
-	const size_t n = child_count();
-	for (size_t i = 0; i < n; i++) {
-		if (Widget *k = child(i))
-			k->prepare(kit);
-	}
+	for (const auto &k : children())
+		k->prepare(kit);
 }
 
 Rect
@@ -928,12 +911,6 @@ Button::measure_content(Kit &kit, int, int)
 }
 
 void
-Button::arrange_content(Kit &kit, Rect alloc)
-{
-	this->r = shown() ? alloc : Rect{};
-}
-
-void
 Button::paint(Kit &kit) const
 {
 	if (!shown())
@@ -966,16 +943,6 @@ Button::paint(Kit &kit) const
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
-}
-
-void
-Button::prepare(Kit &kit)
-{
-	if (shown())
-		kit.pack_icon(this->icon, kit.icon_px());
-	if (shown() && !this->text.isEmpty())
-		cache_text(
-			kit, this->text_cache_, button_shown(kit, *this), this->bold, 0);
 }
 
 bool
@@ -1136,18 +1103,6 @@ Checkbox::paint(Kit &kit) const
 		kit.focus_ring(this->r);
 }
 
-void
-Checkbox::prepare(Kit &kit)
-{
-	if (!shown())
-		return;
-
-	kit.pack_icon("object-select-symbolic", kit.icon_px());
-	if (!this->text.isEmpty())
-		cache_text(kit, this->text_cache_, checkbox_shown(kit, *this), false,
-			this->wrap ? checkbox_text_avail(kit, *this, this->r.w) : 0);
-}
-
 bool
 Checkbox::activate(Kit &kit)
 {
@@ -1196,12 +1151,6 @@ Label::measure_content(Kit &kit, int max_w, int)
 }
 
 void
-Label::arrange_content(Kit &kit, Rect alloc)
-{
-	this->r = shown() ? alloc : Rect{};
-}
-
-void
 Label::paint(Kit &kit) const
 {
 	if (!shown())
@@ -1232,14 +1181,6 @@ Label::paint(Kit &kit) const
 			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
 		this->bold, shown_mnemonic(this->text, this->mnemonic, shown), wrap_w,
 		wrap_center);
-}
-
-void
-Label::prepare(Kit &kit)
-{
-	if (shown() && !this->text.isEmpty())
-		cache_text(kit, this->text_cache_, label_shown(kit, *this), this->bold,
-			this->wrap ? max(1, this->r.w - kit.px(this->pad_x) * 2) : 0);
 }
 
 bool
@@ -1760,12 +1701,6 @@ Entry::prepare(Kit &kit)
 	this->focused_ = focused;
 	this->caret_on_ = focused &&
 		(!this->preedit.isEmpty() || blink_phase(this->caret_at_) < 0.5);
-
-	const QString full = painted();
-	if (full.isEmpty())
-		cache_text(kit, this->text_cache_, this->placeholder, false, 0);
-	else
-		cache_text(kit, this->text_cache_, full, false, 0);
 }
 
 bool
@@ -1961,12 +1896,6 @@ Sep::measure_content(Kit &kit, int max_w, int max_h)
 }
 
 void
-Sep::arrange_content(Kit &kit, Rect alloc)
-{
-	this->r = shown() ? alloc : Rect{};
-}
-
-void
 Sep::paint(Kit &kit) const
 {
 	if (!shown() || this->r.w <= 0 || this->r.h <= 0)
@@ -1993,12 +1922,6 @@ Size
 Splitter::measure_content(Kit &kit, int, int max_h)
 {
 	return {kit.px(this->min_w), max_h};
-}
-
-void
-Splitter::arrange_content(Kit &kit, Rect alloc)
-{
-	this->r = shown() ? alloc : Rect{};
 }
 
 void
@@ -3147,9 +3070,8 @@ collect_focusable(Widget *w, vector<Widget *> &out)
 			out.push_back(stop);
 		return;
 	}
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++)
-		collect_focusable(w->child(i), out);
+	for (const auto &k : w->children())
+		collect_focusable(k.get(), out);
 }
 
 // The same walk, in the same order, for what one letter selects.  Labels
@@ -3162,9 +3084,8 @@ collect_mnemonics(Widget *w, QChar letter, vector<Widget *> &out)
 		return;
 	if (w->mnemonic_key().toLower() == letter)
 		out.push_back(w);
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++)
-		collect_mnemonics(w->child(i), letter, out);
+	for (const auto &k : w->children())
+		collect_mnemonics(k.get(), letter, out);
 }
 
 // Where the keyboard lands once a candidate is picked.  A label sends it on
@@ -3713,20 +3634,6 @@ MenuItem::paint(Kit &kit) const
 	}
 }
 
-void
-MenuItem::prepare(Kit &kit)
-{
-	if (this->sub)
-		kit.pack_icon("go-next-symbolic", kit.icon_px());
-	if (this->checkable)
-		kit.pack_icon("object-select-symbolic", kit.icon_px());
-	if (this->text.isEmpty())
-		return;
-	cache_text(kit, this->text_cache_, menu_shown(kit, *this), false, 0);
-	if (!this->accel.isEmpty())
-		cache_text(kit, this->text_cache_, this->accel, false, 0);
-}
-
 bool
 MenuItem::activate(Kit &kit)
 {
@@ -3819,14 +3726,6 @@ ComboItem::paint(Kit &kit) const
 	emit_text(kit, this->text_cache_, float(this->r.x + kit.px(kFramePadX)),
 		float(this->r.y + (this->r.h - th) / 2), shown,
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), false, -1);
-}
-
-void
-ComboItem::prepare(Kit &kit)
-{
-	if (shown() && !this->text.isEmpty())
-		cache_text(
-			kit, this->text_cache_, combo_item_shown(kit, *this), false, 0);
 }
 
 ComboPopup::ComboPopup()
@@ -3938,16 +3837,6 @@ Combo::paint(Kit &kit) const
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
-}
-
-void
-Combo::prepare(Kit &kit)
-{
-	if (!shown())
-		return;
-
-	kit.pack_icon(kComboIcon, kit.icon_px());
-	cache_text(kit, this->text_cache_, combo_shown(kit, *this), false, 0);
 }
 
 QString
@@ -4492,19 +4381,6 @@ Titlebar::arrange_content(Kit &kit, Rect alloc)
 	}
 }
 
-void
-Titlebar::prepare(Kit &kit)
-{
-	const int px = kit.icon_px();
-	kit.pack_icon("window-minimize", px);
-	kit.pack_icon("window-maximize", px);
-	kit.pack_icon("window-restore", px);
-	kit.pack_icon("window-close", px);
-	if (this->title && !this->title->text.isEmpty())
-		kit.cache_text(this->title->text, this->title->bold);
-	Panel::prepare(kit);
-}
-
 bool
 Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
@@ -4587,37 +4463,9 @@ Kit::pack_bitmap(const QImage &image)
 }
 
 void
-Kit::cache_text(const QString &text, bool bold)
-{
-	::dn::cache_text(*this, this->text_cache_, text, bold, 0);
-}
-
-void
 Kit::emit_text(float x, float y, const QString &text, Colour colour, bool bold)
 {
 	::dn::emit_text(*this, this->text_cache_, x, y, text, colour, bold, -1);
-}
-
-void
-Kit::pack_icon(const char *name, int px)
-{
-	if (!name)
-		return;
-	auto it = this->icons_.find(name);
-	if (it != this->icons_.end() && it->second.w == px && it->second.h == px)
-		return;
-	QImage image = raster_symbolic(name, px);
-	if (image.isNull())
-		image = raster_window_button(name, px);
-	if (image.isNull())
-		return;
-	const Packed packed = pack_or_grow(*this, image.width(), image.height());
-	if (packed.empty())
-		return;
-	if (it != this->icons_.end())
-		this->atlas_.release(it->second);
-	blit(*this, packed, image, false);
-	this->icons_[name] = packed;
 }
 
 void
@@ -4631,13 +4479,9 @@ Kit::draw_glow(Rect w, Colour col)
 {
 	if (this->glow_.empty() || w.empty())
 		return;
-	const Uv uv = this->atlas_.uv(this->glow_);
-	const float aw = float(max(this->atlas_.w, 1));
-	const float ah = float(max(this->atlas_.h, 1));
-	const float u_in =
-		(float(this->glow_.x) + float(this->glow_.w) - 0.5f) / aw;
-	const float v_in =
-		(float(this->glow_.y) + float(this->glow_.h) - 0.5f) / ah;
+	const Uv uv = this->glow_.texels();
+	const float u_in = float(this->glow_.x + this->glow_.w) - 0.5f;
+	const float v_in = float(this->glow_.y + this->glow_.h) - 0.5f;
 	// The glow is rasterised at kGlowPts * dpr, so its quad has to reach
 	// exactly that far in pixels, or the ramp is squashed or stretched.
 	const int glow = px(kGlowPts);
@@ -5557,7 +5401,6 @@ prepare_tooltip(Kit &kit)
 		tx = max(0, kit.host_w_ - tw - glow);
 
 	tipn.arrange(kit, {tx, ty, tw, th});
-	tipn.prepare(kit);
 }
 
 static void
@@ -5597,9 +5440,8 @@ wake_tree(const Widget *w)
 		return -1;
 
 	int ms = w->wake_ms();
-	const size_t n = w->child_count();
-	for (size_t i = 0; i < n; i++)
-		ms = sooner(ms, wake_tree(w->child(i)));
+	for (const auto &k : w->children())
+		ms = sooner(ms, wake_tree(k.get()));
 	return ms;
 }
 
@@ -5964,10 +5806,8 @@ Kit::frame_ui(Page &ui, const function<void()> &placed)
 void
 Kit::paint()
 {
-	const float white_u =
-		(float(this->white_.x) + 0.5f) / float(max(this->atlas_.w, 1));
-	const float white_v =
-		(float(this->white_.y) + 0.5f) / float(max(this->atlas_.h, 1));
+	const float white_u = float(this->white_.x) + 0.5f;
+	const float white_v = float(this->white_.y) + 0.5f;
 	this->list_.begin(
 		this->host_w_, this->host_h_, {white_u, white_v, white_u, white_v});
 	if (this->csd_shadow_) {

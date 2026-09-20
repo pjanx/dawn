@@ -322,13 +322,14 @@ Sheet::blit(Packed slot, const uint16_t *src, int src_w, int src_h, int stride)
 	this->dirty = true;
 }
 
-// TODO: These are normalised against the sheet as it is right now, and go
-// straight into the draw list -- but glyphs are packed lazily, so a grow()
-// during a paint leaves every quad emitted earlier in that frame sampling at
-// the old scale.  Emitting texels and dividing in the shader (or at
-// OverlayList::end()) would make the normalisation happen once, after the
-// sheet has settled. All text, including tooltips, must currently prepare
-// its glyphs before painting begins.
+Uv
+Sheet::Packed::texels() const
+{
+	return {float(this->x), float(this->y), float(this->x + this->w),
+		float(this->y + this->h)};
+}
+
+// Thumbnails are packed before drawing; their filtering uses normalised UVs.
 Uv
 Sheet::uv(const Packed &slot) const
 {
