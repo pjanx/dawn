@@ -808,8 +808,8 @@ Button::paint(Kit &kit) const
 			this->r, col(kit.colours_[ColourDivider]), kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
-	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
-		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
+	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	if (this->icon)
 		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
 			this->icon, col(kit.colours_[ColourInk], ink_a));
@@ -963,8 +963,8 @@ Checkbox::paint(Kit &kit) const
 	kit.draw_border(
 		{bx, by, box, box}, col(kit.colours_[ColourDivider]), kit.hairline());
 
-	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
-		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
+	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	if (this->checked)
 		emit_icon(kit, bx + border, by + border, icon, "object-select-symbolic",
 			col(kit.colours_[ColourInk], ink_a));
@@ -1047,7 +1047,7 @@ Label::paint(Kit &kit) const
 		ty = this->r.y + this->r.h - pad_y - th;
 	kit.emit_layout(float(tx), float(ty), cached,
 		col(kit.colours_[ColourInk],
-			(this->dim ? 0.5f : 1.f) * kit.ink_alpha()),
+			(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha()),
 		shown_mnemonic(this->text, this->mnemonic, cached));
 }
 
@@ -2899,7 +2899,7 @@ Dialog::paint(Kit &kit) const
 		return;
 
 	// The same wash Hint lays over the window behind it.
-	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
+	kit.draw_fill(this->r, col(kit.colours_[ColourInk], kWashAlpha));
 	if (this->frame && this->frame->visible)
 		kit.draw_shadow(this->frame->r);
 	Panel::paint(kit);
@@ -3511,7 +3511,7 @@ MenuItem::paint(Kit &kit) const
 	const int accel_x = this->r.x + cols.accel_x;
 	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f);
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha);
 
 	if (this->checkable && this->checked)
 		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
@@ -3528,12 +3528,13 @@ MenuItem::paint(Kit &kit) const
 			this->text_cache_.text_height(kit, this->accel, 0, false);
 		emit_text(kit, this->text_cache_, float(accel_x + cols.accel_w - tw),
 			float(this->r.y + (this->r.h - ath) / 2), this->accel,
-			col(kit.colours_[ColourInk], 0.5f), false, -1);
+			col(kit.colours_[ColourInk], kDimAlpha), false, -1);
 	}
 	if (this->sub) {
 		emit_icon(kit, this->r.right() - pad_x - cols.chevron, iy, icon,
 			"go-next-symbolic",
-			col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.375f));
+			col(kit.colours_[ColourInk],
+				this->enabled_ ? 1.f : kDisabledAlpha));
 	}
 }
 
@@ -3612,7 +3613,7 @@ ComboItem::paint(Kit &kit) const
 		kit, this->text, max(1, this->r.w - pad * 2), 1, false, false);
 	kit.emit_layout(float(this->r.x + pad),
 		float(this->r.y + (this->r.h - cached.height) / 2), cached,
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : 0.5f), -1);
+		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha), -1);
 }
 
 ComboPopup::ComboPopup()
@@ -3709,8 +3710,8 @@ Combo::paint(Kit &kit) const
 
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
-	const float ink_a = (this->enabled_ ? 1.f : 0.375f) *
-		(this->dim ? 0.5f : 1.f) * kit.ink_alpha();
+	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	emit_icon(kit, this->r.right() - pad_x - icon,
 		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
 		col(kit.colours_[ColourInk], ink_a));

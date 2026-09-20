@@ -787,7 +787,7 @@ Hint::paint(Kit &kit) const
 	if (!shown())
 		return;
 
-	kit.draw_fill(this->r, col(kit.colours_[ColourInk], 0.1f));
+	kit.draw_fill(this->r, col(kit.colours_[ColourInk], kWashAlpha));
 	const float th = float(kit.text_height(QStringLiteral("Ag"), 0.f, true));
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())

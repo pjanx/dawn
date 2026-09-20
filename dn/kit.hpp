@@ -94,6 +94,12 @@ enum class Stroke : uint8_t { None, All, Bottom };
 // any sum it takes part in.
 constexpr int kUnlim = 1 << 24;
 
+// Ink alphas: disabled widgets, de-emphasized ink, and the wash that Dialog
+// and Hint lay over the window behind them.
+constexpr float kDisabledAlpha = 0.375f;
+constexpr float kDimAlpha = 0.625f;
+constexpr float kWashAlpha = 0.1f;
+
 // Design sizes, in points: they must keep their physical size across displays,
 // so they are converted to pixels on use, through Kit::px().
 constexpr float kIconPts = 16.f;
@@ -1104,7 +1110,7 @@ struct Kit {
 		float x, float y, const QString &text, Colour colour, bool bold);
 	void draw_glow(Rect w, Colour col);
 	// An inactive window halves whatever alpha its ink already had.
-	[[nodiscard]] float ink_alpha() const { return this->active_ ? 1.f : 0.5f; }
+	[[nodiscard]] float ink_alpha() const { return this->active_ ? 1.f : 0.75f; }
 	void focus_ring(Rect w);   // 1pt inset ring
 	void draw_shadow(Rect w);  // popup/tooltip drop shadow
 	// Rect-shaped wrappers over the corner-based draw list.

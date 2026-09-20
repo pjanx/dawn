@@ -67,9 +67,9 @@ And transitions between pure hues go through darkness:
 [.text-center]
 image::why-gamma-strips.webp["Yellow to blue blend in sRGB versus linear space"]
 
-Final blending is where the worst issues like to remain, so Dawn can't quite
-claim victory yet.  Some content is also designed to be rendered wrong,
-such as macOS icons.
+That said, compositing physically correctly creates issues as well, notably
+around https://docs.skia.org/docs/dev/design/raster_tragedy/[text rendering].
+Some content is also designed to be rendered wrong, such as macOS icons.
 
 Scaling
 -------
