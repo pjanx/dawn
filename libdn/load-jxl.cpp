@@ -175,9 +175,11 @@ take_frame_header(JxlLoadContext &ctx, Error *error)
 
 	ctx.duration_ms = 0;
 	if (ctx.info.have_animation && ctx.info.animation.tps_numerator) {
-		ctx.duration_ms = int64_t(frame.duration) * 1000 *
-			ctx.info.animation.tps_denominator /
-			ctx.info.animation.tps_numerator;
+		uint64_t ticks =
+			uint64_t(frame.duration) * ctx.info.animation.tps_denominator;
+		ctx.duration_ms = ticks > uint64_t(INT64_MAX) / 1000
+			? INT64_MAX
+			: int64_t(ticks * 1000 / ctx.info.animation.tps_numerator);
 	}
 	return true;
 }
