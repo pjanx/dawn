@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <new>
@@ -329,7 +330,13 @@ pack_rgb16le_to_bgra16(
 bool
 read_file(const string &path, vector<uint8_t> *out, Error *error)
 {
+#ifdef _WIN32
+	// The manifest sets no activeCodePage, so a narrow path would be opened
+	// through the ANSI code page, which most filenames do not survive.
+	ifstream in(filesystem::path(utf8_to_wide(path)), ios::binary);
+#else
 	ifstream in(path, ios::binary);
+#endif
 	if (!in) {
 		if (error) {
 			error->code = Error::Code::Io;
@@ -538,6 +545,42 @@ path_to_uri(const string &path)
 }
 
 #ifdef _WIN32
+
+wstring
+utf8_to_wide(string_view utf8)
+{
+	if (utf8.empty())
+		return {};
+
+	const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+		utf8.data(), int(utf8.size()), nullptr, 0);
+	if (size <= 0)
+		return {};
+
+	wstring wide(size_t(size), L'\0');
+	if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8.data(),
+			int(utf8.size()), wide.data(), size))
+		return {};
+	return wide;
+}
+
+string
+wide_to_utf8(wstring_view wide)
+{
+	if (wide.empty())
+		return {};
+
+	const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
+		wide.data(), int(wide.size()), nullptr, 0, nullptr, nullptr);
+	if (size <= 0)
+		return {};
+
+	string utf8(size_t(size), '\0');
+	if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide.data(),
+			int(wide.size()), utf8.data(), size, nullptr, nullptr))
+		return {};
+	return utf8;
+}
 
 wstring
 module_directory(void *module)

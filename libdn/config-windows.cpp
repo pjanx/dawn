@@ -38,20 +38,9 @@ fail(Error *error, const char *operation, LSTATUS status = ERROR_SUCCESS)
 static optional<wstring>
 to_wide(string_view value, Error *error)
 {
-	if (value.empty())
-		return wstring{};
-
-	const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-		value.data(), int(value.size()), nullptr, 0);
-	if (!size) {
+	wstring out = utf8_to_wide(value);
+	if (out.empty() && !value.empty()) {
 		fail(error, _("invalid UTF-8 configuration string"), GetLastError());
-		return nullopt;
-	}
-
-	wstring out(size_t(size), L'\0');
-	if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
-			int(value.size()), out.data(), size)) {
-		fail(error, _("cannot convert configuration string"), GetLastError());
 		return nullopt;
 	}
 	return out;
@@ -60,20 +49,9 @@ to_wide(string_view value, Error *error)
 static optional<string>
 to_utf8(wstring_view value, Error *error)
 {
-	if (value.empty())
-		return string{};
-
-	const int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS,
-		value.data(), int(value.size()), nullptr, 0, nullptr, nullptr);
-	if (!size) {
+	string out = wide_to_utf8(value);
+	if (out.empty() && !value.empty()) {
 		fail(error, _("invalid UTF-16 configuration string"), GetLastError());
-		return nullopt;
-	}
-
-	string out(size_t(size), '\0');
-	if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value.data(),
-			int(value.size()), out.data(), size, nullptr, nullptr)) {
-		fail(error, _("cannot convert configuration string"), GetLastError());
 		return nullopt;
 	}
 	return out;

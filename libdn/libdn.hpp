@@ -507,6 +507,12 @@ std::optional<std::string> uri_to_path(const std::string &uri);
 std::string path_to_uri(const std::string &path);
 
 #ifdef _WIN32
+/// Widen UTF-8 for the Windows API.  Invalid UTF-8 gives an empty string,
+/// as an empty input does; callers that must tell those apart check the input.
+std::wstring utf8_to_wide(std::string_view utf8);
+/// Narrow what the Windows API returns, with the same convention.
+std::string wide_to_utf8(std::wstring_view wide);
+
 /// The directory a module was loaded from, with its trailing backslash, or
 /// the running executable's when null.  Empty if it cannot be retrieved.
 /// The handle is an `HMODULE`, left opaque to spare this header <windows.h>.
