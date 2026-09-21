@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -524,6 +525,17 @@ Cmm::get_profile_sRGB()
 	return result;
 }
 
+/// The IEC 61966-2-1 sRGB EOTF. lcms2 type 4 is "y = (aX+b)^g for X >= d,
+/// else cX", the shape shared by this and the BT.709/601/2020 curves.
+/// Parameters are {g, a, b, c, d}.
+static cmsToneCurve *
+srgb_tone_curve(cmsContext context)
+{
+	const cmsFloat64Number p[5] = {
+		2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045};
+	return cmsBuildParametricToneCurve(context, 4, p);
+}
+
 shared_ptr<Profile>
 Cmm::get_profile_display_p3()
 {
@@ -531,17 +543,7 @@ Cmm::get_profile_display_p3()
 	if (auto cached = this->cached_display_p3.lock())
 		return cached;
 
-	constexpr size_t samples = 4096;
-	vector<cmsUInt16Number> transfer(samples);
-	for (size_t i = 0; i < samples; i++) {
-		const double encoded = double(i) / double(samples - 1);
-		const double linear = encoded <= 0.04045
-			? encoded / 12.92
-			: pow((encoded + 0.055) / 1.055, 2.4);
-		transfer[i] = cmsUInt16Number(lround(linear * 65535.0));
-	}
-	cmsToneCurve *curve = cmsBuildTabulatedToneCurve16(cmsContext(context_),
-		cmsUInt32Number(transfer.size()), transfer.data());
+	cmsToneCurve *curve = srgb_tone_curve(cmsContext(context_));
 	if (!curve)
 		return nullptr;
 	cmsToneCurve *curves[3] = {curve, curve, curve};
@@ -564,8 +566,8 @@ Cmm::get_profile_display_p3()
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_parametric(
-	double gamma, double whitepoint[2], double primaries[6])
+Cmm::get_profile_parametric(optional<double> gamma, const double whitepoint[2],
+	const double primaries[6])
 {
 	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
 	const cmsCIExyYTRIPLE prim{
@@ -574,7 +576,8 @@ Cmm::get_profile_parametric(
 		{primaries[4], primaries[5], 1.0},
 	};
 
-	cmsToneCurve *curve = cmsBuildGamma(cmsContext(context_), gamma);
+	cmsToneCurve *curve = gamma ? cmsBuildGamma(cmsContext(context_), *gamma)
+								: srgb_tone_curve(cmsContext(context_));
 	if (!curve)
 		return nullptr;
 
@@ -657,8 +660,7 @@ cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 static cmsToneCurve *
 cicp_tone_curve(cmsContext context, uint8_t code)
 {
-	// lcms2 type 4 is "y = (aX+b)^g for X >= d, else cX", the shape shared
-	// by the BT.709/601/2020 and sRGB curves. Parameters are {g, a, b, c, d}.
+	// Type 4 is the piecewise shape described at srgb_tone_curve().
 	switch (code) {
 	case 1:     // BT.709
 	case 6:     // BT.601
@@ -668,11 +670,8 @@ cicp_tone_curve(cmsContext context, uint8_t code)
 			1 / 0.45, 1 / 1.099, 0.099 / 1.099, 1 / 4.5, 4.5 * 0.018};
 		return cmsBuildParametricToneCurve(context, 4, p);
 	}
-	case 13: {  // sRGB (IEC 61966-2-1)
-		const cmsFloat64Number p[5] = {
-			2.4, 1 / 1.055, 0.055 / 1.055, 1 / 12.92, 0.04045};
-		return cmsBuildParametricToneCurve(context, 4, p);
-	}
+	case 13:  // sRGB (IEC 61966-2-1)
+		return srgb_tone_curve(context);
 	case 4:  // BT.470 System M
 		return cmsBuildGamma(context, 2.2);
 	case 5:  // BT.470 System B/G

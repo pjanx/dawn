@@ -166,8 +166,12 @@ public:
 	std::shared_ptr<Profile> get_profile_sRGB();
 	std::shared_ptr<Profile> get_profile_display_p3();
 	std::shared_ptr<Profile> get_profile_sRGB_gamma(double gamma);
-	std::shared_ptr<Profile> get_profile_parametric(
-		double gamma, double whitepoint[2], double primaries[6]);
+
+	/// Builds a matrix/TRC profile from CIE 1931 xy chromaticities.
+	/// `gamma` is the decoding exponent; without one, the curve is the
+	/// sRGB EOTF, which is what PNG cHRM without gAMA asks for.
+	std::shared_ptr<Profile> get_profile_parametric(std::optional<double> gamma,
+		const double whitepoint[2], const double primaries[6]);
 
 	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
 	/// AVIF/HEIF nclx). Null for code points we do not model,

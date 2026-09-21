@@ -880,6 +880,39 @@ test_chromaticities()
 	}
 }
 
+// Each fixture would come out with a different transfer function if the loader
+// ranked its colour chunks differently.  iCCP, which outranks all of these, is
+// covered by the Display P3 file in test_chromaticities().
+static void
+test_png_colour_chunk(
+	const char *name, dawn::Transfer transfer, double red_x, double red_y)
+{
+	dawn::ImagePtr image = load_fixture(name);
+	if (!image)
+		return;
+
+	CHECK(!image->profile_assumed);
+	if (dawn::profile_transfer(image->effective_profile.get()) != transfer)
+		test::fail("%s: unexpected transfer function", name);
+
+	dawn::Chromaticities c =
+		dawn::profile_chromaticities(image->effective_profile.get());
+	CHECK(c.have_primaries && c.n == 3);
+	if (c.n == 3)
+		near_xy(name, c.x[0], c.y[0], red_x, red_y, 0.002);
+}
+
+static void
+test_png_colour_chunks()
+{
+	// The first file also carries a gAMA of 1.0, which the sRGB chunk beats.
+	test_png_colour_chunk("srgb-chunk.png", dawn::Transfer::Srgb, 0.64, 0.33);
+	test_png_colour_chunk("gama22.png", dawn::Transfer::AdobeRgb, 0.64, 0.33);
+	test_png_colour_chunk("chrm-p3.png", dawn::Transfer::Srgb, 0.68, 0.32);
+	test_png_colour_chunk(
+		"chrm-p3-gama1.png", dawn::Transfer::Linear, 0.68, 0.32);
+}
+
 static void
 test_png_text_after_idat()
 {
@@ -1010,6 +1043,7 @@ main()
 		{"vector rerendering", test_vector_rerender},
 		{"chromaticities", test_chromaticities},
 		{"PNG text", test_png_text_after_idat},
+		{"PNG colour chunks", test_png_colour_chunks},
 		{"profile transfer", test_profile_transfer},
 		{"profile encoding", test_profile_encoding},
 	});

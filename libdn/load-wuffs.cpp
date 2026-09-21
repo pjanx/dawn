@@ -39,11 +39,13 @@
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
-#include <cmath>
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -174,7 +176,9 @@ struct WuffsLoadContext {
 	unordered_map<string, string> texts;  ///< PNG tEXt/zTXt/iTXt key-values
 	string pending_key;                   ///< KVP key awaiting a value
 	bool have_pending_key = false;
-	double gamma = 0;  ///< From sRGB / gAMA, 0 if unset
+	bool have_srgb = false;           ///< PNG sRGB chunk seen
+	optional<double> gamma;           ///< Decoding exponent from PNG gAMA
+	optional<array<double, 8>> chrm;  ///< PNG cHRM: white xy, then R, G, B xy
 
 	const OpenContext *octx = nullptr;  ///< Caller-supplied context
 	shared_ptr<Cmm> cmm;                ///< CMM context, never null
@@ -241,12 +245,26 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		break;
 
 	case WUFFS_BASE__FOURCC__SRGB:
-		ctx.gamma = 2.2;
+		ctx.have_srgb = true;
 		break;
 	case WUFFS_BASE__FOURCC__GAMA:
-		ctx.gamma =
-			1e5 / wuffs_base__more_information__metadata_parsed__gama(&minfo);
+		// The chunk stores the encoding exponent, scaled; we want its inverse.
+		if (uint32_t gama =
+				wuffs_base__more_information__metadata_parsed__gama(&minfo))
+			ctx.gamma = 1e5 / gama;
 		break;
+	case WUFFS_BASE__FOURCC__CHRM: {
+		array<double, 8> xy = {};
+		for (uint32_t i = 0; i < xy.size(); i++) {
+			const int32_t v =
+				wuffs_base__more_information__metadata_parsed__chrm(&minfo, i);
+			xy[i] = v / 1e5;
+		}
+		// Zero or negative coordinates would only give lcms a singular matrix.
+		if (all_of(xy.begin(), xy.end(), [](double v) { return v > 0; }))
+			ctx.chrm = xy;
+		break;
+	}
 
 	case WUFFS_BASE__FOURCC__KVPK:
 		ctx.pending_key.assign(bytes.begin(), bytes.end());
@@ -457,6 +475,8 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__GAMA, true);
 	wuffs_base__image_decoder__set_report_metadata(
+		ctx.dec, WUFFS_BASE__FOURCC__CHRM, true);
+	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__XMP, true);
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__KVP, true);
@@ -489,11 +509,19 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 		return nullptr;
 	}
 
-	// TODO(p): Improve our simplistic PNG handling of: gAMA, cHRM, sRGB.
+	// PNG (3rd edition) Table 1: iCCP outranks sRGB, which outranks cHRM and
+	// gAMA; lower-priority chunks are to be ignored.  cICP, which would come
+	// first, is not parsed by Wuffs.  A missing half of the cHRM/gAMA pair is
+	// filled in from sRGB, as the specification says nothing about halves.
 	if (ctx.have_iccp)
 		ctx.source = ctx.cmm->get_profile(ctx.meta_iccp);
-	else if (isfinite(ctx.gamma) && ctx.gamma > 0)
-		ctx.source = ctx.cmm->get_profile_sRGB_gamma(ctx.gamma);
+	if (!ctx.source && ctx.have_srgb)
+		ctx.source = ctx.cmm->get_profile_sRGB();
+	if (!ctx.source && ctx.chrm)
+		ctx.source = ctx.cmm->get_profile_parametric(
+			ctx.gamma, ctx.chrm->data(), ctx.chrm->data() + 2);
+	if (!ctx.source && ctx.gamma)
+		ctx.source = ctx.cmm->get_profile_sRGB_gamma(*ctx.gamma);
 
 	// Decode into straight (non-premultiplied) 16-bit-per-channel BGRA:
 	// Wuffs' pixel swizzler does not support every source pixel format as

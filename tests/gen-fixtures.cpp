@@ -264,6 +264,49 @@ write_png8_rgb_text_after_idat(const fs::path &path, uint8_t r, uint8_t g,
 }
 
 static void
+append_png_gama(vector<uint8_t> &o, uint32_t inverse_gamma)
+{
+	vector<uint8_t> data;
+	append_be32(data, inverse_gamma);
+	png_chunk(o, "gAMA", data.data(), data.size());
+}
+
+static void
+append_png_chrm(
+	vector<uint8_t> &o, const double whitepoint[2], const double primaries[6])
+{
+	vector<uint8_t> data;
+	for (int i = 0; i < 2; i++)
+		append_be32(data, uint32_t(lround(whitepoint[i] * 1e5)));
+	for (int i = 0; i < 6; i++)
+		append_be32(data, uint32_t(lround(primaries[i] * 1e5)));
+	png_chunk(o, "cHRM", data.data(), data.size());
+}
+
+// A 1x1 red PNG with colour chunks, which all belong in front of IDAT.
+static void
+write_png8_red_colour(const fs::path &path, const vector<uint8_t> &chunks)
+{
+	vector<uint8_t> ihdr;
+	append_be32(ihdr, 1);
+	append_be32(ihdr, 1);
+	ihdr.push_back(8);
+	ihdr.push_back(2);
+	ihdr.push_back(0);
+	ihdr.push_back(0);
+	ihdr.push_back(0);
+
+	const uint8_t raw[] = {0, 255, 0, 0};
+	vector<uint8_t> idat = zlib_compress(raw, sizeof raw);
+	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
+	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
+	out.insert(out.end(), chunks.begin(), chunks.end());
+	png_chunk(out, "IDAT", idat.data(), idat.size());
+	png_chunk(out, "IEND", nullptr, 0);
+	write_all(path, out.data(), out.size());
+}
+
+static void
 write_png8_rgb_2x2(const fs::path &path, const uint8_t px[4][3])
 {
 	vector<uint8_t> ihdr;
@@ -478,6 +521,26 @@ main(int argc, char **argv)
 	write_png8_rgb(out / "red_a128.png", 255, 0, 0, &a128);
 	write_png8_rgb_text_after_idat(
 		out / "text-after-idat.png", 255, 0, 0, "prompt", "hello");
+
+	// PNG colour chunks, in all the combinations the loader has to rank.
+	const double d65[2] = {0.3127, 0.3290};
+	const double p3[6] = {0.6800, 0.3200, 0.2650, 0.6900, 0.1500, 0.0600};
+	const uint8_t perceptual = 0;
+	vector<uint8_t> chunks;
+	png_chunk(chunks, "sRGB", &perceptual, 1);
+	append_png_gama(chunks, 100000);
+	write_png8_red_colour(out / "srgb-chunk.png", chunks);
+
+	chunks.clear();
+	append_png_gama(chunks, 45455);
+	write_png8_red_colour(out / "gama22.png", chunks);
+
+	chunks.clear();
+	append_png_chrm(chunks, d65, p3);
+	write_png8_red_colour(out / "chrm-p3.png", chunks);
+
+	append_png_gama(chunks, 100000);
+	write_png8_red_colour(out / "chrm-p3-gama1.png", chunks);
 
 	const uint8_t rgbw[4][3] = {
 		{255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255}};
