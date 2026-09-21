@@ -345,6 +345,7 @@ namespace
 
 struct ColordSource final : DisplayProfileSource {
 	CdClient *client = nullptr;
+	GCancellable *cancellable = nullptr;
 	guint name_watch = 0;
 	bool signals_hooked = false;
 	function<void()> on_change;
@@ -384,12 +385,16 @@ on_profile(CdClient *, CdProfile *, gpointer data)
 static void
 on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 {
-	auto *src = static_cast<ColordSource *>(data);
+	// Cancellation is how ColordSource revokes this callback, so "data" is
+	// only ours to dereference once the operation has actually succeeded.
 	g_autoptr(GError) error = nullptr;
 	if (!cd_client_connect_finish(CD_CLIENT(source), res, &error)) {
-		qWarning("colord: connect: %s", error ? error->message : "failed");
+		if (!g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+			qWarning("colord: connect: %s", error ? error->message : "failed");
 		return;
 	}
+
+	auto *src = static_cast<ColordSource *>(data);
 	src->hook_signals();
 	src->notify();
 }
@@ -434,8 +439,12 @@ ColordSource::hook_signals()
 void
 ColordSource::connect_async()
 {
-	if (this->client && !cd_client_get_connected(this->client))
-		cd_client_connect(this->client, nullptr, on_connect_ready, this);
+	if (!this->client || cd_client_get_connected(this->client))
+		return;
+
+	if (!this->cancellable)
+		this->cancellable = g_cancellable_new();
+	cd_client_connect(this->client, this->cancellable, on_connect_ready, this);
 }
 
 void
@@ -451,6 +460,10 @@ ColordSource::watch_name()
 
 ColordSource::~ColordSource()
 {
+	if (this->cancellable) {
+		g_cancellable_cancel(this->cancellable);
+		g_object_unref(this->cancellable);
+	}
 	if (this->name_watch)
 		g_bus_unwatch_name(this->name_watch);
 	if (this->client)
