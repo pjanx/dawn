@@ -26,42 +26,6 @@ namespace fs = filesystem;
 namespace dn
 {
 
-static optional<string>
-edid_md5_from_bytes(const vector<unsigned char> &edid)
-{
-	if (edid.empty())
-		return nullopt;
-
-	g_autofree gchar *md5 =
-		g_compute_checksum_for_data(G_CHECKSUM_MD5, edid.data(), edid.size());
-	return md5 ? optional<string>(md5) : nullopt;
-}
-
-static optional<string>
-edid_md5_for_connector(const string &connector)
-{
-	error_code error;
-	for (const auto &entry : fs::directory_iterator("/sys/class/drm", error)) {
-		if (!entry.is_directory())
-			continue;
-
-		const string dirname = entry.path().filename().string();
-		const auto dash = dirname.find('-');
-		if (dash == string::npos || dirname.substr(dash + 1) != connector)
-			continue;
-
-		ifstream input(entry.path() / "edid", ios::binary);
-		if (!input)
-			continue;
-
-		vector<unsigned char> bytes(
-			(istreambuf_iterator<char>(input)), istreambuf_iterator<char>());
-		if (auto md5 = edid_md5_from_bytes(bytes))
-			return md5;
-	}
-	return nullopt;
-}
-
 static vector<unsigned char>
 profile_bytes(cmsHPROFILE profile)
 {
@@ -126,21 +90,6 @@ load_from_client(CdClient *client, const QScreen *screen)
 			matched = device;
 			method = "XRANDR_name";
 			break;
-		}
-	}
-	if (!matched) {
-		if (auto edid_md5 = edid_md5_for_connector(connector)) {
-			for (guint i = 0; i < devices->len; i++) {
-				auto *device =
-					static_cast<CdDevice *>(g_ptr_array_index(devices, i));
-				const char *md5 = cd_device_get_metadata_item(
-					device, CD_DEVICE_METADATA_OUTPUT_EDID_MD5);
-				if (md5 && *edid_md5 == md5) {
-					matched = device;
-					method = "OutputEdidMd5";
-					break;
-				}
-			}
 		}
 	}
 	if (!matched) {
@@ -255,6 +204,7 @@ ColordSource::hook_signals()
 {
 	if (this->signals_hooked || !this->client)
 		return;
+
 	this->signals_hooked = true;
 	g_signal_connect(this->client, "device-added", G_CALLBACK(on_device), this);
 	g_signal_connect(
