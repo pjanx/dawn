@@ -82,7 +82,7 @@ wmf_error_string(wmf_error_t error)
 
 static bool
 wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
-	uint32_t *width, uint32_t *height, Error *error)
+	uint32_t *width, uint32_t *height, const OpenContext &ctx, Error *error)
 {
 	if (data.size() > size_t(LONG_MAX)) {
 		set_error(error, _("input is too large"));
@@ -117,9 +117,13 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 
 	wmf.opened = true;
 	status = wmf_scan(wmf.api, 0, bbox);
+
+	// The metafile measures itself in inches, so scale 1 is as many pixels
+	// as the screen puts in one, like every other vector loader here.
+	const double dpi = ctx.screen_dpi > 0 ? ctx.screen_dpi : 96;
 	unsigned int w = 0, h = 0;
 	if (status == wmf_E_None)
-		status = wmf_display_size(wmf.api, &w, &h, 72, 72);
+		status = wmf_display_size(wmf.api, &w, &h, dpi, dpi);
 	if (status != wmf_E_None) {
 		set_error(error, wmf_error_string(status));
 		return false;
@@ -162,7 +166,8 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 	WmfApi wmf;
 	wmfD_Rect bbox{};
 	uint32_t base_width = 0, base_height = 0;
-	if (!wmf_open_and_scan(wmf, data, &bbox, &base_width, &base_height, error))
+	if (!wmf_open_and_scan(
+			wmf, data, &bbox, &base_width, &base_height, ctx, error))
 		return nullptr;
 	if (!*width || !*height) {
 		*width = base_width;
