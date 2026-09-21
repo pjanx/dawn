@@ -2788,6 +2788,8 @@ Dialog::Dialog()
 	auto body = make_unique<ScrollColumn>();
 	body->grow = true;
 	body->gap = 8.f;
+	// Tab may walk into a control that the clamped height has pushed out.
+	body->follow_focus = true;
 	this->body = body.get();
 	stack->add_child(std::move(body), size_t(-1));
 
