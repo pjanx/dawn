@@ -2250,7 +2250,8 @@ Viewer::motion(Kit &, float x, float y)
 	if (this->drag_ == Drag::Pan)
 		pan_by(*this, double(x) - this->drag_x_, double(y) - this->drag_y_);
 	else if (this->drag_ == Drag::Zoom) {
-		const float factor = pow(kZoomStep, -(y - y0) / kZoomDragPts);
+		const float span = float(this->kit_.px(kZoomDragPts));
+		const float factor = pow(kZoomStep, -(y - y0) / span);
 		zoom_at(*this, factor, {this->drag_pivot_x_, this->drag_pivot_y_});
 	} else {
 		const Vec p = {this->drag_pivot_x_, this->drag_pivot_y_};
