@@ -9,6 +9,8 @@
 
 #include "gettext.hpp"
 
+#include "libdn.hpp"
+
 #include <clocale>
 #include <cstdarg>
 #include <cstdint>
@@ -17,10 +19,7 @@
 #include <string>
 #include <system_error>
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#else
+#ifndef _WIN32
 #include <climits>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -43,17 +42,10 @@ namespace dawn
 static wstring
 package_locale_dir()
 {
-	wchar_t buf[MAX_PATH] = {};
-	const DWORD len = GetModuleFileNameW(nullptr, buf, DWORD(size(buf)));
-	if (!len || len == size(buf))
+	const wstring dir = module_directory(nullptr);
+	if (dir.empty())
 		return {};
-
-	wstring path(buf, len);
-	const size_t slash = path.find_last_of(L"\\/");
-	if (slash == wstring::npos)
-		return {};
-	path.resize(slash + 1);
-	return path + L"share\\locale";
+	return dir + L"share\\locale";
 }
 
 #else

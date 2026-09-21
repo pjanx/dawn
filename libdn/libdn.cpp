@@ -19,6 +19,11 @@
 #include <numbers>
 #include <string_view>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #define TIFF_TABLES_CONSTANTS_ONLY
 #include "tiff-tables.h"
 #if defined __GNUC__
@@ -531,6 +536,34 @@ path_to_uri(const string &path)
 	}
 	return uri;
 }
+
+#ifdef _WIN32
+
+wstring
+module_directory(void *module)
+{
+	// dn is longPathAware, and GetModuleFileNameW() truncates to fit.
+	DWORD len = 0;
+	wstring path(MAX_PATH, L'\0');
+	while ((len = GetModuleFileNameW(HMODULE(module), path.data(),
+				DWORD(path.size()))) == path.size()) {
+		if (path.size() > 0x8000)
+			return {};
+		path.resize(path.size() * 2);
+	}
+	if (!len)
+		return {};
+
+	path.resize(len);
+	size_t slash = path.find_last_of(L"\\/");
+	if (slash == path.npos)
+		return {};
+
+	path.resize(slash + 1);
+	return path;
+}
+
+#endif
 
 // --- Premultiply / finish ----------------------------------------------------
 

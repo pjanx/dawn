@@ -7,14 +7,15 @@
 
 #include "vk-device.hpp"
 
+#include "libdn.hpp"
 #include "libdnvk.hpp"
 
 #include <cstring>
 #include <limits>
+#include <string>
 #include <vector>
 
 #ifdef _WIN32
-#include <cwchar>
 #include <windows.h>
 #elif defined __APPLE__
 #include <climits>
@@ -178,17 +179,17 @@ vk_add_bundled_driver_files()
 {
 #ifdef _WIN32
 	HMODULE self = nullptr;
-	wchar_t path[MAX_PATH];
 	if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
 				GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-			reinterpret_cast<LPCWSTR>(&vk_add_bundled_driver_files), &self) ||
-		!GetModuleFileNameW(self, path, MAX_PATH))
+			reinterpret_cast<LPCWSTR>(&vk_add_bundled_driver_files), &self))
 		return;
-	wchar_t *slash = wcsrchr(path, L'\\');
-	if (!slash)
+
+	const wstring dir = module_directory(self);
+	if (dir.empty())
 		return;
-	wcscpy(slash + 1, L"vk_swiftshader_icd.json");
-	SetEnvironmentVariableW(L"VK_ADD_DRIVER_FILES", path);
+
+	SetEnvironmentVariableW(
+		L"VK_ADD_DRIVER_FILES", (dir + L"vk_swiftshader_icd.json").c_str());
 #elif defined __APPLE__
 	// This library sits in Contents/Frameworks, the manifest in Resources.
 	Dl_info info{};

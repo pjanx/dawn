@@ -506,6 +506,13 @@ std::optional<std::string> uri_to_path(const std::string &uri);
 /// The inverse, for an absolute path.
 std::string path_to_uri(const std::string &path);
 
+#ifdef _WIN32
+/// The directory a module was loaded from, with its trailing backslash, or
+/// the running executable's when null.  Empty if it cannot be retrieved.
+/// The handle is an `HMODULE`, left opaque to spare this header <windows.h>.
+std::wstring module_directory(void *module);
+#endif
+
 // --- TO BE MOVED TO DNTHUMBD -------------------------------------------------
 
 /// Encode straight (non-premultiplied) RGBA8 as the near-lossless WebP the
