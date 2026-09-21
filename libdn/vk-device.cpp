@@ -46,6 +46,26 @@ type_rank(VkPhysicalDeviceType type)
 	}
 }
 
+// Every device extension a caller asks for has to be there, or the device
+// cannot serve; the portability subset is asked about the same way.
+static bool
+supports_extensions(VkPhysicalDevice phys, initializer_list<const char *> names)
+{
+	uint32_t count = 0;
+	vkEnumerateDeviceExtensionProperties(phys, nullptr, &count, nullptr);
+	vector<VkExtensionProperties> props(count);
+	vkEnumerateDeviceExtensionProperties(phys, nullptr, &count, props.data());
+	for (const char *name : names) {
+		bool found = false;
+		for (const auto &p : props)
+			if (strcmp(p.extensionName, name) == 0)
+				found = true;
+		if (!found)
+			return false;
+	}
+	return true;
+}
+
 static bool
 can_present(VkPhysicalDevice phys, uint32_t family, VkSurfaceKHR surface,
 	const function<bool(VkPhysicalDevice, uint32_t)> &present)
@@ -109,6 +129,9 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	uint32_t best_family = 0;
 	int best_rank = numeric_limits<int>::max();
 	for (VkPhysicalDevice candidate : pds) {
+		if (!supports_extensions(candidate, extra_exts))
+			continue;
+
 		uint32_t qcount = 0;
 		vkGetPhysicalDeviceQueueFamilyProperties(candidate, &qcount, nullptr);
 		vector<VkQueueFamilyProperties> qprops(qcount);
@@ -131,8 +154,9 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	}
 	if (!best) {
 		if (error)
-			*error = (present || surface) ? "no graphics+present queue family"
-										  : "no graphics queue family";
+			*error = (present || surface)
+				? "no suitable graphics+present device"
+				: "no suitable graphics device";
 		return false;
 	}
 
@@ -143,19 +167,10 @@ vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 		.queueCount = 1,
 		.pQueuePriorities = &prio,
 	};
-	vector<const char *> exts(extra_exts);
-	uint32_t ext_count = 0;
-	vkEnumerateDeviceExtensionProperties(best, nullptr, &ext_count, nullptr);
-	vector<VkExtensionProperties> ext_props(ext_count);
-	vkEnumerateDeviceExtensionProperties(
-		best, nullptr, &ext_count, ext_props.data());
 	constexpr const char *kPortabilitySubset = "VK_KHR_portability_subset";
-	for (const auto &p : ext_props) {
-		if (strcmp(p.extensionName, kPortabilitySubset) == 0) {
-			exts.push_back(kPortabilitySubset);
-			break;
-		}
-	}
+	vector<const char *> exts(extra_exts);
+	if (supports_extensions(best, {kPortabilitySubset}))
+		exts.push_back(kPortabilitySubset);
 
 	VkDeviceCreateInfo dci{
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
