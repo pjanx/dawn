@@ -149,9 +149,10 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 	}
 
 	// https://loc.gov/preservation/digital/formats/fdd/fdd000526.shtml#factors
-	if (heif_image_handle_get_color_profile_type(handle) ==
-		heif_color_profile_type_prof) {
-		size_t icc_len = heif_image_handle_get_raw_color_profile_size(handle);
+	// Both ICC forms of the `colr` box--unrestricted `prof` and restricted
+	// `rICC`--come out of this one accessor, and nothing else gives it a
+	// size, so the profile type does not need asking about.
+	if (size_t icc_len = heif_image_handle_get_raw_color_profile_size(handle)) {
 		vector<uint8_t> icc(icc_len);
 		heif_error e =
 			heif_image_handle_get_raw_color_profile(handle, icc.data());
