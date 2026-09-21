@@ -206,6 +206,7 @@ struct Sampler {
 	uint32_t max = 0;                 ///< Largest representable sample
 	int shift = 0;                    ///< Drops precision above 16 bits
 	int bits = 8;                     ///< Precision after `shift`
+	uint16_t half = 0;                ///< Half scale, the chroma origin
 };
 
 enum class Colour { Grey, Rgb, Ycc };
@@ -236,6 +237,7 @@ make_sampler(const opj_image_comp_t &c, uint32_t dx0, uint32_t dy0)
 	// scale_nbit_to_u16() saturates rather than scales past 16 bits.
 	s.shift = c.prec > 16 ? int(c.prec) - 16 : 0;
 	s.bits = int(c.prec) - s.shift;
+	s.half = scale_nbit_to_u16(1u << (s.bits - 1), s.bits);
 	return s;
 }
 
@@ -266,15 +268,14 @@ clamp_u16(double v)
 	return uint16_t(v + 0.5);
 }
 
-// sYCC is full-range BT.601, its chroma planes centred on half scale. The
-// library leaves this conversion to its callers.
+// sYCC is full-range BT.601, its chroma arriving already centred on zero.
+// The library leaves this conversion to its callers.
 static void
-ycc_to_rgb(uint16_t y, uint16_t cb, uint16_t cr, uint16_t *rgb)
+ycc_to_rgb(uint16_t y, int cb, int cr, uint16_t *rgb)
 {
-	double b = double(cb) - 32768, r = double(cr) - 32768;
-	rgb[0] = clamp_u16(double(y) + 1.402 * r);
-	rgb[1] = clamp_u16(double(y) - 0.344136 * b - 0.714136 * r);
-	rgb[2] = clamp_u16(double(y) + 1.772 * b);
+	rgb[0] = clamp_u16(double(y) + 1.402 * cr);
+	rgb[1] = clamp_u16(double(y) - 0.344136 * cb - 0.714136 * cr);
+	rgb[2] = clamp_u16(double(y) + 1.772 * cb);
 }
 
 static bool
@@ -340,8 +341,9 @@ write_pixels(const Layout &layout, const Sampler *samplers, Image &out)
 			if (layout.colour == Colour::Grey) {
 				rgb[0] = rgb[1] = rgb[2] = sample(samplers[0], x, y);
 			} else if (layout.colour == Colour::Ycc) {
-				ycc_to_rgb(sample(samplers[0], x, y), sample(samplers[1], x, y),
-					sample(samplers[2], x, y), rgb);
+				ycc_to_rgb(sample(samplers[0], x, y),
+					int(sample(samplers[1], x, y)) - samplers[1].half,
+					int(sample(samplers[2], x, y)) - samplers[2].half, rgb);
 			} else {
 				rgb[0] = sample(samplers[0], x, y);
 				rgb[1] = sample(samplers[1], x, y);
