@@ -47,6 +47,13 @@ Also see link:configuring-your-system.adoc[about configuring a system].
 
 Setting `QT_SCALE_FACTOR` to 0.5 or 1.5 should not cause any issues.
 
+Input devices
+~~~~~~~~~~~~~
+ - Keyboard (also IME, with preedit)
+ - Mouse (also back/forward buttons for history)
+ - Touchpad/trackpad
+ - Touch screen
+
 Weston
 ~~~~~~
 The `gl` renderer has been observed to render upside-down while `headless`.
