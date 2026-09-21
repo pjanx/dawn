@@ -255,6 +255,13 @@ block()
 		#endif
 		int main() { return 0; }
 	]] dawn_qt_accessibility)
+	check_cxx_source_compiles([[
+		#include <QtGui/qtguiglobal.h>
+		#if !QT_CONFIG(xcb)
+		#error Qt has no X11 support
+		#endif
+		int main() { return 0; }
+	]] dawn_qt_xcb)
 endblock()
 
 option(DN_WITH_ACCESSIBILITY "Expose the UI to assistive technologies"
@@ -603,6 +610,10 @@ else()
 		dn/volumes-unix.cpp
 	)
 	target_link_libraries(dn PRIVATE PkgConfig::COLORD PkgConfig::PANGOFT2)
+	if (dawn_qt_xcb)
+		pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb xcb-randr)
+		target_link_libraries(dn PRIVATE PkgConfig::XCB)
+	endif()
 	set(DN_TEXT_SOURCE dn/text-linux.cpp)
 	set(DN_TEXT_LIBRARIES PkgConfig::PANGOFT2)
 endif()

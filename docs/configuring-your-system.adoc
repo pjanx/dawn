@@ -63,6 +63,9 @@ Section "Screen"
 EndSection
 ```
 
+Technically, 'Dawn' also tries to look up '_ICC_PROFILE', if your setup is
+based on something other than 'colord'.
+
 *nix/Wayland
 ------------
 You've chosen to go with an experimental system at the edge of usefulness.
