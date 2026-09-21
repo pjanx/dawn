@@ -27,9 +27,6 @@ namespace dn
 
 constexpr float kXMax = 0.8f;
 constexpr float kYMax = 0.9f;
-// XXX: I guess we hardcode it and I guess we shouldn't.
-constexpr float kD65x = 0.3127f;
-constexpr float kD65y = 0.3290f;
 constexpr int kRasterW = 256;
 constexpr int kRasterH = 288;
 constexpr float kCapGap = 4.f;
@@ -160,6 +157,18 @@ stroke_poly(
 	p.strokePath(path, pen);
 }
 
+static void
+stroke_cross(
+	QPainter &p, const QPen &pen, const dawn::Chromaticities &c, int w, int h)
+{
+	if (!c.have_white)
+		return;
+	const QPointF wp = xy_to_px(c.wx, c.wy, w, h);
+	p.setPen(pen);
+	p.drawLine(wp + QPointF(-7, 0), wp + QPointF(7, 0));
+	p.drawLine(wp + QPointF(0, -7), wp + QPointF(0, 7));
+}
+
 static QImage
 raster_diagram(int w, int h, const dawn::Chromaticities &image,
 	const dawn::Chromaticities &screen, bool show_screen, bool screen_dashed,
@@ -219,10 +228,14 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 		stroke_poly(p, pen, image, w, h);
 	}
 
-	const QPointF wp = xy_to_px(kD65x, kD65y, w, h);
-	p.setPen(QPen(QColor(0, 0, 0), 1.4, Qt::SolidLine, Qt::RoundCap));
-	p.drawLine(wp + QPointF(-7, 0), wp + QPointF(7, 0));
-	p.drawLine(wp + QPointF(0, -7), wp + QPointF(0, 7));
+	// The two white points usually coincide, so the source goes last.
+	if (show_screen) {
+		stroke_cross(p,
+			QPen(QColor(255, 255, 255), 1.4, Qt::SolidLine, Qt::RoundCap),
+			screen, w, h);
+	}
+	stroke_cross(p, QPen(QColor(0, 0, 0), 1.4, Qt::SolidLine, Qt::RoundCap),
+		image, w, h);
 	return img;
 }
 
