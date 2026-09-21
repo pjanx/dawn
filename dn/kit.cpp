@@ -1854,10 +1854,20 @@ Sep::paint(Kit &kit) const
 
 // --- Splitter ----------------------------------------------------------------
 
+// How far to either side of the line the mouse may still grab it, in points.
+constexpr float kGrabSlack = 4.f;
+
 Size
 Splitter::measure_content(Kit &kit, int, int max_h)
 {
-	return {kit.px(this->min_w), max_h};
+	return {kit.hairline(), max_h};
+}
+
+void
+Splitter::arrange_content(Kit &kit, Rect alloc)
+{
+	Widget::arrange_content(kit, alloc);
+	this->grab_ = kit.px(kGrabSlack);
 }
 
 void
@@ -1865,13 +1875,18 @@ Splitter::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
-	const int hair = kit.hairline();
-	const int x = this->r.x + (this->r.w - hair) / 2;
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
-	kit.list_.add_rect_filled(
-		{x, this->r.y, x + hair, this->r.bottom()}, col(c));
+	kit.list_.add_rect_filled(this->r.box(), col(c));
+}
+
+Widget *
+Splitter::hit_at(float x, float y)
+{
+	if (!shown() || this->r.empty())
+		return nullptr;
+	return this->r.inset(-this->grab_, 0).contains(x, y) ? this : nullptr;
 }
 
 bool

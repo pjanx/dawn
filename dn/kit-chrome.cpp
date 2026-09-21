@@ -1008,7 +1008,6 @@ Hint::fire(Kit &kit, Target t)
 
 constexpr float kMinWell = 80.f;
 constexpr float kMinSide = 120.f;
-constexpr float kSplitW = 8.f;
 
 Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	unique_ptr<Widget> body)
@@ -1030,8 +1029,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	}
 	if (this->sidebar) {
 		auto split = make_unique<Splitter>();
-		split->min_w = kSplitW;
-		split->hittable = true;
 		this->splitter = split.get();
 		this->splitter->on_drag = [this](Kit &kit, float mx) {
 			if (!this->sidebar_open || this->sidebar_side == Side::None)
@@ -1193,9 +1190,11 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	const int body_h = max(0, frame.bottom() - body_y);
 	int side_w = 0;
 	if (this->sidebar) {
-		this->sidebar->set_visible(this->sidebar_open &&
-			this->sidebar_side != Side::None && body_h > 0);
-		if (this->sidebar->visible) {
+		const bool open = this->sidebar_open &&
+			this->sidebar_side != Side::None && body_h > 0;
+		this->sidebar->set_visible(open);
+		this->splitter->set_visible(open);
+		if (open) {
 			// sidebar_w is kept in points, so that dragging the window to a
 			// display of a different scale keeps its physical width.
 			side_w = max(0, kit.px(this->sidebar_w));
@@ -1208,31 +1207,28 @@ Page::arrange_content(Kit &kit, Rect alloc)
 			else
 				this->sidebar->arrange(
 					kit, {frame.right() - side_w, body_y, side_w, body_h});
+
+			// The line gets a column of its own beside the sidebar, so
+			// that it cannot paint over either pane's edge.
+			const Rect &sr = this->sidebar->r;
+			const int lw = kit.hairline();
+			this->splitter->arrange(kit,
+				{this->sidebar_side == Side::Left ? sr.right() : sr.x - lw,
+					body_y, lw, body_h});
 		} else {
 			this->sidebar->r = {};
+			this->splitter->r = {};
 		}
 	}
 	Rect well = {frame.x, body_y, frame.w, body_h};
 	if (this->sidebar && this->sidebar->visible) {
+		const int taken = side_w + this->splitter->r.w;
 		if (this->sidebar_side == Side::Left)
-			well.x += side_w;
-		well.w = max(0, well.w - side_w);
+			well.x += taken;
+		well.w = max(0, well.w - taken);
 	}
 	if (this->content && this->content->visible)
 		this->content->arrange(kit, well);
-	if (this->splitter) {
-		this->splitter->set_visible(this->sidebar && this->sidebar->visible);
-		if (this->splitter->visible) {
-			const int sw = kit.px(this->splitter->min_w);
-			// The grab strip straddles the boundary, half on each side.
-			const int sx =
-				(this->sidebar_side == Side::Right ? well.x + well.w : well.x) -
-				sw / 2;
-			this->splitter->arrange(kit, {sx, body_y, sw, body_h});
-		} else {
-			this->splitter->r = {};
-		}
-	}
 }
 
 bool

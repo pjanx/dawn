@@ -499,12 +499,16 @@ struct Sep : Widget {
 	void paint(Kit &kit) const override;
 };
 
+// A hairline of its own between two panes; the mouse may grab it from
+// a comfortable distance to either side.
 struct Splitter : Widget {
-	float min_w = 8.f;
+	int grab_ = 0;
 	std::function<void(Kit &kit, float mouse_x)> on_drag;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
+	Widget *hit_at(float x, float y) override;
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
