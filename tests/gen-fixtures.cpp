@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -366,53 +367,308 @@ write_png16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 	write_all(path, out.data(), out.size());
 }
 
-static void
-write_tiff16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
+// --- TIFF --------------------------------------------------------------------
+
+namespace
 {
-	vector<uint8_t> out;
-	const uint32_t pixel_off = 8;
-	const uint32_t bps_off = 14;
-	const uint32_t sf_off = 20;
-	const uint32_t ifd_off = 26;
 
-	out.push_back('I');
-	out.push_back('I');
-	append_le16(out, 42);
-	append_le32(out, ifd_off);
-
-	append_le16(out, r);
-	append_le16(out, g);
-	append_le16(out, b);
-	append_le16(out, 16);
-	append_le16(out, 16);
-	append_le16(out, 16);
-	append_le16(out, 1);
-	append_le16(out, 1);
-	append_le16(out, 1);
-
-	auto entry = [&](uint16_t tag, uint16_t typ, uint32_t count, uint32_t val) {
-		append_le16(out, tag);
-		append_le16(out, typ);
-		append_le32(out, count);
-		append_le32(out, val);
+// A little-endian TIFF directory under construction. Values wider than the
+// four bytes an entry holds spill into an area that follows the directory,
+// so its file offset has to be known before it can be serialized.
+struct Ifd {
+	struct Entry {
+		uint16_t tag = 0, type = 0;
+		uint32_t count = 0;
+		vector<uint8_t> value;  ///< Little-endian, as it goes on disk
 	};
 
-	append_le16(out, 11);
-	entry(256, 4, 1, 1);
-	entry(257, 4, 1, 1);
-	entry(258, 3, 3, bps_off);
-	entry(259, 3, 1, 1);
-	entry(262, 3, 1, 2);
-	entry(273, 4, 1, pixel_off);
-	entry(277, 3, 1, 3);
-	entry(278, 4, 1, 1);
-	entry(279, 4, 1, 6);
-	entry(284, 3, 1, 1);
-	entry(339, 3, 3, sf_off);
+	vector<Entry> entries;
+
+	/// `value` is the tag's value, already in little-endian byte order.
+	void add(
+		uint16_t tag, uint16_t type, uint32_t count, vector<uint8_t> value);
+	void add_short(uint16_t tag, uint16_t value);
+	void add_long(uint16_t tag, uint32_t value);
+	void add_shorts(uint16_t tag, const vector<uint16_t> &values);
+	void add_rationals(uint16_t tag, const vector<double> &values);
+};
+
+// A whole classic TIFF: a header, blobs, and a chain of image directories.
+struct TiffFile {
+	vector<uint8_t> out = {'I', 'I', 42, 0, 0, 0, 0, 0};
+	size_t link = 4;  ///< Where the next directory's offset belongs
+
+	uint32_t blob(const vector<uint8_t> &data);
+	uint32_t directory(const Ifd &ifd);
+	void page(const Ifd &ifd);
+};
+
+}  // namespace
+
+static void
+put_le32(vector<uint8_t> &o, size_t at, uint32_t v)
+{
+	o[at + 0] = uint8_t(v);
+	o[at + 1] = uint8_t(v >> 8);
+	o[at + 2] = uint8_t(v >> 16);
+	o[at + 3] = uint8_t(v >> 24);
+}
+
+void
+Ifd::add(uint16_t tag, uint16_t type, uint32_t count, vector<uint8_t> value)
+{
+	entries.push_back({tag, type, count, std::move(value)});
+}
+
+void
+Ifd::add_short(uint16_t tag, uint16_t value)
+{
+	vector<uint8_t> v;
+	append_le16(v, value);
+	add(tag, 3 /* SHORT */, 1, std::move(v));
+}
+
+void
+Ifd::add_long(uint16_t tag, uint32_t value)
+{
+	vector<uint8_t> v;
+	append_le32(v, value);
+	add(tag, 4 /* LONG */, 1, std::move(v));
+}
+
+void
+Ifd::add_shorts(uint16_t tag, const vector<uint16_t> &values)
+{
+	vector<uint8_t> v;
+	for (uint16_t value : values)
+		append_le16(v, value);
+	add(tag, 3 /* SHORT */, uint32_t(values.size()), std::move(v));
+}
+
+void
+Ifd::add_rationals(uint16_t tag, const vector<double> &values)
+{
+	vector<uint8_t> v;
+	for (double value : values) {
+		append_le32(v, uint32_t(llround(value * 1000000)));
+		append_le32(v, 1000000);
+	}
+	add(tag, 5 /* RATIONAL */, uint32_t(values.size()), std::move(v));
+}
+
+uint32_t
+TiffFile::blob(const vector<uint8_t> &data)
+{
+	if (out.size() & 1)
+		out.push_back(0);
+	uint32_t offset = uint32_t(out.size());
+	out.insert(out.end(), data.begin(), data.end());
+	return offset;
+}
+
+uint32_t
+TiffFile::directory(const Ifd &ifd)
+{
+	vector<Ifd::Entry> sorted = ifd.entries;
+	sort(sorted.begin(), sorted.end(),
+		[](const Ifd::Entry &a, const Ifd::Entry &b) { return a.tag < b.tag; });
+
+	if (out.size() & 1)
+		out.push_back(0);
+	uint32_t base = uint32_t(out.size());
+	uint32_t spill = base + 2 + 12 * uint32_t(sorted.size()) + 4;
+
+	vector<uint8_t> spilled;
+	append_le16(out, uint16_t(sorted.size()));
+	for (const Ifd::Entry &e : sorted) {
+		append_le16(out, e.tag);
+		append_le16(out, e.type);
+		append_le32(out, e.count);
+		if (e.value.size() <= 4) {
+			out.insert(out.end(), e.value.begin(), e.value.end());
+			out.insert(out.end(), 4 - e.value.size(), 0);
+		} else {
+			if (spilled.size() & 1)
+				spilled.push_back(0);
+			append_le32(out, spill + uint32_t(spilled.size()));
+			spilled.insert(spilled.end(), e.value.begin(), e.value.end());
+		}
+	}
 	append_le32(out, 0);
-	(void) bps_off;
-	(void) sf_off;
-	write_all(path, out.data(), out.size());
+	out.insert(out.end(), spilled.begin(), spilled.end());
+	return base;
+}
+
+void
+TiffFile::page(const Ifd &ifd)
+{
+	uint32_t base = directory(ifd);
+	put_le32(out, link, base);
+	link = base + 2 + 12 * ifd.entries.size();
+}
+
+// Appends a 1x1 uncompressed image directory of `samples` per pixel,
+// keeping whatever colorimetry the caller has already put in `ifd`.
+static void
+tiff_page(TiffFile &f, Ifd ifd, uint16_t bps, uint16_t photometric,
+	const vector<uint16_t> &samples)
+{
+	vector<uint8_t> pixel;
+	for (uint16_t sample : samples) {
+		if (bps == 16)
+			append_le16(pixel, sample);
+		else
+			pixel.push_back(uint8_t(sample));
+	}
+
+	auto spp = uint16_t(samples.size());
+	ifd.add_long(256, 1);  // ImageWidth
+	ifd.add_long(257, 1);  // ImageLength
+	ifd.add_shorts(258, vector<uint16_t>(spp, bps));
+	ifd.add_short(259, 1);  // Compression: none
+	ifd.add_short(262, photometric);
+	ifd.add_long(273, f.blob(pixel));  // StripOffsets
+	ifd.add_short(277, spp);
+	ifd.add_long(278, 1);                       // RowsPerStrip
+	ifd.add_long(279, uint32_t(pixel.size()));  // StripByteCounts
+	ifd.add_short(284, 1);                      // PlanarConfiguration: chunky
+	ifd.add_shorts(339, vector<uint16_t>(spp, 1));  // SampleFormat: UINT
+	f.page(ifd);
+}
+
+// D65 white with Adobe RGB (1998) primaries, as TIFF states them.
+static void
+add_adobe_rgb(Ifd &ifd)
+{
+	ifd.add_rationals(318, {0.3127, 0.3290});
+	ifd.add_rationals(319, {0.6400, 0.3300, 0.2100, 0.7100, 0.1500, 0.0600});
+}
+
+// Tables mapping encoded values to linear intensity, per TIFF's
+// TransferFunction--one run per gamma given, all of the same length.
+static void
+add_transfer_function(Ifd &ifd, uint16_t bps, const vector<double> &gammas)
+{
+	size_t n = size_t(1) << bps;
+	vector<uint8_t> tables;
+	for (double gamma : gammas)
+		for (size_t i = 0; i < n; i++)
+			append_le16(tables,
+				uint16_t(
+					llround(65535 * pow(double(i) / double(n - 1), gamma))));
+	ifd.add(301, 3 /* SHORT */, uint32_t(gammas.size() * n), std::move(tables));
+}
+
+static void
+write_tiff_solid(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
+{
+	TiffFile f;
+	tiff_page(f, Ifd(), 16, 2 /* RGB */, {r, g, b});
+	write_all(path, f.out.data(), f.out.size());
+}
+
+// A mixed, unsaturated colour, so that a conversion out of a wider gamut
+// cannot be hidden by clipping in sRGB.
+static const vector<uint16_t> kTiffMid8 = {192, 128, 96};
+static const vector<uint16_t> kTiffMid16 = {192 * 257, 128 * 257, 96 * 257};
+
+static void
+write_tiff_fixtures(const fs::path &out)
+{
+	write_tiff_solid(out / "red.tif", 65535, 0, 0);
+	write_tiff_solid(out / "green.tif", 0, 65535, 0);
+	write_tiff_solid(out / "blue.tif", 0, 0, 65535);
+
+	{
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		tiff_page(f, ifd, 16, 2 /* RGB */, kTiffMid16);
+		write_all(out / "adobergb16.tif", f.out.data(), f.out.size());
+	}
+	{
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		tiff_page(f, ifd, 8, 2 /* RGB */, kTiffMid8);
+		write_all(out / "adobergb8.tif", f.out.data(), f.out.size());
+	}
+	{
+		// Chromaticities on a non-RGB raster describe nothing about it.
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		tiff_page(f, ifd, 16, 1 /* MINISBLACK */, {128 * 257});
+		write_all(out / "grey-primaries.tif", f.out.data(), f.out.size());
+	}
+	{
+		// The only colour statement the corpus's Olympus TIFFs carry.
+		TiffFile f;
+		Ifd exif;
+		exif.add_short(40961, 1);  // ColorSpace: sRGB
+		Ifd ifd;
+		ifd.add_long(34665, f.directory(exif));  // ExifIFD
+		tiff_page(f, ifd, 8, 2 /* RGB */, kTiffMid8);
+		write_all(out / "exif-srgb.tif", f.out.data(), f.out.size());
+	}
+	{
+		TiffFile f;
+		Ifd exif;
+		exif.add_rationals(42240, {2.2});  // Gamma
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		ifd.add_long(34665, f.directory(exif));
+		tiff_page(f, ifd, 16, 2 /* RGB */, kTiffMid16);
+		write_all(out / "exif-gamma.tif", f.out.data(), f.out.size());
+	}
+	{
+		// An unreadable Exif offset and one landing mid-header, around a
+		// good one: none may cost us a page, or the pixels of one.
+		TiffFile f;
+		Ifd exif;
+		exif.add_short(40961, 1);  // ColorSpace: sRGB
+		Ifd unreadable, valid, malformed;
+		unreadable.add_long(34665, 0xFFFFFF00);
+		valid.add_long(34665, f.directory(exif));
+		malformed.add_long(34665, 3);
+		tiff_page(f, unreadable, 8, 2 /* RGB */, kTiffMid8);
+		tiff_page(f, valid, 8, 2 /* RGB */, {96, 128, 192});
+		tiff_page(f, malformed, 8, 2 /* RGB */, {128, 192, 96});
+		write_all(out / "exif-pages.tif", f.out.data(), f.out.size());
+	}
+	{
+		// One shared curve, which libtiff hands out for all three channels.
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		add_transfer_function(ifd, 8, {1.0});
+		tiff_page(f, ifd, 8, 2 /* RGB */, kTiffMid8);
+		write_all(out / "transfer8.tif", f.out.data(), f.out.size());
+	}
+	{
+		// libtiff surrenders only the first of a palette image's three
+		// TransferFunction tables, so none of them may be used.
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		add_transfer_function(ifd, 8, {1.0, 2.0, 3.0});
+		vector<uint16_t> colormap(3 * 256);
+		colormap[1] = 192 * 257;
+		colormap[256 + 1] = 128 * 257;
+		colormap[512 + 1] = 96 * 257;
+		ifd.add_shorts(320, colormap);
+		tiff_page(f, ifd, 8, 3 /* PALETTE */, {1});
+		write_all(out / "palette-transfer.tif", f.out.data(), f.out.size());
+	}
+	{
+		// Three distinct curves, long enough to need the float constructor.
+		TiffFile f;
+		Ifd ifd;
+		add_adobe_rgb(ifd);
+		add_transfer_function(ifd, 16, {1.5, 2.0, 3.0});
+		tiff_page(f, ifd, 16, 2 /* RGB */, kTiffMid16);
+		write_all(out / "transfer16.tif", f.out.data(), f.out.size());
+	}
 }
 
 static void
@@ -552,9 +808,7 @@ main(int argc, char **argv)
 	write_png16_rgb(out / "green16.png", 0, 65535, 0);
 	write_png16_rgb(out / "blue16.png", 0, 0, 65535);
 
-	write_tiff16_rgb(out / "red.tif", 65535, 0, 0);
-	write_tiff16_rgb(out / "green.tif", 0, 65535, 0);
-	write_tiff16_rgb(out / "blue.tif", 0, 0, 65535);
+	write_tiff_fixtures(out);
 
 	write_svgs(out);
 	string quads = (out / "rgbw_2x2.png").string();

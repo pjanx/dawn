@@ -5,12 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-// This is the fallback, general-purpose TIFF loader--it runs after
-// load_tiff_ep() and load_libraw() in the format dispatch, so that raw
-// photos with a usable JPEG preview or sensor data get a chance to be
-// rendered better first. This one instead trusts libtiff to make sense of
-// (and composite) whatever it finds, one image per directory.
-//
+// This is the fallback, general-purpose TIFF loader.  It may misprocess raw
+// photos, so it should be run after better loaders.
 
 #include <dawn-config.h>
 
@@ -27,9 +23,14 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
+
+#define TIFF_TABLES_CONSTANTS_ONLY
+#include "tiff-tables.h"
 
 using namespace std;
 
@@ -46,6 +47,11 @@ struct TiffIo {
 	const uint8_t *data = nullptr;
 	toff_t position = 0, len = 0;
 	string error;  ///< First hard error encountered, if any
+
+	/// How libtiff's diagnostics are to be treated: an optional metadata
+	/// read may not cost us successfully decoded pages, and restoring the
+	/// image directory only repeats what reading it first time round said.
+	enum { Fatal, Demoted, Ignored } diagnostics = Fatal;
 };
 
 }  // namespace
@@ -114,26 +120,149 @@ DAWN_FORMAT(3, 0) static void
 tiff_error(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
+	if (io->diagnostics == TiffIo::Ignored)
+		return;
+
 	char buf[1024] = "";
 	vsnprintf(buf, sizeof buf, format, ap);
 	// Note that two errors could theoretically come in a succession,
 	// but only the first one is normally interesting to the caller.
-	if (io->error.empty())
+	if (io->diagnostics == TiffIo::Demoted || !io->error.empty()) {
+		if (io->ctx)
+			add_warning(*io->ctx, string(module) + ": " + buf);
+	} else {
 		io->error = string(module) + ": " + buf;
-	else if (io->ctx)
-		add_warning(*io->ctx, string(module) + ": " + buf);
+	}
 }
 
 DAWN_FORMAT(3, 0) static void
 tiff_warning(thandle_t h, const char *module, const char *format, va_list ap)
 {
 	auto *io = (TiffIo *) h;
-	if (!io->ctx)
+	if (!io->ctx || io->diagnostics == TiffIo::Ignored)
 		return;
 
 	char buf[1024] = "";
 	vsnprintf(buf, sizeof buf, format, ap);
 	add_warning(*io->ctx, string(module) + ": " + buf);
+}
+
+// --- Source profile derivation -----------------------------------------------
+
+// TransferFunction is one table per channel, or a single shared one, with
+// as many entries as the bit depth can encode--not tificc's hardcoded 256.
+static bool
+tiff_transfer_function(
+	TIFF *tiff, uint16_t photometric, span<const uint16_t> curves[3])
+{
+	// Palette images are out: libtiff keeps just the first of their three
+	// tables, and repeating it would invent a curve the file never stated.
+	if (photometric == PHOTOMETRIC_PALETTE)
+		return false;
+
+	uint16_t bps = 0;
+	if (!TIFFGetField(tiff, TIFFTAG_BITSPERSAMPLE, &bps) || !bps || bps > 16)
+		return false;
+
+	uint16_t *r = nullptr, *g = nullptr, *b = nullptr;
+	if (!TIFFGetField(tiff, TIFFTAG_TRANSFERFUNCTION, &r, &g, &b) || !r)
+		return false;
+
+	size_t entries = size_t(1) << bps;
+	curves[0] = {r, entries};
+	curves[1] = {g ? g : r, entries};
+	curves[2] = {b ? b : r, entries};
+	return true;
+}
+
+// Reads the Exif sub-IFD's colour statements, when there is one. Its own
+// failures are just missing metadata, and may not cost us the raster.
+static bool
+read_tiff_exif_colour(
+	TIFF *tiff, bool *srgb, optional<double> *gamma, Error *error)
+{
+	uint64_t offset = 0;
+	if (!TIFFGetField(tiff, TIFFTAG_EXIFIFD, &offset))
+		return true;
+
+	auto *io = (TiffIo *) TIFFClientdata(tiff);
+	uint64_t saved = TIFFCurrentDirOffset(tiff);
+
+	io->diagnostics = TiffIo::Demoted;
+	if (TIFFReadEXIFDirectory(tiff, offset)) {
+		uint16_t colorspace = 0;
+		float value = 0;
+		if (TIFFGetField(tiff, EXIFTAG_COLORSPACE, &colorspace))
+			*srgb = colorspace == Exif_ColorSpace_sRGB;
+		if (TIFFGetField(tiff, EXIFTAG_GAMMA, &value) && value > 0)
+			*gamma = value;
+	}
+
+	// Rather than the directory index, which a failed custom-directory read
+	// can leave behind unusable. Failing here is fatal: all its tag
+	// pointers are gone, and so is any chance of decoding the raster.
+	io->diagnostics = TiffIo::Ignored;
+	bool restored = TIFFSetSubDirectory(tiff, saved);
+	io->diagnostics = TiffIo::Fatal;
+	if (restored)
+		return true;
+
+	set_error(error, _("cannot return to the TIFF image directory"));
+	if (io->error.empty())
+		io->error = error->message;
+	return false;
+}
+
+/// Reconstructs what the directory says about its colour, for the files
+/// that state it without embedding an ICC profile. Null when there is
+/// nothing to go on, or when there is a profile to be read from the blob;
+/// a set `error` means the directory is lost and decoding must stop.
+static shared_ptr<Profile>
+tiff_source_profile(TIFF *tiff, const OpenContext &ctx, Error *error)
+{
+	uint32_t len = 0;
+	void *icc = nullptr;
+	if (TIFFGetField(tiff, TIFFTAG_ICCPROFILE, &len, &icc) && icc && len)
+		return nullptr;
+
+	// Reloading the directory invalidates every tag pointer, so this has
+	// to happen before any of them is taken.
+	bool srgb = false;
+	optional<double> gamma;
+	if (!read_tiff_exif_colour(tiff, &srgb, &gamma, error))
+		return nullptr;
+
+	auto cmm = cmm_or_default(ctx);
+	if (srgb)
+		return cmm->get_profile_sRGB();
+
+	// Raw sensor directories carry chromaticities that describe anything
+	// but their CFA samples--only trust them for rendered rasters.
+	uint16_t photometric = 0;
+	if (!TIFFGetField(tiff, TIFFTAG_PHOTOMETRIC, &photometric) ||
+		(photometric != PHOTOMETRIC_RGB && photometric != PHOTOMETRIC_YCBCR &&
+			photometric != PHOTOMETRIC_PALETTE))
+		return nullptr;
+
+	float *wp = nullptr, *prim = nullptr;
+	if (!TIFFGetField(tiff, TIFFTAG_WHITEPOINT, &wp) || !wp ||
+		!TIFFGetField(tiff, TIFFTAG_PRIMARYCHROMATICITIES, &prim) || !prim)
+		return nullptr;
+
+	double whitepoint[2] = {wp[0], wp[1]};
+	double primaries[6] = {
+		prim[0], prim[1], prim[2], prim[3], prim[4], prim[5]};
+
+	span<const uint16_t> curves[3];
+	if (tiff_transfer_function(tiff, photometric, curves)) {
+		if (auto profile =
+				cmm->get_profile_tabulated(whitepoint, primaries, curves))
+			return profile;
+	}
+
+	// Files carrying these tags with no stated curve are camera output
+	// that means sRGB, as with PNG cHRM lacking gAMA.
+	return cmm->get_profile_parametric(gamma, whitepoint, primaries);
 }
 
 // --- Directory decoding ------------------------------------------------------
@@ -172,7 +301,8 @@ apply_tiff_metadata(Image &image, TIFF *tiff)
 // Contiguous unsigned 16-bit grey/RGB(A) that TIFFRGBAImage would only
 // quantize to 8-bit. Reads scanlines and packs to working BGRA16.
 static ImagePtr
-load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
+load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx,
+	const shared_ptr<Profile> &source, Error *error)
 {
 	uint32_t width = 0, height = 0;
 	uint16_t bps = 0, spp = 0, photometric = 0;
@@ -276,16 +406,27 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx, Error *error)
 		image->orientation = Orientation(orientation);
 
 	apply_tiff_metadata(*image, tiff);
-	finish_image(*image, ctx, nullptr, /*input_premul=*/false);
+	if (source)
+		image->effective_profile = source;
+	finish_image(*image, ctx, source.get(), /*input_premul=*/false);
 	return image;
 }
 
 static ImagePtr
 load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 {
+	// This reloads the directory, so it must precede both any tag pointer
+	// being taken and any pixel being decoded.
+	Error derivation;
+	shared_ptr<Profile> source = tiff_source_profile(tiff, ctx, &derivation);
+	if (!derivation.message.empty()) {
+		set_error(error, derivation.message);
+		return nullptr;
+	}
+
 	{
 		Error u16err;
-		ImagePtr hi = load_tiff_directory_u16(tiff, ctx, &u16err);
+		ImagePtr hi = load_tiff_directory_u16(tiff, ctx, source, &u16err);
 		if (hi)
 			return hi;
 		if (!u16err.message.empty()) {
@@ -350,13 +491,12 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 	widen_bgra8_to_bgra16(*image, pixels.data(), stride);
 
 	// XXX: The whole file is essentially an Exif, any ideas?
-	// TODO(p): TIFF has a number of fields that an ICC profile can be
-	// constructed from--it's not a good idea to blindly default to sRGB
-	// if we don't find an ICC profile.
 	apply_tiff_metadata(*image, tiff);
 	apply_tiff_orientation(*image, tiff);
 
-	finish_image(*image, ctx, nullptr, /*input_premul=*/false);
+	if (source)
+		image->effective_profile = source;
+	finish_image(*image, ctx, source.get(), /*input_premul=*/false);
 
 	// TODO(p): It's possible to implement ClipPath easily.
 	return image;
@@ -394,7 +534,8 @@ load_tiff(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				append_page(head, tail, std::move(page));
 			else if (!suberror.message.empty())
 				add_warning(ctx, suberror.message);
-		} while (!ctx.first_frame_only && TIFFReadDirectory(tiff));
+		} while (!ctx.first_frame_only && io.error.empty() &&
+			TIFFReadDirectory(tiff));
 		TIFFClose(tiff);
 	}
 

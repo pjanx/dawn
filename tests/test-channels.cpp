@@ -938,6 +938,152 @@ test_png_colour_chunks()
 		"chrm-p3-gama1.png", dawn::Transfer::Linear, 0.68, 0.32);
 }
 
+#if DAWN_WITH_LIBTIFF
+
+static dawn::ImagePtr
+load_tiff_fixture(const char *name, const shared_ptr<dawn::Cmm> &cmm,
+	const shared_ptr<dawn::Profile> &screen, vector<string> *warnings)
+{
+	const vector<uint8_t> bytes = read_fixture(name);
+	if (bytes.empty())
+		return nullptr;
+
+	// The format dispatch would give load_tiff_ep() and LibRaw a go first.
+	dawn::OpenContext ctx;
+	ctx.uri =
+		dawn::path_to_uri((fs::path(DAWN_TEST_FIXTURES_DIR) / name).string());
+	ctx.cmm = cmm;
+	ctx.screen_profile = screen;
+	ctx.warnings = warnings;
+	dawn::Error error;
+	dawn::ImagePtr image = dawn::load_tiff(bytes, ctx, &error);
+	if (!image)
+		test::fail("%s: %s", name, error.message.c_str());
+	return image;
+}
+
+// A TIFF stating its colour numerically must not come out as invented sRGB.
+static void
+test_tiff_colour(
+	const char *name, dawn::Transfer transfer, double green_x, double green_y)
+{
+	dawn::ImagePtr image =
+		load_tiff_fixture(name, dawn::Cmm::get_default(), nullptr, nullptr);
+	if (!image)
+		return;
+
+	CHECK(!image->profile_assumed);
+	if (dawn::profile_transfer(image->effective_profile.get()) != transfer)
+		test::fail("%s: unexpected transfer function", name);
+
+	dawn::Chromaticities c =
+		dawn::profile_chromaticities(image->effective_profile.get());
+	CHECK(c.have_primaries && c.n == 3);
+	if (c.n != 3)
+		return;
+	near_xy(name, c.x[0], c.y[0], 0.64, 0.33, 0.002);
+	near_xy(name, c.x[1], c.y[1], green_x, green_y, 0.002);
+}
+
+static void
+test_tiff_colorimetry()
+{
+	auto cmm = dawn::Cmm::get_default();
+
+	// Both decoding paths: 16-bit scanlines, and TIFFRGBAImage.
+	test_tiff_colour("adobergb16.tif", dawn::Transfer::Srgb, 0.21, 0.71);
+	test_tiff_colour("adobergb8.tif", dawn::Transfer::Srgb, 0.21, 0.71);
+	test_tiff_colour("exif-gamma.tif", dawn::Transfer::AdobeRgb, 0.21, 0.71);
+	test_tiff_colour("exif-srgb.tif", dawn::Transfer::Srgb, 0.30, 0.60);
+	test_tiff_colour("palette-transfer.tif", dawn::Transfer::Srgb, 0.21, 0.71);
+
+	// Chromaticities outside an RGB raster describe nothing about it, and
+	// the solid fixtures carry no colorimetry at all.
+	for (const char *name : {"grey-primaries.tif", "red.tif"}) {
+		dawn::ImagePtr image = load_tiff_fixture(name, cmm, nullptr, nullptr);
+		if (image)
+			CHECK(image->profile_assumed);
+	}
+
+	// A stated sRGB moves no pixel; a wider gamut has to move several.
+	auto srgb = cmm->get_profile_sRGB();
+	if (dawn::ImagePtr i =
+			load_tiff_fixture("exif-srgb.tif", cmm, srgb, nullptr))
+		expect_bgra("exif-srgb.tif", pixel0(*i), 96 * 257, 128 * 257, 192 * 257,
+			65535, 64);
+	if (dawn::ImagePtr i =
+			load_tiff_fixture("adobergb16.tif", cmm, srgb, nullptr)) {
+		// The red channel carries the conversion, and stays in gamut,
+		// so that clipping cannot stand in for it.
+		Pixel p = pixel0(*i);
+		if (near_u16(p.r, 192 * 257, 2000) || p.r >= 65535)
+			test::fail("adobergb16.tif: unconverted BGRA (%u,%u,%u,%u)", p.b,
+				p.g, p.r, p.a);
+	}
+
+	// TransferFunction tables, over the whole range the bit depth encodes.
+	const struct {
+		const char *name;
+		double gamma[3];
+	} tabulated[] = {
+		{"transfer8.tif", {1.0, 1.0, 1.0}},
+		{"transfer16.tif", {1.5, 2.0, 3.0}},
+	};
+	for (const auto &t : tabulated) {
+		dawn::ImagePtr image = load_tiff_fixture(t.name, cmm, nullptr, nullptr);
+		if (!image)
+			continue;
+		CHECK(!image->profile_assumed);
+		const auto e = dawn::profile_encoding(image->effective_profile.get());
+		CHECK(e.matrix_trc);
+		for (size_t c = 0; c < 3; c++)
+			CHECK(abs(e.decode[2048][c] - pow(.5, t.gamma[c])) < .001);
+	}
+
+	// A palette image's three curves cannot be had from libtiff, so the
+	// profile falls back to sRGB rather than repeating the one it gets.
+	if (dawn::ImagePtr i =
+			load_tiff_fixture("palette-transfer.tif", cmm, nullptr, nullptr)) {
+		const auto e = dawn::profile_encoding(i->effective_profile.get());
+		CHECK(e.matrix_trc);
+		for (size_t c = 0; c < 3; c++)
+			CHECK(abs(e.decode[2048][c] - .21404114) < .001);
+	}
+
+	// An unreadable Exif is missing metadata, not a lost file: every page
+	// must survive it, with its pixels, and the good one in the middle has
+	// to leave the page loop where it found it.
+	vector<string> warnings;
+	dawn::ImagePtr pages =
+		load_tiff_fixture("exif-pages.tif", cmm, nullptr, &warnings);
+	CHECK(!warnings.empty());
+	if (!pages)
+		return;
+
+	const struct {
+		const char *label;
+		uint16_t b, g, r;
+		bool assumed;
+	} expected[] = {
+		{"exif-pages.tif unreadable", 96 * 257, 128 * 257, 192 * 257, true},
+		{"exif-pages.tif valid", 192 * 257, 128 * 257, 96 * 257, false},
+		{"exif-pages.tif malformed", 96 * 257, 192 * 257, 128 * 257, true},
+	};
+	size_t page = 0;
+	for (dawn::Image *p = pages.get(); p; p = p->page_next.get(), page++) {
+		if (page >= size(expected)) {
+			test::fail("exif-pages.tif: more than %zu pages", size(expected));
+			break;
+		}
+		CHECK(p->profile_assumed == expected[page].assumed);
+		expect_bgra(expected[page].label, pixel0(*p), expected[page].b,
+			expected[page].g, expected[page].r, 65535, 0);
+	}
+	CHECK(page == size(expected));
+}
+
+#endif  // DAWN_WITH_LIBTIFF
+
 static void
 test_png_text_after_idat()
 {
@@ -1070,6 +1216,9 @@ main()
 		{"chromaticities", test_chromaticities},
 		{"PNG text", test_png_text_after_idat},
 		{"PNG colour chunks", test_png_colour_chunks},
+#if DAWN_WITH_LIBTIFF
+		{"TIFF colorimetry", test_tiff_colorimetry},
+#endif
 		{"profile transfer", test_profile_transfer},
 		{"profile encoding", test_profile_encoding},
 	});

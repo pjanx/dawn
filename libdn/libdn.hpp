@@ -173,6 +173,12 @@ public:
 	std::shared_ptr<Profile> get_profile_parametric(std::optional<double> gamma,
 		const double whitepoint[2], const double primaries[6]);
 
+	/// An RGB profile from CIE 1931 xy chromaticities and tabulated tone
+	/// curves, as TIFF's TransferFunction stores them--equally long runs of
+	/// 16-bit samples mapping encoded values to linear intensity.
+	std::shared_ptr<Profile> get_profile_tabulated(const double whitepoint[2],
+		const double primaries[6], std::span<const uint16_t> curves[3]);
+
 	/// Synthesizes a profile from ITU-T H.273 coded values (as carried by
 	/// AVIF/HEIF nclx). Null for code points we do not model,
 	/// including PQ (16) and HLG (18): both are HDR curves with no ICC v2

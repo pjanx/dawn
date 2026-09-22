@@ -590,6 +590,55 @@ Cmm::get_profile_parametric(optional<double> gamma, const double whitepoint[2],
 	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
 }
 
+// Little CMS refuses more than 65530 entries in its 16-bit constructor,
+// which a 16-bit image's 65536-entry table exceeds--the segmented float
+// curve takes the whole table instead of dropping its tail.
+static cmsToneCurve *
+tabulated_tone_curve(cmsContext context, span<const uint16_t> table)
+{
+	if (table.empty())
+		return nullptr;
+	if (table.size() <= 65530)
+		return cmsBuildTabulatedToneCurve16(
+			context, cmsUInt32Number(table.size()), table.data());
+
+	vector<cmsFloat32Number> samples(table.size());
+	for (size_t i = 0; i < table.size(); i++)
+		samples[i] = table[i] / 65535.f;
+	return cmsBuildTabulatedToneCurveFloat(
+		context, cmsUInt32Number(samples.size()), samples.data());
+}
+
+shared_ptr<Profile>
+Cmm::get_profile_tabulated(const double whitepoint[2],
+	const double primaries[6], span<const uint16_t> curves[3])
+{
+	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
+	const cmsCIExyYTRIPLE prim{
+		{primaries[0], primaries[1], 1.0},
+		{primaries[2], primaries[3], 1.0},
+		{primaries[4], primaries[5], 1.0},
+	};
+
+	cmsToneCurve *built[3] = {};
+	for (int i = 0; i < 3; i++) {
+		if (!(built[i] =
+					tabulated_tone_curve(cmsContext(context_), curves[i]))) {
+			while (i-- > 0)
+				cmsFreeToneCurve(built[i]);
+			return nullptr;
+		}
+	}
+
+	cmsHPROFILE p =
+		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, built);
+	for (cmsToneCurve *curve : built)
+		cmsFreeToneCurve(curve);
+	if (!p)
+		return nullptr;
+	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
+}
+
 shared_ptr<Profile>
 Cmm::get_profile_sRGB_gamma(double gamma)
 {
