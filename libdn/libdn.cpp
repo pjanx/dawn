@@ -327,15 +327,15 @@ pack_rgb16le_to_bgra16(
 	}
 }
 
-bool
-read_file(const string &path, vector<uint8_t> *out, Error *error)
+static bool
+open_file(const string &path, ifstream &in, size_t *size, Error *error)
 {
 #ifdef _WIN32
 	// The manifest sets no activeCodePage, so a narrow path would be opened
 	// through the ANSI code page, which most filenames do not survive.
-	ifstream in(filesystem::path(utf8_to_wide(path)), ios::binary);
+	in.open(filesystem::path(utf8_to_wide(path)), ios::binary);
 #else
-	ifstream in(path, ios::binary);
+	in.open(path, ios::binary);
 #endif
 	if (!in) {
 		if (error) {
@@ -356,8 +356,16 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 		return false;
 	}
 	in.seekg(0, ios::beg);
-	out->resize(size_t(sz));
-	if (sz > 0 && !in.read((char *) out->data(), streamsize(sz))) {
+	*size = size_t(sz);
+	return true;
+}
+
+// Reads the `size` bytes that `open_file()` has measured.
+static bool
+read_opened(
+	ifstream &in, uint8_t *data, size_t size, const string &path, Error *error)
+{
+	if (size && !in.read((char *) data, streamsize(size))) {
 		if (error) {
 			error->code = Error::Code::Io;
 			error->message =
@@ -366,6 +374,18 @@ read_file(const string &path, vector<uint8_t> *out, Error *error)
 		return false;
 	}
 	return true;
+}
+
+bool
+read_file(const string &path, vector<uint8_t> *out, Error *error)
+{
+	ifstream in;
+	size_t size = 0;
+	if (!open_file(path, in, &size, error))
+		return false;
+
+	out->resize(size);
+	return read_opened(in, out->data(), size, path, error);
 }
 
 // --- Saving ------------------------------------------------------------------
@@ -1389,7 +1409,8 @@ open(const OpenContext &ctx, Error *error)
 		set_error(error, _("empty URI"));
 		return nullptr;
 	}
-	vector<uint8_t> data;
+	unique_ptr<uint8_t[]> data;
+	size_t size = 0;
 	{
 		StageClock clk(&OpenTiming::file_ms);
 		auto path = uri_to_path(ctx.uri);
@@ -1397,10 +1418,17 @@ open(const OpenContext &ctx, Error *error)
 			set_error(error, _("invalid URI"));
 			return nullptr;
 		}
-		if (!read_file(*path, &data, error))
+
+		ifstream in;
+		if (!open_file(*path, in, &size, error))
+			return nullptr;
+
+		// Unlike vector::resize(), this does not zero the whole file first.
+		data = make_unique_for_overwrite<uint8_t[]>(size);
+		if (!read_opened(in, data.get(), size, *path, error))
 			return nullptr;
 	}
-	return open_from_data(data, ctx, error);
+	return open_from_data({data.get(), size}, ctx, error);
 }
 
 }  // namespace dawn
