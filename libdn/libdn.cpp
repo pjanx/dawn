@@ -1423,7 +1423,6 @@ open(const OpenContext &ctx, Error *error)
 		if (!open_file(*path, in, &size, error))
 			return nullptr;
 
-		// Unlike vector::resize(), this does not zero the whole file first.
 		data = make_unique_for_overwrite<uint8_t[]>(size);
 		if (!read_opened(in, data.get(), size, *path, error))
 			return nullptr;
