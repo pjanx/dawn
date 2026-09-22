@@ -43,20 +43,22 @@ imageio_number(CFDictionaryRef dictionary, CFStringRef key, double *out)
 // and there is no format-independent delay key--so ask all four containers
 // that have one.  Returns milliseconds, or -1 when this index is a page.
 static int64_t
-imageio_delay(CFDictionaryRef properties, uint64_t *loops)
+imageio_delay(CFDictionaryRef properties, uint64_t *loops, bool *bump)
 {
 	const struct {
 		CFStringRef container, unclamped, clamped, loops;
+		bool bump;
 	} animations[] = {
 		{kCGImagePropertyGIFDictionary, kCGImagePropertyGIFUnclampedDelayTime,
-			kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFLoopCount},
+			kCGImagePropertyGIFDelayTime, kCGImagePropertyGIFLoopCount, true},
 		{kCGImagePropertyPNGDictionary, kCGImagePropertyAPNGUnclampedDelayTime,
-			kCGImagePropertyAPNGDelayTime, kCGImagePropertyAPNGLoopCount},
+			kCGImagePropertyAPNGDelayTime, kCGImagePropertyAPNGLoopCount, true},
 		{kCGImagePropertyWebPDictionary, kCGImagePropertyWebPUnclampedDelayTime,
-			kCGImagePropertyWebPDelayTime, kCGImagePropertyWebPLoopCount},
+			kCGImagePropertyWebPDelayTime, kCGImagePropertyWebPLoopCount, true},
 		{kCGImagePropertyHEICSDictionary,
 			kCGImagePropertyHEICSUnclampedDelayTime,
-			kCGImagePropertyHEICSDelayTime, kCGImagePropertyHEICSLoopCount},
+			kCGImagePropertyHEICSDelayTime, kCGImagePropertyHEICSLoopCount,
+			false},
 	};
 
 	for (const auto &animation : animations) {
@@ -75,6 +77,8 @@ imageio_delay(CFDictionaryRef properties, uint64_t *loops)
 		if (loops && imageio_number(dictionary, animation.loops, &count) &&
 			count > 0)
 			*loops = uint64_t(count);
+		if (bump)
+			*bump = animation.bump;
 		return int64_t(seconds * 1000 + 0.5);
 	}
 	return -1;
@@ -221,14 +225,16 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 	}
 
 	ImagePtr head, tail;
-	bool animated = false;
+	bool animated = false, bump = false;
 	uint64_t loops = 0;
 	size_t count = CGImageSourceGetCount(source);
 	for (size_t i = 0; i < count; i++) {
 		CFDictionaryRef properties =
 			CGImageSourceCopyPropertiesAtIndex(source, i, options);
-		int64_t duration =
-			properties ? imageio_delay(properties, i ? nullptr : &loops) : -1;
+		int64_t duration = properties
+			? imageio_delay(
+				  properties, i ? nullptr : &loops, i ? nullptr : &bump)
+			: -1;
 		if (!i)
 			animated = duration >= 0;
 
@@ -261,6 +267,7 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 
 		if (animated) {
 			image->frame_duration = max(duration, int64_t(0));
+			image->browser_animation_bump = bump;
 			append_frame(head, tail, std::move(image));
 		} else {
 			// ICNS and ICO expose their size variants this way,

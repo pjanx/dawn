@@ -132,6 +132,7 @@ spec_enabled(const Viewer &v, Action action)
 	case Action::FramePrevious:
 	case Action::PlayPause:
 	case Action::FrameNext:
+	case Action::BrowserDelays:
 		return v.current_ && v.current_->frame_next;
 	case Action::Copy:
 		return !v.url_.isEmpty() ||
@@ -162,6 +163,8 @@ spec_active(const Viewer &v, Action action)
 		return v.checkerboard_;
 	case Action::BlendLinearLight:
 		return v.blend_linear_light_;
+	case Action::BrowserDelays:
+		return v.browser_delays_;
 	case Action::ColorManagement:
 		return v.enable_cms_;
 	case Action::Smooth:
@@ -402,9 +405,9 @@ constexpr int64_t kBrowserDelayFloorMs = 11;
 constexpr int64_t kBrowserDelayBumpMs = 100;
 
 static int64_t
-display_delay_ms(int64_t duration)
+display_delay_ms(const Viewer &v, int64_t duration)
 {
-	if (duration < 0)
+	if (duration < 0 || !v.browser_delays_)
 		return duration;
 	if (duration < kBrowserDelayFloorMs)
 		return kBrowserDelayBumpMs;
@@ -467,7 +470,7 @@ animate(Viewer &v)
 	if (!v.playing_ || !v.frame_)
 		return;
 
-	const int64_t duration = display_delay_ms(v.frame_->frame_duration);
+	const int64_t duration = display_delay_ms(v, v.frame_->frame_duration);
 	if (duration < 0) {
 		stop_playback(v);
 		return;
@@ -481,7 +484,7 @@ animate(Viewer &v)
 		return;
 	}
 	v.frame_at_ = then;
-	const int64_t next = display_delay_ms(v.frame_->frame_duration);
+	const int64_t next = display_delay_ms(v, v.frame_->frame_duration);
 	if (next >= 0 && v.frame_at_ + chrono::milliseconds(next) < now)
 		v.frame_at_ = now;
 }
@@ -774,6 +777,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	v.image_ = std::move(image);
 	v.current_ = v.image_;
 	v.frame_ = v.current_;
+	v.browser_delays_ = v.image_->browser_animation_bump;
 	v.page_scaled_.reset();
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
@@ -1779,6 +1783,10 @@ apply_action(Viewer &v, Action action)
 		v.blend_linear_light_ = !v.blend_linear_light_;
 		request_render(v);
 		return true;
+	case Action::BrowserDelays:
+		v.browser_delays_ = !v.browser_delays_;
+		request_render(v);
+		return true;
 	case Action::RotateLeft:
 		snap_view(v, SnapDir::Left);
 		return true;
@@ -2122,7 +2130,8 @@ Viewer::wake_ms() const
 	if (!this->playing_ || !this->frame_)
 		return -1;
 
-	const int64_t duration = display_delay_ms(this->frame_->frame_duration);
+	const int64_t duration =
+		display_delay_ms(*this, this->frame_->frame_duration);
 	if (duration < 0)
 		return -1;
 

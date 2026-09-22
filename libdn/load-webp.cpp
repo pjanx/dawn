@@ -129,6 +129,7 @@ load_webp_frame(WebPAnimDecoder *dec, const WebPAnimInfo &info,
 	// This API is confusing and awkward: timestamps accumulate,
 	// while we want individual frame durations.
 	image->frame_duration = timestamp - *last_timestamp;
+	image->browser_animation_bump = true;
 	*last_timestamp = timestamp;
 	return image;
 }

@@ -171,6 +171,10 @@ load_frame(const dnrs_frame &frame, Error *error)
 	}
 	image->frame_duration =
 		int64_t(min<uint64_t>(frame.duration_ms, uint64_t(INT64_MAX)));
+
+	// GIF, APNG and WebP are the only formats decode_image_rs() animates,
+	// and a still image's flag is never read.
+	image->browser_animation_bump = true;
 	return image;
 }
 

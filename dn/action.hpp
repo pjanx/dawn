@@ -100,6 +100,7 @@ enum class Action : uint8_t {
 	Smooth,
 	Checkerboard,
 	BlendLinearLight,
+	BrowserDelays,
 	RotateLeft,
 	Mirror,
 	RotateRight,

@@ -310,6 +310,10 @@ struct Image {
 
 	int64_t frame_duration = 0;  ///< Milliseconds.
 	uint64_t loops = 0;          ///< Zero means infinite.
+
+	/// Heuristic: this animation comes from a format web browsers play,
+	/// and is thus a candidate for their short-delay adjustment.
+	bool browser_animation_bump = false;
 };
 
 /// Row accessors — `stride` is always in bytes.

@@ -447,6 +447,10 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	image->frame_duration = int64_t(wuffs_base__frame_config__duration(&fc)) /
 		int64_t(WUFFS_BASE__FLICKS_PER_MILLISECOND);
 
+	// So far, Wuffs animates GIF, APNG, NIA.
+	// The latter is internal, so use a simple rule.
+	image->browser_animation_bump = true;
+
 	bool ok = wuffs_base__status__is_ok(&status);
 	append_frame(ctx.result, ctx.result_tail, std::move(image));
 	ctx.last_fc = fc;
