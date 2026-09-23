@@ -12,6 +12,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -742,9 +744,9 @@ write_svgs(const fs::path &dir)
 }
 
 static int
-run_magick(initializer_list<const char *> args)
+run_tool(const char *tool, initializer_list<const char *> args)
 {
-	string cmd = "magick";
+	string cmd = tool;
 	for (const char *a : args) {
 		cmd += " '";
 		cmd += a;
@@ -752,9 +754,301 @@ run_magick(initializer_list<const char *> args)
 	}
 	int rc = system(cmd.c_str());
 	if (rc != 0)
-		fprintf(stderr, "gen_fixtures: warning: magick failed (%d): %s\n", rc,
+		fprintf(stderr, "gen_fixtures: warning: %s failed (%d): %s\n", tool, rc,
 			cmd.c_str());
 	return rc;
+}
+
+static int
+run_magick(initializer_list<const char *> args)
+{
+	return run_tool("magick", args);
+}
+
+// Tools that only some fixtures need, and whose absence skips their tests.
+static bool
+have_tool(const char *tool)
+{
+	return !system((string("command -v ") + tool + " >/dev/null 2>&1").c_str());
+}
+
+// --- Gain maps ---------------------------------------------------------------
+
+static vector<uint8_t>
+read_all(const fs::path &path)
+{
+	ifstream in(path, ios::binary);
+	return vector<uint8_t>(istreambuf_iterator<char>(in), {});
+}
+
+static void
+append_be16(vector<uint8_t> &o, uint16_t v)
+{
+	o.push_back(uint8_t(v >> 8));
+	o.push_back(uint8_t(v));
+}
+
+// A marker segment whose payload starts with a NUL-terminated identifier.
+static void
+append_jpeg_app(vector<uint8_t> &o, uint8_t marker, const string &id,
+	const vector<uint8_t> &payload)
+{
+	o.push_back(0xFF);
+	o.push_back(marker);
+	append_be16(o, uint16_t(2 + id.size() + 1 + payload.size()));
+	o.insert(o.end(), id.begin(), id.end());
+	o.push_back(0);
+	o.insert(o.end(), payload.begin(), payload.end());
+}
+
+static vector<uint8_t>
+bytes(const string &s)
+{
+	return vector<uint8_t>(s.begin(), s.end());
+}
+
+static const string kXmpNs = "http://ns.adobe.com/xap/1.0/";
+static const string kIsoNs = "urn:iso:std:iso:ts:21496:-1";
+
+static string
+xmp_packet(const string &description)
+{
+	return "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf="
+		   "\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description "
+		   "rdf:about=\"\" "
+		   "xmlns:hdrgm=\"http://ns.adobe.com/hdr-gain-map/1.0/\" "
+		   "xmlns:Container=\"http://ns.google.com/photos/1.0/container/\" "
+		   "xmlns:Item=\"http://ns.google.com/photos/1.0/container/item/\" " +
+		description + "</rdf:Description></rdf:RDF></x:xmpmeta>";
+}
+
+// ISO 21496-1 metadata for one channel: headrooms 0 and 2, the gain within
+// [-0.5, 2], gamma 1.25, offsets 1/64--as the hdrgm XMP of write_gain_maps().
+static vector<uint8_t>
+iso_gain_map_metadata()
+{
+	vector<uint8_t> o = {0, 0, 0, 0, 0};
+	for (uint32_t v :
+		{0u, 1u, 2u, 1u, uint32_t(-1), 2u, 2u, 1u, 5u, 4u, 1u, 64u, 1u, 64u})
+		append_be32(o, v);
+	return o;
+}
+
+/// An Ultra HDR JPEG: the base with a Multi-Picture Format index of two
+/// images, then the map.  Each image gets `*_app` segments right after SOI.
+static void
+write_mpf(const fs::path &path, const vector<uint8_t> &base,
+	const vector<uint8_t> &base_app, const vector<uint8_t> &map,
+	const vector<uint8_t> &map_app)
+{
+	vector<uint8_t> second = {0xFF, 0xD8};
+	second.insert(second.end(), map_app.begin(), map_app.end());
+	second.insert(second.end(), map.begin() + 2, map.end());
+
+	// The MPF header starts after SOI, the application segments,
+	// APP2's marker and length, and the MPF identifier.
+	const size_t mpf_payload = 4 + 8 + 2 + 3 * 12 + 4 + 2 * 16;
+	const size_t origin = 2 + base_app.size() + 4 + 4;
+	const size_t first_size =
+		2 + base_app.size() + 4 + mpf_payload + (base.size() - 2);
+
+	vector<uint8_t> mpf = {'M', 'M', 0, 42};
+	append_be32(mpf, 8);
+	append_be16(mpf, 3);
+	append_be16(mpf, 0xB000);  // MPFVersion
+	append_be16(mpf, 7);
+	append_be32(mpf, 4);
+	mpf.insert(mpf.end(), {'0', '1', '0', '0'});
+	append_be16(mpf, 0xB001);  // NumberOfImages
+	append_be16(mpf, 4);
+	append_be32(mpf, 1);
+	append_be32(mpf, 2);
+	append_be16(mpf, 0xB002);  // MPEntry
+	append_be16(mpf, 7);
+	append_be32(mpf, 32);
+	append_be32(mpf, 8 + 2 + 3 * 12 + 4);
+	append_be32(mpf, 0);
+	append_be32(mpf, 0x20030000);  // Representative, primary
+	append_be32(mpf, uint32_t(first_size));
+	append_be32(mpf, 0);
+	append_be32(mpf, 0);
+	append_be32(mpf, 0);  // Undefined, as gain maps are
+	append_be32(mpf, uint32_t(second.size()));
+	append_be32(mpf, uint32_t(first_size - origin));
+	append_be32(mpf, 0);
+
+	vector<uint8_t> out = {0xFF, 0xD8};
+	out.insert(out.end(), base_app.begin(), base_app.end());
+	append_jpeg_app(out, 0xE2, "MPF", mpf);
+	out.insert(out.end(), base.begin() + 2, base.end());
+	if (out.size() != first_size)
+		die("MPF size mismatch");
+	out.insert(out.end(), second.begin(), second.end());
+	write_all(path, out.data(), out.size());
+}
+
+static void
+write_gain_maps(const fs::path &out)
+{
+	const fs::path base_path = out / "gainmap-base.jpg",
+				   map_path = out / "gainmap-map.jpg",
+				   colour_path = out / "gainmap-colour-map.jpg";
+	run_magick({"-size", "64x48", "gradient:white-gray30", "-strip", "-quality",
+		"95", base_path.string().c_str()});
+	run_magick({"-size", "16x12", "gradient:black-white", "-colorspace", "Gray",
+		"-strip", "-quality", "100", map_path.string().c_str()});
+	run_magick({"-size", "16x12", "gradient:red-blue", "-strip", "-quality",
+		"100", colour_path.string().c_str()});
+
+	const vector<uint8_t> base = read_all(base_path), map = read_all(map_path),
+						  colour = read_all(colour_path);
+	if (base.size() < 4 || map.size() < 4 || colour.size() < 4) {
+		fprintf(stderr, "gen_fixtures: warning: no gain map fixture parts\n");
+		return;
+	}
+
+	vector<uint8_t> base_app;
+	append_jpeg_app(base_app, 0xE1, kXmpNs,
+		bytes(xmp_packet(
+			"hdrgm:Version=\"1.0\"><Container:Directory><rdf:Seq>"
+			"<rdf:li rdf:parseType=\"Resource\"><Container:Item "
+			"Item:Semantic=\"Primary\" Item:Mime=\"image/jpeg\"/></rdf:li>"
+			"<rdf:li rdf:parseType=\"Resource\"><Container:Item "
+			"Item:Semantic=\"GainMap\" Item:Mime=\"image/jpeg\"/></rdf:li>"
+			"</rdf:Seq></Container:Directory>")));
+
+	auto hdrgm = [](const string &offset_hdr, const string &max,
+					 const string &capacity_max) {
+		vector<uint8_t> app;
+		append_jpeg_app(app, 0xE1, kXmpNs,
+			bytes(
+				xmp_packet("hdrgm:Version=\"1.0\" hdrgm:GainMapMin=\"-0.5\" "
+						   "hdrgm:Gamma=\"1.25\" hdrgm:OffsetSDR=\"0.015625\" "
+						   "hdrgm:OffsetHDR=\"" +
+					offset_hdr + "\" hdrgm:HDRCapacityMin=\"0\" " +
+					"hdrgm:HDRCapacityMax=\"" + capacity_max + "\">" + max)));
+		return app;
+	};
+	const string max = "<hdrgm:GainMapMax>2</hdrgm:GainMapMax>";
+	write_mpf(
+		out / "gainmap.jpg", base, base_app, map, hdrgm("0.015625", max, "2"));
+	write_mpf(out / "gainmap-colour.jpg", base, base_app, colour,
+		hdrgm("0.015625", max, "2"));
+	write_mpf(
+		out / "gainmap-offsets.jpg", base, base_app, map, hdrgm("0", max, "2"));
+	write_mpf(out / "gainmap-flat.jpg", base, base_app, map,
+		hdrgm("0.015625", max, "0"));
+	write_mpf(out / "gainmap-seq.jpg", base, base_app, map,
+		hdrgm("0.015625",
+			"<hdrgm:GainMapMax><rdf:Seq><rdf:li>2</rdf:li><rdf:li>2.1</rdf:li>"
+			"<rdf:li>2</rdf:li></rdf:Seq></hdrgm:GainMapMax>",
+			"2"));
+
+	vector<uint8_t> iso_base, iso_map;
+	append_jpeg_app(iso_base, 0xE2, kIsoNs, {0, 0, 0, 0});
+	append_jpeg_app(iso_map, 0xE2, kIsoNs, iso_gain_map_metadata());
+	write_mpf(out / "gainmap-iso.jpg", base, iso_base, map, iso_map);
+}
+
+// Clears the hidden flag of every hidden `av01` item, which in these files
+// is just the gain map, making it a top-level image.
+static void
+reveal_av01_items(vector<uint8_t> &avif)
+{
+	for (size_t i = 4; i + 16 <= avif.size(); i++) {
+		if (memcmp(&avif[i], "infe", 4))
+			continue;
+
+		// Version, flags, item_ID, item_protection_index, item_type.
+		const uint8_t version = avif[i + 4];
+		const size_t type = i + 8 + (version >= 3 ? 4 : 2) + 2;
+		if (version >= 2 && type + 4 <= avif.size() &&
+			!memcmp(&avif[type], "av01", 4))
+			avif[i + 7] &= uint8_t(~1u);
+	}
+}
+
+// libavif puts the base's clap, irot and imir on the map item as well, the
+// crop unscaled, which the map is a quarter the size to exercise.  avifenc
+// only converts JPEG gain maps when built with libxml2, and otherwise drops
+// them silently, which the tests notice and skip.
+static void
+write_gain_map_avifs(const fs::path &out)
+{
+	if (!have_tool("avifenc"))
+		return;
+
+	const string jpeg = (out / "gainmap.jpg").string(),
+				 colour = (out / "gainmap-colour.jpg").string(),
+				 avif = (out / "gainmap.avif").string();
+	if (run_tool("avifenc",
+			{"-q", "100", "--qgain-map", "100", "--irot", "1", "--imir", "1",
+				"--crop", "8,4,48,40", jpeg.c_str(), avif.c_str()}))
+		return;
+
+	vector<uint8_t> visible = read_all(avif);
+	reveal_av01_items(visible);
+	write_all(out / "gainmap-visible.avif", visible.data(), visible.size());
+
+	run_tool("avifenc",
+		{"-q", "100", "--qgain-map", "100", colour.c_str(),
+			(out / "gainmap-colour.avif").string().c_str()});
+}
+
+static void
+append_box(vector<uint8_t> &o, const char type[4], const vector<uint8_t> &data)
+{
+	append_be32(o, uint32_t(8 + data.size()));
+	o.insert(o.end(), type, type + 4);
+	o.insert(o.end(), data.begin(), data.end());
+}
+
+// A JPEG XL container with the base as `jxlc`, and a `jhgm` bundle after it
+// that carries the same ISO 21496-1 metadata as gainmap-iso.jpg.
+static void
+write_gain_map_jxl(const fs::path &out)
+{
+	if (!have_tool("cjxl"))
+		return;
+
+	const fs::path base_png = out / "gainmap-base.png",
+				   map_png = out / "gainmap-map.png",
+				   base_jxl = out / "gainmap-base.jxl",
+				   map_jxl = out / "gainmap-map.jxl";
+	if (run_magick({(out / "gainmap-base.jpg").string().c_str(),
+			base_png.string().c_str()}) ||
+		run_magick({(out / "gainmap-map.jpg").string().c_str(), "-colorspace",
+			"Gray", map_png.string().c_str()}) ||
+		run_tool("cjxl",
+			{"--quiet", "-d", "0", base_png.string().c_str(),
+				base_jxl.string().c_str()}) ||
+		run_tool("cjxl",
+			{"--quiet", "-d", "0", map_png.string().c_str(),
+				map_jxl.string().c_str()}))
+		return;
+
+	// Both must be naked codestreams.
+	const vector<uint8_t> base = read_all(base_jxl), map = read_all(map_jxl);
+	if (base.size() < 2 || base[0] != 0xFF || base[1] != 0x0A ||
+		map.size() < 2 || map[0] != 0xFF || map[1] != 0x0A)
+		die("cjxl did not produce naked codestreams");
+
+	// As libjxl's JxlGainMapWriteBundle() would, which it does not export:
+	// version 0, the metadata, no colour encoding, no ICC profile, the map.
+	const vector<uint8_t> metadata = iso_gain_map_metadata();
+	vector<uint8_t> jhgm = {0};
+	append_be16(jhgm, uint16_t(metadata.size()));
+	jhgm.insert(jhgm.end(), metadata.begin(), metadata.end());
+	jhgm.push_back(0);
+	append_be32(jhgm, 0);
+	jhgm.insert(jhgm.end(), map.begin(), map.end());
+
+	vector<uint8_t> o;
+	append_box(o, "JXL ", {0x0D, 0x0A, 0x87, 0x0A});
+	append_box(o, "ftyp", {'j', 'x', 'l', ' ', 0, 0, 0, 0, 'j', 'x', 'l', ' '});
+	append_box(o, "jxlc", base);
+	append_box(o, "jhgm", jhgm);
+	write_all(out / "gainmap.jxl", o.data(), o.size());
 }
 
 int
@@ -833,6 +1127,10 @@ main(int argc, char **argv)
 		run_magick({src.c_str(), bmp3.c_str()});
 		run_magick({src.c_str(), tga.c_str()});
 	}
+
+	write_gain_maps(out);
+	write_gain_map_avifs(out);
+	write_gain_map_jxl(out);
 
 	printf("wrote fixtures in %s\n", out.string().c_str());
 	return 0;

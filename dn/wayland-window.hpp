@@ -56,6 +56,10 @@ public:
 	~WaylandWindow() override;
 
 	bool initialize(const QUrl &url, BrowseSetup setup, Mode mode);
+	[[nodiscard]] WaylandColorBridge &color_bridge()
+	{
+		return *this->color_bridge_;
+	}
 	QAccessibleInterface *accessibleRoot() const override;
 };
 

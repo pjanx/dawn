@@ -24,10 +24,18 @@
 #include <libheif/heif_sequences.h>
 #define DAWN_HEIF_SEQUENCES
 #endif
+// Gain maps need the generic item API, and the transformative properties.
+#if LIBHEIF_HAVE_VERSION(1, 18, 0) && defined DAWN_HEIF_PROPERTIES
+#include <libheif/heif_items.h>
+#define DAWN_HEIF_GAIN_MAPS
+#endif
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace std;
@@ -123,13 +131,11 @@ heif_handle_exif(heif_image_handle *handle, const OpenContext &ctx)
 	return iso_exif_payload(exif);
 }
 
-// Decodes a single image handle (either a top-level image, or an auxiliary
-// image such as a depth map) into one working-format page, extracting Exif
-// and an embedded ICC profile, if present, and bringing it to final working
-// premul before returning.
+// Decodes a single image handle into working-format pixels as they are coded,
+// with no colour management, and with the bitstream's alpha association.
 static ImagePtr
-load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
-	const OpenContext &ctx, Error *error)
+decode_heif_pixels(
+	heif_image_handle *handle, bool ignore_transformations, Error *error)
 {
 	int has_alpha = heif_image_handle_has_alpha_channel(handle);
 	int bit_depth = heif_image_handle_get_luma_bits_per_pixel(handle);
@@ -142,6 +148,7 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 	// (typically 10 or 12). Setting `convert_hdr_to_8bit` is a no-op for
 	// the interleaved RGB(A) requests below.
 	heif_decoding_options *opts = heif_decoding_options_alloc();
+	opts->ignore_transformations = ignore_transformations;
 	bool use16 = bit_depth > 8;
 	heif_chroma chroma = heif_chroma_interleaved_RGBA;
 	if (use16)
@@ -196,8 +203,51 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 		if (!has_alpha)
 			force_opaque(*result);
 	}
+	heif_image_release(image);
+	return result;
+}
+
+// --- True HDR ----------------------------------------------------------------
+
+// PQ (16) or HLG (18) in an nclx box that no ICC profile overrides, with
+// primaries of a D65 white, which is what split_hdr() takes.  Zero otherwise.
+static uint8_t
+heif_nclx_hdr_transfer(
+	const heif_color_profile_nclx *nclx, double primaries[6])
+{
+	const auto transfer = uint8_t(nclx->transfer_characteristics);
+	return cicp_hdr(uint8_t(nclx->color_primaries), transfer, primaries)
+		? transfer
+		: 0;
+}
+
+static uint8_t
+heif_hdr_transfer(heif_image_handle *handle, double primaries[6])
+{
+	heif_color_profile_nclx *nclx = nullptr;
+	if (heif_image_handle_get_raw_color_profile_size(handle) ||
+		heif_image_handle_get_nclx_color_profile(handle, &nclx).code || !nclx)
+		return 0;
+
+	const uint8_t transfer = heif_nclx_hdr_transfer(nclx, primaries);
+	heif_nclx_color_profile_free(nclx);
+	return transfer;
+}
+
+// Decodes a single image handle (either a top-level image, or an auxiliary
+// image such as a depth map) into one working-format page, extracting Exif
+// and an embedded ICC profile, if present, and bringing it to final working
+// premul before returning.
+static ImagePtr
+load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
+	const OpenContext &ctx, Error *error)
+{
+	ImagePtr result = decode_heif_pixels(handle, false, error);
+	if (!result)
+		return nullptr;
 
 	// TODO(p): Test real behaviour on real transparent images.
+	int has_alpha = heif_image_handle_has_alpha_channel(handle);
 	bool bitstream_premul =
 		has_alpha && heif_image_handle_is_premultiplied_alpha(handle);
 
@@ -209,8 +259,18 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 		result->orientation = Orientation::Rotate0;
 
 	result->exif = heif_handle_exif(handle, ctx);
+
+	// split_hdr() leaves its base straight, in the profile it names.
+	double primaries[6] = {};
+	if (const uint8_t transfer = heif_hdr_transfer(handle, primaries)) {
+		// HLG's nominal display, as BT.2408 has it.
+		if (!split_hdr_signal(*result, ctx, transfer, primaries, 1000,
+				bitstream_premul, error))
+			return nullptr;
+		finish_frames(*result, ctx, result->effective_profile.get(), false);
+		return result;
+	}
 	result->icc = heif_handle_profile(handle, ctx);
-	heif_image_release(image);
 
 	// Bring the page to final working premul: colour-manage against any
 	// embedded ICC profile (derived automatically from result->icc), first
@@ -220,12 +280,294 @@ load_heif_image(heif_context *hctx, heif_item_id id, heif_image_handle *handle,
 	return result;
 }
 
+// --- Gain maps ---------------------------------------------------------------
+
+#ifdef DAWN_HEIF_GAIN_MAPS
+
+static constexpr const char *kAppleGainMapAux =
+	"urn:com:apple:photo:2020:aux:hdrgainmap";
+
+namespace
+{
+
+// libheif does not know the ISO 21496-1 `tmap` derived item, so it never
+// becomes an image, but its payload and references can still be read.
+struct HeifToneMap {
+	heif_item_id base = 0;  ///< The SDR rendition, as a rule
+	heif_item_id map = 0;   ///< Possibly a top-level image of its own
+	vector<uint8_t> metadata;
+};
+
+}  // namespace
+
+static vector<uint8_t>
+heif_item_payload(heif_context *hctx, heif_item_id id)
+{
+	uint8_t *data = nullptr;
+	size_t size = 0;
+	vector<uint8_t> result;
+	if (!heif_item_get_item_data(hctx, id, nullptr, &data, &size).code && data)
+		result.assign(data, data + size);
+	if (data)
+		heif_release_item_data(hctx, &data);
+	return result;
+}
+
+// The items that `from` references with the first reference of `type`,
+// in file order.
+static vector<heif_item_id>
+heif_item_references(heif_context *hctx, heif_item_id from, uint32_t type)
+{
+	vector<heif_item_id> result;
+	for (int index = 0; result.empty(); index++) {
+		uint32_t found = 0;
+		heif_item_id *to = nullptr;
+		const size_t n =
+			heif_context_get_item_references(hctx, from, index, &found, &to);
+		if (n && found == type)
+			result.assign(to, to + n);
+		if (to)
+			heif_release_item_references(hctx, &to);
+		if (!n)
+			break;
+	}
+	return result;
+}
+
+static vector<heif_item_id>
+heif_items_of_type(heif_context *hctx, uint32_t type)
+{
+	int n = heif_context_get_number_of_items(hctx);
+	vector<heif_item_id> ids(size_t(max(n, 0)));
+	n = heif_context_get_list_of_item_IDs(hctx, ids.data(), n);
+	ids.resize(size_t(max(n, 0)));
+	erase_if(ids, [&](heif_item_id id) {
+		return heif_item_get_item_type(hctx, id) != type;
+	});
+	return ids;
+}
+
+static vector<HeifToneMap>
+heif_tone_maps(heif_context *hctx)
+{
+	vector<HeifToneMap> result;
+	for (heif_item_id id :
+		heif_items_of_type(hctx, heif_fourcc('t', 'm', 'a', 'p'))) {
+		vector<heif_item_id> inputs =
+			heif_item_references(hctx, id, heif_fourcc('d', 'i', 'm', 'g'));
+		if (inputs.size() == 2)
+			result.push_back(
+				{inputs[0], inputs[1], heif_item_payload(hctx, id)});
+	}
+	return result;
+}
+
+// XMP describing `id`, from a `mime` item that references it with `cdsc`.
+static string
+heif_item_xmp(heif_context *hctx, heif_item_id id)
+{
+	for (heif_item_id mime : heif_items_of_type(hctx, heif_item_type_mime)) {
+		const char *type = heif_item_get_mime_item_content_type(hctx, mime);
+		if (!type || strcmp(type, "application/rdf+xml"))
+			continue;
+
+		vector<heif_item_id> described =
+			heif_item_references(hctx, mime, heif_fourcc('c', 'd', 's', 'c'));
+		if (find(described.begin(), described.end(), id) != described.end()) {
+			vector<uint8_t> xmp = heif_item_payload(hctx, mime);
+			return string(xmp.begin(), xmp.end());
+		}
+	}
+	return {};
+}
+
+// libheif bakes the base item's own clap, irot and imir into its pixels, in
+// property order, so the map gets the same, with the crop scaled to its
+// resolution.  The map's own properties cannot be trusted to match: Apple
+// repeats the base's irot on it, and libavif copies clap over unscaled.
+static void
+heif_transform_gain_map(heif_context *hctx, heif_item_id base,
+	heif_image_handle *base_handle, GainMap &map)
+{
+	int n = heif_item_get_transformation_properties(hctx, base, nullptr, 0);
+	vector<heif_property_id> properties(size_t(max(n, 0)));
+	n = heif_item_get_transformation_properties(
+		hctx, base, properties.data(), n);
+
+	int width = heif_image_handle_get_ispe_width(base_handle);
+	int height = heif_image_handle_get_ispe_height(base_handle);
+	for (int i = 0; i < n; i++) {
+		const heif_property_id property = properties[size_t(i)];
+		switch (heif_item_get_property_type(hctx, base, property)) {
+		case heif_item_property_type_transform_crop: {
+			int left = 0, top = 0, right = 0, bottom = 0;
+			heif_item_get_property_transform_crop_borders(hctx, base, property,
+				width, height, &left, &top, &right, &bottom);
+			if (width <= 0 || height <= 0)
+				break;
+
+			const double sx = double(map.width) / width,
+						 sy = double(map.height) / height;
+			const auto x0 = uint32_t(lround(left * sx)),
+					   y0 = uint32_t(lround(top * sy)),
+					   x1 = uint32_t(lround((width - right) * sx)),
+					   y1 = uint32_t(lround((height - bottom) * sy));
+			if (x1 > x0 && y1 > y0)
+				crop_gain_map(map, x0, y0, x1 - x0, y1 - y0);
+			width -= left + right;
+			height -= top + bottom;
+			break;
+		}
+		case heif_item_property_type_transform_rotation: {
+			const int ccw = heif_item_get_property_transform_rotation_ccw(
+				hctx, base, property);
+			if (ccw < 0)
+				break;
+			rotate_gain_map(map, ccw);
+			if (ccw % 180)
+				swap(width, height);
+			break;
+		}
+		case heif_item_property_type_transform_mirror:
+			switch (
+				heif_item_get_property_transform_mirror(hctx, base, property)) {
+			case heif_transform_mirror_direction_horizontal:
+				mirror_gain_map(map, true);
+				break;
+			case heif_transform_mirror_direction_vertical:
+				mirror_gain_map(map, false);
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static void
+attach_heif_gain_map(heif_context *hctx, heif_item_id base,
+	heif_image_handle *base_handle, heif_image_handle *map_handle,
+	const GainMap &metadata, bool apple, Image &page, const OpenContext &ctx)
+{
+	// Nothing but the pixels, in the map's stored frame.
+	Error error;
+	ImagePtr pixels = decode_heif_pixels(map_handle, true, &error);
+	if (!pixels) {
+		add_warning(
+			ctx, format_message(_("gain map: %s"), error.message.c_str()));
+		return;
+	}
+	page.gain_map = make_gain_map(*pixels, metadata, apple);
+	if (page.gain_map)
+		heif_transform_gain_map(hctx, base, base_handle, *page.gain_map);
+}
+
+static void
+load_heif_tone_map(heif_context *hctx, heif_item_id id,
+	heif_image_handle *handle, const vector<HeifToneMap> &tone_maps,
+	Image &page, const OpenContext &ctx)
+{
+	auto tmap = find_if(tone_maps.begin(), tone_maps.end(),
+		[&](const HeifToneMap &candidate) { return candidate.base == id; });
+	GainMap metadata;
+	if (tmap == tone_maps.end() || !ctx.gain_maps ||
+		!parse_tmap_gain_map(tmap->metadata, &metadata) ||
+		!gain_map_applies(metadata, ctx))
+		return;
+
+	heif_image_handle *map = nullptr;
+	heif_error err = heif_context_get_image_handle(hctx, tmap->map, &map);
+	if (err.code != heif_error_Ok) {
+		add_warning(ctx, err.message);
+		return;
+	}
+	attach_heif_gain_map(hctx, id, handle, map, metadata, false, page, ctx);
+	heif_image_handle_release(map);
+}
+
+static bool
+heif_is_apple_gain_map(const heif_image_handle *aux)
+{
+	const char *type = nullptr;
+	if (heif_image_handle_get_auxiliary_type(aux, &type).code || !type)
+		return false;
+
+	const bool result = !strcmp(type, kAppleGainMapAux);
+	heif_image_handle_release_auxiliary_type(aux, &type);
+	return result;
+}
+
+// Apple's pre-ISO map, which only counts where no ISO map has been attached.
+static void
+load_heif_apple_gain_map(heif_context *hctx, heif_item_id base,
+	heif_image_handle *base_handle, heif_item_id map_id,
+	heif_image_handle *map_handle, Image &page, const OpenContext &ctx)
+{
+	if (!ctx.gain_maps || page.gain_map)
+		return;
+
+	const double headroom =
+		apple_gain_map_headroom(heif_item_xmp(hctx, map_id), page.exif);
+	if (!(headroom > 0))
+		return;
+
+	const GainMap metadata = apple_gain_map(headroom);
+	if (gain_map_applies(metadata, ctx))
+		attach_heif_gain_map(
+			hctx, base, base_handle, map_handle, metadata, true, page, ctx);
+}
+
+#else  // ! DAWN_HEIF_GAIN_MAPS
+
+namespace
+{
+
+struct HeifToneMap {
+	heif_item_id base = 0;
+	heif_item_id map = 0;
+};
+
+}  // namespace
+
+static vector<HeifToneMap>
+heif_tone_maps(heif_context *)
+{
+	return {};
+}
+
+static void
+load_heif_tone_map(heif_context *, heif_item_id, heif_image_handle *,
+	const vector<HeifToneMap> &, Image &, const OpenContext &)
+{
+}
+
+static bool
+heif_is_apple_gain_map(const heif_image_handle *)
+{
+	return false;
+}
+
+static void
+load_heif_apple_gain_map(heif_context *, heif_item_id, heif_image_handle *,
+	heif_item_id, heif_image_handle *, Image &, const OpenContext &)
+{
+}
+
+#endif  // ! DAWN_HEIF_GAIN_MAPS
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 // Appends any auxiliary images (e.g. depth maps) hanging off `top`
 // as further pages. We have no special processing for them yet,
 // so they are included mainly to not lose them silently.
+// Apple's gain map is not a page, but goes to `page`, if any.
 static void
 load_heif_aux_images(const OpenContext &ctx, heif_context *hctx,
-	heif_image_handle *top, ImagePtr &head, ImagePtr &tail)
+	heif_item_id top_id, heif_image_handle *top, Image *page, ImagePtr &head,
+	ImagePtr &tail)
 {
 	// Include the depth image, we have no special processing for it now.
 	int filter = LIBHEIF_AUX_IMAGE_FILTER_OMIT_ALPHA;
@@ -243,6 +585,13 @@ load_heif_aux_images(const OpenContext &ctx, heif_context *hctx,
 			top, ids[size_t(i)], &handle);
 		if (err.code != heif_error_Ok) {
 			add_warning(ctx, err.message);
+			continue;
+		}
+		if (heif_is_apple_gain_map(handle)) {
+			if (page)
+				load_heif_apple_gain_map(
+					hctx, top_id, top, ids[size_t(i)], handle, *page, ctx);
+			heif_image_handle_release(handle);
 			continue;
 		}
 
@@ -268,9 +617,11 @@ load_heif_aux_images(const OpenContext &ctx, heif_context *hctx,
 static constexpr uint64_t kSequenceBudget = uint64_t(256) << 20;
 
 // The colour information of the file's primary still item, if it has one:
-// libheif attaches none to sequence samples.
+// libheif attaches none to sequence samples.  PQ and HLG go to `transfer`
+// and `primaries` instead, as heif_hdr_transfer() has it.
 static vector<uint8_t>
-heif_primary_profile(heif_context *hctx, const OpenContext &ctx)
+heif_primary_profile(heif_context *hctx, const OpenContext &ctx,
+	uint8_t *transfer, double primaries[6])
 {
 	heif_item_id id = 0;
 	heif_image_handle *handle = nullptr;
@@ -278,15 +629,18 @@ heif_primary_profile(heif_context *hctx, const OpenContext &ctx)
 		heif_context_get_image_handle(hctx, id, &handle).code)
 		return {};
 
-	vector<uint8_t> icc = heif_handle_profile(handle, ctx);
+	vector<uint8_t> icc;
+	if (!(*transfer = heif_hdr_transfer(handle, primaries)))
+		icc = heif_handle_profile(handle, ctx);
 	heif_image_handle_release(handle);
 	return icc;
 }
 
 // The sample's own colour information, which is not the track's.
-// See heif_handle_profile().
+// See heif_handle_profile() and heif_primary_profile().
 static vector<uint8_t>
-heif_sample_profile(const heif_image *img, const OpenContext &ctx)
+heif_sample_profile(const heif_image *img, const OpenContext &ctx,
+	uint8_t *transfer, double primaries[6])
 {
 	vector<uint8_t> icc(heif_image_get_raw_color_profile_size(img));
 	if (!icc.empty()) {
@@ -301,7 +655,9 @@ heif_sample_profile(const heif_image *img, const OpenContext &ctx)
 	if (heif_image_get_nclx_color_profile(img, &nclx).code || !nclx)
 		return {};
 
-	vector<uint8_t> result = heif_nclx_profile(nclx, ctx);
+	vector<uint8_t> result;
+	if (!(*transfer = heif_nclx_hdr_transfer(nclx, primaries)))
+		result = heif_nclx_profile(nclx, ctx);
 	heif_nclx_color_profile_free(nclx);
 	return result;
 }
@@ -388,7 +744,10 @@ load_heif_sequence(heif_context *hctx, const OpenContext &ctx)
 
 	// Samples carry no colour information of their own, so the primary still
 	// item's profile stands in for it, and the first sample's for that.
-	vector<uint8_t> inherited = heif_primary_profile(hctx, ctx);
+	uint8_t inherited_transfer = 0;
+	double inherited_primaries[6] = {};
+	vector<uint8_t> inherited = heif_primary_profile(
+		hctx, ctx, &inherited_transfer, inherited_primaries);
 	shared_ptr<Profile> inherited_profile;
 	bool inherited_assumed = false;
 
@@ -415,22 +774,41 @@ load_heif_sequence(heif_context *hctx, const OpenContext &ctx)
 		// and fits int64_t because libheif reports it as a uint32_t.
 		frame->frame_duration =
 			int64_t(uint64_t(heif_image_get_duration(img)) * 1000 / timescale);
-		frame->icc = heif_sample_profile(img, ctx);
+		uint8_t transfer = 0;
+		double primaries[6] = {};
+		frame->icc = heif_sample_profile(img, ctx, &transfer, primaries);
 		bool bitstream_premul =
 			has_alpha && heif_image_is_premultiplied_alpha(img);
 		heif_image_release(img);
+		if (!transfer && frame->icc.empty() && inherited_transfer) {
+			transfer = inherited_transfer;
+			copy(begin(inherited_primaries), end(inherited_primaries),
+				primaries);
+		}
 
 		// finish_frames() would force the head's profile onto every frame,
 		// overriding whatever they embed themselves.
 		Profile *source = nullptr;
-		if (frame->icc.empty()) {
+		if (transfer) {
+			// Maps are per page, and only still images have them.
+			OpenContext frame_ctx = ctx;
+			frame_ctx.gain_maps = false;
+			Error suberror;
+			if (!split_hdr_signal(*frame, frame_ctx, transfer, primaries, 1000,
+					bitstream_premul, &suberror)) {
+				add_warning(ctx, suberror.message);
+				break;
+			}
+			source = frame->effective_profile.get();
+			bitstream_premul = false;
+		} else if (frame->icc.empty()) {
 			frame->icc = inherited;
 			frame->effective_profile = inherited_profile;
 			frame->profile_assumed = inherited_assumed;
 			source = inherited_profile.get();
 		}
 		finish_image(*frame, ctx, source, bitstream_premul);
-		if (!inherited_profile) {
+		if (!inherited_profile && !transfer) {
 			inherited = frame->icc;
 			inherited_profile = frame->effective_profile;
 			inherited_assumed = frame->profile_assumed;
@@ -515,6 +893,16 @@ load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	vector<heif_item_id> ids(size_t(max(n, 0)));
 	n = heif_context_get_list_of_top_level_image_IDs(hctx, ids.data(), n);
 
+	// A gain map item that is not hidden is a top-level image, but no page,
+	// whether it is going to be used or not.
+	const vector<HeifToneMap> tone_maps = heif_tone_maps(hctx);
+	ids.resize(size_t(max(n, 0)));
+	erase_if(ids, [&](heif_item_id id) {
+		return any_of(tone_maps.begin(), tone_maps.end(),
+			[&](const HeifToneMap &tmap) { return tmap.map == id; });
+	});
+	n = int(ids.size());
+
 	ImagePtr head, tail;
 	for (int i = 0; i < n; i++) {
 		heif_image_handle *handle = nullptr;
@@ -524,6 +912,7 @@ load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			continue;
 		}
 
+		Image *page = nullptr;  // What takes the file's own gain maps
 		if (sequence && ids[size_t(i)] == primary_id) {
 			// Track samples come out of libheif exactly as coded: it
 			// applies no `tkhd` matrix, and exposes neither that matrix nor
@@ -538,17 +927,27 @@ load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			append_page(head, tail, std::move(sequence));
 		} else {
 			Error suberror;
-			ImagePtr page =
+			ImagePtr image =
 				load_heif_image(hctx, ids[size_t(i)], handle, ctx, &suberror);
-			if (page)
-				append_page(head, tail, std::move(page));
-			else
+			if (!image) {
 				add_warning(ctx, suberror.message);
+			} else {
+				// Where the base is true HDR, split_hdr() makes the map,
+				// and the file's own are ignored.
+				double primaries[6] = {};
+				if (!heif_hdr_transfer(handle, primaries)) {
+					page = image.get();
+					load_heif_tone_map(
+						hctx, ids[size_t(i)], handle, tone_maps, *page, ctx);
+				}
+				append_page(head, tail, std::move(image));
+			}
 		}
 
 		// TODO(p): Possibly add thumbnail images as well.
 		if (!ctx.first_frame_only)
-			load_heif_aux_images(ctx, hctx, handle, head, tail);
+			load_heif_aux_images(
+				ctx, hctx, ids[size_t(i)], handle, page, head, tail);
 
 		heif_image_handle_release(handle);
 		if (ctx.first_frame_only)

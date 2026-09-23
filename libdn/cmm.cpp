@@ -461,6 +461,107 @@ profile_encoding(const Profile *profile)
 	return matrix;
 }
 
+// --- Matrices ----------------------------------------------------------------
+
+// Column-indexed: the result's column c is `a` applied to `b`'s column c.
+static RgbMatrix
+rgb_multiply(const RgbMatrix &a, const RgbMatrix &b)
+{
+	RgbMatrix m{};
+	for (size_t c = 0; c < 3; c++)
+		for (size_t r = 0; r < 3; r++)
+			for (size_t k = 0; k < 3; k++)
+				m[c][r] += a[k][r] * b[c][k];
+	return m;
+}
+
+static RgbMatrix
+rgb_inverse(const RgbMatrix &m)
+{
+	// With columns a, b, c, the rows of the inverse are b×c, c×a, a×b,
+	// over the determinant.
+	auto cross = [](const array<double, 3> &u, const array<double, 3> &v) {
+		return array<double, 3>{u[1] * v[2] - u[2] * v[1],
+			u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]};
+	};
+	const array<double, 3> rows[3] = {
+		cross(m[1], m[2]), cross(m[2], m[0]), cross(m[0], m[1])};
+	const double det =
+		m[0][0] * rows[0][0] + m[0][1] * rows[0][1] + m[0][2] * rows[0][2];
+	RgbMatrix inverse{};
+	for (size_t r = 0; r < 3; r++)
+		for (size_t c = 0; c < 3; c++)
+			inverse[c][r] = rows[r][c] / det;
+	return inverse;
+}
+
+static RgbMatrix
+rgb_diagonal(double a, double b, double c)
+{
+	return {{{a, 0, 0}, {0, b, 0}, {0, 0, c}}};
+}
+
+// The Bradford transform from the ICC PCS illuminant to D65.
+static RgbMatrix
+bradford_d50_to_d65()
+{
+	// Rows 0.8951 0.2664 -0.1614, -0.7502 1.7135 0.0367,
+	// 0.0389 -0.0685 1.0296, stored by column.
+	static const RgbMatrix cone = {{{0.8951, -0.7502, 0.0389},
+		{0.2664, 1.7135, -0.0685}, {-0.1614, 0.0367, 1.0296}}};
+	const cmsCIEXYZ *d50 = cmsD50_XYZ();
+	auto response = [&](const cmsCIEXYZ &xyz) {
+		array<double, 3> lms{};
+		for (size_t r = 0; r < 3; r++)
+			lms[r] =
+				cone[0][r] * xyz.X + cone[1][r] * xyz.Y + cone[2][r] * xyz.Z;
+		return lms;
+	};
+	const auto from = response(*d50), to = response(kD65Xyz);
+	return rgb_multiply(rgb_inverse(cone),
+		rgb_multiply(
+			rgb_diagonal(to[0] / from[0], to[1] / from[1], to[2] / from[2]),
+			cone));
+}
+
+RgbMatrix
+display_colourants_d65(const ProfileEncoding &encoding)
+{
+	return rgb_multiply(bradford_d50_to_d65(), encoding.rgb_to_xyz);
+}
+
+// From linear RGB of CIE 1931 xy `primaries` with a D65 white to D65 XYZ.
+static RgbMatrix
+primaries_to_xyz_d65(const double primaries[6])
+{
+	// Primaries scaled so that they sum to the white point.
+	RgbMatrix target{};
+	for (size_t c = 0; c < 3; c++) {
+		const double x = primaries[c * 2], y = primaries[c * 2 + 1];
+		target[c] = {x / y, 1, (1 - x - y) / y};
+	}
+	const RgbMatrix inverse = rgb_inverse(target);
+	array<double, 3> scale{};
+	for (size_t r = 0; r < 3; r++)
+		scale[r] = inverse[0][r] * kD65Xyz.X + inverse[1][r] * kD65Xyz.Y +
+			inverse[2][r] * kD65Xyz.Z;
+	return rgb_multiply(target, rgb_diagonal(scale[0], scale[1], scale[2]));
+}
+
+RgbMatrix
+display_to_primaries(const ProfileEncoding &encoding, const double primaries[6])
+{
+	return rgb_multiply(rgb_inverse(primaries_to_xyz_d65(primaries)),
+		display_colourants_d65(encoding));
+}
+
+RgbMatrix
+primaries_to_primaries(const double from[6], const double to[6])
+{
+	return rgb_multiply(
+		rgb_inverse(primaries_to_xyz_d65(to)), primaries_to_xyz_d65(from));
+}
+
 // --- Colour management -------------------------------------------------------
 
 Cmm::Cmm()
@@ -642,25 +743,18 @@ Cmm::get_profile_tabulated(const double whitepoint[2],
 shared_ptr<Profile>
 Cmm::get_profile_sRGB_gamma(double gamma)
 {
-	double wp[2] = {0.3127, 0.3290};
-	double prim[6] = {0.6400, 0.3300, 0.3000, 0.6000, 0.1500, 0.0600};
-	return get_profile_parametric(gamma, wp, prim);
+	return get_profile_parametric(gamma, kD65White, kRec709Primaries);
 }
 
-/// H.273 Table 2 primaries as CIE 1931 xy, in R,G,B order, plus the
-/// illuminant. False for reserved, unspecified, or non-RGB code points.
-static bool
+bool
 cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 {
-	static const double kD65[2] = {0.3127, 0.3290};
-	const double *wp = kD65;
+	const double *wp = kD65White;
 	const double *p = nullptr;
 	switch (code) {
-	case 1: {  // BT.709 / sRGB
-		static const double v[6] = {0.640, 0.330, 0.300, 0.600, 0.150, 0.060};
-		p = v;
+	case 1:  // BT.709 / sRGB
+		p = kRec709Primaries;
 		break;
-	}
 	case 4: {  // BT.470 System M, illuminant C
 		static const double v[6] = {0.670, 0.330, 0.210, 0.710, 0.140, 0.080};
 		static const double c[2] = {0.310, 0.316};
@@ -679,23 +773,18 @@ cicp_primaries(uint8_t code, double primaries[6], double whitepoint[2])
 		p = v;
 		break;
 	}
-	case 9: {  // BT.2020 / BT.2100
-		static const double v[6] = {0.708, 0.292, 0.170, 0.797, 0.131, 0.046};
-		p = v;
+	case 9:  // BT.2020 / BT.2100
+		p = kRec2020Primaries;
 		break;
-	}
 	case 11: {  // SMPTE RP 431-2 (DCI-P3), DCI white
-		static const double v[6] = {0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
 		static const double dci[2] = {0.314, 0.351};
-		p = v;
+		p = kP3Primaries;
 		wp = dci;
 		break;
 	}
-	case 12: {  // SMPTE EG 432-1 (Display P3), D65 white
-		static const double v[6] = {0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
-		p = v;
+	case 12:  // SMPTE EG 432-1 (Display P3), D65 white
+		p = kP3Primaries;
 		break;
-	}
 	default:
 		// 0/3 reserved, 2 unspecified, 10 is XYZ, 22 has no ICC analogue.
 		return false;

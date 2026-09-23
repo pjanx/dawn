@@ -20,6 +20,7 @@
 #include "window-appearance.hpp"
 
 #if DN_WITH_WAYLAND
+#include "wayland-color-bridge.hpp"
 #include "wayland-window.hpp"
 #endif
 
@@ -70,6 +71,7 @@
 #include <cmath>
 #include <functional>
 #include <numbers>
+#include <optional>
 
 using namespace std;
 
@@ -219,6 +221,7 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 
 Window::~Window()
 {
+	this->screen_parameters_.reset();
 	if (this->app_) {
 		this->app_->display_profiles.unlisten(this);
 		this->app_->settings.unlisten(this);
@@ -274,7 +277,13 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 	if (!this->renderer_.init(
 			this->app_->gpu, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
-			[this, instance] { instance->presentAboutToBeQueued(this); },
+			[this, instance] {
+				instance->presentAboutToBeQueued(this);
+#if DN_WITH_WAYLAND
+				if (auto *shell = dynamic_cast<WaylandWindow *>(parent()))
+					shell->color_bridge().apply_latched();
+#endif
+			},
 			[this, instance] { instance->presentQueued(this); }))
 		return false;
 	this->renderer_ready_ = true;
@@ -282,6 +291,9 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 	this->cmm_ = dawn::Cmm::get_default();
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
+	// EDR headroom changes, and ramps, which the profile source does not see.
+	this->screen_parameters_ =
+		macos_watch_screen_parameters([this] { refresh_headroom(); });
 	this->app_->settings.listen(this, [this](SettingsChange change) {
 		if (change == SettingsChange::Preferences) {
 			this->renderer_.set_dither_enabled(
@@ -739,42 +751,164 @@ Window::shutdown()
 	this->surface_ = VK_NULL_HANDLE;
 }
 
+// Extended presentation needs the platform's description of it, a surface
+// format for it, and a matrix/TRC working space.  The order of profiles is:
+// the override, the display's ICC, the output's own primaries, and sRGB.
+// Under Windows Advanced Color, Windows decides how our pixels are read:
+// the override does not apply, and a window that can present extended
+// takes the output's primaries, since its every frame is extended.
 bool
 Window::refresh_screen_profile(QScreen *target_screen)
 {
 	if (!this->cmm_)
 		this->cmm_ = dawn::Cmm::get_default();
 
+	DisplayRange range;
+	bool platform = false, icc = true, own_primaries = false;
+	float sdr_white = 1;
+	optional<DisplayProfile> discovered;
+	auto discover = [&]() -> const DisplayProfile & {
+		if (!discovered)
+			discovered = this->app_->display_profiles.load(target_screen);
+		return *discovered;
+	};
+#if DN_WITH_WAYLAND
+	auto *shell = dynamic_cast<WaylandWindow *>(parent());
+	if (shell) {
+		const WaylandOutput &output = shell->color_bridge().output();
+		range = output.range;
+		platform = output.extended;
+		icc = output.icc;
+		own_primaries = output.own_primaries;
+	}
+#endif
+#ifdef Q_OS_WIN
+	// A profile from the legacy getters under Advanced Color is that of the
+	// compatibility helper, with which Windows would convert us twice.
+	this->advanced_color_ = discover().advanced_color;
+	const bool system_managed = this->advanced_color_.active;
+	platform = system_managed && discover().icc.empty();
+	range = this->advanced_color_.range;
+	sdr_white = this->advanced_color_.white;
+#else
+	const bool system_managed = false;
+#endif
+#ifdef Q_OS_MACOS
+	platform = true;
+	range = macos_display_range(target_screen);
+#endif
+	const bool offers_extended = platform && this->renderer_.offers_extended();
+	// Without ICC tagging, a profile is only of use to the present pass.
+	const bool parametric_only = range.hdr && !icc;
+	auto usable = [&](shared_ptr<dawn::Profile> profile) {
+		if (profile && parametric_only &&
+			!profile_encoding(profile.get()).matrix_trc)
+			return shared_ptr<dawn::Profile>();
+		return profile;
+	};
+
 	shared_ptr<dawn::Profile> next;
 	string label = "sRGB (fallback)";
 	string source = "srgb";
 	const vector<unsigned char> &override =
 		this->app_->settings.icc_profile_override;
-	if (!override.empty()) {
-		next = this->cmm_->get_profile(override);
+	if (!override.empty() && !system_managed) {
+		next = usable(this->cmm_->get_profile(override));
 		if (next) {
 			label = this->app_->settings.icc_profile_override_path;
 			source = "configuration";
 		} else {
-			qWarning(
-				"configuration dn/ICCProfileOverride: invalid ICC profile");
+			qWarning("configuration dn/ICCProfileOverride: invalid or "
+					 "unusable ICC profile");
 		}
 	}
-	if (!next) {
-		DisplayProfile discovered =
-			this->app_->display_profiles.load(target_screen);
-		if (!discovered.icc.empty()) {
-			next = this->cmm_->get_profile(discovered.icc);
-			if (next) {
-				label = discovered.label.empty() ? discovered.source
-												 : discovered.label;
-				source = discovered.source;
-			}
+	if (!next && !discover().icc.empty()) {
+		next = usable(this->cmm_->get_profile(discover().icc));
+		if (next) {
+			label =
+				discover().label.empty() ? discover().source : discover().label;
+			source = discover().source;
+		}
+	}
+	// The output's own primaries.  Under Advanced Color, any working space
+	// that covers the display converts exactly to scRGB, and this one never
+	// meets an integer swapchain, which Windows reads as sRGB; the legacy
+	// getters return no ICC then.  On Wayland, they are the display's actual
+	// gamut, not the BT.2020 container of PQ.
+#ifdef Q_OS_WIN
+	const bool own_gamut = offers_extended;
+	const char *own_label = "DXGI output primaries", *own_source = "dxgi";
+#else
+	const bool own_gamut = range.hdr;
+	const char *own_label = "the compositor's target primaries",
+			   *own_source = "compositor";
+#endif
+	if (!next && own_gamut && range.primaries) {
+		const auto &xy = *range.primaries;
+		const double white_point[2] = {xy[6], xy[7]};
+		next =
+			this->cmm_->get_profile_parametric(nullopt, white_point, xy.data());
+		if (next) {
+			label = own_label;
+			source = own_source;
 		}
 	}
 	if (!next)
 		next = this->cmm_->get_profile_sRGB();
+
+#if DN_WITH_WAYLAND
+	// A compositor that failed to take the profile reads our pixels as sRGB,
+	// and extended frames must then say sRGB as well.  It is still offered
+	// the profile, as other bytes would only have it try again.
+	vector<uint8_t> described;
+	if (shell) {
+		described = next->to_bytes();
+		if (shell->color_bridge().unmatched()) {
+			next = this->cmm_->get_profile_sRGB();
+			label = N_("sRGB (the compositor cannot take the display profile)");
+			source = "srgb";
+		}
+	}
+#endif
+	const dawn::ProfileEncoding encoding = profile_encoding(next.get());
+	const bool capable = offers_extended && encoding.matrix_trc;
+	if (parametric_only && !capable) {
+		next = this->cmm_->get_profile_sRGB();
+		label = N_("sRGB (extended range unavailable)");
+		source = "srgb";
+	}
+#if DN_WITH_WAYLAND
+	if (shell)
+		shell->color_bridge().set_screen(
+			std::move(described), capable ? &encoding : nullptr);
+#endif
 	this->screen_profile_fallback_ = source == "srgb";
+
+	this->screen_state_.capable = capable;
+	this->screen_state_.hdr = range.hdr;
+	this->screen_state_.headroom = range.headroom;
+	PresentationTarget target;
+	target.capable = capable;
+	// Windows composes in scRGB anyway, and without ICC tagging on Wayland,
+	// encoded presentation could only leave the surface unmatched.
+	target.always = system_managed || parametric_only;
+	target.white = sdr_white;
+	if (capable && !own_primaries) {
+#if defined Q_OS_WIN || defined Q_OS_MACOS
+		// Extended linear sRGB, which colours outside sRGB leave negative.
+		const double *primaries = dawn::kRec709Primaries;
+#else
+		const double *primaries = dawn::kRec2020Primaries;
+#endif
+		target.matrix = dawn::display_to_primaries(encoding, primaries);
+	}
+#if DN_WITH_WAYLAND
+	if (shell)
+		target.latch = [shell](Presentation wanted, float *white) {
+			return shell->color_bridge().latch(wanted, white);
+		};
+#endif
+	this->renderer_.set_presentation(std::move(target));
 
 	const bool changed =
 		!profiles_equal(this->screen_profile_.get(), next.get());
@@ -1081,6 +1215,51 @@ Window::arm_ui_wake()
 		this->ui_wake_.stop();
 }
 
+// Only the headroom moved, or on Windows SDR white: no profile, no pipelines,
+// no reload.  Anything else the platform reports takes the heavy path.
+void
+Window::refresh_headroom()
+{
+#if DN_WITH_WAYLAND
+	if (auto *shell = dynamic_cast<WaylandWindow *>(parent()))
+		set_headroom(shell->color_bridge().output().range.headroom);
+#endif
+#ifdef Q_OS_WIN
+	// Nothing reports the SDR brightness slider, so activation re-reads it.
+	const AdvancedColor now = windows_advanced_color(screen());
+	const AdvancedColor &was = this->advanced_color_;
+	if (now.active != was.active || now.range.hdr != was.range.hdr ||
+		now.range.primaries != was.range.primaries) {
+		handle_screen_change(screen());
+		return;
+	}
+	this->advanced_color_ = now;
+	this->renderer_.set_white(now.white);
+	set_headroom(now.range.headroom);
+	request_render();
+#endif
+#ifdef Q_OS_MACOS
+	const DisplayRange range = macos_display_range(screen());
+	if (range.hdr != this->screen_state_.hdr) {
+		handle_screen_change(screen());
+		return;
+	}
+	set_headroom(range.headroom);
+#endif
+}
+
+void
+Window::set_headroom(float headroom)
+{
+	if (headroom == this->screen_state_.headroom)
+		return;
+	this->screen_state_.headroom = headroom;
+	for (auto &page : this->pages_)
+		if (page && page->content)
+			page->content->screen_changed(this->screen_state_, false, false);
+	request_render();
+}
+
 void
 Window::handle_screen_change(QScreen *target_screen)
 {
@@ -1204,8 +1383,14 @@ Window::event(QEvent *event)
 		}
 		break;
 	}
-	case QEvent::FocusIn:
 	case QEvent::WindowActivate:
+#ifdef Q_OS_WIN
+		// Once per activation, which also brings FocusIn.
+		if (this->renderer_ready_)
+			refresh_headroom();
+#endif
+		[[fallthrough]];
+	case QEvent::FocusIn:
 		focus_gained();
 		break;
 	case QEvent::FocusOut:

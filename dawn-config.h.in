@@ -14,7 +14,13 @@
 // Relocatable packages find theirs next to the executable.
 #define DAWN_LOCALEDIR "@CMAKE_INSTALL_FULL_LOCALEDIR@"
 
-#if defined __GNUC__ || defined __clang__
+#if defined __MINGW32__
+// Plain printf would be checked against the Microsoft runtime, rejecting
+// %zu, whereas C++ gets MinGW's own stdio.  This follows the one in use.
+#include <_mingw.h>
+#define DAWN_FORMAT(format_index, first_arg)                                   \
+	__attribute__((format(__MINGW_PRINTF_FORMAT, format_index, first_arg)))
+#elif defined __GNUC__ || defined __clang__
 #define DAWN_FORMAT(format_index, first_arg)                                   \
 	__attribute__((format(printf, format_index, first_arg)))
 #else

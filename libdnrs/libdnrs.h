@@ -37,6 +37,9 @@ enum dnrs_pixel_format {
 	DNRS_PIXEL_GRAY_ALPHA16LE,
 	DNRS_PIXEL_RGB16LE,
 	DNRS_PIXEL_RGBA16LE,
+	// Host-endian linear light, 1.0 at SDR white, straight alpha.
+	DNRS_PIXEL_RGB32F,
+	DNRS_PIXEL_RGBA32F,
 };
 
 struct dnrs_document_info {

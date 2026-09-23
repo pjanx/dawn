@@ -17,6 +17,11 @@ layout(push_constant) uniform Push {
 	float levels;  // 0 disables dithering; otherwise 2^bpc - 1
 	uint premultiplied;
 	uint srgb_attachment;
+	// Extended presentation passes linear light on, in the platform's
+	// primaries, with SDR white at `white`.
+	uint extended;
+	vec4 matrix[3];  // Columns, from display linear RGB
+	float white;
 } pc;
 
 float
@@ -34,6 +39,15 @@ void
 main()
 {
 	vec4 c = texelFetch(u_compose, ivec2(gl_FragCoord.xy), 0);
+	if (pc.extended != 0) {
+		// Linear premultiplied values pass through the matrix as they are.
+		mat3 m = mat3(pc.matrix[0].xyz, pc.matrix[1].xyz, pc.matrix[2].xyz);
+		c.rgb = m * c.rgb * pc.white;
+		if (pc.premultiplied == 0)
+			c.rgb = c.a > 0.0 ? c.rgb / c.a : vec3(0.0);
+		out_color = c;
+		return;
+	}
 	c.rgb = c.a > 0.0 ? profile_curve(c.rgb / c.a, true) : vec3(0.0);
 	if (pc.premultiplied != 0)
 		c.rgb *= c.a;

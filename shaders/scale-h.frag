@@ -31,14 +31,17 @@ layout(push_constant) uniform Push {
 	ivec2 mid_pad;
 	ivec2 layer_origin;
 	vec2 pan;
+	float angle; /* unused */
+	float bg_r, bg_g, bg_b; /* unused */
+	float checker_r, checker_g, checker_b; /* unused */
+	float checker_size; /* unused */
+	vec4 gain;
 } pc;
 
+// Callers clamp `p`, which the gain map takes too.
 vec4 fetch_image(ivec2 p)
 {
-	return texelFetch(u_tiles,
-			  tile_coord(clamp(p, ivec2(0), pc.image_size - 1),
-				     pc.image_size, pc.grid),
-			  0);
+	return texelFetch(u_tiles, tile_coord(p, pc.image_size, pc.grid), 0);
 }
 
 void main()
@@ -70,10 +73,12 @@ void main()
 	float weight_sum = 0.0;
 	for (int x = first; x <= last; ++x) {
 		float w = filter_weight((pos_x - float(x)) * kernel_scale);
-		vec4 t = associated_to_working(
-			fetch_image(oriented_to_source(ivec2(x, row), orient,
-						       pc.image_size)),
-			pc.transfer, opaque);
+		ivec2 src = clamp(oriented_to_source(ivec2(x, row), orient,
+						     pc.image_size),
+				  ivec2(0), pc.image_size - 1);
+		vec4 t = apply_gain(associated_to_working(fetch_image(src),
+							  pc.transfer, opaque),
+				    src, pc.image_size, pc.gain);
 		sum += t * w;
 		weight_sum += w;
 	}

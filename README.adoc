@@ -39,7 +39,8 @@ We care about
 
 Do it yourself
 ~~~~~~~~~~~~~~
- - HDR: the project scope is huge as it is, but you're welcome to lend a hand.
+ - HDR: verified to roughly work on Linux and macOS but it's not the focus.
+ - Right-to-left layouts.
 
 Rejected
 ~~~~~~~~

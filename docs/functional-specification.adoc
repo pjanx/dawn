@@ -87,6 +87,13 @@ Therefore, the viewer processes transparent pages in encoded values by default,
 and thumbnail production scales transparent images in encoded values.
 Both scale fully opaque images in linear light.
 
+The HDR rendition of an image is shown when it has a gain map, the display can
+show it, and the toggle is on.  It is always processed in linear light,
+transparent or not, as nothing above SDR white has a convention for
+compositing in encoded values.  This holds even while the display's current
+headroom leaves no gain at all, so that a change in brightness never changes
+how transparency composites.
+
 Thumbnails
 ----------
 When loading a directory, retrieve thumbnails as fast as possible:

@@ -53,6 +53,8 @@ vk_format_name(VkFormat f)
 	switch (f) {
 	case VK_FORMAT_R16G16B16A16_UNORM:
 		return "R16G16B16A16_UNORM";
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return "R16G16B16A16_SFLOAT";
 	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
 		return "A2B10G10R10_UNORM_PACK32";
 	case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
@@ -74,6 +76,8 @@ vk_colorspace_name(VkColorSpaceKHR cs)
 		return "PASS_THROUGH";
 	case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
 		return "SRGB_NONLINEAR";
+	case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+		return "EXTENDED_SRGB_LINEAR";
 	default:
 		return "other";
 	}
@@ -103,9 +107,22 @@ colorspace_score(VkColorSpaceKHR cs)
 	return 0;
 }
 
+// Extended presentation is linear, with a float swapchain in this space.
+#if defined _WIN32 || defined __APPLE__
+constexpr VkColorSpaceKHR kExtendedColorSpace =
+	VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+#else
+constexpr VkColorSpaceKHR kExtendedColorSpace = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+#endif
+constexpr VkFormat kExtendedFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+
 static int
 surface_format_score(const VkSurfaceFormatKHR &sf)
 {
+	// The encoded present pass is for display RGB, which a float surface
+	// is not.
+	if (sf.format == kExtendedFormat)
+		return -1;
 	return colorspace_score(sf.colorSpace) * 100 + format_bits(sf.format);
 }
 
@@ -122,9 +139,14 @@ dither_bits(VkFormat format)
 	return format_bits(format);
 }
 
-static VkSurfaceFormatKHR
-pick_surface_format(const vector<VkSurfaceFormatKHR> &formats)
+VkSurfaceFormatKHR
+pick_surface_format(const vector<VkSurfaceFormatKHR> &formats, bool extended)
 {
+	for (const VkSurfaceFormatKHR &sf : formats)
+		if (extended && sf.format == kExtendedFormat &&
+			sf.colorSpace == kExtendedColorSpace)
+			return sf;
+
 	VkSurfaceFormatKHR best = formats.front();
 	int best_score = surface_format_score(best);
 	for (size_t i = 1; i < formats.size(); i++) {
@@ -164,6 +186,16 @@ static constexpr VkDeviceSize kThumbAtlasHeapFrac = 4;
 
 namespace
 {
+struct PresentPush {
+	float levels;
+	uint32_t premultiplied;
+	uint32_t srgb_attachment;
+	uint32_t extended;
+	float matrix[3][4];
+	float white;
+};
+static_assert(sizeof(PresentPush) == 68);
+
 struct PushConstant {
 	float scale[2];
 	float translate[2];
@@ -312,11 +344,20 @@ Renderer::destroy()
 	this->present_queued_ = {};
 }
 
+// DN_BPC would dither even a float surface, so this is explicit.
 bool
 Renderer::dithering() const
 {
 	const int bits = dither_bits(this->format_);
-	return this->dither_enabled_ && bits > 0 && bits <= 10;
+	return !this->extended_ && this->dither_enabled_ && bits > 0 && bits <= 10;
+}
+
+// Encoded presentation keeps its UNORM composition, bit for bit.
+VkFormat
+Renderer::compose_format() const
+{
+	return this->extended_ ? VK_FORMAT_R16G16B16A16_SFLOAT
+						   : VK_FORMAT_R16G16B16A16_UNORM;
 }
 
 void
@@ -327,7 +368,7 @@ Renderer::ensure_engine()
 
 	string error;
 	if (!this->engine_.init(this->phys_, this->device_, this->queue_,
-			this->queue_family_, VK_FORMAT_R16G16B16A16_UNORM,
+			this->queue_family_, compose_format(),
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, &error))
 		die(error.c_str());
 	if (!this->encoding_)
@@ -345,6 +386,27 @@ Renderer::set_encoding(shared_ptr<const dawn::ProfileEncoding> encoding)
 	string error;
 	if (!this->engine_.set_encoding(*this->encoding_, &error))
 		die(error.c_str());
+}
+
+void
+Renderer::set_presentation(PresentationTarget target)
+{
+	this->presentation_ = std::move(target);
+}
+
+bool
+Renderer::offers_extended() const
+{
+	if (!this->phys_ || !this->surface_)
+		return false;
+	uint32_t count = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(
+		this->phys_, this->surface_, &count, nullptr);
+	vector<VkSurfaceFormatKHR> formats(count);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(
+		this->phys_, this->surface_, &count, formats.data());
+	return !formats.empty() &&
+		pick_surface_format(formats, true).format == kExtendedFormat;
 }
 
 void
@@ -377,7 +439,9 @@ Renderer::create_swapchain()
 
 	const VkFormat old_format = this->format_;
 	const VkColorSpaceKHR old_color_space = this->color_space_;
-	const VkSurfaceFormatKHR picked = pick_surface_format(formats);
+	const VkSurfaceFormatKHR picked =
+		pick_surface_format(formats, this->extended_);
+	this->extended_ = picked.format == kExtendedFormat;
 	this->format_ = picked.format;
 	this->color_space_ = picked.colorSpace;
 	if (this->format_ != old_format)
@@ -387,9 +451,14 @@ Renderer::create_swapchain()
 			vk_format_name(this->format_),
 			vk_colorspace_name(this->color_space_),
 			dithering() ? dither_bits(this->format_) : 0);
-		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT)
+		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT &&
+			!this->extended_)
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
+	}
+	if (this->engine_.dest_format() != compose_format()) {
+		ensure_engine();
+		this->overlay_.set_render_pass(this->engine_.dest_render_pass());
 	}
 	if (this->extent_.width == 0 || this->extent_.height == 0)
 		return;
@@ -497,14 +566,15 @@ Renderer::wait_idle() const
 }
 
 void
-Renderer::set_image(
-	uint32_t width, uint32_t height, const uint8_t *pixels, size_t stride)
+Renderer::set_image(uint32_t width, uint32_t height, const uint8_t *pixels,
+	size_t stride, const dawn::GainMap *map)
 {
 	if (!this->device_ || width == 0 || height == 0 || !pixels)
 		return;
 	wait_idle();
 	string error;
-	if (!this->engine_.set_image(width, height, pixels, stride, &error))
+	if (!this->engine_.set_image(width, height, pixels, stride, &error) ||
+		(map && !this->engine_.set_gain_map(map, &error)))
 		die(error.c_str());
 }
 
@@ -582,6 +652,35 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 		return true;
 	CALL_VK(WaitForFences, "", this->device_, 1, &this->fence_, VK_TRUE,
 		UINT64_MAX);
+
+	// The frame's presentation is fixed before recording, as its pipelines
+	// and white are recorded, and a change of it takes a new swapchain.
+	// A frame the platform does not take drops what it latched.
+	const bool draw_image = show_image && this->engine_.has_image();
+	const bool hdr_page = draw_image && this->view.hdr;
+	const PresentationTarget &target = this->presentation_;
+	auto settle = [&](Presentation wanted, float *white) {
+		*white = target.white;
+		return target.latch ? target.latch(wanted, white) : wanted;
+	};
+	Presentation wanted = Presentation::Encoded;
+	if (target.capable && (target.always || hdr_page))
+		wanted = hdr_page ? Presentation::Hdr : Presentation::Sdr;
+	float white = 1;
+	Presentation presentation = settle(wanted, &white);
+	if ((presentation != Presentation::Encoded) != this->extended_) {
+		this->extended_ = !this->extended_;
+		create_swapchain();
+		// The format list may change with HDR before the profile does:
+		// wait for the next set_presentation() rather than retry every frame.
+		if (!this->extended_ && presentation != Presentation::Encoded) {
+			this->presentation_.capable = false;
+			presentation = settle(Presentation::Encoded, &white);
+		}
+		if (!this->swapchain_)
+			return true;
+	}
+
 	uint32_t index = 0;
 	// A hidden Wayland surface has no guaranteed presentation progress, so an
 	// infinite acquire timeout is invalid. Keep the latest frame dirty and let
@@ -609,6 +708,10 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	const auto checker = dawn::sample_curves(this->encoding_->encode,
 		{this->checker_[0], this->checker_[1], this->checker_[2]});
 	dawn::ScaleView view = this->view;
+	// Gain would clip in an encoded composition, and the SDR variant of
+	// a Wayland surface declares nothing above SDR white.
+	if (presentation != Presentation::Hdr)
+		view.gain_weight = 0;
 	// dn composes in linear light; image alpha resolves against the well.
 	view.profile_curves = true;
 	view.output_encoding = dawn::ScaleEncoding::Linear;
@@ -619,7 +722,6 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	const auto well = dawn::sample_curves(this->encoding_->encode,
 		{this->well_[0], this->well_[1], this->well_[2]});
 	const float clear[4] = {well[0], well[1], well[2], this->well_[3]};
-	const bool draw_image = show_image && this->engine_.has_image();
 	string error;
 	if (draw_image &&
 		!this->engine_.prepare(this->cmd_, this->extent_.width,
@@ -631,7 +733,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 			this->extent_.height, view, clear, area);
 	this->overlay_.record(this->cmd_, mesh, this->extent_);
 	vkCmdEndRenderPass(this->cmd_);
-	record_presentation(this->cmd_, this->framebuffers_[index]);
+	record_presentation(this->cmd_, this->framebuffers_[index], white);
 	CALL_VK(EndCommandBuffer, "", this->cmd_);
 
 	VkPipelineStageFlags wait_stage =
@@ -689,11 +791,11 @@ Renderer::destroy_compose()
 void
 Renderer::create_compose()
 {
-	constexpr VkFormat kCompose = VK_FORMAT_R16G16B16A16_UNORM;
+	const VkFormat compose = compose_format();
 	VkImageCreateInfo image_info{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
 		.imageType = VK_IMAGE_TYPE_2D,
-		.format = kCompose,
+		.format = compose,
 		.extent = {this->extent_.width, this->extent_.height, 1},
 		.mipLevels = 1,
 		.arrayLayers = 1,
@@ -726,7 +828,7 @@ Renderer::create_compose()
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.image = this->compose_image_,
 		.viewType = VK_IMAGE_VIEW_TYPE_2D,
-		.format = kCompose,
+		.format = compose,
 		.subresourceRange = {.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 			.levelCount = 1,
 			.layerCount = 1},
@@ -891,7 +993,7 @@ Renderer::create_presentation()
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
 		.offset = 0,
-		.size = sizeof(float) + 2 * sizeof(uint32_t),
+		.size = sizeof(PresentPush),
 	};
 	VkPipelineLayoutCreateInfo layout_info{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -1013,7 +1115,8 @@ begin_render_pass(VkCommandBuffer cmd, VkRenderPass pass, VkFramebuffer dest,
 }
 
 void
-Renderer::record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const
+Renderer::record_presentation(
+	VkCommandBuffer cmd, VkFramebuffer dest, float white) const
 {
 	if (!cmd || !dest || !this->compose_image_ || !this->presentation_pipe_)
 		return;
@@ -1040,16 +1143,20 @@ Renderer::record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const
 		cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, this->presentation_pipe_);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		this->presentation_layout_, 0, 1, &this->presentation_set_, 0, nullptr);
-	const struct {
-		float levels;
-		uint32_t premultiplied;
-		uint32_t srgb_attachment;
-	} push{
-		dithering() ? float((1 << dither_bits(this->format_)) - 1) : 0.f,
-		this->composite_alpha_ != VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
-		this->format_ == VK_FORMAT_B8G8R8A8_SRGB ||
+	PresentPush push{
+		.levels =
+			dithering() ? float((1 << dither_bits(this->format_)) - 1) : 0.f,
+		.premultiplied = this->composite_alpha_ !=
+			VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+		.srgb_attachment = this->format_ == VK_FORMAT_B8G8R8A8_SRGB ||
 			this->format_ == VK_FORMAT_R8G8B8A8_SRGB,
+		.extended = this->extended_,
+		.matrix = {},
+		.white = white,
 	};
+	for (size_t c = 0; c < 3; c++)
+		for (size_t r = 0; r < 3; r++)
+			push.matrix[c][r] = float(this->presentation_.matrix[c][r]);
 	vkCmdPushConstants(cmd, this->presentation_layout_,
 		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
@@ -1137,6 +1244,16 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		this->descriptor_sets_);
 
 	return create_pipeline(render_pass);
+}
+
+void
+OverlayVulkan::set_render_pass(VkRenderPass render_pass)
+{
+	if (!this->device_)
+		return;
+	vkDeviceWaitIdle(this->device_);
+	destroy_pipeline();
+	create_pipeline(render_pass);
 }
 
 bool

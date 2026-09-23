@@ -55,6 +55,12 @@ struct ScaleView {
 	/// Clear it to keep premultiplied alpha, as offscreen readback needs.
 	bool composite = false;
 	Filter filter = Filter::Bilinear;
+	/// The HDR rendition: values above SDR white survive filtering.
+	/// Needs linear processing, which is then what `nonlinear_processing`
+	/// must say.
+	bool hdr = false;
+	/// set_gain_map()'s weight, see gain_map_weight().  Zero skips the map.
+	float gain_weight = 0.f;
 };
 
 /// Shared H→V tile scale engine. Does not own VkInstance/VkDevice/VkQueue.
@@ -72,7 +78,8 @@ public:
 
 	/// `dest_final_layout` is `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` for swapchain
 	/// targets, or `VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL` for offscreen
-	/// readback.
+	/// readback.  Called again with another destination, it rebuilds only
+	/// the render pass and pipelines, and keeps the image.
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkFormat dest_format,
 		VkImageLayout dest_final_layout, std::string *error);
@@ -83,9 +90,13 @@ public:
 	bool set_encoding(const ProfileEncoding &encoding, std::string *error);
 	VkDescriptorBufferInfo encoding_buffer() const;
 
+	/// Also unbinds any gain map.
 	bool set_image(uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride,
 		std::string *error);
 	void clear_image();
+	/// The image's gain map, applied per tap in linear light, or null.
+	/// Maps over maxImageDimension2D are downscaled.
+	bool set_gain_map(const GainMap *map, std::string *error);
 
 	[[nodiscard]] uint32_t image_width() const;
 	[[nodiscard]] uint32_t image_height() const;

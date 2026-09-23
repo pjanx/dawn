@@ -43,12 +43,20 @@ namespace dawn
 
 // --- Multi-Picture Format ----------------------------------------------------
 
-static uint32_t
-parse_mpf_mpentry(const uint8_t *p, const tiffer *T)
+namespace
 {
-	uint32_t attrs = T->un->u32(p);
-	uint32_t offset = T->un->u32(p + 8);
 
+struct MpfEntry {
+	const uint8_t *jpeg;  ///< Where the individual image starts
+	bool page;            ///< Whether it is a kind of image to show
+};
+
+}  // namespace
+
+// Whether an individual image is of a kind to show on its own.
+static bool
+mpf_is_page(uint32_t attrs)
+{
 	enum {
 		TypeBaselineMPPrimaryImage = 0x030000,
 		TypeLargeThumbnailVGA = 0x010001,
@@ -63,62 +71,52 @@ parse_mpf_mpentry(const uint8_t *p, const tiffer *T)
 	case TypeLargeThumbnailFullHD:
 		// Wasted cycles.
 	case TypeUndefined:
-		// Apple uses this for HDR and depth maps (same and lower resolution).
-		// TODO(p): It would be nice to be able to view them.
-		return 0;
+		// Apple uses this for HDR and depth maps (same and lower resolution),
+		// Ultra HDR for its gain map.
+		// TODO(p): It would be nice to be able to view depth maps.
+		return false;
 	}
 
 	// Don't report non-JPEGs, even though they're unlikely.
-	if (((attrs >> 24) & 0x7) != 0)
-		return 0;
-
-	return offset;
+	return ((attrs >> 24) & 0x7) == 0;
 }
 
-static vector<uint32_t>
-parse_mpf_index_entries(const tiffer *T, const tiffer_entry *entry)
+static void
+parse_mpf_index_entries(vector<MpfEntry> &individuals, const tiffer *T,
+	const tiffer_entry *entry, const uint8_t *mpf, size_t total_len)
 {
 	uint32_t count = entry->remaining_count / 16;
-	vector<uint32_t> offsets;
-	offsets.reserve(count);
 	for (uint32_t i = 0; i < count; i++) {
-		// 5.2.3.3.3. Individual Image Data Offset
-		uint32_t offset = parse_mpf_mpentry(entry->p + i * 16, T);
-		if (offset)
-			offsets.push_back(offset);
+		// 5.2.3.3.3. Individual Image Data Offset,
+		// which is zero for the primary image.
+		const uint8_t *p = entry->p + i * 16;
+		uint32_t offset = T->un->u32(p + 8);
+		if (offset && offset <= total_len)
+			individuals.push_back({mpf + offset, mpf_is_page(T->un->u32(p))});
 	}
-	return offsets;
 }
 
-static vector<uint32_t>
-parse_mpf_index_ifd(tiffer *T)
-{
-	tiffer_entry entry = {};
-	while (tiffer_next_entry(T, &entry)) {
-		// 5.2.3.3. MP Entry
-		if (entry.tag == MPF_MPEntry && entry.type == TIFFER_UNDEFINED &&
-			!(entry.remaining_count % 16)) {
-			return parse_mpf_index_entries(T, &entry);
-		}
-	}
-	return {};
-}
-
-/// Collects pointers (into `mpf`) to the individual JPEGs of an MPF.
-static bool
-parse_mpf(vector<const uint8_t *> &individuals, const uint8_t *mpf, size_t len,
+/// Collects pointers (into `mpf`) to the individual JPEGs of an MPF,
+/// all but the primary one.
+static void
+parse_mpf(vector<MpfEntry> &individuals, const uint8_t *mpf, size_t len,
 	size_t total_len)
 {
 	tiffer T = {};
 	if (!tiffer_init(&T, mpf, len) || !tiffer_next_ifd(&T))
-		return false;
+		return;
 
 	// First image: IFD0 is Index IFD, any IFD1 is Attribute IFD.
 	// Other images: IFD0 is Attribute IFD, there is no Index IFD.
-	for (uint32_t offset : parse_mpf_index_ifd(&T))
-		if (offset && offset <= total_len)
-			individuals.push_back(mpf + offset);
-	return true;
+	tiffer_entry entry = {};
+	while (tiffer_next_entry(&T, &entry)) {
+		// 5.2.3.3. MP Entry
+		if (entry.tag == MPF_MPEntry && entry.type == TIFFER_UNDEFINED &&
+			!(entry.remaining_count % 16)) {
+			parse_mpf_index_entries(individuals, &T, &entry, mpf, total_len);
+			return;
+		}
+	}
 }
 
 // --- Exif-derived colour profile ---------------------------------------------
@@ -222,9 +220,11 @@ namespace
 {
 
 struct JpegMetadata {
-	vector<uint8_t> exif;         ///< Exif buffer, may be empty
-	vector<uint8_t> icc;          ///< ICC profile buffer, may be empty
-	vector<const uint8_t *> mpf;  ///< Multi-Picture Format entries
+	vector<uint8_t> exif;  ///< Exif buffer, may be empty
+	vector<uint8_t> icc;   ///< ICC profile buffer, may be empty
+	string xmp;            ///< The main XMP packet, may be empty
+	vector<uint8_t> iso;   ///< ISO 21496-1 metadata, may be empty
+	vector<MpfEntry> mpf;  ///< Multi-Picture Format entries
 };
 
 }  // namespace
@@ -336,7 +336,18 @@ parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 				meta->mpf, payload, size_t(p - payload), size_t(end - payload));
 		}
 
-		// TODO(p): Extract the main XMP segment.
+		// Adobe XMP Specification Part 3: Storage in Files, 2020/1, 1.1.3
+		static constexpr char xmp_ns[] = "http://ns.adobe.com/xap/1.0/";
+		if (marker == APP1 && size_t(p - payload) >= sizeof xmp_ns &&
+			!memcmp(payload, xmp_ns, sizeof xmp_ns) && meta->xmp.empty())
+			meta->xmp.assign(
+				(const char *) payload + sizeof xmp_ns, (const char *) p);
+
+		// ISO 21496-1 metadata, as Ultra HDR 1.1 stores it in JPEG.
+		static constexpr char iso_ns[] = "urn:iso:std:iso:ts:21496:-1";
+		if (marker == APP2 && size_t(p - payload) >= sizeof iso_ns &&
+			!memcmp(payload, iso_ns, sizeof iso_ns) && meta->iso.empty())
+			meta->iso.assign(payload + sizeof iso_ns, p);
 	}
 
 	if (!icc_done)
@@ -505,6 +516,57 @@ pack_jpeg_ext_to_bgra16(
 	}
 }
 
+// --- Gain maps ---------------------------------------------------------------
+
+static constexpr string_view kHdrgmNs = "http://ns.adobe.com/hdr-gain-map/1.0/";
+static constexpr string_view kContainerItemNs =
+	"http://ns.google.com/photos/1.0/container/item/";
+
+/// Recognizes an individual MPF image as a gain map, by its ISO 21496-1
+/// metadata, Ultra HDR XMP, or Apple's, and attaches it to the primary `image`
+/// when asked to and supported.  Returns whether it was a gain map.
+static bool
+load_jpeg_gain_map(Image &image, span<const uint8_t> jpeg, bool directory_map,
+	span<const uint8_t> primary_exif, int number, const OpenContext &ctx)
+{
+	JpegMetadata meta;
+	parse_jpeg_metadata(jpeg, &meta);
+
+	GainMap metadata;
+	bool supported = false, apple = false;
+	if (!meta.iso.empty()) {
+		supported = parse_iso_gain_map(meta.iso, &metadata);
+	} else if (xmp_declares(meta.xmp, kHdrgmNs) || directory_map) {
+		supported = parse_hdrgm_gain_map(meta.xmp, &metadata);
+	} else if (apple_gain_map_declared(meta.xmp)) {
+		apple = true;
+		const double headroom = apple_gain_map_headroom(meta.xmp, primary_exif);
+		if ((supported = headroom != 0))
+			metadata = apple_gain_map(headroom);
+	} else {
+		return false;
+	}
+	if (!ctx.gain_maps || image.gain_map || !supported ||
+		!gain_map_applies(metadata, ctx))
+		return true;
+
+	// Nothing but the pixels: no conversion, no smoothing, no recursion.
+	OpenContext map_ctx;
+	map_ctx.cmm = ctx.cmm;
+	map_ctx.first_frame_only = true;
+	Error error;
+	ImagePtr pixels = open_libjpeg_turbo(jpeg, map_ctx, &error);
+	if (pixels)
+		image.gain_map = make_gain_map(*pixels, metadata, apple);
+	else
+		add_warning(ctx,
+			format_message(
+				_("MPF image %d: %s"), number, error.message.c_str()));
+	return true;
+}
+
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 /// Finishes a decoded JPEG page: metadata, optional MPF follow-ups, then
 /// colour-manage. `bits` is 8 for JSAMPLE output, or 12/16 for high precision.
 /// When bits==8, `pixels8` is BGRA8 or CMYK8; otherwise `pixels16` is used.
@@ -516,18 +578,28 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, int bits, const OpenContext &ctx,
 	parse_jpeg_metadata(data, &meta);
 
 	if (!ctx.first_frame_only) {
+		// Ultra HDR's container directory lists the primary image first.
+		vector<string> semantics =
+			xmp_values(meta.xmp, kContainerItemNs, "Semantic");
+
 		// XXX: This is ugly, as it relies on just the first individual image
 		// having any follow-up entries (as it should be).
 		ImagePtr tail = image;
 		for (size_t i = 0; i < meta.mpf.size(); i++) {
-			const uint8_t *jpeg = meta.mpf[i];
-			size_t sub_len = size_t((data.data() + data.size()) - jpeg);
+			const uint8_t *jpeg = meta.mpf[i].jpeg;
+			span<const uint8_t> sub(
+				jpeg, size_t((data.data() + data.size()) - jpeg));
+			const bool directory_map =
+				i + 1 < semantics.size() && semantics[i + 1] == "GainMap";
+			if (load_jpeg_gain_map(
+					*image, sub, directory_map, meta.exif, int(i + 2), ctx) ||
+				!meta.mpf[i].page)
+				continue;
 
 			Error suberror;
-			ImagePtr sub = open_libjpeg_turbo(
-				span<const uint8_t>(jpeg, sub_len), ctx, &suberror);
-			if (sub)
-				append_page(image, tail, std::move(sub));
+			ImagePtr subimage = open_libjpeg_turbo(sub, ctx, &suberror);
+			if (subimage)
+				append_page(image, tail, std::move(subimage));
 			else
 				add_warning(ctx,
 					format_message(_("MPF image %d: %s"), int(i + 2),
@@ -813,10 +885,12 @@ jpeg_grid(span<const uint8_t> data, JpegGrid *out, Error *error)
 				*error = {
 					Error::Code::Open, _("Unsupported chroma subsampling")};
 		} else if (out) {
+			JpegMetadata meta;
+			parse_jpeg_metadata(data, &meta);
 			*out = {uint32_t(tj3Get(handle, TJPARAM_JPEGWIDTH)),
 				uint32_t(tj3Get(handle, TJPARAM_JPEGHEIGHT)),
-				uint32_t(tjMCUWidth[sampling]),
-				uint32_t(tjMCUHeight[sampling])};
+				uint32_t(tjMCUWidth[sampling]), uint32_t(tjMCUHeight[sampling]),
+				uint32_t(meta.mpf.size())};
 		}
 	}
 	if (handle)

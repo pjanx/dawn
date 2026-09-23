@@ -40,6 +40,13 @@ set(DAWN_TEST_FIXTURE_FILES
 	"${DAWN_TEST_FIXTURES_DIR}/chrm-p3-gama1.png"
 	"${DAWN_TEST_FIXTURES_DIR}/chrm-p3.png"
 	"${DAWN_TEST_FIXTURES_DIR}/display-p3-red_vs_srgb-red.png"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-colour.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-flat.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-iso.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-map.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-offsets.jpg"
+	"${DAWN_TEST_FIXTURES_DIR}/gainmap-seq.jpg"
 	"${DAWN_TEST_FIXTURES_DIR}/gama22.png"
 	"${DAWN_TEST_FIXTURES_DIR}/green.bmp"
 	"${DAWN_TEST_FIXTURES_DIR}/green.jpg"
@@ -112,6 +119,19 @@ target_link_libraries(test-jpeg-crop PRIVATE libdn)
 target_compile_definitions(test-jpeg-crop PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
 add_test(NAME jpeg_crop COMMAND test-jpeg-crop)
+
+add_executable(test-gain-map test-gain-map.cpp)
+if (NOT CMAKE_CROSSCOMPILING)
+	add_dependencies(test-gain-map test-fixtures)
+endif()
+target_link_libraries(test-gain-map PRIVATE libdn)
+target_compile_definitions(test-gain-map PRIVATE
+	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
+add_test(NAME gain_map COMMAND test-gain-map)
+
+add_executable(test-split-hdr test-split-hdr.cpp)
+target_link_libraries(test-split-hdr PRIVATE libdn)
+add_test(NAME split_hdr COMMAND test-split-hdr)
 
 add_executable(test-save test-save.cpp)
 target_link_libraries(test-save PRIVATE libdn)

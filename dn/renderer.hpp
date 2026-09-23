@@ -26,6 +26,30 @@
 namespace dn
 {
 
+/// How a frame is presented: encoded for the display profile, or extended
+/// range in the platform's linear space, without or with luminance above
+/// SDR white.
+enum class Presentation : uint8_t { Encoded, Sdr, Hdr };
+
+/// What the window finds out about extended presentation.
+struct PresentationTarget {
+	/// Whether the window can present extended at all.
+	bool capable = false;
+	/// Whether capability alone decides, rather than a drawn HDR page.
+	bool always = false;
+	/// From display linear RGB into the platform's, and its SDR white.
+	dawn::RgbMatrix matrix = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}};
+	float white = 1;
+	/// Settles what a frame gets, as the platform may only have a lesser
+	/// presentation ready, and replaces `white` for it.  Null grants all.
+	std::function<Presentation(Presentation wanted, float *white)> latch;
+};
+
+/// The swapchain format for either presentation.  Encoded never takes a
+/// float format; extended falls back to encoded without its own.
+VkSurfaceFormatKHR pick_surface_format(
+	const std::vector<VkSurfaceFormatKHR> &formats, bool extended);
+
 struct AtlasUpload {
 	const uint16_t *pixels = nullptr;
 	int width = 0;
@@ -113,6 +137,8 @@ public:
 
 	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		uint32_t queue_family, VkRenderPass render_pass);
+	/// Rebuilds the pipelines for another composition pass, keeping atlases.
+	void set_render_pass(VkRenderPass render_pass);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
 	// Upload requests copy borrowed pixels immediately; GPU work is deferred.
 	bool upload_font(
@@ -143,8 +169,10 @@ class Renderer
 	void create_presentation_pipeline();
 	void destroy_presentation();
 	void create_presentation();
-	void record_presentation(VkCommandBuffer cmd, VkFramebuffer dest) const;
+	void record_presentation(
+		VkCommandBuffer cmd, VkFramebuffer dest, float white) const;
 	[[nodiscard]] bool dithering() const;
+	[[nodiscard]] VkFormat compose_format() const;
 
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;   // borrowed from QWindow
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;  // borrowed from GpuContext
@@ -188,6 +216,8 @@ class Renderer
 	VkDescriptorPool presentation_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet presentation_set_ = VK_NULL_HANDLE;
 	bool needs_resize_ = false;
+	bool extended_ = false;
+	PresentationTarget presentation_;
 	bool prefer_premultiplied_ = false;
 	bool dither_enabled_ = true;
 	uint32_t dest_inset_ = 0;
@@ -210,8 +240,8 @@ public:
 		VkPresentModeKHR preferred_present_mode,
 		std::function<void()> present_about_to_queue,
 		std::function<void()> present_queued);
-	void set_image(
-		uint32_t w, uint32_t h, const uint8_t *pixels, size_t stride);
+	void set_image(uint32_t w, uint32_t h, const uint8_t *pixels,
+		size_t stride, const dawn::GainMap *map);
 	void clear_image();
 	void set_well_colour(float r, float g, float b);
 	void set_prefer_premultiplied(bool enabled)
@@ -222,6 +252,13 @@ public:
 	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
 	void set_encoding(std::shared_ptr<const dawn::ProfileEncoding> encoding);
+	void set_presentation(PresentationTarget target);
+	/// SDR white for extended frames, where no latch gives it: Windows's
+	/// follows a slider that no notification reports.
+	void set_white(float white) { this->presentation_.white = white; }
+	/// Whether the surface has the format extended presentation needs.
+	/// Asked anew each time, as drivers may change it with the display mode.
+	[[nodiscard]] bool offers_extended() const;
 	bool upload_font(
 		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
 	[[nodiscard]] int thumb_atlas_max() const;

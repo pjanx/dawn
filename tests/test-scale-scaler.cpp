@@ -106,7 +106,7 @@ struct EngineReadback {
 	bool init_presentation(string *error);
 	bool readback(VkImage source, array<uint16_t, 16> *pixels, string *error);
 	bool compose(const dn::OverlayMesh &mesh, const dawn::ScaleView *view,
-		VkRect2D clip, bool premultiplied, float levels,
+		VkRect2D clip, bool premultiplied, float levels, float white,
 		array<uint16_t, 16> *pixels, string *error);
 	bool draw(const dawn::ScaleView &view, const float clear[4],
 		array<uint16_t, 16> *pixels, string *error);
@@ -331,7 +331,7 @@ EngineReadback::init_presentation(string *error)
 			.pBufferInfo = &buffer_info},
 	};
 	vkUpdateDescriptorSets(device, 2, writes, 0, nullptr);
-	VkPushConstantRange push{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 12};
+	VkPushConstantRange push{VK_SHADER_STAGE_FRAGMENT_BIT, 0, 68};
 	VkPipelineLayoutCreateInfo plci{
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		.setLayoutCount = 1,
@@ -379,7 +379,7 @@ EngineReadback::init_presentation(string *error)
 bool
 EngineReadback::compose(const dn::OverlayMesh &mesh,
 	const dawn::ScaleView *view, VkRect2D clip, bool premultiplied,
-	float levels, array<uint16_t, 16> *pixels, string *error)
+	float levels, float white, array<uint16_t, 16> *pixels, string *error)
 {
 	if (!CALL_VK(ResetCommandBuffer, " compose test", cmd, 0))
 		return false;
@@ -426,11 +426,17 @@ EngineReadback::compose(const dn::OverlayMesh &mesh,
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipeline_layout, 0, 1, &set, 0, nullptr);
+	// A nonzero white selects extended presentation, with no conversion.
 	const struct {
 		float levels;
 		uint32_t premultiplied;
 		uint32_t srgb;
-	} push{levels, premultiplied, 0};
+		uint32_t extended;
+		float matrix[3][4];
+		float white;
+	} push{levels, premultiplied, 0, white != 0,
+		{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}}, white};
+	static_assert(sizeof push == 68);
 	vkCmdPushConstants(cmd, pipeline_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0,
 		sizeof push, &push);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
@@ -455,7 +461,7 @@ test_composition()
 	auto render = [&](bool premultiplied, float levels) {
 		list.end();
 		CHECK(gpu.compose(list.mesh(), nullptr, {{0, 0}, {2, 2}}, premultiplied,
-			levels, &pixels, &error));
+			levels, 0, &pixels, &error));
 	};
 	auto near = [&](int pixel, int c, float want) {
 		const float actual = pixels[size_t(pixel * 4 + c)] / 65535.f;
@@ -584,6 +590,17 @@ test_composition()
 		render(true, levels);
 		near(0, 0, floorf(.25f * levels + .5f / 64) / levels);
 	}
+
+	// Extended presentation passes linear light on, scaled to its white,
+	// without the display curves or dithering.
+	begin();
+	list.add_rect_filled(box, {.25f, .5f, .75f, 1});
+	list.end();
+	CHECK(gpu.compose(list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 255, .5f,
+		&pixels, &error));
+	near(0, 0, .125f);
+	near(0, 1, .25f);
+	near(0, 2, .375f);
 }
 
 static void
@@ -609,7 +626,7 @@ test_image_overlay()
 		view.output_encoding = dawn::ScaleEncoding::Linear;
 		array<uint16_t, 16> pixels{};
 		CHECK(gpu.compose(
-			list.mesh(), &view, {{1, 0}, {1, 2}}, true, 0, &pixels, &error));
+			list.mesh(), &view, {{1, 0}, {1, 2}}, true, 0, 0, &pixels, &error));
 		// Image scissor excludes the left column, but the overlay covers it.
 		CHECK(abs(pixels[2] / 65535.f - .5f) < .0003f);
 		CHECK(abs(pixels[3] / 65535.f - .5f) < .0003f);
@@ -681,7 +698,7 @@ test_glyph_contrast()
 	list.end();
 	array<uint16_t, 16> pixels{};
 	CHECK(gpu.compose(
-		list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
+		list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, 0, &pixels, &error));
 
 	// Don't be needlessly anal about the particular values.
 	const float dark = pixels[3] / 65535.f;
@@ -727,8 +744,8 @@ test_font_uploads()
 		list.add_image({0, 0, 2, 2}, {0, 0, 2, 2}, {1, 1, 1, 1});
 		list.end();
 		array<uint16_t, 16> pixels{};
-		CHECK(gpu.compose(
-			list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
+		CHECK(gpu.compose(list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, 0,
+			&pixels, &error));
 		for (size_t i = 0; i < expected.size(); i++) {
 			CHECK(pixels[i * 4] == expected[i].r);
 			CHECK(pixels[i * 4 + 1] == expected[i].g);
@@ -814,8 +831,8 @@ test_atlas_uploads()
 		list.add_thumb({0, 0, 2, 2}, {0, 0, 2, 2}, {1, 1, 1, 1}, {});
 		list.end();
 		array<uint16_t, 16> pixels{};
-		CHECK(gpu.compose(
-			list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, &pixels, &error));
+		CHECK(gpu.compose(list.mesh(), nullptr, {{0, 0}, {2, 2}}, true, 0, 0,
+			&pixels, &error));
 		for (size_t i = 0; i < expected.size(); i++) {
 			CHECK(pixels[i * 4] == expected[i].r);
 			CHECK(pixels[i * 4 + 1] == expected[i].g);
@@ -1146,6 +1163,92 @@ test_linear_scaling()
 			CHECK(abs(int(out.rgba8[c]) - 188) <= 1);
 }
 
+// Gain applies per tap in linear light, where the map puts it, and only
+// with a weight, in linear processing, until the next image.
+static void
+test_gain_map()
+{
+	EngineReadback gpu;
+	string error;
+	if (!gpu.init(&error)) {
+		test::fail("%s", error.c_str());
+		return;
+	}
+	const Pixel grey{16384, 16384, 16384, 65535};
+	const array<Pixel, 4> src{grey, grey, grey, grey};
+	auto upload = [&] {
+		CHECK(gpu.engine.set_image(
+			2, 2, (const uint8_t *) src.data(), 2 * sizeof(Pixel), &error));
+	};
+	upload();
+
+	dawn::GainMap map;
+	map.data = {0, 65535};
+	map.width = 2;
+	map.height = 1;
+	map.max = map.alternate_headroom = 2;
+	CHECK(gpu.engine.set_gain_map(&map, &error));
+
+	auto render = [&](float weight, bool nonlinear, array<float, 2> want) {
+		dawn::ScaleView view;
+		view.transfer = dawn::Transfer::Linear;
+		view.output_encoding = dawn::ScaleEncoding::Linear;
+		view.filter = dawn::Filter::Nearest;
+		view.hdr = true;
+		view.gain_weight = weight;
+		view.nonlinear_processing = nonlinear;
+		const float clear[4] = {};
+		array<uint16_t, 16> pixels{};
+		CHECK(gpu.draw(view, clear, &pixels, &error));
+		for (int i = 0; i < 4; i++) {
+			const float got = pixels[i * 4] / 65535.f;
+			if (abs(got - want[i % 2]) > .0005f)
+				test::fail("weight %g, pixel %d: %f != %f", double(weight), i,
+					double(got), double(want[i % 2]));
+		}
+	};
+	const float base = 16384 / 65535.f;
+	render(0, false, {base, base});
+	render(.5f, false, {base, base * 2});
+	render(1, false, {base, min(base * 4, 1.f)});
+	render(1, true, {base, base});
+
+	map.offset = 1.f / 64;
+	CHECK(gpu.engine.set_gain_map(&map, &error));
+	render(.5f, false, {base, (base + map.offset) * 2 - map.offset});
+
+	upload();
+	render(1, false, {base, base});
+}
+
+static void
+test_surface_formats()
+{
+#if defined _WIN32 || defined __APPLE__
+	const VkColorSpaceKHR extended = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+#else
+	const VkColorSpaceKHR extended = VK_COLOR_SPACE_PASS_THROUGH_EXT;
+#endif
+	const VkSurfaceFormatKHR sfloat{VK_FORMAT_R16G16B16A16_SFLOAT, extended},
+		srgb8{VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+		srgb10{VK_FORMAT_A2B10G10R10_UNORM_PACK32,
+			VK_COLOR_SPACE_SRGB_NONLINEAR_KHR},
+		sfloat_srgb{
+			VK_FORMAT_R16G16B16A16_SFLOAT, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
+	auto same = [](VkSurfaceFormatKHR a, VkSurfaceFormatKHR b) {
+		return a.format == b.format && a.colorSpace == b.colorSpace;
+	};
+
+	// Legacy never takes a float format, even over sRGB ones.
+	CHECK(
+		same(dn::pick_surface_format({sfloat, srgb8, srgb10}, false), srgb10));
+	CHECK(same(dn::pick_surface_format({sfloat, srgb8}, false), srgb8));
+	CHECK(same(dn::pick_surface_format({sfloat_srgb, srgb8}, false), srgb8));
+	CHECK(same(dn::pick_surface_format({srgb8, sfloat, srgb10}, true), sfloat));
+	// Not in the platform's space, which extended falls back from.
+	CHECK(same(dn::pick_surface_format({sfloat_srgb, srgb8}, true), srgb8));
+}
+
 static void
 test_thumb_tiles()
 {
@@ -1218,6 +1321,8 @@ main()
 		{"glyph contrast by colour", test_glyph_contrast},
 		{"viewport changes without setup", test_viewport_changes},
 		{"thumbnail tiles without reduction", test_thumb_tiles},
+		{"gain maps", test_gain_map},
+		{"surface formats", test_surface_formats},
 	});
 	// Tear down Vulkan before the validation layer's process-exit cleanup.
 	scaler.destroy();

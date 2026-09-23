@@ -1194,6 +1194,44 @@ test_profile_encoding()
 	cmsCloseProfile(mixed);
 }
 
+// White lands on white, and each display colourant on its own primary.
+static void
+test_display_matrices()
+{
+	auto cmm = make_shared<dawn::Cmm>();
+	const auto srgb = dawn::profile_encoding(cmm->get_profile_sRGB().get());
+	const auto p3 = dawn::profile_encoding(cmm->get_profile_display_p3().get());
+	const double srgb_xy[6] = {.64, .33, .30, .60, .15, .06};
+	const double bt2020_xy[6] = {.708, .292, .170, .797, .131, .046};
+
+	const dawn::RgbMatrix colourants = dawn::display_colourants_d65(srgb);
+	for (int c = 0; c < 3; c++) {
+		const double sum =
+			colourants[c][0] + colourants[c][1] + colourants[c][2];
+		CHECK(abs(colourants[c][0] / sum - srgb_xy[c * 2]) < .001);
+		CHECK(abs(colourants[c][1] / sum - srgb_xy[c * 2 + 1]) < .001);
+	}
+
+	const dawn::RgbMatrix identity = dawn::display_to_primaries(srgb, srgb_xy);
+	for (int c = 0; c < 3; c++)
+		for (int r = 0; r < 3; r++)
+			CHECK(abs(identity[c][r] - (c == r)) < .002);
+
+	// Display P3 red leaves sRGB, as scRGB lets it, but not BT.2020, whose
+	// conversion from P3 is only a hair negative, in blue from red.
+	const dawn::RgbMatrix to_srgb = dawn::display_to_primaries(p3, srgb_xy);
+	CHECK(to_srgb[0][0] > 1.1 && to_srgb[0][1] < 0 && to_srgb[0][2] < 0);
+	const dawn::RgbMatrix to_bt2020 = dawn::display_to_primaries(p3, bt2020_xy);
+	for (int r = 0; r < 3; r++) {
+		double white = 0;
+		for (int c = 0; c < 3; c++) {
+			CHECK(to_bt2020[c][r] > -.002);
+			white += to_bt2020[c][r];
+		}
+		CHECK(abs(white - 1) < .002);
+	}
+}
+
 int
 main()
 {
@@ -1221,5 +1259,6 @@ main()
 #endif
 		{"profile transfer", test_profile_transfer},
 		{"profile encoding", test_profile_encoding},
+		{"display matrices", test_display_matrices},
 	});
 }

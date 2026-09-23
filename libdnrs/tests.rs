@@ -275,6 +275,44 @@ fn tiff_pages_are_separate() {
 }
 
 #[test]
+fn float_tiff_keeps_linear_floats() {
+	use tiff::encoder::{colortype, TiffEncoder};
+	use tiff::tags::Tag;
+
+	let mut cursor = Cursor::new(Vec::new());
+	{
+		let mut encoder = TiffEncoder::new(&mut cursor).unwrap();
+		encoder
+			.write_image::<colortype::RGB32Float>(1, 1, &[4.0, -0.5, 0.25])
+			.unwrap();
+	}
+	assert_eq!(
+		float_frame(cursor.get_ref()),
+		(dnrs_pixel_format::RgbF32 as u32, vec![4.0, -0.5, 0.25])
+	);
+
+	// ExtraSamples says whether alpha is associated, and it then goes out
+	// straight.  Unassociated alpha stays as it is.
+	for (extra, expected) in [(1_u16, [4.0, 2.0, 1.0]), (2, [2.0, 1.0, 0.5])] {
+		let mut cursor = Cursor::new(Vec::new());
+		{
+			let mut encoder = TiffEncoder::new(&mut cursor).unwrap();
+			let mut image =
+				encoder.new_image::<colortype::RGBA32Float>(1, 1).unwrap();
+			image
+				.encoder()
+				.write_tag(Tag::ExtraSamples, &[extra][..])
+				.unwrap();
+			image.write_data(&[2.0, 1.0, 0.5, 0.5]).unwrap();
+		}
+		let (format, samples) = float_frame(cursor.get_ref());
+		assert_eq!(format, dnrs_pixel_format::RgbaF32 as u32);
+		assert_eq!(samples[..3], expected);
+		assert_eq!(samples[3], 0.5);
+	}
+}
+
+#[test]
 fn image_extras_xbm_and_xpm_are_sniffed() {
 	let xbm = br#"#define dot_width 1
 #define dot_height 1
@@ -393,6 +431,56 @@ fn image_rs_still_formats_are_decodable() {
 		.write_image(&rgba, 1, 1, ExtendedColorType::Rgba8)
 		.unwrap();
 	verify_encoded_image(&data);
+}
+
+fn float_frame(data: &[u8]) -> (u32, Vec<f32>) {
+	let decoder = open(data, false);
+	next_page(&decoder);
+	let mut frame = next_frame(&decoder);
+	let samples =
+		unsafe { std::slice::from_raw_parts(frame.data, frame.length) }
+			.chunks_exact(4)
+			.map(|bytes| f32::from_ne_bytes(bytes.try_into().unwrap()))
+			.collect();
+	let format = frame.format as u32;
+	unsafe { dnrs_frame_clear(&mut frame) };
+	(format, samples)
+}
+
+#[test]
+fn exr_and_radiance_keep_linear_floats() {
+	use image::{ExtendedColorType, ImageEncoder};
+
+	fn bytes(samples: &[f32]) -> Vec<u8> {
+		samples.iter().copied().flat_map(f32::to_ne_bytes).collect()
+	}
+
+	let mut data = Vec::new();
+	image::codecs::hdr::HdrEncoder::new(&mut data)
+		.write_image(&bytes(&[4.0, 0.5, 0.25]), 1, 1, ExtendedColorType::Rgb32F)
+		.unwrap();
+	assert_eq!(
+		float_frame(&data),
+		(dnrs_pixel_format::RgbF32 as u32, vec![4.0, 0.5, 0.25])
+	);
+
+	// Associated alpha comes out straight, negative values and all.
+	let mut exr = Cursor::new(Vec::new());
+	image::codecs::openexr::OpenExrEncoder::new(&mut exr)
+		.write_image(
+			&bytes(&[2.0, -0.5, 1.0, 0.5, 1.0, 1.0, 1.0, 0.0]),
+			2,
+			1,
+			ExtendedColorType::Rgba32F,
+		)
+		.unwrap();
+	assert_eq!(
+		float_frame(exr.get_ref()),
+		(
+			dnrs_pixel_format::RgbaF32 as u32,
+			vec![4.0, -1.0, 2.0, 0.5, 1.0, 1.0, 1.0, 0.0]
+		)
+	);
 }
 
 #[test]

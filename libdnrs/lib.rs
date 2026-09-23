@@ -47,6 +47,8 @@ pub enum dnrs_pixel_format {
 	GrayAlpha16Le,
 	Rgb16Le,
 	Rgba16Le,
+	RgbF32,
+	RgbaF32,
 }
 
 #[repr(C)]
@@ -206,6 +208,8 @@ fn bytes_per_pixel(format: dnrs_pixel_format) -> usize {
 		dnrs_pixel_format::GrayAlpha16Le => 4,
 		dnrs_pixel_format::Rgb16Le => 6,
 		dnrs_pixel_format::Rgba16Le => 8,
+		dnrs_pixel_format::RgbF32 => 12,
+		dnrs_pixel_format::RgbaF32 => 16,
 	}
 }
 
@@ -271,6 +275,41 @@ fn frame_from_dynamic(
 		),
 	};
 	make_frame(width, height, format, pixels, duration_ms)
+}
+
+// OpenEXR, Radiance and float TIFF carry linear light, which libdn splits into
+// an SDR base and a gain map, so their floats go out unclipped.  Associated
+// alpha, as OpenEXR's always is, goes out straight, as every other format's
+// does.  Anything else goes out as frame_from_dynamic() has it.
+fn frame_from_float(
+	image: DynamicImage,
+	associated: bool,
+) -> Result<Frame, String> {
+	let (width, height) = (image.width(), image.height());
+	let (format, pixels) = match image {
+		DynamicImage::ImageRgb32F(v) => {
+			(dnrs_pixel_format::RgbF32, f32_to_ne(v.into_raw()))
+		}
+		DynamicImage::ImageRgba32F(mut v) => {
+			if associated {
+				for pixel in v.pixels_mut() {
+					let alpha = pixel[3];
+					if alpha > 0.0 {
+						pixel[0] /= alpha;
+						pixel[1] /= alpha;
+						pixel[2] /= alpha;
+					}
+				}
+			}
+			(dnrs_pixel_format::RgbaF32, f32_to_ne(v.into_raw()))
+		}
+		other => return frame_from_dynamic(other, 0),
+	};
+	make_frame(width, height, format, pixels, 0)
+}
+
+fn f32_to_ne(samples: Vec<f32>) -> Vec<u8> {
+	samples.into_iter().flat_map(f32::to_ne_bytes).collect()
 }
 
 fn u16_to_le(samples: Vec<u16>) -> Vec<u8> {
@@ -352,13 +391,20 @@ fn collect_metadata(
 	})
 }
 
-fn decode_frame<D: ImageDecoder>(
+fn decode_dynamic<D: ImageDecoder>(
 	mut decoder: D,
-) -> Result<(Frame, Metadata), String> {
+) -> Result<(DynamicImage, Metadata), String> {
 	set_decoder_limits(&mut decoder)?;
 	let metadata = collect_metadata(&mut decoder)?;
 	let image =
 		DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+	Ok((image, metadata))
+}
+
+fn decode_frame<D: ImageDecoder>(
+	decoder: D,
+) -> Result<(Frame, Metadata), String> {
+	let (image, metadata) = decode_dynamic(decoder)?;
 	Ok((frame_from_dynamic(image, 0)?, metadata))
 }
 
@@ -477,10 +523,12 @@ fn decode_tiff_pages(
 			.ok_or_else(|| "missing TIFF page offset".to_string())?
 			.0;
 		tiff_select_page(&mut page, offset)?;
-		let decoded = decode_still(ImageReader::with_format(
-			Cursor::new(page.as_slice()),
-			ImageFormat::Tiff,
-		))?;
+		let associated = scanner
+			.find_tag_unsigned_vec::<u16>(tiff::tags::Tag::ExtraSamples)
+			.ok()
+			.flatten()
+			.is_some_and(|extra| extra.first() == Some(&1));
+		let decoded = decode_float_still(&page, ImageFormat::Tiff, associated)?;
 		total = total
 			.checked_add(decoded.0.pixels.len() as u64)
 			.ok_or_else(|| "decoded image size overflow".to_string())?;
@@ -518,6 +566,27 @@ fn decode_still_frames(
 ) -> Result<(Vec<Frame>, Metadata, u64), String> {
 	let reader = ImageReader::with_format(Cursor::new(data), format);
 	let (frame, metadata) = decode_still(reader)?;
+	Ok((vec![frame], metadata, 0))
+}
+
+fn decode_float_still(
+	data: &[u8],
+	format: ImageFormat,
+	associated: bool,
+) -> Result<(Frame, Metadata), String> {
+	let mut reader = ImageReader::with_format(Cursor::new(data), format);
+	reader.limits(image_limits());
+	let (image, metadata) =
+		decode_dynamic(reader.into_decoder().map_err(|e| e.to_string())?)?;
+	Ok((frame_from_float(image, associated)?, metadata))
+}
+
+fn decode_float_frames(
+	data: &[u8],
+	format: ImageFormat,
+) -> Result<(Vec<Frame>, Metadata, u64), String> {
+	let (frame, metadata) =
+		decode_float_still(data, format, format == ImageFormat::OpenExr)?;
 	Ok((vec![frame], metadata, 0))
 }
 
@@ -584,6 +653,9 @@ fn decode_image_rs(
 				codec,
 				decode_tiff_pages(data, first_frame_only)?,
 			)
+		}
+		ImageFormat::OpenExr | ImageFormat::Hdr => {
+			decode_float_frames(data, format)?
 		}
 		_ => decode_still_frames(data, format)?,
 	};

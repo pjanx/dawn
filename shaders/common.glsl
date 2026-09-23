@@ -49,6 +49,11 @@ int unpack_linear_output(int packed)
 	return (packed >> 20) & 1;
 }
 
+int unpack_hdr(int packed)
+{
+	return (packed >> 21) & 1;
+}
+
 #ifndef DN_COMPUTE
 // Squares of `size` device pixels, resolved from one design size by the
 // caller, as the browser resolves its thumbnail checker size.
@@ -218,16 +223,51 @@ vec4 associated_to_working(vec4 t, int packed, bool opaque)
 }
 
 #ifndef DN_COMPUTE
+// ISO 21496-1 gain map, in the stored frame, at any resolution.
+layout(set = 0, binding = 2) uniform sampler2D u_gain;
+
+// Log2 gain at a source texel, sampled bilinearly in normalized source
+// coordinates.  `gain` is (scale, min, 1 / gamma, offset), weighted.
+float gain_log2(ivec2 p, ivec2 image_size, vec4 gain)
+{
+	ivec2 size = textureSize(u_gain, 0);
+	vec2 pos = (vec2(p) + 0.5) / vec2(image_size) * vec2(size) - 0.5;
+	ivec2 i0 = ivec2(floor(pos));
+	vec2 t = pos - vec2(i0);
+	ivec2 hi = size - 1;
+	float a = texelFetch(u_gain, clamp(i0, ivec2(0), hi), 0).r;
+	float b = texelFetch(u_gain, clamp(i0 + ivec2(1, 0), ivec2(0), hi), 0).r;
+	float c = texelFetch(u_gain, clamp(i0 + ivec2(0, 1), ivec2(0), hi), 0).r;
+	float d = texelFetch(u_gain, clamp(i0 + ivec2(1, 1), ivec2(0), hi), 0).r;
+	float g = mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+	return gain.y + gain.x * pow(g, gain.z);
+}
+
+// Applies the map to a linear, premultiplied working value, where the
+// offset scales with alpha.  Zero weight leaves the value untouched.
+vec4 apply_gain(vec4 t, ivec2 p, ivec2 image_size, vec4 gain)
+{
+	if (gain.x == 0.0 && gain.y == 0.0)
+		return t;
+	float k = gain.w * t.a;
+	return vec4((t.rgb + k) * exp2(gain_log2(p, image_size, gain)) - k, t.a);
+}
+#endif
+
+#ifndef DN_COMPUTE
 // Alpha is resolved here because the image sits on a known background.
 // Filtering and composition retain their selected working space; output
 // encoding only changes the representation emitted after resolving alpha.
 vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
 		  bool composite, bool linear_working, bool linear_output,
-		  vec3 background, vec3 checker_background, float checker_size)
+		  bool hdr, vec3 background, vec3 checker_background,
+		  float checker_size)
 {
 	float a = clamp(premul.a, 0.0, 1.0);
 	// Nohalo takes minmod slopes per channel, so RGB can outrun alpha.
-	vec3 rgb = clamp(premul.rgb, vec3(0.0), vec3(a));
+	// Only SDR white bounds it, though.
+	vec3 rgb = hdr ? max(premul.rgb, vec3(0.0))
+		       : clamp(premul.rgb, vec3(0.0), vec3(a));
 	if (checkerboard)
 		background = checker(background, checker_background, checker_size);
 	else if (!composite) {

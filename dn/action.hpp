@@ -97,6 +97,7 @@ enum class Action : uint8_t {
 	Lock,
 	Fixate,
 	ColorManagement,
+	HighDynamicRange,
 	Smooth,
 	Checkerboard,
 	NonlinearProcessing,

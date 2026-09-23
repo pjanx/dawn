@@ -14,6 +14,7 @@
 #if DAWN_WITH_LIBJXL
 #include <jxl/decode.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -31,8 +32,10 @@ constexpr size_t kBoxChunk = 4096;
 
 // libjxl gives us tightly packed interleaved RGBA; the pack helper reorders to
 // the BGRA working format. Requesting float output instead would only be
-// truncated back to 16 bits on the way in.
+// truncated back to 16 bits on the way in, unless it goes to split_hdr().
 constexpr JxlPixelFormat kFormat = {4, JXL_TYPE_UINT16, JXL_LITTLE_ENDIAN, 0};
+constexpr JxlPixelFormat kFloatFormat = {
+	4, JXL_TYPE_FLOAT, JXL_NATIVE_ENDIAN, 0};
 
 namespace
 {
@@ -41,13 +44,16 @@ struct JxlLoadContext {
 	JxlDecoder *dec = nullptr;  ///< libjxl decoder
 	JxlBasicInfo info = {};     ///< Codestream header
 	vector<uint8_t> icc;        ///< ICC profile the output pixels are in
-	vector<uint8_t> scratch;    ///< Interleaved RGBA16 buffer for one frame
+	uint8_t transfer = 0;       ///< H.273 transfer, when true HDR
+	double primaries[6] = {};   ///< CIE 1931 xy of a true HDR encoding
+	vector<uint8_t> scratch;    ///< Interleaved RGBA buffer for one frame
 	int64_t duration_ms = 0;    ///< Duration of the frame being decoded
 
 	vector<uint8_t> box;                  ///< Payload of the box in progress
 	vector<uint8_t> *box_dest = nullptr;  ///< Where `box` lands, if wanted
 	vector<uint8_t> meta_exif;            ///< Exif, if any was found
 	vector<uint8_t> meta_xmp;             ///< XMP, if any was found
+	vector<uint8_t> meta_jhgm;            ///< Gain map bundle, if any
 
 	const OpenContext *octx = nullptr;  ///< Caller-supplied context
 
@@ -110,7 +116,7 @@ finish_box(JxlLoadContext &ctx)
 	ctx.box_dest = nullptr;
 }
 
-// Starts collecting a box, if it is one of the two we care about. The rest
+// Starts collecting a box, if it is one of those we care about. The rest
 // are left alone for libjxl to skip over.
 static void
 start_box(JxlLoadContext &ctx)
@@ -124,6 +130,8 @@ start_box(JxlLoadContext &ctx)
 		ctx.box_dest = &ctx.meta_exif;
 	else if (!memcmp(type, "xml ", sizeof type))
 		ctx.box_dest = &ctx.meta_xmp;
+	else if (!memcmp(type, "jhgm", sizeof type))
+		ctx.box_dest = &ctx.meta_jhgm;
 	else
 		return;
 
@@ -162,6 +170,47 @@ take_icc_profile(JxlLoadContext &ctx)
 	}
 }
 
+// PQ and HLG go to split_hdr(), and so do float codestreams in linear light,
+// like EXR, whatever their peak.  All of them need to be in primaries of a D65
+// white, and described by an encoding, not by an ICC profile.
+static void
+take_hdr_encoding(JxlLoadContext &ctx)
+{
+	JxlColorEncoding e = {};
+	if (JxlDecoderGetColorAsEncodedProfile(
+			ctx.dec, JXL_COLOR_PROFILE_TARGET_DATA, &e) != JXL_DEC_SUCCESS ||
+		e.white_point != JXL_WHITE_POINT_D65 ||
+		(e.color_space != JXL_COLOR_SPACE_RGB &&
+			e.color_space != JXL_COLOR_SPACE_GRAY))
+		return;
+
+	// Any primaries of a D65 white leave grey alone.
+	const double *primaries = nullptr;
+	const double custom[6] = {e.primaries_red_xy[0], e.primaries_red_xy[1],
+		e.primaries_green_xy[0], e.primaries_green_xy[1],
+		e.primaries_blue_xy[0], e.primaries_blue_xy[1]};
+	if (e.color_space == JXL_COLOR_SPACE_GRAY ||
+		e.primaries == JXL_PRIMARIES_SRGB)
+		primaries = kRec709Primaries;
+	else if (e.primaries == JXL_PRIMARIES_2100)
+		primaries = kRec2020Primaries;
+	else if (e.primaries == JXL_PRIMARIES_P3)
+		primaries = kP3Primaries;
+	else if (e.primaries == JXL_PRIMARIES_CUSTOM)
+		primaries = custom;
+	else
+		return;
+
+	if (e.transfer_function == JXL_TRANSFER_FUNCTION_PQ)
+		ctx.transfer = 16;
+	else if (e.transfer_function == JXL_TRANSFER_FUNCTION_HLG)
+		ctx.transfer = 18;
+	else if (e.transfer_function == JXL_TRANSFER_FUNCTION_LINEAR &&
+		ctx.info.exponent_bits_per_sample)
+		ctx.transfer = 8;
+	copy(primaries, primaries + 6, ctx.primaries);
+}
+
 // Frame durations count ticks, whose length the codestream header defines as
 // a fraction of a second.
 static bool
@@ -187,20 +236,46 @@ take_frame_header(JxlLoadContext &ctx, Error *error)
 static bool
 bind_frame_buffer(JxlLoadContext &ctx, Error *error)
 {
+	const JxlPixelFormat *format = ctx.transfer == 8 ? &kFloatFormat : &kFormat;
 	size_t size = 0;
-	if (JxlDecoderImageOutBufferSize(ctx.dec, &kFormat, &size) !=
+	if (JxlDecoderImageOutBufferSize(ctx.dec, format, &size) !=
 		JXL_DEC_SUCCESS) {
 		set_error(error, _("failed to size the output buffer"));
 		return false;
 	}
 
 	ctx.scratch.resize(size);
-	if (JxlDecoderSetImageOutBuffer(ctx.dec, &kFormat, ctx.scratch.data(),
+	if (JxlDecoderSetImageOutBuffer(ctx.dec, format, ctx.scratch.data(),
 			ctx.scratch.size()) != JXL_DEC_SUCCESS) {
 		set_error(error, _("failed to set the output buffer"));
 		return false;
 	}
 	return true;
+}
+
+// Linear light, 1.0 at SDR white by convention: a linear header's
+// intensity_target is a loose upper bound, which encoders fill in by default.
+static bool
+split_float_frame(
+	JxlLoadContext &ctx, const OpenContext &octx, Image &image, Error *error)
+{
+	span<float> rgba(assume_aligned<float>(ctx.scratch.data()),
+		ctx.scratch.size() / sizeof(float));
+	return split_hdr(image, octx, rgba,
+		ctx.info.alpha_bits && ctx.info.alpha_premultiplied, ctx.primaries,
+		error);
+}
+
+// PQ and HLG come as the signal, which split_hdr_signal() takes in 16 bits
+// without loss that matters.  HLG's display peak is intensity_target.
+static bool
+split_signal_frame(
+	JxlLoadContext &ctx, const OpenContext &octx, Image &image, Error *error)
+{
+	const double peak =
+		ctx.info.intensity_target > 0 ? ctx.info.intensity_target : 1000;
+	return split_hdr_signal(image, octx, ctx.transfer, ctx.primaries, peak,
+		ctx.info.alpha_bits && ctx.info.alpha_premultiplied, error);
 }
 
 static bool
@@ -219,9 +294,10 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 	}
 
 	// Coalescing stays on, so every frame covers the whole canvas.
-	pack_rgba16le_to_bgra16(*image,
-		assume_aligned<const uint16_t>(ctx.scratch.data()),
-		size_t(ctx.info.xsize) * 4 * sizeof(uint16_t), 16);
+	if (ctx.transfer != 8)
+		pack_rgba16le_to_bgra16(*image,
+			assume_aligned<const uint16_t>(ctx.scratch.data()),
+			size_t(ctx.info.xsize) * 4 * sizeof(uint16_t), 16);
 
 	image->icc = ctx.icc;
 	image->orientation = Orientation(ctx.info.orientation);
@@ -229,8 +305,20 @@ append_decoded_frame(JxlLoadContext &ctx, Error *error)
 	if (ctx.info.have_animation)
 		image->loops = ctx.info.animation.num_loops;
 
-	finish_frames(*image, *ctx.octx, nullptr,
-		ctx.info.alpha_bits && ctx.info.alpha_premultiplied);
+	// split_hdr() leaves its base straight, in the profile it names.
+	// Maps are per page, and only still images have them.
+	if (ctx.transfer) {
+		OpenContext octx = *ctx.octx;
+		octx.gain_maps = octx.gain_maps && !ctx.info.have_animation;
+		if (!(ctx.transfer == 8 ? split_float_frame(ctx, octx, *image, error)
+								: split_signal_frame(ctx, octx, *image, error)))
+			return false;
+		finish_frames(
+			*image, *ctx.octx, image->effective_profile.get(), false);
+	} else {
+		finish_frames(*image, *ctx.octx, nullptr,
+			ctx.info.alpha_bits && ctx.info.alpha_premultiplied);
+	}
 	append_frame(ctx.result, ctx.result_tail, std::move(image));
 	return true;
 }
@@ -255,6 +343,7 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 		break;
 	case JXL_DEC_COLOR_ENCODING:
 		take_icc_profile(ctx);
+		take_hdr_encoding(ctx);
 		break;
 	case JXL_DEC_FRAME:
 		return take_frame_header(ctx, error);
@@ -283,6 +372,39 @@ process_event(JxlLoadContext &ctx, bool *done, Error *error)
 	return true;
 }
 
+// --- Gain maps ---------------------------------------------------------------
+
+// Only an SDR base takes a map.  A true HDR one went through split_hdr(),
+// and any other HDR one is left alone, with a warning.
+static void
+attach_jxl_gain_map(JxlLoadContext &ctx)
+{
+	const OpenContext &octx = *ctx.octx;
+	if (!octx.gain_maps || ctx.meta_jhgm.empty() || !ctx.result ||
+		ctx.info.have_animation || ctx.transfer)
+		return;
+
+	span<const uint8_t> blob, codestream;
+	GainMap metadata;
+	if (!split_jhgm_bundle(ctx.meta_jhgm, &blob, &codestream) ||
+		!parse_iso_gain_map(blob, &metadata) ||
+		!gain_map_applies(metadata, octx))
+		return;
+
+	// The map is a naked codestream of its own.  Nothing but the pixels:
+	// no conversion, no recursion.
+	OpenContext map_ctx;
+	map_ctx.cmm = octx.cmm;
+	map_ctx.first_frame_only = true;
+	Error error;
+	ImagePtr pixels = load_jxl(codestream, map_ctx, &error);
+	if (pixels)
+		ctx.result->gain_map = make_gain_map(*pixels, metadata, false);
+	else
+		add_warning(
+			octx, format_message(_("gain map: %s"), error.message.c_str()));
+}
+
 // --- Public entry point ------------------------------------------------------
 
 ImagePtr
@@ -303,6 +425,7 @@ load_jxl(span<const uint8_t> data, const OpenContext &octx, Error *error)
 			return nullptr;
 
 	finish_box(ctx);
+	attach_jxl_gain_map(ctx);
 	if (!ctx.result) {
 		set_error(error, _("empty or unsupported image"));
 		return nullptr;

@@ -115,6 +115,31 @@ struct ProfileEncoding {
 	std::array<std::array<float, 3>, kSamples> encode{};
 };
 
+/// CIE 1931 xy of R, G, B primaries, as H.273 Table 2 lists them.
+inline constexpr double kRec709Primaries[6] = {
+	0.640, 0.330, 0.300, 0.600, 0.150, 0.060};
+inline constexpr double kRec2020Primaries[6] = {
+	0.708, 0.292, 0.170, 0.797, 0.131, 0.046};
+inline constexpr double kP3Primaries[6] = {
+	0.680, 0.320, 0.265, 0.690, 0.150, 0.060};
+/// CIE 1931 xy of the D65 white point, which all of the above share,
+/// bar DCI-P3.
+inline constexpr double kD65White[2] = {0.3127, 0.3290};
+
+/// Linear RGB matrices, indexed by column as ProfileEncoding::rgb_to_xyz.
+using RgbMatrix = std::array<std::array<double, 3>, 3>;
+
+/// The display colourants of a matrix/TRC encoding in D65 XYZ, adapted by
+/// the Bradford transform rather than the profile's own `chad`, so that
+/// display white lands on D65 when the colourants sum to D50.
+RgbMatrix display_colourants_d65(const ProfileEncoding &encoding);
+/// From display linear RGB into linear RGB of CIE 1931 xy `primaries`
+/// (R, G, B) with a D65 white.
+RgbMatrix display_to_primaries(
+	const ProfileEncoding &encoding, const double primaries[6]);
+/// Between linear RGB of two sets of CIE 1931 xy primaries, D65 white both.
+RgbMatrix primaries_to_primaries(const double from[6], const double to[6]);
+
 class Cmm;
 
 class Profile
@@ -277,6 +302,21 @@ struct RenderClosure {
 		const OpenContext &ctx, double scale, Error *error) = 0;
 };
 
+/// ISO 21496-1 gain map: one channel, channel-independent metadata.
+/// Applied in the display's linear light, after `finish_image()`.
+struct GainMap {
+	std::vector<uint16_t> data;  ///< Gamma-encoded normalized log2 gain
+	uint32_t width = 0;
+	uint32_t height = 0;
+	float min = 0, max = 0, gamma = 1;
+	float offset = 0;              ///< Base and alternate alike
+	float base_headroom = 0;       ///< log2
+	float alternate_headroom = 0;  ///< log2
+};
+
+/// ISO 21496-1 weight for a display headroom (linear, 1 = SDR).
+float gain_map_weight(const GainMap &map, float headroom);
+
 struct Image {
 	/// Working pixels (see kBytesPerPixel). After successful open/finish:
 	/// BGRA_PREMUL_4X16LE.
@@ -302,6 +342,8 @@ struct Image {
 	bool profile_assumed = false;
 
 	std::unique_ptr<RenderClosure> render;
+	/// The HDR rendition, in the stored frame; see OpenContext::gain_maps.
+	std::unique_ptr<GainMap> gain_map;
 
 	ImagePtr page_next;
 	std::weak_ptr<Image> page_previous;
@@ -374,6 +416,9 @@ struct OpenContext {
 	int screen_dpi = 96;
 	bool enhance = false;
 	bool first_frame_only = false;
+	/// Decode or synthesize gain maps.  Recognized gain maps never become
+	/// pages, whether this is set or not.
+	bool gain_maps = false;
 	/// Loaders to try, by name, in this order; empty means all of them,
 	/// in the default order. Names this build lacks are skipped.
 	std::span<const std::string> loaders;
@@ -401,9 +446,12 @@ bool save_exv(const Image &page, std::vector<uint8_t> *out, Error *error);
 // --- JPEG --------------------------------------------------------------------
 
 /// Stored dimensions and the grid on which a lossless crop must start.
+/// Also counts the Multi-Picture Format images past the primary one,
+/// which jpeg_transform() does not keep.
 struct JpegGrid {
 	uint32_t width = 0, height = 0;
 	uint32_t mcu_width = 0, mcu_height = 0;
+	uint32_t mpf_images = 0;
 };
 bool jpeg_grid(std::span<const uint8_t> data, JpegGrid *out, Error *error);
 

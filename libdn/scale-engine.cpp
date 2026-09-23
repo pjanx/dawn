@@ -36,9 +36,17 @@ constexpr VkDeviceSize kTileBytesPerPixel = 8;
 
 constexpr VkFormat kTileFormat = VK_FORMAT_R16G16B16A16_UNORM;
 constexpr VkFormat kMidFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr VkFormat kGainFormat = VK_FORMAT_R16_UNORM;
 
 namespace
 {
+
+// A host-visible buffer, mapped, that uploads copy out of.
+struct Staging {
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	uint8_t *mapped = nullptr;
+};
 
 struct TileRect {
 	int32_t ox = 0, oy = 0, w = 0, h = 0;
@@ -69,11 +77,15 @@ struct PushConstants {
 	float bg_r = 0, bg_g = 0, bg_b = 0;
 	float checker_r = 0, checker_g = 0, checker_b = 0;
 	float checker_size = 1;
+	// The gain map's metadata folded with its weight: (max - min) * weight,
+	// min * weight, 1 / gamma, offset.  Both scaled terms are zero exactly
+	// when there is nothing to apply.
+	float gain_scale = 0, gain_min = 0, gain_inv_gamma = 1, gain_offset = 0;
 };
 
 }  // namespace
 
-static_assert(sizeof(PushConstants) == 96);
+static_assert(sizeof(PushConstants) == 112);
 
 // TODO(p): What in Hell could be a reason for being this lenient?
 constexpr float kAngleFast = 1e-5f;
@@ -165,19 +177,36 @@ struct ScaleEngine::Impl {
 	uint32_t grid_rows = 1;
 	bool image_opaque = true;
 
+	// A 1×1 stand-in when there is no map, since the tile set binds one.
+	VkImage gain_image = VK_NULL_HANDLE;
+	VkDeviceMemory gain_memory = VK_NULL_HANDLE;
+	VkImageView gain_view = VK_NULL_HANDLE;
+	bool gain_mapped = false;
+	float gain_min = 0, gain_max = 0, gain_gamma = 1, gain_offset = 0;
+
 	bool ready = false;
 
 	bool create_mid(string *error);
 	void destroy_mid();
 	void destroy_tiles();
+	void destroy_gain();
 	void destroy_pipeline();
 	void destroy_all();
 	bool create_pipeline_objects(string *error);
 	static vector<TileRect> split_grid(
 		uint32_t w, uint32_t h, uint32_t cols, uint32_t rows, string *error);
 	bool submit_upload(auto &&record, string *error);
+	bool create_sampled(VkFormat format, uint32_t w, uint32_t h,
+		uint32_t layers, VkImageViewType view_type, VkComponentMapping swizzle,
+		VkImage *image, VkDeviceMemory *memory, VkImageView *view,
+		string *error);
+	bool create_staging(VkDeviceSize bytes, Staging &staging, string *error);
+	void destroy_staging(Staging &staging);
+	void record_upload_layout(VkImage image, uint32_t layers, bool sampled);
 	bool upload_tiles(const uint8_t *pixels, size_t stride,
 		const vector<TileRect> &rects, string *error);
+	bool upload_gain(
+		const uint16_t *texels, uint32_t w, uint32_t h, string *error);
 	void write_descriptors();
 	bool ensure_mid(uint32_t vp_w, uint32_t src_h, string *error);
 	PushConstants make_push(const ScaleView &view, uint32_t vp_w, uint32_t vp_h,
@@ -248,6 +277,24 @@ ScaleEngine::Impl::destroy_tiles()
 }
 
 void
+ScaleEngine::Impl::destroy_gain()
+{
+	if (!device)
+		return;
+
+	if (gain_view)
+		vkDestroyImageView(device, gain_view, nullptr);
+	if (gain_image)
+		vkDestroyImage(device, gain_image, nullptr);
+	if (gain_memory)
+		vkFreeMemory(device, gain_memory, nullptr);
+	gain_view = VK_NULL_HANDLE;
+	gain_image = VK_NULL_HANDLE;
+	gain_memory = VK_NULL_HANDLE;
+	gain_mapped = false;
+}
+
+void
 ScaleEngine::Impl::destroy_pipeline()
 {
 	if (!device)
@@ -287,6 +334,7 @@ ScaleEngine::Impl::destroy_all()
 	vkDeviceWaitIdle(device);
 	destroy_mid();
 	destroy_tiles();
+	destroy_gain();
 	destroy_pipeline();
 	if (dset_pool) {
 		vkDestroyDescriptorPool(device, dset_pool, nullptr);
@@ -522,6 +570,139 @@ ScaleEngine::Impl::submit_upload(auto &&record, string *error)
 	return CALL_VK(QueueWaitIdle, "", queue);
 }
 
+// A device-local image that transfers fill and shaders sample, with its view.
+bool
+ScaleEngine::Impl::create_sampled(VkFormat format, uint32_t w, uint32_t h,
+	uint32_t layers, VkImageViewType view_type, VkComponentMapping swizzle,
+	VkImage *image, VkDeviceMemory *memory, VkImageView *view, string *error)
+{
+	VkImageCreateInfo ici{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format,
+		.extent = {w, h, 1},
+		.mipLevels = 1,
+		.arrayLayers = layers,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+	};
+	if (!CALL_VK(CreateImage, " upload", device, &ici, nullptr, image))
+		return false;
+
+	VkMemoryRequirements mr{};
+	vkGetImageMemoryRequirements(device, *image, &mr);
+	const uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
+	if (mem_type == UINT32_MAX)
+		return false;
+	VkMemoryAllocateInfo mai{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = mr.size,
+		.memoryTypeIndex = mem_type,
+	};
+	if (!CALL_VK(AllocateMemory, " upload", device, &mai, nullptr, memory) ||
+		!CALL_VK(BindImageMemory, " upload", device, *image, *memory, 0))
+		return false;
+
+	VkImageViewCreateInfo vi{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.image = *image,
+		.viewType = view_type,
+		.format = format,
+		.components = swizzle,
+		.subresourceRange =
+			{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = layers,
+			},
+	};
+	return CALL_VK(CreateImageView, " upload", device, &vi, nullptr, view);
+}
+
+// Leaves what it has made for destroy_staging(), also on failure.
+bool
+ScaleEngine::Impl::create_staging(
+	VkDeviceSize bytes, Staging &staging, string *error)
+{
+	VkBufferCreateInfo bci{
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = bytes,
+		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	};
+	if (!CALL_VK(
+			CreateBuffer, " staging", device, &bci, nullptr, &staging.buffer))
+		return false;
+
+	VkMemoryRequirements mr{};
+	vkGetBufferMemoryRequirements(device, staging.buffer, &mr);
+	const uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		error, nullptr);
+	if (mem_type == UINT32_MAX)
+		return false;
+	VkMemoryAllocateInfo mai{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = mr.size,
+		.memoryTypeIndex = mem_type,
+	};
+	return CALL_VK(AllocateMemory, " staging", device, &mai, nullptr,
+			   &staging.memory) &&
+		CALL_VK(BindBufferMemory, " staging", device, staging.buffer,
+			staging.memory, 0) &&
+		CALL_VK(MapMemory, " staging", device, staging.memory, 0, bytes, 0,
+			(void **) &staging.mapped);
+}
+
+// Freeing the memory unmaps it.
+void
+ScaleEngine::Impl::destroy_staging(Staging &staging)
+{
+	if (staging.buffer)
+		vkDestroyBuffer(device, staging.buffer, nullptr);
+	if (staging.memory)
+		vkFreeMemory(device, staging.memory, nullptr);
+	staging = {};
+}
+
+// Uploads move an image from creation to transfers, then to sampling.
+void
+ScaleEngine::Impl::record_upload_layout(
+	VkImage image, uint32_t layers, bool sampled)
+{
+	VkImageMemoryBarrier barrier{
+		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+		.srcAccessMask = sampled ? VkAccessFlags(VK_ACCESS_TRANSFER_WRITE_BIT)
+								 : VkAccessFlags(0),
+		.dstAccessMask =
+			sampled ? VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_TRANSFER_WRITE_BIT,
+		.oldLayout = sampled ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+							 : VK_IMAGE_LAYOUT_UNDEFINED,
+		.newLayout = sampled ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+							 : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = image,
+		.subresourceRange =
+			{
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = layers,
+			},
+	};
+	vkCmdPipelineBarrier(upload_cmd,
+		sampled ? VK_PIPELINE_STAGE_TRANSFER_BIT
+				: VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		sampled ? VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+				: VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+
 bool
 ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 	const vector<TileRect> &rects, string *error)
@@ -563,154 +744,27 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 		return false;
 	}
 
-	VkImageCreateInfo ici{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-		.imageType = VK_IMAGE_TYPE_2D,
-		.format = kTileFormat,
-		.extent = {tile_pad_w, tile_pad_h, 1},
-		.mipLevels = 1,
-		.arrayLayers = tile_count,
-		.samples = VK_SAMPLE_COUNT_1_BIT,
-		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-	};
-	if (!CALL_VK(CreateImage, " tiles", device, &ici, nullptr, &tile_image))
+	if (!create_sampled(kTileFormat, tile_pad_w, tile_pad_h, tile_count,
+			VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+			{VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_G,
+				VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_A},
+			&tile_image, &tile_memory, &tile_view, error))
 		return false;
 
-	VkMemoryRequirements mr{};
-	vkGetImageMemoryRequirements(device, tile_image, &mr);
-	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
-	if (mem_type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(AllocateMemory, " tiles", device, &mai, nullptr, &tile_memory))
-		return false;
-	if (!CALL_VK(BindImageMemory, " tiles", device, tile_image, tile_memory, 0))
-		return false;
-
-	VkImageViewCreateInfo vi{
-		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-		.image = tile_image,
-		.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY,
-		.format = kTileFormat,
-		.components =
-			{
-				.r = VK_COMPONENT_SWIZZLE_B,
-				.g = VK_COMPONENT_SWIZZLE_G,
-				.b = VK_COMPONENT_SWIZZLE_R,
-				.a = VK_COMPONENT_SWIZZLE_A,
-			},
-		.subresourceRange =
-			{
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.levelCount = 1,
-				.layerCount = tile_count,
-			},
-	};
-	if (!CALL_VK(CreateImageView, " tiles", device, &vi, nullptr, &tile_view))
-		return false;
-
-	const VkDeviceSize staging_bytes =
-		VkDeviceSize(tile_pad_w) * tile_pad_h * kTileBytesPerPixel;
-	VkBuffer staging = VK_NULL_HANDLE;
-	VkDeviceMemory staging_mem = VK_NULL_HANDLE;
-
-	VkBufferCreateInfo bci{
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = staging_bytes,
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-	};
-	if (!CALL_VK(CreateBuffer, " staging", device, &bci, nullptr, &staging))
-		return false;
-
-	VkMemoryRequirements smr{};
-	vkGetBufferMemoryRequirements(device, staging, &smr);
-	mem_type = vk_memory_type(phys, smr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		error, nullptr);
-	if (mem_type == UINT32_MAX) {
-		vkDestroyBuffer(device, staging, nullptr);
-		return false;
-	}
-	VkMemoryAllocateInfo smai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = smr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(
-			AllocateMemory, " staging", device, &smai, nullptr, &staging_mem)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		return false;
-	}
-	if (!CALL_VK(
-			BindBufferMemory, " staging", device, staging, staging_mem, 0)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
-		return false;
-	}
-
-	uint8_t *mapped = nullptr;
-	if (!CALL_VK(MapMemory, " staging", device, staging_mem, 0, staging_bytes,
-			0, (void **) &mapped)) {
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
-		return false;
-	}
-
-	auto transition = [&](VkImageLayout from, VkImageLayout to,
-						  VkAccessFlags src_access, VkAccessFlags dst_access,
-						  VkPipelineStageFlags src_stage,
-						  VkPipelineStageFlags dst_stage) -> bool {
-		return submit_upload(
-			[&] {
-				VkImageMemoryBarrier barrier{
-					.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-					.srcAccessMask = src_access,
-					.dstAccessMask = dst_access,
-					.oldLayout = from,
-					.newLayout = to,
-					.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-					.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-					.image = tile_image,
-					.subresourceRange =
-						{
-							.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-							.levelCount = 1,
-							.layerCount = tile_count,
-						},
-				};
-				vkCmdPipelineBarrier(upload_cmd, src_stage, dst_stage, 0, 0,
-					nullptr, 0, nullptr, 1, &barrier);
-			},
+	Staging staging;
+	bool ok = create_staging(
+				  VkDeviceSize(tile_pad_w) * tile_pad_h * kTileBytesPerPixel,
+				  staging, error) &&
+		submit_upload(
+			[&] { record_upload_layout(tile_image, tile_count, false); },
 			error);
-	};
-
-	if (!transition(VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0,
-			VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT)) {
-		vkUnmapMemory(device, staging_mem);
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
-		return false;
-	}
-
-	for (uint32_t i = 0; i < tile_count; i++) {
+	for (uint32_t i = 0; ok && i < tile_count; i++) {
 		const TileRect &r = tile_rects[i];
 		const size_t row_bytes = size_t(r.w) * kTileBytesPerPixel;
 		for (int32_t y = 0; y < r.h; y++) {
 			const uint8_t *src = pixels + size_t(r.oy + y) * stride +
 				size_t(r.ox) * kTileBytesPerPixel;
-			memcpy(mapped + size_t(y) * row_bytes, src, row_bytes);
+			memcpy(staging.mapped + size_t(y) * row_bytes, src, row_bytes);
 		}
 		VkBufferImageCopy copy{
 			.bufferOffset = 0,
@@ -723,35 +777,20 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 				},
 			.imageExtent = {uint32_t(r.w), uint32_t(r.h), 1},
 		};
-		if (!submit_upload(
-				[&] {
-					vkCmdCopyBufferToImage(upload_cmd, staging, tile_image,
-						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-				},
-				error)) {
-			vkUnmapMemory(device, staging_mem);
-			vkDestroyBuffer(device, staging, nullptr);
-			vkFreeMemory(device, staging_mem, nullptr);
-			return false;
-		}
+		ok = submit_upload(
+			[&] {
+				vkCmdCopyBufferToImage(upload_cmd, staging.buffer, tile_image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+			},
+			error);
 	}
-
-	if (!transition(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT)) {
-		vkUnmapMemory(device, staging_mem);
-		vkDestroyBuffer(device, staging, nullptr);
-		vkFreeMemory(device, staging_mem, nullptr);
-		return false;
-	}
-
-	vkUnmapMemory(device, staging_mem);
-	vkDestroyBuffer(device, staging, nullptr);
-	vkFreeMemory(device, staging_mem, nullptr);
-	write_descriptors();
-	return true;
+	ok = ok &&
+		submit_upload(
+			[&] { record_upload_layout(tile_image, tile_count, true); }, error);
+	destroy_staging(staging);
+	if (ok)
+		write_descriptors();
+	return ok;
 }
 
 void
@@ -789,6 +828,60 @@ ScaleEngine::Impl::write_descriptors()
 		};
 		vkUpdateDescriptorSets(device, 1, &write_mid, 0, nullptr);
 	}
+}
+
+// Replaces the gain map image, and binds it to the tile set.
+bool
+ScaleEngine::Impl::upload_gain(
+	const uint16_t *texels, uint32_t w, uint32_t h, string *error)
+{
+	destroy_gain();
+	if (!create_sampled(kGainFormat, w, h, 1, VK_IMAGE_VIEW_TYPE_2D, {},
+			&gain_image, &gain_memory, &gain_view, error))
+		return false;
+
+	const VkDeviceSize bytes = VkDeviceSize(w) * h * sizeof *texels;
+	Staging staging;
+	bool ok = create_staging(bytes, staging, error);
+	if (ok) {
+		memcpy(staging.mapped, texels, bytes);
+		VkBufferImageCopy copy{
+			.imageSubresource =
+				{
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.layerCount = 1,
+				},
+			.imageExtent = {w, h, 1},
+		};
+		ok = submit_upload(
+			[&] {
+				record_upload_layout(gain_image, 1, false);
+				vkCmdCopyBufferToImage(upload_cmd, staging.buffer, gain_image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+				record_upload_layout(gain_image, 1, true);
+			},
+			error);
+	}
+	destroy_staging(staging);
+	if (!ok)
+		return false;
+
+	// The vertical pass never reads the map, so the mid set goes without.
+	VkDescriptorImageInfo info{
+		.sampler = sampler,
+		.imageView = gain_view,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkWriteDescriptorSet write{
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.dstSet = dset_tiles,
+		.dstBinding = 2,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		.pImageInfo = &info,
+	};
+	vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+	return true;
 }
 
 bool
@@ -971,7 +1064,15 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
 		(image_opaque ? (1 << 18) : 0) |
 		(view.nonlinear_processing ? (1 << 19) : 0) |
-		(view.output_encoding == ScaleEncoding::Linear ? (1 << 20) : 0);
+		(view.output_encoding == ScaleEncoding::Linear ? (1 << 20) : 0) |
+		(view.hdr ? (1 << 21) : 0);
+	// Gain is only meaningful in linear light.
+	if (gain_mapped && view.gain_weight > 0 && !view.nonlinear_processing) {
+		pc.gain_scale = (gain_max - gain_min) * view.gain_weight;
+		pc.gain_min = gain_min * view.gain_weight;
+		pc.gain_inv_gamma = 1 / gain_gamma;
+		pc.gain_offset = gain_offset;
+	}
 	// Backgrounds arrive encoded, independently of the output attachment.
 	auto background = [&](array<float, 3> rgb) {
 		if (view.nonlinear_processing)
@@ -1164,10 +1265,20 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 		impl_ = new Impl();
 
 	Impl &e = *impl_;
-	if (e.ready && e.phys == phys && e.device == device &&
-		e.dest_format == dest_format &&
-		e.dest_final_layout == dest_final_layout)
-		return true;
+	if (e.ready && e.phys == phys && e.device == device) {
+		if (e.dest_format == dest_format &&
+			e.dest_final_layout == dest_final_layout)
+			return true;
+
+		// Framebuffers of the mid array stay compatible with the new passes.
+		vkDeviceWaitIdle(device);
+		e.dest_format = dest_format;
+		e.dest_final_layout = dest_final_layout;
+		if (e.create_pipeline_objects(error))
+			return true;
+		e.destroy_all();
+		return false;
+	}
 
 	e.destroy_all();
 	e.phys = phys;
@@ -1229,10 +1340,12 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
 		{1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT,
 			nullptr},
+		{2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,
+			VK_SHADER_STAGE_FRAGMENT_BIT, nullptr},
 	};
 	VkDescriptorSetLayoutCreateInfo dlci{
 		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-		.bindingCount = 2,
+		.bindingCount = 3,
 		.pBindings = bindings,
 	};
 	if (!CALL_VK(CreateDescriptorSetLayout, " scale", device, &dlci, nullptr,
@@ -1242,7 +1355,7 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	}
 
 	const VkDescriptorPoolSize pool_sizes[] = {
-		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2},
+		{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
 		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2},
 	};
 	VkDescriptorPoolCreateInfo dpci{
@@ -1285,7 +1398,8 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	}
 
 	e.ready = true;
-	if (set_encoding(profile_encoding(nullptr), error))
+	if (set_encoding(profile_encoding(nullptr), error) &&
+		set_gain_map(nullptr, error))
 		return true;
 	e.destroy_all();
 	return false;
@@ -1384,7 +1498,8 @@ ScaleEngine::set_image(
 	if (rects.empty())
 		return false;
 
-	return e.upload_tiles(pixels, stride, rects, error);
+	return e.upload_tiles(pixels, stride, rects, error) &&
+		(!e.gain_mapped || set_gain_map(nullptr, error));
 }
 
 void
@@ -1396,6 +1511,55 @@ ScaleEngine::clear_image()
 	impl_->image_w = impl_->image_h = 0;
 	impl_->grid_cols = impl_->grid_rows = 1;
 	impl_->destroy_mid();
+	if (impl_->gain_mapped)
+		(void) set_gain_map(nullptr, nullptr);
+}
+
+bool
+ScaleEngine::set_gain_map(const GainMap *map, string *error)
+{
+	if (!impl_ || !impl_->ready) {
+		if (error)
+			*error = "ScaleEngine not initialized";
+		return false;
+	}
+
+	Impl &e = *impl_;
+	if (!map || map->data.size() != size_t(map->width) * map->height ||
+		!map->width || !map->height) {
+		const uint16_t none = 0;
+		return e.upload_gain(&none, 1, 1, error);
+	}
+
+	// Box-filter a map the device cannot hold down to one it can.
+	uint32_t w = map->width, h = map->height;
+	vector<uint16_t> reduced;
+	const uint32_t factor = ceil_div(max(w, h), e.max_image_dim_2d);
+	if (factor > 1) {
+		w = ceil_div(w, factor);
+		h = ceil_div(h, factor);
+		reduced.resize(size_t(w) * h);
+		for (uint32_t y = 0; y < h; y++)
+			for (uint32_t x = 0; x < w; x++) {
+				uint64_t sum = 0, n = 0;
+				for (uint32_t sy = y * factor;
+					sy < min((y + 1) * factor, map->height); sy++)
+					for (uint32_t sx = x * factor;
+						sx < min((x + 1) * factor, map->width); sx++, n++)
+						sum += map->data[size_t(sy) * map->width + sx];
+				reduced[size_t(y) * w + x] = uint16_t((sum + n / 2) / n);
+			}
+	}
+	if (!e.upload_gain(
+			reduced.empty() ? map->data.data() : reduced.data(), w, h, error))
+		return false;
+
+	e.gain_mapped = true;
+	e.gain_min = map->min;
+	e.gain_max = map->max;
+	e.gain_gamma = map->gamma;
+	e.gain_offset = map->offset;
+	return true;
 }
 
 uint32_t

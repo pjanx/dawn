@@ -116,6 +116,21 @@ constexpr ToolbarSpec kItems[] = {
 	{Slot::Right, Action::Fullscreen},
 };
 
+// The HDR rendition needs a window that can present it, a display that
+// can show it, and a page that has it.
+static bool
+hdr_available(const Viewer &v)
+{
+	return v.screen_capable_ && v.screen_hdr_ && v.current_ &&
+		v.current_->gain_map;
+}
+
+static bool
+hdr_rendition(const Viewer &v)
+{
+	return v.hdr_ && hdr_available(v);
+}
+
 static bool
 spec_enabled(const Viewer &v, Action action)
 {
@@ -144,6 +159,10 @@ spec_enabled(const Viewer &v, Action action)
 		return QFileInfo(url_to_path(v.url_)).isFile();
 	case Action::Smooth:
 		return !(v.current_ && v.current_->render);
+	case Action::HighDynamicRange:
+		return hdr_available(v);
+	case Action::NonlinearProcessing:
+		return !hdr_rendition(v);
 	case Action::SaveAs:
 		return bool(v.current_);
 	case Action::SaveFrameAs:
@@ -162,7 +181,9 @@ spec_active(const Viewer &v, Action action)
 	case Action::Checkerboard:
 		return v.checkerboard_;
 	case Action::NonlinearProcessing:
-		return v.nonlinear_processing_;
+		return v.nonlinear_processing_ && !hdr_rendition(v);
+	case Action::HighDynamicRange:
+		return v.hdr_;
 	case Action::BrowserDelays:
 		return v.browser_delays_;
 	case Action::ColorManagement:
@@ -397,8 +418,10 @@ upload_frame(const Viewer &v, const dawn::Image &image)
 {
 	if (!v.kit_.renderer_)
 		return;
-	v.kit_.renderer_->set_image(
-		image.width, image.height, image.data.data(), image.stride);
+	// Maps are per page, and only still images have them.
+	v.kit_.renderer_->set_image(image.width, image.height, image.data.data(),
+		image.stride,
+		&image == v.current_.get() ? v.current_->gain_map.get() : nullptr);
 }
 
 constexpr int64_t kBrowserDelayFloorMs = 11;
@@ -889,6 +912,9 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 			ctx.screen_profile->to_bytes());
 	ctx.screen_dpi = open.dpi;
 	ctx.enhance = open.key.enhance;
+	// Whatever the display, so that headroom and the HDR toggle never
+	// need a reload.
+	ctx.gain_maps = true;
 	if (open.loaders)
 		ctx.loaders = *open.loaders;
 
@@ -1797,6 +1823,10 @@ apply_action(Viewer &v, Action action)
 		v.nonlinear_processing_ = !v.nonlinear_processing_;
 		request_render(v);
 		return true;
+	case Action::HighDynamicRange:
+		v.hdr_ = !v.hdr_;
+		request_render(v);
+		return true;
 	case Action::BrowserDelays:
 		v.browser_delays_ = !v.browser_delays_;
 		request_render(v);
@@ -1909,6 +1939,9 @@ apply_view(const Viewer &v)
 			snap_pan_to_pixels(&pan_y, float(dh), float(vp.height), gpu_scale);
 		}
 	}
+	// Nothing above SDR white has an encoded-value compositing convention,
+	// so the HDR rendition is processed linearly, even at zero weight.
+	const bool hdr = hdr_rendition(v);
 	renderer.view = {
 		.scale = gpu_scale,
 		.pan_x = pan_x,
@@ -1916,9 +1949,13 @@ apply_view(const Viewer &v)
 		.angle = v.angle_,
 		.orientation = v.orientation_,
 		.checkerboard = v.checkerboard_,
-		.nonlinear_processing = v.nonlinear_processing_,
+		.nonlinear_processing = v.nonlinear_processing_ && !hdr,
 		.checker_size = float(v.kit_.px(kCheckPts)),
 		.filter = v.filter_ ? renderer.preferred_filter : dawn::Filter::Nearest,
+		.hdr = hdr,
+		.gain_weight = hdr
+			? dawn::gain_map_weight(*v.current_->gain_map, v.screen_headroom_)
+			: 0.f,
 	};
 }
 
@@ -2112,6 +2149,9 @@ Viewer::screen_changed(
 	this->screen_profile_ = state.profile;
 	this->screen_colour_ = state.colour;
 	this->screen_profile_fallback_ = state.fallback;
+	this->screen_capable_ = state.capable;
+	this->screen_hdr_ = state.hdr;
+	this->screen_headroom_ = state.headroom;
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,
 			this->orientation_, this->angle_, this->view_locked_};

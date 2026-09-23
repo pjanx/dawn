@@ -554,7 +554,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 	auto state = make_shared<SettingsDraft>(std::move(draft));
 
 	const char *const thumb_label = N_("Default _thumbnail size");
-	const char *const icc_label = N_("ICC _profile override");
+	const char *const icc_label = N_("ICC _profile override (when applicable)");
 
 	auto col = make_unique<GutterColumn>();
 	col->gap = 4.f;

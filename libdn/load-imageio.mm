@@ -19,7 +19,9 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <ImageIO/ImageIO.h>
 
+#include <cmath>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -120,27 +122,99 @@ imageio_orientation(CFDictionaryRef properties)
 	return Orientation(int(value));
 }
 
+// --- Gain maps ---------------------------------------------------------------
+
+// Only one-component 8-bit maps have been seen, 'L008' as CoreVideo calls it.
+static unique_ptr<GainMap>
+imageio_gain_map_pixels(CFDictionaryRef info, const GainMap &metadata)
+{
+	auto data =
+		(CFDataRef) CFDictionaryGetValue(info, kCGImageAuxiliaryDataInfoData);
+	auto description = (CFDictionaryRef) CFDictionaryGetValue(
+		info, kCGImageAuxiliaryDataInfoDataDescription);
+	double width = 0, height = 0, stride = 0, format = 0;
+	if (!data || !description ||
+		!imageio_number(description, CFSTR("Width"), &width) ||
+		!imageio_number(description, CFSTR("Height"), &height) ||
+		!imageio_number(description, CFSTR("BytesPerRow"), &stride) ||
+		!imageio_number(description, CFSTR("PixelFormat"), &format) ||
+		uint32_t(format) != fourcc('L', '0', '0', '8') || width < 1 ||
+		height < 1 || width > kMaxDimension || height > kMaxDimension ||
+		stride < width ||
+		double(CFDataGetLength(data)) < stride * (height - 1) + width)
+		return nullptr;
+
+	ImagePtr pixels = image_new(uint32_t(width), uint32_t(height));
+	if (!pixels)
+		return nullptr;
+
+	const uint8_t *src = CFDataGetBytePtr(data);
+	for (uint32_t y = 0; y < pixels->height; y++) {
+		uint16_t *d = row_u16(*pixels, y);
+		const uint8_t *s = src + size_t(y) * size_t(stride);
+		for (uint32_t x = 0; x < pixels->width; x++, d += 4)
+			d[0] = d[1] = d[2] = d[3] = uint16_t(s[x] * 257);
+	}
+	return make_gain_map(*pixels, metadata, true);
+}
+
+// Apple's pre-ISO map, as its cameras put in HEIC and JPEG.  From macOS 15 on,
+// ImageIO also reports ISO 21496-1 maps, but describes their metadata its own
+// way, which nothing here has been checked against, so those are left alone.
+API_AVAILABLE(macos(11.0))
+static void
+imageio_gain_map(CGImageSourceRef source, size_t index,
+	CFDictionaryRef properties, Image &image, const OpenContext &ctx)
+{
+	CFDictionaryRef info = CGImageSourceCopyAuxiliaryDataInfoAtIndex(
+		source, index, kCGImageAuxiliaryDataTypeHDRGainMap);
+	if (!info)
+		return;
+
+	string xmp;
+	auto metadata = (CGImageMetadataRef) CFDictionaryGetValue(
+		info, kCGImageAuxiliaryDataInfoMetadata);
+	CFDataRef packet =
+		metadata ? CGImageMetadataCreateXMPData(metadata, nullptr) : nullptr;
+	if (packet) {
+		xmp.assign((const char *) CFDataGetBytePtr(packet),
+			size_t(CFDataGetLength(packet)));
+		CFRelease(packet);
+	}
+
+	// ImageIO hands out no Exif, but it does parse Apple's maker note.
+	double maker33 = NAN, maker48 = 0;
+	CFTypeRef maker =
+		CFDictionaryGetValue(properties, kCGImagePropertyMakerAppleDictionary);
+	if (maker && CFGetTypeID(maker) == CFDictionaryGetTypeID()) {
+		(void) imageio_number((CFDictionaryRef) maker, CFSTR("33"), &maker33);
+		(void) imageio_number((CFDictionaryRef) maker, CFSTR("48"), &maker48);
+	}
+
+	const double headroom =
+		apple_gain_map_headroom_from_maker(xmp, maker33, maker48);
+	if (headroom > 0) {
+		const GainMap map = apple_gain_map(headroom);
+		if (gain_map_applies(map, ctx))
+			image.gain_map = imageio_gain_map_pixels(info, map);
+	}
+	CFRelease(info);
+}
+
 // --- Pixels ------------------------------------------------------------------
 
 // Core Graphics converts from the image's colour space to the context's,
 // so giving the context the source's own space makes drawing an identity,
 // and leaves all colour management to lcms2, as with every other loader.
-// Anything that cannot be one--Gray, CMYK, Indexed, Lab, extended range--gets
-// a real conversion to sRGB instead, which is then no longer an assumption.
+// Anything that cannot be one--Gray, CMYK, Indexed, Lab--gets a real
+// conversion to sRGB instead, which is then no longer an assumption.
 static CGColorSpaceRef
-imageio_target_space(
-	CGImageRef cg, const OpenContext &ctx, CFDataRef *icc, Error *error)
+imageio_target_space(CGImageRef cg, CFDataRef *icc, Error *error)
 {
 	CGColorSpaceRef source = CGImageGetColorSpace(cg);
 	if (source && CGColorSpaceGetModel(source) == kCGColorSpaceModelRGB &&
-		!CGColorSpaceUsesExtendedRange(source) &&
 		(*icc = CGColorSpaceCopyICCData(source)))
 		return CGColorSpaceRetain(source);
-
-	// Display P3 would narrow the loss without removing it, and this is
-	// a fallback loader--revisit if anyone actually views EXR files in anger.
-	if (source && CGColorSpaceUsesExtendedRange(source))
-		add_warning(ctx, _("extended range colours clipped to sRGB"));
 
 	CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 	if (!srgb) {
@@ -149,6 +223,44 @@ imageio_target_space(
 	}
 	*icc = CGColorSpaceCopyICCData(srgb);
 	return srgb;
+}
+
+// Extended range, as EXR, Radiance and float TIFF come, is linear light with
+// 1.0 at SDR white.  In BT.2020, little of scRGB stays negative.
+static ImagePtr
+load_imageio_hdr(CGImageRef cg, const OpenContext &ctx, Error *error)
+{
+	size_t width = CGImageGetWidth(cg), height = CGImageGetHeight(cg);
+	CGColorSpaceRef space =
+		CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearITUR_2020);
+	if (!space) {
+		set_error(error, _("failed to describe the colour space"));
+		return nullptr;
+	}
+
+	vector<float> rgba(width * height * 4);
+	CGContextRef context = CGBitmapContextCreate(rgba.data(), width, height, 32,
+		width * 4 * sizeof(float), space,
+		CGBitmapInfo(kCGImageAlphaPremultipliedLast) |
+			kCGBitmapFloatComponents | kCGBitmapByteOrder32Little);
+	CGColorSpaceRelease(space);
+	if (!context) {
+		set_error(error, _("cannot create a bitmap context"));
+		return nullptr;
+	}
+	CGContextSetBlendMode(context, kCGBlendModeCopy);
+	CGContextDrawImage(
+		context, CGRectMake(0, 0, double(width), double(height)), cg);
+	CGContextRelease(context);
+
+	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
+	if (!image) {
+		set_error(error, _("image allocation failure"));
+		return nullptr;
+	}
+	if (!split_hdr(*image, ctx, rgba, true, kRec2020Primaries, error))
+		return nullptr;
+	return image;
 }
 
 static ImagePtr
@@ -160,8 +272,12 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
+	CGColorSpaceRef source = CGImageGetColorSpace(cg);
+	if (source && CGColorSpaceUsesExtendedRange(source))
+		return load_imageio_hdr(cg, ctx, error);
+
 	CFDataRef icc = nullptr;
-	CGColorSpaceRef space = imageio_target_space(cg, ctx, &icc, error);
+	CGColorSpaceRef space = imageio_target_space(cg, &icc, error);
 	if (!space)
 		return nullptr;
 
@@ -240,10 +356,13 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 
 		Error suberror;
 		ImagePtr image;
+		bool hdr = false;
 		CGImageRef cg = CGImageSourceCreateImageAtIndex(source, i, options);
 		if (!cg) {
 			set_error(&suberror, _("ImageIO decoding error"));
 		} else {
+			CGColorSpaceRef space = CGImageGetColorSpace(cg);
+			hdr = space && CGColorSpaceUsesExtendedRange(space);
 			image = load_imageio_image(cg, ctx, &suberror);
 			CGImageRelease(cg);
 		}
@@ -252,6 +371,11 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 			if (!CFDictionaryContainsKey(
 					properties, kCGImagePropertyProfileName))
 				imageio_drop_invented_srgb(*image);
+			// A true HDR base ignores the file's map, as in HEIF.
+			if (@available(macOS 11, *)) {
+				if (!animated && !hdr && ctx.gain_maps)
+					imageio_gain_map(source, i, properties, *image, ctx);
+			}
 		}
 		if (properties)
 			CFRelease(properties);
@@ -282,9 +406,11 @@ load_imageio_indexes(CGImageSourceRef source, CFDictionaryRef options,
 		return nullptr;
 	}
 
+	// Only split_hdr() names a profile, for a base it leaves straight.
 	head->loops = loops;
 	for (Image *page = head.get(); page; page = page->page_next.get())
-		finish_frames(*page, ctx, nullptr, /*input_premul=*/true);
+		finish_frames(*page, ctx, page->effective_profile.get(),
+			/*input_premul=*/!page->effective_profile);
 	return head;
 }
 
@@ -300,10 +426,11 @@ load_imageio(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	const void *keys[] = {kCGImageSourceShouldCache};
-	const void *values[] = {kCFBooleanFalse};
+	const void *keys[] = {
+		kCGImageSourceShouldCache, kCGImageSourceShouldAllowFloat};
+	const void *values[] = {kCFBooleanFalse, kCFBooleanTrue};
 	CFDictionaryRef options =
-		CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1,
+		CFDictionaryCreate(kCFAllocatorDefault, keys, values, 2,
 			&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 
 	CGImageSourceRef source = CGImageSourceCreateWithData(wrapper, options);

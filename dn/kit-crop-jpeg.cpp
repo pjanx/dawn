@@ -50,13 +50,21 @@ Cropper::load_working(const vector<uint8_t> &data)
 	if (!image)
 		return false;
 
+	// libjpeg-turbo transforms keep nothing past the primary image's EOI,
+	// such as gain maps or depth maps.
+	if (grid.mpf_images)
+		this->message_ = dawn::format_message(
+			P_("Saving drops %u embedded image",
+				"Saving drops %u embedded images", grid.mpf_images),
+			grid.mpf_images);
+
 	this->image_ = std::move(image);
 	this->grid_ = grid;
 	this->exif_ = dawn::orientation_or_0(this->image_->orientation);
 	if (this->kit_.renderer_) {
 		const auto &im = *this->image_;
 		this->kit_.renderer_->set_image(
-			im.width, im.height, im.data.data(), im.stride);
+			im.width, im.height, im.data.data(), im.stride, nullptr);
 	}
 	return true;
 }

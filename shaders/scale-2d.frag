@@ -36,21 +36,22 @@ layout(push_constant) uniform Push {
 	float bg_r, bg_g, bg_b;
 	float checker_r, checker_g, checker_b;
 	float checker_size;
+	vec4 gain;
 } pc;
 
+// Callers clamp `p`, which the gain map takes too.
 vec4 fetch_image(ivec2 p)
 {
-	return texelFetch(u_tiles,
-			  tile_coord(clamp(p, ivec2(0), pc.image_size - 1),
-				     pc.image_size, pc.grid),
-			  0);
+	return texelFetch(u_tiles, tile_coord(p, pc.image_size, pc.grid), 0);
 }
 
 vec4 fetch_working(ivec2 p, int orient, bool opaque)
 {
-	return associated_to_working(
-		fetch_image(oriented_to_source(p, orient, pc.image_size)),
-		pc.transfer, opaque);
+	ivec2 src = clamp(oriented_to_source(p, orient, pc.image_size),
+			  ivec2(0), pc.image_size - 1);
+	return apply_gain(
+		associated_to_working(fetch_image(src), pc.transfer, opaque), src,
+		pc.image_size, pc.gain);
 }
 
 #if DN_FILTER == DN_FILTER_NOHALO
@@ -188,6 +189,7 @@ void main()
 				 unpack_composite(pc.transfer) != 0,
 				 unpack_nonlinear(pc.transfer) == 0,
 				 unpack_linear_output(pc.transfer) != 0,
+				 unpack_hdr(pc.transfer) != 0,
 				 vec3(pc.bg_r, pc.bg_g, pc.bg_b),
 				 vec3(pc.checker_r, pc.checker_g, pc.checker_b),
 				 pc.checker_size);

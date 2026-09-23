@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "display-profile.hpp"
 #include "kit-browser.hpp"
 #include "kit-chrome.hpp"
 #include "kit-commander.hpp"
@@ -54,7 +55,6 @@ class Window final : public QWindow
 	void request_render();
 	void arm_ui_wake();
 	void render();
-	void handle_screen_change(QScreen *target_screen);
 	void focus_gained();
 	void focus_lost();
 	void begin_close();
@@ -111,6 +111,11 @@ class Window final : public QWindow
 	bool font_change_pending_ = false;
 	bool update_pending_ = false;
 	bool screen_profile_fallback_ = true;
+	// What the screen profile last saw of Windows Advanced Color, against
+	// which activation tells a brightness change from a mode change.
+	AdvancedColor advanced_color_;
+	// macOS screen-parameter notifications, for as long as this lives.
+	std::shared_ptr<void> screen_parameters_;
 	bool awaiting_view_ = false;
 	QTimer ui_wake_;
 	QTimer present_retry_;
@@ -153,6 +158,9 @@ public:
 
 	bool initialize(const QUrl &url, BrowseSetup setup, Mode mode);
 	void shutdown();
+	void handle_screen_change(QScreen *target_screen);
+	void refresh_headroom();
+	void set_headroom(float headroom);
 	void open_any(const QUrl &url);
 	void reveal_file(const QUrl &url);
 	Mode application() const { return application_mode(mode_); }

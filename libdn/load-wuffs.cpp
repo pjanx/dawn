@@ -179,6 +179,8 @@ struct WuffsLoadContext {
 	bool have_srgb = false;           ///< PNG sRGB chunk seen
 	optional<double> gamma;           ///< Decoding exponent from PNG gAMA
 	optional<array<double, 8>> chrm;  ///< PNG cHRM: white xy, then R, G, B xy
+	uint8_t hdr_transfer = 0;         ///< PNG cICP transfer, when PQ or HLG
+	double hdr_primaries[6] = {};     ///< PNG cICP primaries, likewise
 
 	const OpenContext *octx = nullptr;  ///< Caller-supplied context
 	shared_ptr<Cmm> cmm;                ///< CMM context, never null
@@ -422,9 +424,24 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	// swizzler does not support every source format as a direct premultiplied
 	// destination (e.g. 16-bit-per-channel truecolour PNG). Colour-manage
 	// (if applicable) and premultiply now, before any compositing.
-	if (ctx.source)
+	// split_hdr() leaves its base straight, in the profile it names.
+	// Maps are per page, and only still images have them.
+	if (ctx.hdr_transfer) {
+		OpenContext octx = *ctx.octx;
+		octx.gain_maps =
+			octx.gain_maps && !wuffs_base__frame_config__index(&fc);
+		// HLG's nominal display, as BT.2408 has it.
+		if (!split_hdr_signal(*image, octx, ctx.hdr_transfer, ctx.hdr_primaries,
+				1000, false, error)) {
+			ctx.result.reset();
+			ctx.result_tail.reset();
+			return false;
+		}
+	} else if (ctx.source) {
 		image->effective_profile = ctx.source;
-	finish_image(*image, *ctx.octx, ctx.source.get(), /*input_premul=*/false);
+	}
+	finish_image(*image, *ctx.octx, image->effective_profile.get(),
+		/*input_premul=*/false);
 
 	// Single-frame images get a fast path, animations are handled slowly.
 	if (wuffs_base__frame_config__index(&fc) > 0 &&
@@ -457,10 +474,42 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	return ok;
 }
 
+// PNG cICP, which Wuffs does not parse, and which has to come before IDAT:
+// its colour primaries and transfer characteristics, for RGB in full range.
+static bool
+png_cicp(span<const uint8_t> data, uint8_t *primaries, uint8_t *transfer)
+{
+	static const uint8_t signature[] = {
+		0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+	if (data.size() < sizeof signature ||
+		memcmp(data.data(), signature, sizeof signature))
+		return false;
+
+	for (size_t at = sizeof signature; data.size() - at >= 12;) {
+		const uint8_t *chunk = data.data() + at;
+		const size_t length = size_t(chunk[0]) << 24 | size_t(chunk[1]) << 16 |
+			size_t(chunk[2]) << 8 | chunk[3];
+		if (!memcmp(chunk + 4, "IDAT", 4) || data.size() - at - 12 < length)
+			return false;
+		if (!memcmp(chunk + 4, "cICP", 4)) {
+			if (length != 4 || chunk[10] || !chunk[11])
+				return false;
+			*primaries = chunk[8];
+			*transfer = chunk[9];
+			return true;
+		}
+		at += 12 + length;
+	}
+	return false;
+}
+
 static ImagePtr
-open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
+open_wuffs(wuffs_base__image_decoder *dec, span<const uint8_t> data,
 	const OpenContext &octx, Error *error)
 {
+	wuffs_base__io_buffer src =
+		wuffs_base__ptr_u8__reader((uint8_t *) data.data(), data.size(), true);
+
 	WuffsLoadContext ctx;
 	ctx.dec = dec;
 	ctx.src = &src;
@@ -468,8 +517,6 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 	ctx.cmm = cmm_or_default(octx);
 	ctx.target = octx.screen_profile.get();
 
-	// TODO(p): See if something could and should be done about
-	// https://www.w3.org/TR/png-hdr-pq/
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__EXIF, true);
 	wuffs_base__image_decoder__set_report_metadata(
@@ -514,9 +561,15 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 	}
 
 	// PNG (3rd edition) Table 1: iCCP outranks sRGB, which outranks cHRM and
-	// gAMA; lower-priority chunks are to be ignored.  cICP, which would come
-	// first, is not parsed by Wuffs.  A missing half of the cHRM/gAMA pair is
-	// filled in from sRGB, as the specification says nothing about halves.
+	// gAMA; lower-priority chunks are to be ignored.  cICP comes first, but
+	// only PQ and HLG are acted on (https://www.w3.org/TR/png-hdr-pq/), as
+	// honouring the rest would change how existing SDR images look.
+	// A missing half of the cHRM/gAMA pair is filled in from sRGB,
+	// as the specification says nothing about halves.
+	uint8_t cicp_code = 0, cicp_transfer = 0;
+	if (png_cicp(data, &cicp_code, &cicp_transfer) &&
+		cicp_hdr(cicp_code, cicp_transfer, ctx.hdr_primaries))
+		ctx.hdr_transfer = cicp_transfer;
 	if (ctx.have_iccp)
 		ctx.source = ctx.cmm->get_profile(ctx.meta_iccp);
 	if (!ctx.source && ctx.have_srgb)
@@ -547,6 +600,10 @@ open_wuffs(wuffs_base__image_decoder *dec, wuffs_base__io_buffer src,
 		if (octx.first_frame_only)
 			break;
 
+	// The first frame only learns that it is not a still one here.
+	if (ctx.result && ctx.result->frame_next)
+		ctx.result->gain_map.reset();
+
 	apply_collected_metadata(ctx);
 	if (!ctx.result && error && error->message.empty())
 		set_error(error, _("no frames decoded"));
@@ -564,9 +621,7 @@ open_wuffs_using(wuffs_base__image_decoder *(*allocate)(),
 		return nullptr;
 	}
 
-	wuffs_base__io_buffer src =
-		wuffs_base__ptr_u8__reader((uint8_t *) data.data(), data.size(), true);
-	return open_wuffs(dec.get(), src, ctx, error);
+	return open_wuffs(dec.get(), data, ctx, error);
 }
 
 // --- Public entry points -----------------------------------------------------

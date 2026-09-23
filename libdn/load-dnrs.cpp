@@ -11,7 +11,10 @@
 
 #include <libdnrs.h>
 
+#include <algorithm>
+#include <cstring>
 #include <memory>
+#include <vector>
 
 using namespace std;
 
@@ -96,6 +99,37 @@ pack_gray(Image &image, const dnrs_frame &frame, bool alpha, bool wide)
 	}
 }
 
+// EXR and Radiance leave colour to convention: BT.709 primaries, D65 white.
+// Negative channels step out of them, as EXR allows, and scRGB means to.
+static ImagePtr
+load_float_frame(const dnrs_frame &frame, const OpenContext &ctx, Error *error)
+{
+	const bool alpha = frame.format == DNRS_PIXEL_RGBA32F;
+	const size_t channels = alpha ? 4 : 3;
+	if (!valid_frame(frame, channels * sizeof(float))) {
+		set_error(error, _("invalid or truncated frame"));
+		return nullptr;
+	}
+	ImagePtr image = image_new(frame.width, frame.height);
+	if (!image) {
+		set_error(error, _("image allocation failure"));
+		return nullptr;
+	}
+
+	vector<float> rgba(size_t(frame.width) * frame.height * 4, 1);
+	for (uint32_t y = 0; y < frame.height; y++) {
+		const uint8_t *src = frame.data + size_t(y) * frame.stride;
+		float *dst = &rgba[size_t(y) * frame.width * 4];
+		for (uint32_t x = 0; x < frame.width; x++, dst += 4) {
+			memcpy(dst, src, channels * sizeof(float));
+			src += channels * sizeof(float);
+		}
+	}
+	if (!split_hdr(*image, ctx, rgba, false, kRec709Primaries, error))
+		return nullptr;
+	return image;
+}
+
 static ImagePtr
 load_frame(const dnrs_frame &frame, Error *error)
 {
@@ -167,6 +201,10 @@ load_frame(const dnrs_frame &frame, Error *error)
 	case DNRS_PIXEL_RGBA16LE:
 		pack_rgba16le_to_bgra16(*image,
 			assume_aligned<const uint16_t>(frame.data), frame.stride, 16);
+		break;
+	// load_float_frame() takes these, and the check above turned them away.
+	case DNRS_PIXEL_RGB32F:
+	case DNRS_PIXEL_RGBA32F:
 		break;
 	}
 	image->frame_duration =
@@ -251,7 +289,10 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				}
 				break;
 			}
-			ImagePtr frame = load_frame(owned.frame, error);
+			const bool linear = owned.frame.format == DNRS_PIXEL_RGB32F ||
+				owned.frame.format == DNRS_PIXEL_RGBA32F;
+			ImagePtr frame = linear ? load_float_frame(owned.frame, ctx, error)
+									: load_frame(owned.frame, error);
 			if (!frame)
 				return nullptr;
 			append_frame(frames, frames_tail, std::move(frame));
@@ -275,7 +316,9 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			if (entry.key && entry.value)
 				frames->text.emplace(entry.key, entry.value);
 		}
-		finish_frames(*frames, ctx, nullptr, /*input_premul=*/false);
+		// split_hdr() has already described what its base is in.
+		finish_frames(*frames, ctx, frames->effective_profile.get(),
+			/*input_premul=*/false);
 		append_page(pages, pages_tail, std::move(frames));
 		if (ctx.first_frame_only)
 			break;

@@ -50,16 +50,19 @@ DisplayProfileWatch::unlisten(const void *key)
 		[key](const auto &item) { return item.first == key; });
 }
 
+// Windows sends WM_DISPLAYCHANGE to every top-level window, and registry
+// changes come in bursts: whatever arrives before the listeners run is one.
 void
-DisplayProfileWatch::notify() const
+DisplayProfileWatch::notify()
 {
 	QObject *app = QCoreApplication::instance();
-	if (!app)
+	if (!app || exchange(this->notify_pending_, true))
 		return;
 
 	QMetaObject::invokeMethod(
 		app,
 		[this] {
+			this->notify_pending_ = false;
 			const auto copy = this->listeners_;
 			for (const auto &item : copy)
 				if (item.second)

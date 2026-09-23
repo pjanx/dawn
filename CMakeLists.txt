@@ -569,7 +569,7 @@ if (WIN32)
 		dn/window-appearance-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE
-		dwrite dwmapi gdi32 shell32 shlwapi ole32 advapi32 user32)
+		dwrite dwmapi dxgi gdi32 shell32 shlwapi ole32 advapi32 user32)
 	set(DN_TEXT_SOURCE dn/text-windows.cpp)
 	set(DN_TEXT_LIBRARIES dwrite)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)

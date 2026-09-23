@@ -49,6 +49,12 @@ struct ScreenState {
 	std::shared_ptr<dawn::Profile> profile;
 	std::shared_ptr<const ScreenColour> colour;
 	bool fallback = true;
+	/// The window can present extended range at all.
+	bool capable = false;
+	/// The output is an HDR display, whatever its current headroom.
+	bool hdr = false;
+	/// Linear, where 1 is SDR white.
+	float headroom = 1;
 };
 
 struct [[nodiscard]] Size {

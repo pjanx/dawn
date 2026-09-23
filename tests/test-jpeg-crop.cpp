@@ -41,6 +41,7 @@ test_crop()
 	CHECK(dawn::jpeg_grid(data, &grid, &error));
 	CHECK(grid.width == 64 && grid.height == 48);
 	CHECK(grid.mcu_width == 16 && grid.mcu_height == 16);
+	CHECK(!grid.mpf_images);
 	auto original = decode(data);
 	auto cropped = decode(dawn::jpeg_transform(
 		data, dawn::Orientation::Rotate0, 16, 16, 32, 16, &error));
@@ -160,6 +161,27 @@ test_metadata()
 	CHECK(decode(output));
 }
 
+// The transform keeps the MPF index, but not the images past EOI.
+static void
+test_mpf()
+{
+	auto data = fixture("gainmap.jpg");
+	dawn::Error error;
+	dawn::JpegGrid grid;
+	CHECK(dawn::jpeg_grid(data, &grid, &error));
+	CHECK(grid.mpf_images == 1);
+
+	auto output = dawn::jpeg_transform(
+		data, dawn::Orientation::Rotate0, 16, 16, 32, 16, &error);
+	dawn::OpenContext ctx;
+	ctx.gain_maps = true;
+	auto cropped = dawn::open_from_data(output, ctx, &error);
+	CHECK(cropped);
+	if (cropped)
+		CHECK(
+			cropped->width == 32 && !cropped->page_next && !cropped->gain_map);
+}
+
 static void
 test_invalid()
 {
@@ -179,7 +201,7 @@ test_invalid()
 int
 main()
 {
-	return test::run({{"grid and crop", test_crop}, {"rotations", test_rotations},
-		{"metadata and coding", test_metadata},
-		{"invalid inputs", test_invalid}});
+	return test::run({{"grid and crop", test_crop},
+		{"rotations", test_rotations}, {"metadata and coding", test_metadata},
+		{"multi-picture format", test_mpf}, {"invalid inputs", test_invalid}});
 }

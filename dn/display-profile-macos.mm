@@ -107,4 +107,42 @@ make_display_profile_source()
 	return make_unique<CocoaSource>();
 }
 
+DisplayRange
+macos_display_range(QScreen *screen)
+{
+	DisplayRange range;
+	auto *native = screen
+		? screen->nativeInterface<QNativeInterface::QCocoaScreen>()
+		: nullptr;
+	NSScreen *native_screen = native ? native->nativeScreen() : nil;
+	if (!native_screen)
+		return range;
+
+	// Non-XDR MacBooks often have potential headroom too, from backlight.
+	range.hdr =
+		native_screen.maximumPotentialExtendedDynamicRangeColorComponentValue >
+		1;
+	range.headroom =
+		float(native_screen.maximumExtendedDynamicRangeColorComponentValue);
+	return range;
+}
+
+// This fires at about frame rate during an EDR ramp, so it needs no poll.
+shared_ptr<void>
+macos_watch_screen_parameters(function<void()> fn)
+{
+	id observer = [[[NSNotificationCenter defaultCenter]
+		addObserverForName:NSApplicationDidChangeScreenParametersNotification
+					object:nil
+					 queue:nil
+				usingBlock:^(NSNotification *) {
+				  fn();
+				}] retain];
+	return shared_ptr<void>(static_cast<void *>(observer), [](void *p) {
+		id observer = static_cast<id>(p);
+		[[NSNotificationCenter defaultCenter] removeObserver:observer];
+		[observer release];
+	});
+}
+
 }  // namespace dn

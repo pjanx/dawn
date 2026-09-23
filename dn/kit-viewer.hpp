@@ -114,6 +114,10 @@ struct Viewer : Widget {
 	bool filter_ = true;
 	bool checkerboard_ = true;
 	bool nonlinear_processing_ = false;
+	bool hdr_ = true;
+	bool screen_capable_ = false;
+	bool screen_hdr_ = false;
+	float screen_headroom_ = 1;
 	bool browser_delays_ = false;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
