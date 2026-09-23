@@ -542,17 +542,7 @@ ScaleEngine::Impl::upload_tiles(const uint8_t *pixels, size_t stride,
 
 	// One scan here buys a uniform flag that lets the shaders skip
 	// the per-tap un-premultiply. Most photographs take it.
-	image_opaque = true;
-	for (uint32_t y = 0; y < image_h && image_opaque; y++) {
-		const auto *row =
-			reinterpret_cast<const uint16_t *>(pixels + size_t(y) * stride);
-		for (uint32_t x = 0; x < image_w; x++) {
-			if (row[x * 4 + 3] != 65535) {
-				image_opaque = false;
-				break;
-			}
-		}
-	}
+	image_opaque = opaque_bgra16(pixels, image_w, image_h, stride);
 	if (tile_pad_w > max_image_dim_2d || tile_pad_h > max_image_dim_2d) {
 		if (error)
 			*error = "tile pad exceeds maxImageDimension2D";
@@ -979,11 +969,12 @@ ScaleEngine::Impl::make_push(const ScaleView &view, uint32_t vp_w,
 	pc.transfer = (view.profile_curves ? 3 : int32_t(view.transfer)) |
 		(int32_t(orientation_or_0(view.orientation)) << 8) |
 		(view.checkerboard ? (1 << 16) : 0) | (view.composite ? (1 << 17) : 0) |
-		(image_opaque ? (1 << 18) : 0) | (view.linear_blend ? (1 << 19) : 0) |
+		(image_opaque ? (1 << 18) : 0) |
+		(view.nonlinear_processing ? (1 << 19) : 0) |
 		(view.output_encoding == ScaleEncoding::Linear ? (1 << 20) : 0);
 	// Backgrounds arrive encoded, independently of the output attachment.
 	auto background = [&](array<float, 3> rgb) {
-		if (!view.linear_blend)
+		if (view.nonlinear_processing)
 			return rgb;
 		if (view.profile_curves)
 			return sample_curves(encoding.decode, rgb);

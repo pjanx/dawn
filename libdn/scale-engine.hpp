@@ -35,14 +35,14 @@ struct ScaleView {
 	Transfer transfer = Transfer::Srgb;
 	/// Use set_encoding()'s actual per-channel curves instead of transfer.
 	bool profile_curves = false;
-	/// Output representation, independent of the image blending policy.
+	/// Output representation, independent of the processing policy.
 	/// Non-composited output remains premultiplied in this space.
 	ScaleEncoding output_encoding = ScaleEncoding::Encoded;
 	Orientation orientation = Orientation::Rotate0;
 	bool checkerboard = false;
-	/// Resolve alpha in linear light. The default composites encoded values,
+	/// Filter and resolve alpha in encoded values rather than linear light,
 	/// matching conventional application and platform image rendering.
-	bool linear_blend = false;
+	bool nonlinear_processing = false;
 	/// Encoded even-tile grey (toolbar_bottom). Odd tiles use `record`'s
 	/// clear colour (well). Converted to the selected compositing space there.
 	float checker_r = 0xF0 / 255.f;

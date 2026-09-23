@@ -70,6 +70,7 @@ image::why-gamma-strips.webp["Yellow to blue blend in sRGB versus linear space"]
 That said, compositing physically correctly creates issues as well, notably
 around https://docs.skia.org/docs/dev/design/raster_tragedy/[text rendering].
 Some content is also designed to be rendered wrong, such as macOS icons.
+Dawn tries to use a sane defaults, and lets you switch.
 
 Scaling
 -------

@@ -48,9 +48,9 @@ vec4 fetch_image(ivec2 p)
 
 vec4 fetch_working(ivec2 p, int orient, bool opaque)
 {
-	return associated_to_linear(
+	return associated_to_working(
 		fetch_image(oriented_to_source(p, orient, pc.image_size)),
-		unpack_transfer(pc.transfer), opaque);
+		pc.transfer, opaque);
 }
 
 #if DN_FILTER == DN_FILTER_NOHALO
@@ -186,7 +186,7 @@ void main()
 	out_color = finish_scale(color, transfer,
 				 unpack_checker(pc.transfer) != 0,
 				 unpack_composite(pc.transfer) != 0,
-				 unpack_linear_blend(pc.transfer) != 0,
+				 unpack_nonlinear(pc.transfer) == 0,
 				 unpack_linear_output(pc.transfer) != 0,
 				 vec3(pc.bg_r, pc.bg_g, pc.bg_b),
 				 vec3(pc.checker_r, pc.checker_g, pc.checker_b),

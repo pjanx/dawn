@@ -25,7 +25,7 @@ We care about
 ~~~~~~~~~~~~~
  - *Wide-gamut*, high-bit-depth SDR: 10-bit displays in Adobe RGB or Display P3.
  - *16-bit* internal precision in order to minimise quantisation errors.
- - *Gamma-correct* scaling: see below for a test that your iPhone fails.
+ - *Gamma-correct* scaling if appropriate.
  - *Good scaling*: GIMP's NoHalo is an awesome compromise for upscaling
    both photos and man-made images.
  - *Loading as much as we can* from any file format at the best possible

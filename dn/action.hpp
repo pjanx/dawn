@@ -99,7 +99,7 @@ enum class Action : uint8_t {
 	ColorManagement,
 	Smooth,
 	Checkerboard,
-	BlendLinearLight,
+	NonlinearProcessing,
 	BrowserDelays,
 	RotateLeft,
 	Mirror,

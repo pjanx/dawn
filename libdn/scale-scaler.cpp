@@ -468,6 +468,8 @@ ScaleScaler::scale(uint32_t src_w, uint32_t src_h, const uint8_t *pixels,
 	view.scale = float(want_out_w) / float(disp_w);
 	view.filter = preferred_filter(s.phys);
 	view.transfer = Transfer::Srgb;
+	// Transparent images get composited in encoded values downstream.
+	view.nonlinear_processing = !opaque_bgra16(pixels, src_w, src_h, stride);
 	view.orientation = orientation;
 
 	bool ok = render_offscreen(s, want_out_w, want_out_h, view, out, error);

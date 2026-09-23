@@ -79,7 +79,13 @@ Other Weston backends seem to be useful for interactive testing.
 Compositing
 -----------
 The UI is composited in linear light, with the exception of thumbnails,
-and the viewer in its default setting.
+which are both scaled and composited in encoded values.
+
+Images with any transparency are conventionally composited in encoded values,
+and scaling them in linear light would not match that composition.
+Therefore, the viewer processes transparent pages in encoded values by default,
+and thumbnail production scales transparent images in encoded values.
+Both scale fully opaque images in linear light.
 
 Thumbnails
 ----------

@@ -174,7 +174,7 @@ constexpr ActionDef kDefs[] = {
 	{kToggle, {N_("S_mooth Scaling")}, {"blend-tool-symbolic"}, {{Qt::Key_I}}, {}},
 	{kToggle, {N_("Highlight _Transparency")},
 		{"transparent-background-symbolic"}, {{Qt::Key_T}}, {}},
-	{kToggle, {N_("Blend in Linear Light")}, {}, {}, {}},
+	{kToggle, {N_("Process in Encoded Space")}, {}, {}, {}},
 	{kToggle, {N_("_Browser-like Animation Delays")}, {}, {}, {}},
 	{kMenu, {N_("Rotate _Left")}, {"rotate-acw-symbolic"}, {{Qt::Key_Less}}, {}},
 	// TRANSLATORS: A verb: flips the image horizontally.
@@ -448,7 +448,7 @@ const MenuNode kViewerMenu[] = {
 		MenuNode::item(Action::ColorManagement),
 		MenuNode::item(Action::Smooth),
 		MenuNode::item(Action::Checkerboard),
-		MenuNode::item(Action::BlendLinearLight),
+		MenuNode::item(Action::NonlinearProcessing),
 		MenuNode::item(Action::BrowserDelays),
 		{},
 		MenuNode::item(Action::Hint),

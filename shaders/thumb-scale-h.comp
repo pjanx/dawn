@@ -21,7 +21,7 @@ layout(push_constant) uniform Push {
 	uint src_w, src_h, dst_w, dst_h;
 	uint src_stride, dst_stride;
 	uint orientation, transfer;
-	uint opaque, linear_source;
+	uint opaque, reduced_source;
 } pc;
 
 vec4 unpack_unorm(uint i)
@@ -32,17 +32,18 @@ vec4 unpack_unorm(uint i)
 		float(b & 65535u), float(b >> 16)) / 65535.0;
 }
 
-vec4 fetch_linear(ivec2 display_p)
+vec4 fetch_working(ivec2 display_p)
 {
 	ivec2 p = oriented_to_source(
 		display_p, int(pc.orientation), ivec2(pc.src_w, pc.src_h));
 	uint i = uint(p.y) * pc.src_stride + uint(p.x);
 	vec4 t = unpack_unorm(i);
-	if (pc.linear_source != 0u)
+	if (pc.reduced_source != 0u)
 		return t;
-	// Source words are BGRA; reduced words are linear RGBA.
-	return associated_to_linear(
-		t.bgra, int(pc.transfer), pc.opaque != 0u);
+	// Source words are BGRA; reduced words are working RGBA.
+	if (pc.opaque == 0u)
+		return t.bgra;
+	return associated_to_linear(t.bgra, int(pc.transfer), true);
 }
 
 void main()
@@ -62,7 +63,7 @@ void main()
 	float weights = 0.0;
 	for (int x = first; x <= last; ++x) {
 		float w = filter_weight((pos - float(x)) * kernel_scale);
-		sum += fetch_linear(ivec2(clamp(x, 0, disp.x - 1), int(q.y))) * w;
+		sum += fetch_working(ivec2(clamp(x, 0, disp.x - 1), int(q.y))) * w;
 		weights += w;
 	}
 	vec4 c = sum / max(weights, 1e-6);

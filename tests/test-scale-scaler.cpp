@@ -910,7 +910,7 @@ test_viewer_curves()
 			dawn::ScaleView view;
 			view.profile_curves = true;
 			view.filter = filter;
-			view.linear_blend = flags & 1;
+			view.nonlinear_processing = flags & 1;
 			const bool linear = flags & 2;
 			view.output_encoding = linear ? dawn::ScaleEncoding::Linear
 										  : dawn::ScaleEncoding::Encoded;
@@ -923,9 +923,10 @@ test_viewer_curves()
 				const float gamma = float(c + 1);
 				float expected = .5f * (linear ? powf(.5f, gamma) : .5f);
 				if (view.composite) {
-					expected =
-						view.linear_blend ? .5f + .5f * powf(.5f, gamma) : .75f;
-					if (linear != view.linear_blend)
+					expected = view.nonlinear_processing
+						? .75f
+						: .5f + .5f * powf(.5f, gamma);
+					if (linear == view.nonlinear_processing)
 						expected = powf(expected, linear ? gamma : 1.f / gamma);
 				}
 				CHECK(abs(pixels[c] / 65535.f - expected) < .0003f);
@@ -968,21 +969,21 @@ check_output(EngineReadback &gpu, const dawn::ScaleView &view,
 					? view.checker_r
 					: clear[c];
 				expected = rgb[c];
-				if (view.linear_blend) {
+				if (!view.nonlinear_processing) {
 					bg = dawn::transfer_decode(bg, transfer);
 					expected = dawn::transfer_decode(straight, transfer) * a;
 				}
 				expected += (1 - a) * bg;
-				if (view.linear_blend != linear)
+				if (view.nonlinear_processing == linear)
 					expected = linear
 						? dawn::transfer_decode(expected, transfer)
 						: dawn::transfer_encode(expected, transfer);
 			}
 			if (abs(actual[i * 4 + c] / 65535.f - expected) > .001f)
-				test::fail("filter %d transfer %d blend %d linear %d bg %d "
+				test::fail("filter %d transfer %d nonlinear %d linear %d bg %d "
 						   "checker %d pixel %d channel %d: %.6f != %.6f",
-					int(view.filter), int(transfer), view.linear_blend, linear,
-					composite, view.checkerboard, int(i), int(c),
+					int(view.filter), int(transfer), view.nonlinear_processing,
+					linear, composite, view.checkerboard, int(i), int(c),
 					actual[i * 4 + c] / 65535.f, expected);
 		}
 		CHECK(
@@ -1018,7 +1019,7 @@ test_output_encoding()
 				dawn::ScaleView view;
 				view.filter = filter;
 				view.transfer = transfer;
-				view.linear_blend = combination & 1;
+				view.nonlinear_processing = combination & 1;
 				view.output_encoding = (combination & 2)
 					? dawn::ScaleEncoding::Linear
 					: dawn::ScaleEncoding::Encoded;

@@ -161,8 +161,8 @@ spec_active(const Viewer &v, Action action)
 		return v.scale_to_fit_;
 	case Action::Checkerboard:
 		return v.checkerboard_;
-	case Action::BlendLinearLight:
-		return v.blend_linear_light_;
+	case Action::NonlinearProcessing:
+		return v.nonlinear_processing_;
 	case Action::BrowserDelays:
 		return v.browser_delays_;
 	case Action::ColorManagement:
@@ -736,6 +736,18 @@ fit_to_well(Viewer &v)
 	v.angle_ = 0;
 }
 
+// Transparent pages are processed in encoded values: they get composited that
+// way elsewhere, which is only consistent with encoded filtering.
+static bool
+page_opaque(const dawn::Image &page)
+{
+	for (const dawn::Image *f = &page; f; f = f->frame_next.get())
+		if (!dawn::opaque_bgra16(
+				f->data.data(), f->width, f->height, f->stride))
+			return false;
+	return true;
+}
+
 static void
 clear_image(Viewer &v)
 {
@@ -778,6 +790,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	v.current_ = v.image_;
 	v.frame_ = v.current_;
 	v.browser_delays_ = v.image_->browser_animation_bump;
+	v.nonlinear_processing_ = !page_opaque(*v.current_);
 	v.page_scaled_.reset();
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
@@ -1576,6 +1589,7 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 
 	v.current_ = std::move(page);
 	v.frame_ = v.current_;
+	v.nonlinear_processing_ = !page_opaque(*v.current_);
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
 	v.orientation_ = orientation_or_0(v.current_->orientation);
@@ -1779,8 +1793,8 @@ apply_action(Viewer &v, Action action)
 		v.checkerboard_ = !v.checkerboard_;
 		request_render(v);
 		return true;
-	case Action::BlendLinearLight:
-		v.blend_linear_light_ = !v.blend_linear_light_;
+	case Action::NonlinearProcessing:
+		v.nonlinear_processing_ = !v.nonlinear_processing_;
 		request_render(v);
 		return true;
 	case Action::BrowserDelays:
@@ -1902,7 +1916,7 @@ apply_view(const Viewer &v)
 		.angle = v.angle_,
 		.orientation = v.orientation_,
 		.checkerboard = v.checkerboard_,
-		.linear_blend = v.blend_linear_light_,
+		.nonlinear_processing = v.nonlinear_processing_,
 		.checker_size = float(v.kit_.px(kCheckPts)),
 		.filter = v.filter_ ? renderer.preferred_filter : dawn::Filter::Nearest,
 	};

@@ -469,6 +469,9 @@ void unpremultiply_bgra16(Image &image);
 /// bytes apart, and any padding beyond `width` pixels is left alone.
 void unpremultiply_xxxa8(
 	uint8_t *data, uint32_t width, uint32_t height, size_t stride);
+/// Whether no BGRA16 pixel has any transparency.
+bool opaque_bgra16(
+	const uint8_t *data, uint32_t width, uint32_t height, size_t stride);
 
 /// Widen BGRA8 → straight-or-premul BGRA16 without changing association.
 void widen_bgra8_to_bgra16(Image &dst, const uint8_t *src, size_t src_stride);

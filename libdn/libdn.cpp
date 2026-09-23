@@ -678,6 +678,19 @@ unpremultiply_xxxa8(
 	}
 }
 
+bool
+opaque_bgra16(
+	const uint8_t *data, uint32_t width, uint32_t height, size_t stride)
+{
+	for (uint32_t y = 0; y < height; y++) {
+		const auto *row = reinterpret_cast<const uint16_t *>(data + y * stride);
+		for (uint32_t x = 0; x < width; x++)
+			if (row[x * 4 + 3] != 65535)
+				return false;
+	}
+	return true;
+}
+
 // Takes straight BGRA16, always leaves it premultiplied, colour-managed on
 // the way when there is a target.
 static void

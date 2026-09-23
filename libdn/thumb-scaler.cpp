@@ -207,16 +207,18 @@ struct Batch {
 	VkDescriptorPool descriptors = VK_NULL_HANDLE;
 };
 
+// Opaque images are filtered in linear light. Transparent ones stay in encoded
+// values, because that is how thumbnails get composited.
 struct ScalePush {
 	uint32_t src_w, src_h, dst_w, dst_h;
 	uint32_t src_stride, dst_stride, orientation, transfer;
-	uint32_t opaque, linear_source;
+	uint32_t opaque, reduced_source;
 };
 
 struct ReducePush {
 	uint32_t src_w, src_h, dst_w, dst_h;
 	uint32_t src_stride, dst_stride, dst_x, dst_y;
-	uint32_t transfer, opaque, linear_source;
+	uint32_t transfer, opaque, reduced_source;
 };
 
 static_assert(sizeof(ScalePush) == 40);
@@ -750,7 +752,7 @@ record_reduce(
 	uint32_t sw = item.req.tile_w, sh = item.req.tile_h;
 	const Buffer *input = &b.source;
 	VkDeviceSize input_off = item.source_off;
-	bool linear = false;
+	bool reduced = false;
 	for (uint32_t level = 0; level < s.info.k; level++) {
 		const uint32_t dw = ceil_div(sw, 2), dh = ceil_div(sh, 2);
 		const bool last = level + 1 == s.info.k;
@@ -766,7 +768,7 @@ record_reduce(
 		ReducePush push{sw, sh, dw, dh, sw, last ? s.reduced_w : dw,
 			last ? item.req.tile_ox >> s.info.k : 0,
 			last ? item.req.tile_oy >> s.info.k : 0, uint32_t(s.info.transfer),
-			s.info.opaque ? 1u : 0u, linear ? 1u : 0u};
+			s.info.opaque ? 1u : 0u, reduced ? 1u : 0u};
 		dispatch(e, b.cmd, e.reduce, set, &push, sizeof push, dw, dh);
 		barrier(b.cmd, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
@@ -776,7 +778,7 @@ record_reduce(
 		input_off = 0;
 		sw = dw;
 		sh = dh;
-		linear = true;
+		reduced = true;
 	}
 	return true;
 }
@@ -788,7 +790,7 @@ record_h(ThumbScaler::Impl &e, Batch &b, Item &item, string *error)
 	VkDeviceSize input_off = item.source_off;
 	VkDeviceSize input_bytes =
 		VkDeviceSize(item.req.src_w) * item.req.src_h * kBytesPerPixel;
-	bool linear = false;
+	bool reduced = false;
 	if (item.kind == Item::Kind::Fit) {
 		Session *s = item.owner;
 		if (!s)
@@ -796,7 +798,7 @@ record_h(ThumbScaler::Impl &e, Batch &b, Item &item, string *error)
 		input = &s->reduced;
 		input_off = 0;
 		input_bytes = s->reduced.size;
-		linear = true;
+		reduced = true;
 	}
 	const VkDeviceSize mid_bytes =
 		VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
@@ -809,7 +811,7 @@ record_h(ThumbScaler::Impl &e, Batch &b, Item &item, string *error)
 		item.req.out_h, item.req.src_w, item.req.out_w,
 		uint32_t(orientation_or_0(item.req.orientation)),
 		uint32_t(item.req.transfer), item.req.opaque ? 1u : 0u,
-		linear ? 1u : 0u};
+		reduced ? 1u : 0u};
 	dispatch(e, b.cmd, e.scale_h, set, &push, sizeof push, item.req.out_w,
 		item.display_h);
 	return true;
@@ -1294,14 +1296,12 @@ ThumbScaler::queue(const Job &job)
 	info.tile_count = uint32_t(tiles.size());
 	info.orientation = job.orientation;
 	info.transfer = job.transfer;
-	// The transparent path is also exact for opaque pixels and avoids a second
-	// full pass over gigantic sources.
-	info.opaque = false;
+	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
+	info.opaque = opaque_bgra16(base, job.src_w, job.src_h, job.stride);
 	uint32_t session = 0;
 	if (!begin_session(e, info, &session))
 		return fail();
 
-	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
 	for (const Tile &tile : tiles) {
 		Slot slot;
 		const size_t tile_row = size_t(tile.w) * kBytesPerPixel;
@@ -1322,7 +1322,7 @@ ThumbScaler::queue(const Job &job)
 		req.src_h = tile.h;
 		req.orientation = job.orientation;
 		req.transfer = job.transfer;
-		req.opaque = false;
+		req.opaque = info.opaque;
 		req.user = job.user;
 		req.priority = job.priority;
 		req.path = job.path;
