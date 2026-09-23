@@ -1129,6 +1129,19 @@ test_partial_transparency()
 	}
 }
 
+static void
+test_linear_scaling()
+{
+	// Black and white average to linear half, which sRGB encodes as ~188;
+	// averaging encoded values would give 128.
+	const vector<Pixel> src{{.a = 65535}, kWhite};
+
+	dawn::ScaleOutput out;
+	if (scale(src, 2, 1, 1, 1, dawn::Orientation::Rotate0, &out))
+		for (size_t c = 0; c < 3; c++)
+			CHECK(abs(int(out.rgba8[c]) - 188) <= 1);
+}
+
 int
 main()
 {
@@ -1143,6 +1156,7 @@ main()
 		{"valid after rejected", test_rejected_then_valid},
 		{"orientation", test_orientation},
 		{"partial transparency", test_partial_transparency},
+		{"scaling in linear light", test_linear_scaling},
 		{"output encoding and composition", test_output_encoding},
 		{"linear GUI composition", test_composition},
 		{"viewer display curves", test_viewer_curves},

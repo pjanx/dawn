@@ -48,9 +48,9 @@ vec4 fetch_image(ivec2 p)
 
 vec4 fetch_working(ivec2 p, int orient, bool opaque)
 {
-	return associated_to_working(
+	return associated_to_linear(
 		fetch_image(oriented_to_source(p, orient, pc.image_size)),
-		pc.transfer, opaque);
+		unpack_transfer(pc.transfer), opaque);
 }
 
 #if DN_FILTER == DN_FILTER_NOHALO

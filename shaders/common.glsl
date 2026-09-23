@@ -210,17 +210,11 @@ vec4 associated_to_linear(vec4 t, int transfer, bool opaque)
 	return vec4(decode_rgb(clamp(t.rgb / t.a, 0.0, 1.0), transfer) * t.a, t.a);
 }
 
-vec4 associated_to_working(vec4 t, int packed, bool opaque)
-{
-	if (unpack_linear_blend(packed) == 0)
-		return t;
-	return associated_to_linear(t, unpack_transfer(packed), opaque);
-}
-
 #ifndef DN_COMPUTE
 // Alpha is resolved here because the image sits on a known background.
-// Filtering and composition retain their selected working space; output
-// encoding only changes the representation emitted after resolving alpha.
+// Filtering is always done in linear light; only composition follows
+// linear_blend, and output encoding only changes the representation emitted
+// after resolving alpha.
 vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
 		  bool composite, bool linear_blend, bool linear_output,
 		  vec3 background, vec3 checker_background, float checker_size)
@@ -231,16 +225,17 @@ vec4 finish_scale(vec4 premul, int transfer, bool checkerboard,
 	if (checkerboard)
 		background = checker(background, checker_background, checker_size);
 	else if (!composite) {
-		if (linear_blend == linear_output)
+		if (linear_output)
 			return vec4(rgb, a);
-		vec3 straight = a > 0.0 ? rgb / a : vec3(0.0);
-		return vec4((linear_output ? decode_rgb(straight, transfer)
-			: encode_rgb(straight, transfer)) * a, a);
+		return vec4(a > 0.0 ? encode_rgb(rgb / a, transfer) * a
+			: vec3(0.0), a);
 	}
+	if (linear_blend) {
+		rgb += background * (1.0 - a);
+		return vec4(linear_output ? rgb : encode_rgb(rgb, transfer), 1.0);
+	}
+	rgb = a > 0.0 ? encode_rgb(rgb / a, transfer) * a : vec3(0.0);
 	rgb += background * (1.0 - a);
-	if (linear_blend == linear_output)
-		return vec4(rgb, 1.0);
-	return vec4(linear_output ? decode_rgb(rgb, transfer)
-		: encode_rgb(rgb, transfer), 1.0);
+	return vec4(linear_output ? decode_rgb(rgb, transfer) : rgb, 1.0);
 }
 #endif
