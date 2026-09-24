@@ -570,7 +570,9 @@ choose_k_impl(const ThumbScaler::Impl &e, uint32_t w, uint32_t h, uint32_t *out)
 	if (!w || !h || !out || !e.max_image_dim)
 		return false;
 
-	for (uint32_t k = 0; k < 32; k++) {
+	// Tiles only reach the reduced image through halving: k = 0 would leave
+	// it empty, whenever a ring smaller than the budget made this tile.
+	for (uint32_t k = 1; k < 32; k++) {
 		const uint32_t rw = reduced_dim(w, k), rh = reduced_dim(h, k);
 		const uint64_t bytes = uint64_t(rw) * rh * kBytesPerPixel;
 		if (rw <= e.max_image_dim && rh <= e.max_image_dim &&

@@ -10,15 +10,18 @@
 #include "fullscreen-vert-spv.h"
 #include "libdn/libdnvk.hpp"
 #include "libdn/scale-scaler.hpp"
+#include "libdn/thumb-scaler.hpp"
 #include "libdn/vk-device.hpp"
 #include "test.hpp"
 
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace std;
@@ -75,6 +78,7 @@ struct EngineReadback {
 	VkPhysicalDevice phys = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue queue = VK_NULL_HANDLE;
+	uint32_t family = 0;
 	VkCommandPool pool = VK_NULL_HANDLE;
 	VkCommandBuffer cmd = VK_NULL_HANDLE;
 	VkFence fence = VK_NULL_HANDLE;
@@ -157,7 +161,6 @@ EngineReadback::init(string *error)
 	}
 	if (!CALL_VK(CreateInstance, " test", &ici, nullptr, &instance))
 		return false;
-	uint32_t family = 0;
 	if (!dawn::vk_create_graphics_device(instance, VK_NULL_HANDLE, nullptr, {},
 			&phys, &device, &queue, &family, error))
 		return false;
@@ -1143,6 +1146,54 @@ test_linear_scaling()
 			CHECK(abs(int(out.rgba8[c]) - 188) <= 1);
 }
 
+static void
+test_thumb_tiles()
+{
+	// 2 MiB through a 1 MiB ring: tiled, though it needs no reduction to fit
+	// the reduction budget.
+	EngineReadback gpu;
+	dawn::ThumbScaler thumbs;
+	string error;
+	if (!gpu.init(&error) ||
+		!thumbs.init(
+			gpu.phys, gpu.device, gpu.queue, gpu.family, 1 << 20, &error)) {
+		test::fail("%s", error.c_str());
+		return;
+	}
+
+	auto image = dawn::image_new(512, 512);
+	for (uint32_t y = 0; y < image->height; y++)
+		for (uint32_t x = 0; x < image->width; x++)
+			memcpy(dawn::row_u16(*image, y) + x * 4, &kRed, sizeof kRed);
+
+	dawn::ThumbScaler::Job job;
+	job.image = image;
+	job.outputs = {{4, 4, 0}};
+	job.user = 1;
+	bool queued = false;
+	thread worker([&] { queued = thumbs.queue(job); });
+	vector<dawn::ThumbScaler::Result> done;
+	for (int i = 0; i < 5000 && done.empty(); i++) {
+		thumbs.flush();
+		thumbs.poll(&done);
+		this_thread::sleep_for(chrono::milliseconds(1));
+	}
+	// On timeout, the worker may still wait for staging space.
+	thumbs.shutdown();
+	worker.join();
+	CHECK(queued);
+	if (done.size() != 1 || done[0].failed || done[0].outputs.size() != 1) {
+		test::fail("no result");
+		return;
+	}
+
+	const vector<uint16_t> &out = done[0].outputs[0].data;
+	CHECK(out.size() == 4 * 4 * 4);
+	for (size_t i = 0; i + 3 < out.size(); i += 4)
+		CHECK(out[i] <= 1 && out[i + 1] <= 1 && out[i + 2] >= 65534 &&
+			out[i + 3] == 65535);
+}
+
 int
 main()
 {
@@ -1166,6 +1217,7 @@ main()
 		{"image and overlay share a pass", test_image_overlay},
 		{"glyph contrast by colour", test_glyph_contrast},
 		{"viewport changes without setup", test_viewport_changes},
+		{"thumbnail tiles without reduction", test_thumb_tiles},
 	});
 	// Tear down Vulkan before the validation layer's process-exit cleanup.
 	scaler.destroy();
