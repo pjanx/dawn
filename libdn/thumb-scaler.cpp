@@ -94,20 +94,22 @@ pick_memory(VkPhysicalDevice phys, uint32_t bits,
 static bool
 job_size(const ThumbScaler::Job &job, uint64_t *row, uint64_t *bytes)
 {
-	if (!job.pixels || job.pixels->empty() || !job.src_w || !job.src_h ||
+	const Image *image = job.image.get();
+	if (!image || image->data.empty() || !image->width || !image->height ||
 		job.outputs.empty() || job.outputs.size() > kMaxBatchReqs)
 		return false;
 	for (const ThumbScaler::Job::Output &output : job.outputs)
 		if (!output.width || !output.height)
 			return false;
-	const uint64_t row_bytes = uint64_t(job.src_w) * kBytesPerPixel;
-	if (row_bytes > job.stride || row_bytes > UINT64_MAX / job.src_h)
+	const uint64_t row_bytes = uint64_t(image->width) * kBytesPerPixel;
+	if (row_bytes > image->stride || row_bytes > UINT64_MAX / image->height)
 		return false;
 	if (row)
 		*row = row_bytes;
-	*bytes = row_bytes * job.src_h;
-	const uint64_t available = job.pixels->size() * sizeof(uint16_t);
-	const uint64_t needed = uint64_t(job.stride) * (job.src_h - 1) + row_bytes;
+	*bytes = row_bytes * image->height;
+	const uint64_t available = image->data.size();
+	const uint64_t needed =
+		uint64_t(image->stride) * (image->height - 1) + row_bytes;
 	return *bytes <= SIZE_MAX && needed <= available;
 }
 
@@ -1103,15 +1105,14 @@ queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 	if (!claim(e, size_t(bytes), job.user, job.priority, &slot))
 		return false;
 
+	const Image &image = *job.image;
 	bool opaque = true;
 	auto *dst = (uint8_t *) slot.mapped;
-	const auto *src = reinterpret_cast<const uint8_t *>(job.pixels->data());
-	for (uint32_t y = 0; y < job.src_h; y++) {
-		const auto *row =
-			reinterpret_cast<const uint16_t *>(src + y * job.stride);
+	for (uint32_t y = 0; y < image.height; y++) {
+		const uint16_t *row = row_u16(image, y);
 		memcpy(dst, row, size_t(row_bytes));
 		if (opaque) {
-			for (uint32_t x = 0; x < job.src_w; x++) {
+			for (uint32_t x = 0; x < image.width; x++) {
 				if (row[x * 4 + 3] != 65535) {
 					opaque = false;
 					break;
@@ -1123,8 +1124,8 @@ queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 
 	Request req;
 	req.slot = slot.id;
-	req.src_w = job.src_w;
-	req.src_h = job.src_h;
+	req.src_w = image.width;
+	req.src_h = image.height;
 	req.outputs = job.outputs;
 	req.orientation = job.orientation;
 	req.transfer = job.transfer;
@@ -1272,8 +1273,9 @@ ThumbScaler::queue(const Job &job)
 	uint64_t bytes = 0;
 	if (!job_size(job, nullptr, &bytes))
 		return fail();
-	if (bytes <= e.ring_bytes && job.src_w <= e.max_image_dim &&
-		job.src_h <= e.max_image_dim) {
+	const Image &image = *job.image;
+	if (bytes <= e.ring_bytes && image.width <= e.max_image_dim &&
+		image.height <= e.max_image_dim) {
 		if (queue_full(e, job))
 			return true;
 		return fail();
@@ -1281,23 +1283,23 @@ ThumbScaler::queue(const Job &job)
 
 	uint32_t k = 0;
 	vector<Tile> tiles;
-	if (!choose_k(e, job.src_w, job.src_h, &k) ||
-		!plan_tiles(e, job.src_w, job.src_h, k, &tiles) || tiles.empty())
+	if (!choose_k(e, image.width, image.height, &k) ||
+		!plan_tiles(e, image.width, image.height, k, &tiles) || tiles.empty())
 		return fail();
 
 	SessionInfo info;
 	info.path = job.path;
 	info.user = job.user;
 	info.priority = job.priority;
-	info.src_w = job.src_w;
-	info.src_h = job.src_h;
+	info.src_w = image.width;
+	info.src_h = image.height;
 	info.outputs = job.outputs;
 	info.k = k;
 	info.tile_count = uint32_t(tiles.size());
 	info.orientation = job.orientation;
 	info.transfer = job.transfer;
-	const auto *base = reinterpret_cast<const uint8_t *>(job.pixels->data());
-	info.opaque = opaque_bgra16(base, job.src_w, job.src_h, job.stride);
+	info.opaque = opaque_bgra16(
+		image.data.data(), image.width, image.height, image.stride);
 	uint32_t session = 0;
 	if (!begin_session(e, info, &session))
 		return fail();
@@ -1310,7 +1312,7 @@ ThumbScaler::queue(const Job &job)
 
 		auto *dst = (uint8_t *) slot.mapped;
 		for (uint32_t y = 0; y < tile.h; y++) {
-			const uint8_t *src = base + size_t(tile.oy + y) * job.stride +
+			const uint8_t *src = row_bytes(image, tile.oy + y) +
 				size_t(tile.ox) * kBytesPerPixel;
 			memcpy(dst, src, tile_row);
 			dst += tile_row;

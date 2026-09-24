@@ -359,9 +359,10 @@ the specification] I've put together.
 For the second milestone, wide thumbnails will move into a database, abandoning
 trying to follow a specification.  Instead, we will try to reuse platform tools.
 
-Due to quality requirements and performance constraints, scaling source image
-data for thumbnails must be done on a GPU.  The GPU is a bottleneck, and forms
-a special data path.  The solution has grown an entire thumbnail scheduler.
+Scaling source image data for thumbnails is done on the GPU, which gets about
+twice as fast as SIMD would, and hopefully results in better parallelisation.
+The GPU is still a bottleneck, and it forms a special data path, so it might not
+be quite justified--the solution has grown a complex thumbnail scheduler.
 (We also have various pathways of sourcing somewhat usable image data,
 before we produce a known-to-be-good quality thumbnail.)
 

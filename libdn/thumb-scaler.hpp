@@ -11,7 +11,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -42,10 +41,8 @@ struct ThumbScaler
 			int tag = 0;
 		};
 
-		std::shared_ptr<const std::vector<uint16_t>> pixels;
 		// BGRA16, premultiplied. Ownership lasts through staging.
-		size_t stride = 0;
-		uint32_t src_w = 0, src_h = 0;
+		std::shared_ptr<const Image> image;
 		std::vector<Output> outputs;
 		Orientation orientation = Orientation::Rotate0;
 		Transfer transfer = Transfer::Srgb;

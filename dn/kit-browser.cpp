@@ -35,6 +35,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -677,7 +678,7 @@ queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 // Non-cache thumbnails are already in display RGB. Linearize them before
 // the shared GPU scaler, which otherwise only knows three analytic curves.
 static void
-thumb_curves(vector<uint16_t> &pixels, const ScreenColour *colour, bool decode)
+thumb_curves(span<uint16_t> pixels, const ScreenColour *colour, bool decode)
 {
 	for (size_t i = 0; i < pixels.size(); i += 4) {
 		const uint16_t a = pixels[i + 3];
@@ -758,16 +759,12 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			update.ram_h = oh;
 			update.ram_tier = -1;
 		} else {
-			dawn::ThumbScaler::Job gpu;
-			auto owned = make_shared<vector<uint16_t>>(
-				size_t(src.width) * src.height * 4);
-			copy_bgra16(src, owned->data(), src.width, src.height);
 			if (!job.cacheable)
-				thumb_curves(*owned, job.screen_colour.get(), true);
-			gpu.pixels = std::move(owned);
-			gpu.stride = size_t(src.width) * dawn::kBytesPerPixel;
-			gpu.src_w = src.width;
-			gpu.src_h = src.height;
+				thumb_curves({dawn::row_u16(*update.image, 0),
+								 size_t(src.width) * src.height * 4},
+					job.screen_colour.get(), true);
+			dawn::ThumbScaler::Job gpu;
+			gpu.image = update.image;
 			gpu.outputs = job.cacheable
 				? bundle_outputs(
 					  update.geometry_w, update.geometry_h, update.tier)
