@@ -165,6 +165,8 @@ public:
 	Presentation latch(Presentation wanted, float *white);
 	/// Applies the latched description, right before the frame's present.
 	void apply_latched();
+	/// Which description the last frame went out under, marked with N_().
+	[[nodiscard]] const char *latched_name() const;
 };
 
 // True when the compositor does not advertise zxdg_decoration_manager_v1

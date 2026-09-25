@@ -52,6 +52,7 @@ class Window final : public QWindow
 
 	bool refresh_screen_profile(QScreen *target_screen);
 	void apply_screen_profile(QScreen *target_screen, bool force_reload);
+	std::vector<std::pair<const char *, QString>> about_details() const;
 	void request_render();
 	void arm_ui_wake();
 	void render();
@@ -111,6 +112,7 @@ class Window final : public QWindow
 	bool font_change_pending_ = false;
 	bool update_pending_ = false;
 	bool screen_profile_fallback_ = true;
+	std::string screen_profile_label_;  // Its name and source
 	// What the screen profile last saw of Windows Advanced Color, against
 	// which activation tells a brightness change from a mode change.
 	AdvancedColor advanced_color_;

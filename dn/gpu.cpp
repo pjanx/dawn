@@ -10,8 +10,11 @@
 
 #include <QtLogging>
 
+#include <algorithm>
+#include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
 using namespace std;
 
@@ -35,10 +38,31 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 		qWarning("%s", err.c_str());
 		return false;
 	}
-	VkPhysicalDeviceProperties properties{};
-	vkGetPhysicalDeviceProperties(this->phys_, &properties);
-	this->device_name_ = properties.deviceName;
-	qInfo("device: %s", this->device_name_.c_str());
+	// Vulkan 1.1 only knows the driver through this extension.
+	uint32_t count = 0;
+	vkEnumerateDeviceExtensionProperties(this->phys_, nullptr, &count, nullptr);
+	vector<VkExtensionProperties> extensions(count);
+	vkEnumerateDeviceExtensionProperties(
+		this->phys_, nullptr, &count, extensions.data());
+	const bool tells_driver = any_of(extensions.begin(), extensions.end(),
+		[](const VkExtensionProperties &e) {
+			return !strcmp(e.extensionName,
+				VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
+		});
+	VkPhysicalDeviceDriverProperties driver{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+	};
+	VkPhysicalDeviceProperties2 properties{
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+		.pNext = tells_driver ? &driver : nullptr,
+	};
+	vkGetPhysicalDeviceProperties2(this->phys_, &properties);
+	this->device_name_ = properties.properties.deviceName;
+	if (tells_driver)
+		this->driver_ =
+			string(driver.driverName) + " " + string(driver.driverInfo);
+	qInfo("device: %s (%s)", this->device_name_.c_str(),
+		this->driver_.c_str());
 	return true;
 }
 
@@ -55,6 +79,7 @@ GpuContext::destroy()
 	this->queue_ = VK_NULL_HANDLE;
 	this->queue_family_ = 0;
 	this->device_name_.clear();
+	this->driver_.clear();
 }
 
 bool

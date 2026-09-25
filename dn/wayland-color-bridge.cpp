@@ -8,6 +8,7 @@
 #include "wayland-color-bridge.hpp"
 #include "window.hpp"
 
+#include <libdn/gettext.hpp>
 #include <libdn/ipc-shm.hpp>
 
 #include <QByteArray>
@@ -271,6 +272,19 @@ WaylandColorBridge::apply_latched()
 	else
 		wp_color_management_surface_v1_unset_image_description(
 			this->color_surface_);
+}
+
+const char *
+WaylandColorBridge::latched_name() const
+{
+	if (!this->latched_.id)
+		return N_("none");
+	if (this->latched_.id == this->hdr_.id)
+		return N_("HDR parametric");
+	if (this->latched_.id == this->sdr_.id)
+		return N_("SDR parametric");
+	// TRANSLATORS: The description the compositor prefers for the surface.
+	return this->encoded_icc_ ? "ICC" : N_("preferred");
 }
 
 void

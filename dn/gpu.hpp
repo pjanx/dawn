@@ -26,6 +26,7 @@ class GpuContext
 	VkQueue queue_ = VK_NULL_HANDLE;
 	uint32_t queue_family_ = 0;
 	std::string device_name_;
+	std::string driver_;
 
 public:
 	GpuContext() = default;
@@ -50,6 +51,8 @@ public:
 	{
 		return this->device_name_;
 	}
+	/// The driver's name and version, where the device can tell.
+	[[nodiscard]] const std::string &driver() const { return this->driver_; }
 };
 
 }  // namespace dn

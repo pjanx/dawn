@@ -13,6 +13,7 @@ dn/kit-viewer.cpp
 dn/kit.cpp
 dn/main.cpp
 dn/volumes-unix.cpp
+dn/wayland-color-bridge.cpp
 dn/window.cpp
 libdn/config-macos.mm
 libdn/config-unix.cpp

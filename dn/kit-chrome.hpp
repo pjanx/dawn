@@ -16,6 +16,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace dn
@@ -87,7 +88,9 @@ void dialog_entry(Kit &kit, const char *title, const char *affirm,
 void dialog_question(Kit &kit, const QString &message, const char *affirm,
 	std::function<void(Kit &)> on_confirm);
 
-void dialog_about(Kit &kit);
+/// Details pair a label marked with N_() with a value shown as it is.
+void dialog_about(
+	Kit &kit, std::span<const std::pair<const char *, QString>> details);
 void dialog_shortcuts(
 	Kit &kit, std::span<const MenuNode> tree, std::span<const Action> keys);
 void dialog_location(Kit &kit, std::function<void(const QString &)> on_open);

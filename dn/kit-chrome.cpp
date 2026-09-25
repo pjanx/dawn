@@ -244,7 +244,7 @@ shortcut_row(const ActionDef &def)
 // The body takes its natural height, never stretched: it only knows to
 // scroll when what it holds is taller than it is.
 void
-dialog_about(Kit &kit)
+dialog_about(Kit &kit, span<const pair<const char *, QString>> details)
 {
 	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
@@ -253,7 +253,23 @@ dialog_about(Kit &kit)
 	col->add_child(dialog_label(N_("Colour-managed image browser and viewer."),
 					   false, true),
 		size_t(-1));
-	dialog.show(kit, std::move(col), 360.f,
+
+	auto table = make_unique<GutterColumn>();
+	table->gap = 2.f;
+	for (const auto &[name, value] : details) {
+		auto row = make_unique<GutterRow>();
+		row->gap = 8.f;
+		auto label = plain_label(name, false);
+		label->dim = true;
+		auto text = make_unique<Label>();
+		text->text = value;
+		text->wrap = true;
+		row->add_child(std::move(label), size_t(-1));
+		row->add_child(std::move(text), size_t(-1));
+		table->add_child(std::move(row), size_t(-1));
+	}
+	col->add_child(std::move(table), size_t(-1));
+	dialog.show(kit, std::move(col), 480.f,
 		dialog_dismiss_action(dialog, N_("_Close")), nullptr);
 }
 

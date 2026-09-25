@@ -412,6 +412,14 @@ Renderer::offers_extended() const
 		pick_surface_format(formats, true).format == kExtendedFormat;
 }
 
+string
+Renderer::swapchain_summary() const
+{
+	return string(vk_format_name(this->format_)) + " + " +
+		vk_colorspace_name(this->color_space_) + " (dither: " +
+		to_string(dithering() ? dither_bits(this->format_) : 0) + " bpc)";
+}
+
 void
 Renderer::create_swapchain()
 {
@@ -450,10 +458,7 @@ Renderer::create_swapchain()
 	if (this->format_ != old_format)
 		destroy_presentation_pipeline();
 	if (this->format_ != old_format || this->color_space_ != old_color_space) {
-		qInfo("swapchain: %s + %s (dither: %d bpc)",
-			vk_format_name(this->format_),
-			vk_colorspace_name(this->color_space_),
-			dithering() ? dither_bits(this->format_) : 0);
+		qInfo("swapchain: %s", swapchain_summary().c_str());
 		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT &&
 			!this->extended_)
 			qWarning("swapchain: PASS_THROUGH unavailable; "
@@ -701,6 +706,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	}
 	if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR)
 		check_vk(acquire, "vkAcquireNextImageKHR");
+	this->presented_ = presentation;
 
 	CALL_VK(ResetFences, "", this->device_, 1, &this->fence_);
 	CALL_VK(ResetCommandBuffer, "", this->cmd_, 0);

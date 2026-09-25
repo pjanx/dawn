@@ -450,7 +450,7 @@ Window::bind_host()
 				break;
 
 			if (a == Action::About)
-				dialog_about(this->kit_);
+				dialog_about(this->kit_, about_details());
 			else
 				dialog_shortcuts(this->kit_, ui->menu_tree, ui->keys);
 			request_render();
@@ -808,7 +808,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	};
 
 	shared_ptr<dawn::Profile> next;
-	string label = "sRGB (fallback)";
+	string label = N_("sRGB (fallback)");
 	string source = "srgb";
 	const vector<unsigned char> &override =
 		this->app_->settings.icc_profile_override;
@@ -837,10 +837,10 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	// gamut, not the BT.2020 container of PQ.
 #ifdef Q_OS_WIN
 	const bool own_gamut = offers_extended;
-	const char *own_label = "DXGI output primaries", *own_source = "dxgi";
+	const char *own_label = N_("DXGI output primaries"), *own_source = "dxgi";
 #else
 	const bool own_gamut = range.hdr;
-	const char *own_label = "the compositor's target primaries",
+	const char *own_label = N_("the compositor's target primaries"),
 			   *own_source = "compositor";
 #endif
 	if (!next && own_gamut && range.primaries) {
@@ -883,6 +883,10 @@ Window::refresh_screen_profile(QScreen *target_screen)
 			std::move(described), capable ? &encoding : nullptr);
 #endif
 	this->screen_profile_fallback_ = source == "srgb";
+	// The fixed labels have translations; names and paths pass through.
+	this->screen_profile_label_ = _(label.c_str());
+	if (source != "srgb")
+		this->screen_profile_label_ += " (" + source + ")";
 
 	this->screen_state_.capable = capable;
 	this->screen_state_.hdr = range.hdr;
@@ -916,6 +920,75 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	if (changed)
 		qInfo("screen profile: %s", label.c_str());
 	return changed;
+}
+
+// What this window makes of its display, for the about dialog.  Names that
+// come from the system or from Vulkan are shown as they are.
+vector<pair<const char *, QString>>
+Window::about_details() const
+{
+	vector<pair<const char *, QString>> details;
+	if (const QScreen *s = screen()) {
+		const QSize size = s->geometry().size() * s->devicePixelRatio();
+		// TRANSLATORS: A screen's name, its size in pixels, and its scale.
+		details.emplace_back(N_("Screen"),
+			QString::fromUtf8(_("%1, %L2\u00d7%L3 at %L4\u00d7"))
+				.arg(s->name())
+				.arg(size.width())
+				.arg(size.height())
+				.arg(s->devicePixelRatio()));
+	}
+	QString profile = QString::fromStdString(this->screen_profile_label_);
+	if (this->screen_state_.colour &&
+		!this->screen_state_.colour->encoding.matrix_trc)
+		profile =
+			QString::fromUtf8(_("%1, approximate sRGB curves")).arg(profile);
+	details.emplace_back(N_("Profile"), profile);
+	details.emplace_back(N_("Swapchain"),
+		QString::fromStdString(this->renderer_.swapchain_summary()));
+
+	// TRANSLATORS: Encoded frames are encoded for the display profile,
+	// the others pass linear light on to the system.
+	static const char *const kPresentations[] = {
+		N_("Encoded"), N_("SDR"), N_("HDR")};
+	QString presentation = QString::fromUtf8(
+		_(kPresentations[size_t(this->renderer_.presented())]));
+	if (!this->screen_state_.capable)
+		presentation =
+			QString::fromUtf8(_("%1, extended presentation unavailable"))
+				.arg(presentation);
+	details.emplace_back(N_("Presentation"), presentation);
+	// TRANSLATORS: Headroom is how many times brighter than SDR white
+	// the display can currently go.
+	details.emplace_back(N_("Range"),
+		this->screen_state_.hdr
+			? QString::fromUtf8(_("HDR, headroom %L1"))
+				  .arg(this->screen_state_.headroom, 0, 'f', 2)
+			: QString::fromUtf8(_("SDR")));
+
+	QString gpu = QString::fromStdString(this->app_->gpu.device_name());
+	if (!this->app_->gpu.driver().empty())
+		gpu += " (" + QString::fromStdString(this->app_->gpu.driver()) + ")";
+	details.emplace_back(N_("GPU"), gpu);
+#ifdef Q_OS_MACOS
+	const string tag = macos_layer_colour_space(this);
+	details.emplace_back(N_("Layer colour space"),
+		tag.empty() ? QString::fromUtf8(_("untagged"))
+					: QString::fromStdString(tag));
+#endif
+#ifdef Q_OS_WIN
+	details.emplace_back(N_("Advanced Color"),
+		this->advanced_color_.active
+			? QString::fromUtf8(_("on, SDR white %L1 cd/m\u00b2"))
+				  .arg(this->advanced_color_.white * 80, 0, 'f', 0)
+			: QString::fromUtf8(_("off")));
+#endif
+#if DN_WITH_WAYLAND
+	if (auto *shell = dynamic_cast<WaylandWindow *>(parent()))
+		details.emplace_back(N_("Image description"),
+			QString::fromUtf8(_(shell->color_bridge().latched_name())));
+#endif
+	return details;
 }
 
 void

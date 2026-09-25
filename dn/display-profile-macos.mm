@@ -16,6 +16,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 
 #include <functional>
+#include <string>
 #include <utility>
 
 using namespace std;
@@ -147,15 +148,34 @@ macos_watch_screen_parameters(function<void()> fn)
 }
 
 // Qt wraps its Metal layer in a container, unless QT_MAC_NO_CONTAINER_LAYER.
-void
-macos_tag_for_display(QWindow *window)
+static id
+metal_layer(NSView *view)
 {
-	auto *view = reinterpret_cast<NSView *>(window->winId());
 	id layer = view.layer;
 	if (![layer respondsToSelector:@selector(setColorspace:)])
 		layer = [layer sublayers].firstObject;
-	if ([layer respondsToSelector:@selector(setColorspace:)])
-		[layer setColorspace:view.window.colorSpace.CGColorSpace];
+	return [layer respondsToSelector:@selector(setColorspace:)] ? layer : nil;
+}
+
+void
+macos_tag_for_display(const QWindow *window)
+{
+	auto *view = reinterpret_cast<NSView *>(window->winId());
+	[metal_layer(view) setColorspace:view.window.colorSpace.CGColorSpace];
+}
+
+string
+macos_layer_colour_space(const QWindow *window)
+{
+	auto *view = reinterpret_cast<NSView *>(window->winId());
+	CGColorSpaceRef space = [metal_layer(view) colorspace];
+	if (!space)
+		return {};
+	if (CFStringRef name = CGColorSpaceGetName(space))
+		return QString::fromCFString(name).toStdString();
+	auto *wrapped =
+		[[[NSColorSpace alloc] initWithCGColorSpace:space] autorelease];
+	return QString::fromNSString(wrapped.localizedName).toStdString();
 }
 
 }  // namespace dn

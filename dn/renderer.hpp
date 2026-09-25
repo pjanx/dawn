@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string>
 #include <vector>
 
 class QWindow;
@@ -221,6 +222,7 @@ class Renderer
 	bool needs_resize_ = false;
 	bool extended_ = false;
 	PresentationTarget presentation_;
+	Presentation presented_ = Presentation::Encoded;
 	bool prefer_premultiplied_ = false;
 	bool dither_enabled_ = true;
 	uint32_t dest_inset_ = 0;
@@ -262,6 +264,10 @@ public:
 	/// Whether the surface has the format extended presentation needs.
 	/// Asked anew each time, as drivers may change it with the display mode.
 	[[nodiscard]] bool offers_extended() const;
+	/// Format, colour space and dithering, as the swapchain has them.
+	[[nodiscard]] std::string swapchain_summary() const;
+	/// What the last presented frame got.
+	[[nodiscard]] Presentation presented() const { return this->presented_; }
 	bool upload_font(
 		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
 	[[nodiscard]] int thumb_atlas_max() const;
