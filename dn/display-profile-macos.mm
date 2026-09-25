@@ -8,6 +8,7 @@
 #include "display-profile.hpp"
 
 #include <QScreen>
+#include <QWindow>
 #include <QtGui/qscreen_platform.h>
 #include <QtLogging>
 
@@ -143,6 +144,18 @@ macos_watch_screen_parameters(function<void()> fn)
 		[[NSNotificationCenter defaultCenter] removeObserver:observer];
 		[observer release];
 	});
+}
+
+// Qt wraps its Metal layer in a container, unless QT_MAC_NO_CONTAINER_LAYER.
+void
+macos_tag_for_display(QWindow *window)
+{
+	auto *view = reinterpret_cast<NSView *>(window->winId());
+	id layer = view.layer;
+	if (![layer respondsToSelector:@selector(setColorspace:)])
+		layer = [layer sublayers].firstObject;
+	if ([layer respondsToSelector:@selector(setColorspace:)])
+		[layer setColorspace:view.window.colorSpace.CGColorSpace];
 }
 
 }  // namespace dn

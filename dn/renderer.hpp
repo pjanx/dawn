@@ -23,6 +23,8 @@
 #include <span>
 #include <vector>
 
+class QWindow;
+
 namespace dn
 {
 
@@ -174,6 +176,7 @@ class Renderer
 	[[nodiscard]] bool dithering() const;
 	[[nodiscard]] VkFormat compose_format() const;
 
+	QWindow *window_ = nullptr;               // borrowed, for macOS tagging
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;   // borrowed from QWindow
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;  // borrowed from GpuContext
 	VkDevice device_ = VK_NULL_HANDLE;        // borrowed from GpuContext
@@ -236,8 +239,8 @@ public:
 	Renderer(const Renderer &) = delete;
 	Renderer &operator=(const Renderer &) = delete;
 
-	bool init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
-		VkPresentModeKHR preferred_present_mode,
+	bool init(const GpuContext &gpu, QWindow *window, VkSurfaceKHR surface,
+		Extent pixel, VkPresentModeKHR preferred_present_mode,
 		std::function<void()> present_about_to_queue,
 		std::function<void()> present_queued);
 	void set_image(uint32_t w, uint32_t h, const uint8_t *pixels,

@@ -275,7 +275,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 	this->renderer_.set_prefer_premultiplied(this->csd_);
 	this->renderer_.set_dither_enabled(!this->app_->settings.disable_dithering);
 	if (!this->renderer_.init(
-			this->app_->gpu, this->surface_, pixel_size(),
+			this->app_->gpu, this, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
 			[this, instance] {
 				instance->presentAboutToBeQueued(this);

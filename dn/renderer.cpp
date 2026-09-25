@@ -7,6 +7,8 @@
 
 #include "renderer.hpp"
 
+#include "display-profile.hpp"
+
 #include "dn-overlay-frag-spv.h"
 #include "dn-overlay-vert-spv.h"
 #include "dn-present-frag-spv.h"
@@ -227,11 +229,12 @@ sampled_info(int width, int height)
 // --- Renderer ----------------------------------------------------------------
 
 bool
-Renderer::init(const GpuContext &gpu, VkSurfaceKHR surface, Extent pixel,
-	VkPresentModeKHR preferred_present_mode,
+Renderer::init(const GpuContext &gpu, QWindow *window, VkSurfaceKHR surface,
+	Extent pixel, VkPresentModeKHR preferred_present_mode,
 	function<void()> present_about_to_queue, function<void()> present_queued)
 {
 	destroy();
+	this->window_ = window;
 	this->surface_ = surface;
 	this->phys_ = gpu.phys();
 	this->preferred_filter = dawn::preferred_filter(this->phys_);
@@ -506,6 +509,9 @@ Renderer::create_swapchain()
 	};
 	CALL_VK(CreateSwapchainKHR, "", this->device_, &swapchain_info, nullptr,
 		&this->swapchain_);
+	// Drawables would otherwise keep the tag of a display the window left.
+	if (!this->extended_)
+		macos_tag_for_display(this->window_);
 
 	uint32_t count = 0;
 	CALL_VK(GetSwapchainImagesKHR, " count", this->device_, this->swapchain_,

@@ -16,6 +16,7 @@
 #include <vector>
 
 class QScreen;
+class QWindow;
 
 namespace dn
 {
@@ -64,6 +65,9 @@ DisplayRange macos_display_range(QScreen *screen);
 /// Calls `fn` on every change of screen parameters, EDR ramps included,
 /// for as long as the returned handle lives.
 std::shared_ptr<void> macos_watch_screen_parameters(std::function<void()> fn);
+/// Tags the window's Metal layer as display colour, as Qt does.  Drawables
+/// keep the last tag they were presented with, which MoltenVK does not clear.
+void macos_tag_for_display(QWindow *window);
 #else
 inline DisplayRange
 macos_display_range(QScreen *)
@@ -74,6 +78,10 @@ inline std::shared_ptr<void>
 macos_watch_screen_parameters(std::function<void()>)
 {
 	return {};
+}
+inline void
+macos_tag_for_display(QWindow *)
+{
 }
 #endif
 

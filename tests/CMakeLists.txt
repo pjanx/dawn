@@ -151,6 +151,13 @@ dawn_embed_shader(test-scale-scaler dn-thumb.frag dn_thumb_frag)
 dawn_embed_shader(test-scale-scaler dn-present.frag dn_present_frag)
 dawn_embed_shader(test-scale-scaler fullscreen.vert fullscreen_vert)
 target_link_libraries(test-scale-scaler PRIVATE libdn Vulkan::Vulkan Qt6::Gui)
+if (APPLE)
+	# The renderer tags its Metal layer through this.
+	target_sources(test-scale-scaler PRIVATE
+		"${PROJECT_SOURCE_DIR}/dn/display-profile-macos.mm")
+	target_link_libraries(test-scale-scaler PRIVATE
+		"${DN_APPKIT_FRAMEWORK}" "${DN_COREGRAPHICS_FRAMEWORK}")
+endif()
 add_test(NAME scale_scaler COMMAND test-scale-scaler)
 set_tests_properties(scale_scaler PROPERTIES
 	SKIP_RETURN_CODE 77
