@@ -165,6 +165,8 @@ struct TextTarget {
 	QString text;
 	// Caret offset into text, in UTF-16 units, as Qt counts them.
 	int caret = 0;
+	// The other end of the selection, equal to caret when there is none.
+	int anchor = 0;
 	// Where to park the candidate window, in the same coordinates as
 	// Widget::r -- getting this wrong strands the list in a screen corner.
 	Rect caret_rect;
@@ -427,15 +429,15 @@ int grapheme_after(const QString &text, int at);
 int grapheme_at_or_before(const QString &text, int at);
 int grapheme_at_or_after(const QString &text, int at);
 
-// A single-line text field.  There is no selection: the caret is the whole
-// of the state, and a click just places it.  Everything it can be told to do
-// is therefore a caret move or a splice at the caret, the right-click menu
-// included -- which is why that menu has Paste on it, and nothing else.
+// A single-line text field.  The selection runs from the anchor to the caret,
+// and is empty when they meet; every committed edit collapses it.  It never
+// coexists with a preedit: composition starts by replacing it.
 struct Entry : Widget {
 	QString text;
 	QString placeholder;
 	// Uncommitted input-method text, shown at the caret but not part of text.
 	QString preedit;
+	int anchor = 0;
 	int caret = 0;
 	TextAffinity caret_affinity = TextAffinity::Leading;
 	int preedit_caret = 0;
@@ -469,8 +471,11 @@ struct Entry : Widget {
 	void focus_lost(Kit &kit) override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
+		unsigned mods) override;
+	bool motion(Kit &kit, float x, float y) override;
 	// Opens the caret menu, at the pointer or at the caret.
-	void context(Kit &kit, Rect anchor, bool kbd);
+	void context(Kit &kit, Rect at, bool kbd);
 	bool key(Kit &kit, const Key &ev) override;
 	bool input_method(Kit &kit, const QString &commit, const QString &pre,
 		int pre_caret) override;
@@ -487,8 +492,14 @@ struct Entry : Widget {
 	void replace(Kit &kit, int start, int end, const QString &with);
 	// Whole-value assignment, which leaves the caret at the end.
 	void set_text(Kit &kit, const QString &next);
-	void move_caret(Kit &kit, int to);
-	void move_caret_to_hit(Kit &kit, TextHit hit);
+	// Moving the caret without extending is selecting from it to itself.
+	void select(Kit &kit, int from, int to);
+	// Unlike select(), scrolls only as far as it must, so that a drag does
+	// not pull the text out from under the pointer.
+	void move_caret_to_hit(Kit &kit, TextHit hit, bool extend);
+	[[nodiscard]] int selection_start() const;
+	[[nodiscard]] int selection_end() const;
+	[[nodiscard]] QString selected() const;
 	// Resets the blink, and re-scrolls to keep the caret in view.
 	void touch_caret(const Kit &kit);
 	// Just the scroll: arranging the field must not restart its blink.
@@ -496,6 +507,7 @@ struct Entry : Widget {
 	// Bring [start, end] into view without moving the caret.
 	void reveal(const Kit &kit, int start, int end);
 	[[nodiscard]] int inner_w(const Kit &kit) const;
+	[[nodiscard]] TextHit hit_text(const Kit &kit, float x, float y) const;
 	// The text as painted: the placeholder stands in when empty.
 	[[nodiscard]] QString painted() const;
 };

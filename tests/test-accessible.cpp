@@ -693,6 +693,51 @@ delete_text(AtspiAccessible *obj, int start, int end)
 	return ok;
 }
 
+// The one selection a text field may have, as [start, end), or {-1, -1}.
+static pair<int, int>
+text_selection(AtspiAccessible *obj)
+{
+	pair<int, int> result{-1, -1};
+	AtspiText *text = atspi_accessible_get_text_iface(obj);
+	if (!text)
+		return result;
+
+	atspi_accessible_clear_cache_single(obj);
+	if (atspi_text_get_n_selections(text, nullptr) == 1) {
+		AtspiRange *range = atspi_text_get_selection(text, 0, nullptr);
+		if (range) {
+			result = {range->start_offset, range->end_offset};
+			g_free(range);
+		}
+	}
+	g_object_unref(text);
+	return result;
+}
+
+static bool
+set_text_selection(AtspiAccessible *obj, int start, int end)
+{
+	AtspiText *text = atspi_accessible_get_text_iface(obj);
+	if (!text)
+		return false;
+
+	const bool ok = atspi_text_set_selection(text, 0, start, end, nullptr);
+	g_object_unref(text);
+	return ok;
+}
+
+static bool
+remove_text_selection(AtspiAccessible *obj)
+{
+	AtspiText *text = atspi_accessible_get_text_iface(obj);
+	if (!text)
+		return false;
+
+	const bool ok = atspi_text_remove_selection(text, 0, nullptr);
+	g_object_unref(text);
+	return ok;
+}
+
 static int
 character_count(AtspiAccessible *obj)
 {
@@ -1659,6 +1704,26 @@ case_filter()
 		CHECK(wait_until([] { return saw_text_change("insert", 1, 1); }));
 		CHECK(!saw_text_change("delete", 0, 3));
 	}
+
+	// A selection moves the caret, its removal leaves the caret alone, and
+	// an edit collapses it.
+	CHECK(text_selection(field) == make_pair(-1, -1));
+	CHECK(set_text_selection(field, 1, 3));
+	CHECK(wait_until(
+		[field] { return text_selection(field) == make_pair(1, 3); }));
+	CHECK(caret_offset(field) == 3);
+	CHECK(remove_text_selection(field));
+	CHECK(wait_until(
+		[field] { return text_selection(field) == make_pair(-1, -1); }));
+	CHECK(caret_offset(field) == 3);
+	CHECK(text_contents(field) == "aXbc");
+	CHECK(set_text_selection(field, 1, 3));
+	CHECK(wait_until(
+		[field] { return text_selection(field) == make_pair(1, 3); }));
+	CHECK(insert_text(field, 4, "Y"));
+	CHECK(wait_until([field] { return text_contents(field) == "aXbcY"; }));
+	CHECK(text_selection(field) == make_pair(-1, -1));
+	CHECK(caret_offset(field) == 5);
 
 	if (!replace_and_wait(field, "A😀B")) {
 		g_object_unref(field);

@@ -318,9 +318,8 @@ dialog_entry(Kit &kit, const char *title_text, const char *affirm,
 	auto title = dialog_label(title_text, true);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
-	field->text = initial;
+	field->set_text(kit, initial);
 	title->buddy = field;
-	// TODO(p): Place the caret at the end, properly.
 	col->add_child(std::move(title), size_t(-1));
 	col->add_child(std::move(entry), size_t(-1));
 	auto warning = make_unique<Label>();
@@ -368,7 +367,8 @@ dialog_question(Kit &kit, const QString &message, const char *affirm,
 }
 
 void
-dialog_location(Kit &kit, function<void(const QString &)> on_open)
+dialog_location(
+	Kit &kit, const QString &initial, function<void(const QString &)> on_open)
 {
 	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
@@ -376,6 +376,8 @@ dialog_location(Kit &kit, function<void(const QString &)> on_open)
 	auto title = dialog_label(N_("Enter location"), true);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
+	field->set_text(kit, initial);
+	field->select(kit, 0, int(initial.size()));
 	title->buddy = field;
 	col->add_child(std::move(title), size_t(-1));
 	col->add_child(std::move(entry), size_t(-1));

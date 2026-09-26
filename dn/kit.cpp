@@ -1168,7 +1168,8 @@ printable_only(const QString &text)
 	return out;
 }
 
-// Everything an Entry can be told to do, none of which needs a selection.
+// Everything an Entry can be told to do.  The motions come first, being
+// the ones Shift turns into extending the selection.
 enum class Edit : uint8_t {
 	CharLeft,
 	CharRight,
@@ -1182,7 +1183,10 @@ enum class Edit : uint8_t {
 	DeleteWordForward,
 	DeleteToStart,
 	DeleteToEnd,
+	Cut,
+	Copy,
 	Paste,
+	SelectAll,
 };
 
 struct EntryKey {
@@ -1210,7 +1214,10 @@ constexpr EntryKey kEntryKeys[] = {
 	{Qt::Key_Backspace, kAlt, Edit::DeleteWordBack},
 	{Qt::Key_Delete, kAlt, Edit::DeleteWordForward},
 	{Qt::Key_Backspace, kCtrl, Edit::DeleteToStart},
+	{Qt::Key_X, kCtrl, Edit::Cut},
+	{Qt::Key_C, kCtrl, Edit::Copy},
 	{Qt::Key_V, kCtrl, Edit::Paste},
+	{Qt::Key_A, kCtrl, Edit::SelectAll},
 	{Qt::Key_B, kMeta, Edit::CharLeft},
 	{Qt::Key_F, kMeta, Edit::CharRight},
 	{Qt::Key_A, kMeta, Edit::LineStart},
@@ -1224,8 +1231,13 @@ constexpr EntryKey kEntryKeys[] = {
 	{Qt::Key_Right, kCtrl, Edit::WordRight},
 	{Qt::Key_Backspace, kCtrl, Edit::DeleteWordBack},
 	{Qt::Key_Delete, kCtrl, Edit::DeleteWordForward},
+	{Qt::Key_X, kCtrl, Edit::Cut},
+	{Qt::Key_Delete, kShift, Edit::Cut},
+	{Qt::Key_C, kCtrl, Edit::Copy},
+	{Qt::Key_Insert, kCtrl, Edit::Copy},
 	{Qt::Key_V, kCtrl, Edit::Paste},
 	{Qt::Key_Insert, kShift, Edit::Paste},
+	{Qt::Key_A, kCtrl, Edit::SelectAll},
 #ifdef Q_OS_UNIX
 	// Line killing is an X11 convention, and Qt binds it nowhere else.
 	{Qt::Key_U, kCtrl, Edit::DeleteToStart},
@@ -1258,53 +1270,79 @@ edit_accel(Edit edit)
 }
 
 // The one place each command is carried out, whether a key, a menu or an
-// assistive technology asked for it.
+// assistive technology asked for it.  Extending keeps the anchor where it is;
+// otherwise a motion collapses the selection, and a deletion takes it, if
+// there is one, in place of what it would delete.
 static bool
-apply_edit(Kit &kit, Entry &e, Edit edit)
+apply_edit(Kit &kit, Entry &e, Edit edit, bool extend)
 {
 	const int end = int(e.text.size());
+	const int from = e.selection_start();
+	const int to = e.selection_end();
+	const auto move = [&](int at) {
+		e.select(kit, extend ? e.anchor : at, at);
+	};
+	const auto erase = [&](int a, int b) {
+		if (from != to)
+			e.replace(kit, from, to, {});
+		else
+			e.replace(kit, a, b, {});
+	};
 	switch (edit) {
 	case Edit::CharLeft:
-		e.move_caret(kit, grapheme_before(e.text, e.caret));
+		move(from != to && !extend ? from : grapheme_before(e.text, e.caret));
 		break;
 	case Edit::CharRight:
-		e.move_caret(kit, grapheme_after(e.text, e.caret));
+		move(from != to && !extend ? to : grapheme_after(e.text, e.caret));
 		break;
 	case Edit::WordLeft:
-		e.move_caret(kit, word_before(e.text, e.caret));
+		move(word_before(e.text, e.caret));
 		break;
 	case Edit::WordRight:
-		e.move_caret(kit, word_after(e.text, e.caret));
+		move(word_after(e.text, e.caret));
 		break;
 	case Edit::LineStart:
-		e.move_caret(kit, 0);
+		move(0);
 		break;
 	case Edit::LineEnd:
-		e.move_caret(kit, end);
+		move(end);
 		break;
 	case Edit::DeleteBack:
-		e.replace(kit, grapheme_before(e.text, e.caret), e.caret, {});
+		erase(grapheme_before(e.text, e.caret), e.caret);
 		break;
 	case Edit::DeleteForward:
-		e.replace(kit, e.caret, grapheme_after(e.text, e.caret), {});
+		erase(e.caret, grapheme_after(e.text, e.caret));
 		break;
 	case Edit::DeleteWordBack:
-		e.replace(kit, word_before(e.text, e.caret), e.caret, {});
+		erase(word_before(e.text, e.caret), e.caret);
 		break;
 	case Edit::DeleteWordForward:
-		e.replace(kit, e.caret, word_after(e.text, e.caret), {});
+		erase(e.caret, word_after(e.text, e.caret));
 		break;
 	case Edit::DeleteToStart:
-		e.replace(kit, 0, e.caret, {});
+		erase(0, e.caret);
 		break;
 	case Edit::DeleteToEnd:
-		e.replace(kit, e.caret, end, {});
+		erase(e.caret, end);
+		break;
+	case Edit::Cut:
+		if (from != to) {
+			QGuiApplication::clipboard()->setText(e.selected());
+			e.replace(kit, from, to, {});
+		}
+		break;
+	case Edit::Copy:
+		if (from != to)
+			QGuiApplication::clipboard()->setText(e.selected());
 		break;
 	case Edit::Paste:
-		// A single line has no room for what the control codes would say,
-		// and the clipboard is as likely as not to carry some.
-		e.replace(kit, e.caret, e.caret,
-			printable_only(QGuiApplication::clipboard()->text()));
+		if (const QString text =
+				printable_only(QGuiApplication::clipboard()->text());
+			!text.isEmpty())
+			e.replace(kit, from, to, text);
+		break;
+	case Edit::SelectAll:
+		e.select(kit, 0, end);
 		break;
 	}
 	return true;
@@ -1419,10 +1457,11 @@ Entry::reveal(const Kit &kit, int start, int end)
 }
 
 void
-Entry::move_caret(Kit &kit, int to)
+Entry::select(Kit &kit, int from, int to)
 {
-	this->caret =
-		grapheme_at_or_before(this->text, clamp(to, 0, int(this->text.size())));
+	const int n = int(this->text.size());
+	this->anchor = grapheme_at_or_before(this->text, clamp(from, 0, n));
+	this->caret = grapheme_at_or_before(this->text, clamp(to, 0, n));
 	this->caret_affinity = TextAffinity::Leading;
 	touch_caret(kit);
 	if (kit.input_method_changed)
@@ -1432,16 +1471,49 @@ Entry::move_caret(Kit &kit, int to)
 }
 
 void
-Entry::move_caret_to_hit(Kit &kit, TextHit hit)
+Entry::move_caret_to_hit(Kit &kit, TextHit hit, bool extend)
 {
 	this->caret = grapheme_at_or_before(
 		this->text, clamp(hit.index, 0, int(this->text.size())));
+	if (!extend)
+		this->anchor = this->caret;
 	this->caret_affinity = hit.affinity;
-	touch_caret(kit);
+	this->caret_at_ = chrono::steady_clock::now();
+	reveal(kit, this->caret, this->caret);
 	if (kit.input_method_changed)
 		kit.input_method_changed();
 	if (kit.notify)
 		kit.notify(Change::Text, this);
+}
+
+int
+Entry::selection_start() const
+{
+	return min(this->anchor, this->caret);
+}
+
+int
+Entry::selection_end() const
+{
+	return max(this->anchor, this->caret);
+}
+
+QString
+Entry::selected() const
+{
+	return this->text.mid(
+		selection_start(), selection_end() - selection_start());
+}
+
+TextHit
+Entry::hit_text(const Kit &kit, float x, float y) const
+{
+	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
+	const int th =
+		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int ty = this->r.y + (this->r.h - th) / 2;
+	return this->text_cache_.hit_test(
+		kit, this->text, x - float(in.x) + this->scroll_, y - float(ty), false);
 }
 
 void
@@ -1470,7 +1542,7 @@ Entry::splice(Kit &kit, int start, int end, const QString &with)
 		return;
 
 	this->text.replace(start, end - start, with);
-	this->caret = start + int(with.size());
+	this->caret = this->anchor = start + int(with.size());
 	this->caret_affinity =
 		with.isEmpty() ? TextAffinity::Leading : TextAffinity::Trailing;
 
@@ -1590,6 +1662,26 @@ Entry::paint(Kit &kit) const
 		}
 	}
 
+	// Inverse video: an ink block, with the text drawn again over it in the
+	// colour of the field, clipped to the block.  Shown whether focused or
+	// not: the field's own context menu takes the focus while it is open.
+	if (this->preedit.isEmpty() && this->anchor != this->caret) {
+		const int from = selection_start();
+		for (const TextRect &rect : this->text_cache_.range_rects(
+				 kit, full, from, selection_end() - from, false)) {
+			const int x0 = int(floor(double(tx) + double(rect.x)));
+			const int x1 = int(ceil(double(tx) + double(rect.x + rect.width)));
+			const int y0 = int(floor(double(ty) + double(rect.y)));
+			const int y1 = int(ceil(double(ty) + double(rect.y + rect.height)));
+			const Rect block{x0, y0, x1 - x0, y1 - y0};
+			kit.draw_fill(block, col(kit.colours_[ColourInk], kit.ink_alpha()));
+			kit.clip_to(block);
+			emit_text(kit, this->text_cache_, tx, float(ty), full,
+				col(kit.colours_[ColourEntryBottom]), false, -1);
+			kit.clip_pop();
+		}
+	}
+
 	if (this->caret_on_) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
@@ -1625,7 +1717,7 @@ Entry::prepare(Kit &kit)
 	if (focused && !this->focused_)
 		this->caret_at_ = chrono::steady_clock::now();
 	this->focused_ = focused;
-	this->caret_on_ = focused &&
+	this->caret_on_ = focused && this->anchor == this->caret &&
 		(!this->preedit.isEmpty() || blink_phase(this->caret_at_) < 0.5);
 }
 
@@ -1645,8 +1737,9 @@ Entry::focus_lost(Kit &kit)
 bool
 Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
-	// As every other text field does, the menu leaves the caret where it
-	// was: the click is about what to do there, not about going elsewhere.
+	// As every other text field does, the menu leaves the caret and the
+	// selection where they were: the click is about what to do there, not
+	// about going elsewhere.
 	if (button == Qt::RightButton) {
 		kit.set_focus(this, false);
 		context(kit, {int(x), int(y), 0, 0}, false);
@@ -1664,42 +1757,81 @@ Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 
 	// A click during composition would land in the middle of text the input
 	// method still owns; let it finish rather than fighting over the caret.
-	if (this->preedit.isEmpty()) {
-		const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
-		const int th =
-			this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
-		const int ty = this->r.y + (this->r.h - th) / 2;
-		const TextHit hit = this->text_cache_.hit_test(kit, this->text,
-			x - float(in.x) + this->scroll_, y - float(ty), false);
-		move_caret_to_hit(kit, hit);
-	}
+	if (this->preedit.isEmpty())
+		move_caret_to_hit(
+			kit, hit_text(kit, x, y), kit.mods_ & Qt::ShiftModifier);
+	return true;
+}
+
+// Selects the segment between two word boundaries that the pointer is over:
+// a word, or whatever separates two of them.
+bool
+Entry::double_click(
+	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
+{
+	if (button != Qt::LeftButton || !this->preedit.isEmpty())
+		return false;
+
+	const int n = int(this->text.size());
+	if (!n)
+		return true;
+	const TextHit hit = hit_text(kit, x, y);
+	int at = clamp(hit.index, 0, n);
+	if (at == n || hit.affinity == TextAffinity::Trailing)
+		at = grapheme_before(this->text, at);
+
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Word, this->text);
+	finder.setPosition(at);
+	const int end = max(at, int(finder.toNextBoundary()));
+	finder.setPosition(at);
+	const int start =
+		finder.isAtBoundary() ? at : max(0, int(finder.toPreviousBoundary()));
+	this->anchor = start;
+	move_caret_to_hit(kit, {end, TextAffinity::Trailing}, true);
+	return true;
+}
+
+bool
+Entry::motion(Kit &kit, float x, float y)
+{
+	if (kit.pressed_ != this || !kit.left_down_ || !this->preedit.isEmpty())
+		return false;
+	move_caret_to_hit(kit, hit_text(kit, x, y), true);
 	return true;
 }
 
 // Rebuilt at every opening, because whether there is anything to paste is
 // only known now.
 void
-Entry::context(Kit &kit, Rect anchor, bool kbd)
+Entry::context(Kit &kit, Rect at, bool kbd)
 {
 	if (!this->menu_)
 		this->menu_ = make_unique<Menu>();
 
 	this->menu_->clear(kit);
 	this->menu_->min_w = 200.f;
-	auto *paste = this->menu_->add_item_with_mnemonic(N_("_Paste"));
-	paste->accel = edit_accel(Edit::Paste);
+	const auto add = [&](const char *label, Edit edit, bool enabled) {
+		auto *item = this->menu_->add_item_with_mnemonic(label);
+		item->accel = edit_accel(edit);
+		item->enabled_ = enabled;
+		item->on_click = [this, edit](Kit &k) {
+			apply_edit(k, *this, edit, false);
+			// The menu took the focus off the field to show itself; picking
+			// from it is no reason to leave it anywhere else.
+			k.set_focus(this, false);
+		};
+	};
+	const bool selection = this->anchor != this->caret;
 	// Asking for the text itself would drag the whole of it across just to
 	// find out whether there is any.
 	const QMimeData *clip = QGuiApplication::clipboard()->mimeData();
-	paste->enabled_ = clip && clip->hasText();
-	paste->on_click = [this](Kit &k) {
-		apply_edit(k, *this, Edit::Paste);
-		// The menu took the focus off the field to show itself; picking
-		// from it is no reason to leave it anywhere else.
-		k.set_focus(this, false);
-	};
+	add(N_("Cu_t"), Edit::Cut, selection);
+	add(N_("_Copy"), Edit::Copy, selection);
+	add(N_("_Paste"), Edit::Paste, clip && clip->hasText());
+	this->menu_->add_sep();
+	add(N_("Select _All"), Edit::SelectAll, !this->text.isEmpty());
 
-	this->menu_->open_at(kit, anchor);
+	this->menu_->open_at(kit, at);
 	if (kbd)
 		kit.focus_first(this->menu_.get());
 }
@@ -1718,8 +1850,20 @@ Entry::key(Kit &kit, const Key &ev)
 		context(kit, target.caret_rect, true);
 		return true;
 	}
-	if (const EntryKey *bound = match_edit(ev.key, ev.mods))
-		return apply_edit(kit, *this, bound->edit);
+
+	int key = ev.key;
+	if ((key == Qt::Key_Left || key == Qt::Key_Right) &&
+		this->text.isRightToLeft())
+		key = key == Qt::Key_Left ? Qt::Key_Right : Qt::Key_Left;
+
+	if (const EntryKey *bound = match_edit(key, ev.mods))
+		return apply_edit(kit, *this, bound->edit, false);
+
+	// Shift extends whatever a motion would do, and only a motion.
+	const bool extend = ev.mods & kShift;
+	if (const EntryKey *bound = match_edit(key, ev.mods & ~kShift);
+		extend && bound && bound->edit <= Edit::LineEnd)
+		return apply_edit(kit, *this, bound->edit, true);
 
 	// Let the window keep the shortcuts we have no use for; past this point
 	// only bare typing belongs to us.
@@ -1728,19 +1872,19 @@ Entry::key(Kit &kit, const Key &ev)
 	if (extra)
 		return false;
 
-	switch (ev.key) {
+	switch (key) {
 	case Qt::Key_Left:
-		return apply_edit(kit, *this, Edit::CharLeft);
+		return apply_edit(kit, *this, Edit::CharLeft, extend);
 	case Qt::Key_Right:
-		return apply_edit(kit, *this, Edit::CharRight);
+		return apply_edit(kit, *this, Edit::CharRight, extend);
 	case Qt::Key_Home:
-		return apply_edit(kit, *this, Edit::LineStart);
+		return apply_edit(kit, *this, Edit::LineStart, extend);
 	case Qt::Key_End:
-		return apply_edit(kit, *this, Edit::LineEnd);
+		return apply_edit(kit, *this, Edit::LineEnd, extend);
 	case Qt::Key_Backspace:
-		return apply_edit(kit, *this, Edit::DeleteBack);
+		return apply_edit(kit, *this, Edit::DeleteBack, false);
 	case Qt::Key_Delete:
-		return apply_edit(kit, *this, Edit::DeleteForward);
+		return apply_edit(kit, *this, Edit::DeleteForward, false);
 	case Qt::Key_Return:
 	case Qt::Key_Enter:
 		if (!this->on_commit)
@@ -1762,7 +1906,7 @@ Entry::key(Kit &kit, const Key &ev)
 	const QString insert = printable_only(ev.text);
 	if (insert.isEmpty())
 		return false;
-	replace(kit, this->caret, this->caret, insert);
+	replace(kit, selection_start(), selection_end(), insert);
 	return true;
 }
 
@@ -1770,8 +1914,10 @@ bool
 Entry::input_method(
 	Kit &kit, const QString &commit, const QString &pre, int pre_caret)
 {
-	if (const QString insert = printable_only(commit); !insert.isEmpty())
-		splice(kit, this->caret, this->caret, insert);
+	// Composition takes the place of the selection, just as typing would.
+	if (const QString insert = printable_only(commit);
+		!insert.isEmpty() || !pre.isEmpty())
+		splice(kit, selection_start(), selection_end(), insert);
 	this->preedit = pre;
 	this->preedit_caret = clamp(pre_caret, 0, int(pre.size()));
 	this->caret = clamp(this->caret, 0, int(this->text.size()));
@@ -1789,6 +1935,7 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 
 	out.text = this->text;
 	out.caret = this->caret;
+	out.anchor = this->anchor;
 
 	// The preedit is not in text, but the caret still has to be placed past
 	// it on screen, or the candidate window covers what is being composed.
@@ -1812,9 +1959,11 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 int
 Entry::wake_ms() const
 {
-	// An unfocused field has no caret, and a composing one holds it steady:
-	// neither needs waking.  Otherwise, sleep until the caret next flips.
-	if (!this->focused_ || !this->preedit.isEmpty())
+	// An unfocused field has no caret, a composing one holds it steady, and
+	// a selection hides it: none needs waking.  Otherwise, sleep until the
+	// caret next flips.
+	if (!this->focused_ || !this->preedit.isEmpty() ||
+		this->anchor != this->caret)
 		return -1;
 	const double phase = blink_phase(this->caret_at_);
 	const double until = (phase < 0.5 ? 0.5 : 1.0) - phase;

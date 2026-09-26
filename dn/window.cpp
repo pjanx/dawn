@@ -425,9 +425,14 @@ Window::bind_host()
 			go_forward();
 			break;
 		case Action::Location:
-			dialog_location(this->kit_, [this](const QString &location) {
-				open_any(url_from_user_input(location, QDir::currentPath()));
-			});
+			dialog_location(this->kit_,
+				this->browser_ ? this->browser_->dir_url_.toDisplayString(
+									 QUrl::PreferLocalFile)
+							   : QString(),
+				[this](const QString &location) {
+					open_any(
+						url_from_user_input(location, QDir::currentPath()));
+				});
 			request_render();
 			break;
 		case Action::PrevFile:
@@ -1840,12 +1845,14 @@ Window::input_method_value(
 		return int(Qt::ImhNone);
 	case Qt::ImSurroundingText:
 		return target.text;
-	// There is no selection, so the anchor never parts from the cursor.
 	case Qt::ImCursorPosition:
-	case Qt::ImAnchorPosition:
 		return target.caret;
-	case Qt::ImCurrentSelection:
-		return QString();
+	case Qt::ImAnchorPosition:
+		return target.anchor;
+	case Qt::ImCurrentSelection: {
+		const int start = min(target.anchor, target.caret);
+		return target.text.mid(start, abs(target.anchor - target.caret));
+	}
 	case Qt::ImCursorRectangle: {
 		// Qt wants logical points; the kit answers in device pixels.
 		const Rect &c = target.caret_rect;

@@ -93,7 +93,8 @@ void dialog_about(
 	Kit &kit, std::span<const std::pair<const char *, QString>> details);
 void dialog_shortcuts(
 	Kit &kit, std::span<const MenuNode> tree, std::span<const Action> keys);
-void dialog_location(Kit &kit, std::function<void(const QString &)> on_open);
+void dialog_location(Kit &kit, const QString &initial,
+	std::function<void(const QString &)> on_open);
 
 // Takes the draft by value: the dialog edits its own copy, and Save is the
 // only way anything gets back out.

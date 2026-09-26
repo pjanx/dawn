@@ -815,13 +815,13 @@ struct WidgetAdapter : public QAccessibleInterface,
 	QStringList keyBindingsForAction(const QString &name) const override;
 };
 
-// A text field.  Entry has no selection, so the Text interface reports none
-// and the setters below stay honest about that; editing goes through the
-// one Entry mutation helper, the same one a keystroke uses.
+// A text field, with at most one selection; editing goes through the one
+// Entry mutation helper, the same one a keystroke uses.
 struct EntryAdapter final : public WidgetAdapter,
 							public QAccessibleTextInterface,
 							public QAccessibleEditableTextInterface {
 	int last_caret_ = 0;
+	int last_anchor_ = 0;
 
 	EntryAdapter(Window *window, Entry *entry);
 	~EntryAdapter() override = default;
@@ -1157,7 +1157,8 @@ WidgetAdapter::WidgetAdapter(Window *window, Widget *w)
 }
 
 EntryAdapter::EntryAdapter(Window *window, Entry *entry)
-	: WidgetAdapter(window, entry), last_caret_(entry->caret)
+	: WidgetAdapter(window, entry), last_caret_(entry->caret),
+	  last_anchor_(entry->anchor)
 {
 }
 
@@ -1802,37 +1803,50 @@ clamp_text_range(int n, int *start, int *end)
 	*end = e;
 }
 
-// Entry has no selection at all: the caret is the whole of its state.
-// Reporting none, and refusing to pretend the setters work, is what keeps a
-// client from believing it has selected something it has not.
+// Entry has one selection at most, so adding one when there is one already
+// is refused, and anything but the first index names nothing.
 void
-EntryAdapter::selection(int, int *startOffset, int *endOffset) const
+EntryAdapter::selection(int index, int *startOffset, int *endOffset) const
 {
+	const bool any = index == 0 && selectionCount();
 	if (startOffset)
-		*startOffset = 0;
+		*startOffset = any ? this->entry()->selection_start() : 0;
 	if (endOffset)
-		*endOffset = 0;
+		*endOffset = any ? this->entry()->selection_end() : 0;
 }
 
 int
 EntryAdapter::selectionCount() const
 {
-	return 0;
+	return this->widget_ && this->entry()->anchor != this->entry()->caret;
 }
 
 void
-EntryAdapter::addSelection(int, int)
+EntryAdapter::addSelection(int startOffset, int endOffset)
 {
+	if (!selectionCount())
+		setSelection(0, startOffset, endOffset);
 }
 
 void
-EntryAdapter::removeSelection(int)
+EntryAdapter::removeSelection(int selectionIndex)
 {
+	if (selectionIndex != 0 || !selectionCount() || !this->writable())
+		return;
+	Kit &kit = this->window_->kit();
+	this->entry()->select(kit, this->entry()->caret, this->entry()->caret);
+	schedule_render(kit);
 }
 
 void
-EntryAdapter::setSelection(int, int, int)
+EntryAdapter::setSelection(int selectionIndex, int startOffset, int endOffset)
 {
+	if (selectionIndex != 0 || !this->writable())
+		return;
+	clamp_text_range(characterCount(), &startOffset, &endOffset);
+	Kit &kit = this->window_->kit();
+	this->entry()->select(kit, startOffset, endOffset);
+	schedule_render(kit);
 }
 
 int
@@ -1847,7 +1861,7 @@ EntryAdapter::setCursorPosition(int position)
 	if (!this->writable())
 		return;
 	Kit &kit = this->window_->kit();
-	this->entry()->move_caret(kit, position);
+	this->entry()->select(kit, position, position);
 	schedule_render(kit);
 }
 
@@ -2092,8 +2106,17 @@ notify_entry_text(EntryAdapter *adapter)
 		QAccessibleTextCursorEvent event(adapter, caret);
 		notify(&event);
 	}
+	// A caret moving about with nothing selected changes no selection.
+	const bool had = adapter->last_anchor_ != was_caret;
+	if ((had || entry->anchor != caret) &&
+		(entry->anchor != adapter->last_anchor_ || caret != was_caret)) {
+		QAccessibleTextSelectionEvent event(
+			adapter, entry->selection_start(), entry->selection_end());
+		notify(&event);
+	}
 	adapter->last_value_ = now;
 	adapter->last_caret_ = caret;
+	adapter->last_anchor_ = entry->anchor;
 }
 
 // --- Client and shell --------------------------------------------------------
