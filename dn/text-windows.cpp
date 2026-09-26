@@ -485,6 +485,16 @@ TextLayout::caret(int index, TextAffinity affinity) const
 {
 	if (!this->impl_ || !this->impl_->layout)
 		return {};
+
+	if (this->text_.isEmpty()) {
+		// Wine-only fix:
+		// Wine's HitTestTextPosition() would dereference a null run.
+		DWRITE_TEXT_METRICS metrics{};
+		if (FAILED(this->impl_->layout->GetMetrics(&metrics)))
+			return {};
+		return {metrics.left, metrics.top, 0, metrics.height};
+	}
+
 	index = clamp(index, 0, int(this->text_.size()));
 	UINT32 position = UINT32(index);
 	WINBOOL trailing = FALSE;

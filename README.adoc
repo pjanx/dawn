@@ -54,7 +54,7 @@ Packages
 
  - Latest https://janouch.name/cd/Dawn-latest-Windows-x86_64.zip[Windows ZIP],
    https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
-   they work in Wine.
+   Wine has text issues.
 
  - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
    *unsigned* macOS Apple Silicon bundle] needs either
