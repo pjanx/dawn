@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <mutex>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -588,9 +587,7 @@ Cmm::~Cmm()
 shared_ptr<Cmm>
 Cmm::get_default()
 {
-	static once_flag once;
-	static shared_ptr<Cmm> instance;
-	call_once(once, [] { instance = make_shared<Cmm>(); });
+	static auto instance = make_shared<Cmm>();
 	return instance;
 }
 
