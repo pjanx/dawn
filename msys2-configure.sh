@@ -103,12 +103,17 @@ extract() {
 	done
 	rm -rf tmp
 
-	# ExifTool
-	# ExifTool is quite massive (mainly in file count), not sure what to do
-	#bsdtar -xf exiftool.tar.gz
-	#mv Image-ExifTool-*/exiftool bin
-	#mv Image-ExifTool-*/lib/* lib/perl5/site_perl
-	#rm -rf Image-ExifTool-*
+	# ExifTool is still quite massive, even after this pruning.
+	bsdtar -xf exiftool.tar.gz \
+		--exclude 'Image-ExifTool-*/lib/*.pod' \
+		--exclude 'Image-ExifTool-*/lib/Image/ExifTool/BuildTagLookup.pm' \
+		-s '|^Image-ExifTool-[^/]*/exiftool$|bin/exiftool|' \
+		-s '|^Image-ExifTool-[^/]*/lib/|lib/perl5/site_perl/|' \
+		'Image-ExifTool-*/exiftool' 'Image-ExifTool-*/lib'
+	(cd lib/perl5/core_perl && rm -rf CORE App CPAN CPAN.pm Devel/PPPort.pm \
+		ExtUtils Module Pod TAP Test Test.pm Test2 perl5db.pl \
+		Unicode/Collate Unicode/Collate.pm auto/Unicode/Collate Encode/*.e2x &&
+		find unicore -mindepth 1 ! -name 'Name.p[lm]' -delete)
 }
 
 # TODO(p): Try to push this bullshit directly to MSYS2.
@@ -180,8 +185,7 @@ dbsync
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \
 	$pkg-jxrlib $pkg-libwmf $pkg-zlib $pkg-shared-mime-info $pkg-gcc-libs \
-	$pkg-gettext-runtime \
-	#$pkg-perl $pkg-perl-win32-api
+	$pkg-gettext-runtime $pkg-perl $pkg-perl-win32-api
 verify
 extract
 resvg

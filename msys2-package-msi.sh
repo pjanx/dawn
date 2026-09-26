@@ -31,9 +31,16 @@ txt2rtf() {
 # msitools have this filename hardcoded in UI files, and it's required.
 txt2rtf "$(dirname "$0")/LICENSE" > License.rtf
 
-find "$destdir" -type f \
-	| wixl-heat --prefix "$destdir/" --directory-ref INSTALLDIR \
-		--component-group CG.dn --var var.SourceDir > package-files.wxs
+heat() {
+	wixl-heat --prefix "$destdir/" --directory-ref INSTALLDIR \
+		--component-group "$1" --var var.SourceDir
+}
+
+exiftool="^$destdir/(wperl\.exe|perl[0-9]+\.dll|exiftool|lib/perl5/.*)$"
+find "$destdir" -type f | grep -Ev "$exiftool" | heat CG.dn \
+	> package-files.wxs
+find "$destdir" -type f | grep -E "$exiftool" | heat CG.exiftool \
+	> exiftool-files.wxs
 
 # Only register extensions in Explorer's "Open with" list, never claim
 # HKCR\.ext itself: Windows 8+ silently ignores default-app changes anyway,
@@ -94,4 +101,4 @@ fi)
 XML
 
 wixl --verbose --arch "$arch" -D SourceDir="$destdir" --ext ui \
-	--output "$msi" "$wxs" package-files.wxs associations.wxs
+	--output "$msi" "$wxs" package-files.wxs exiftool-files.wxs associations.wxs

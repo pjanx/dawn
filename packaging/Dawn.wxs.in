@@ -73,10 +73,15 @@
 
 		<!-- FileAssociations is defined in the generated associations.wxs:
 		     it needs dn's actual "list supported media types" output. -->
-		<Feature Id='Complete' Level='1'>
+		<Feature Id='Complete' Level='1' Absent='disallow'>
 			<ComponentGroupRef Id='CG.dn' />
 			<ComponentRef Id='ProgramMenuDir' />
 			<ComponentRef Id='FileAssociations' />
+
+			<!-- Though WixUI_Minimal won't let the user choose. -->
+			<Feature Id='ExifTool' Level='1'>
+				<ComponentGroupRef Id='CG.exiftool' />
+			</Feature>
 		</Feature>
 	</Product>
 </Wix>

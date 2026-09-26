@@ -625,10 +625,19 @@ Window::launch_exiftool(const QUrl &url)
 	process->setStandardOutputFile(report_path, QIODeviceBase::Truncate);
 	QStringList arguments = exiftool_command();
 	process->setProgram(arguments.takeFirst());
+	arguments.append({QStringLiteral("-groupNames"),
+		QStringLiteral("-duplicates"), QStringLiteral("-extractEmbedded"),
+		QStringLiteral("--binary"), QStringLiteral("-quiet")});
+#ifdef Q_OS_WIN
+	// Perl only receives the command line in the ANSI code page, so the path
+	// goes through a UTF-8 argfile on standard input.  Being absolute,
+	// it can't have the leading '-', '#', or white space that would matter.
 	arguments.append(
-		{QStringLiteral("-groupNames"), QStringLiteral("-duplicates"),
-			QStringLiteral("-extractEmbedded"), QStringLiteral("--binary"),
-			QStringLiteral("-quiet"), QStringLiteral("--"), path});
+		{QStringLiteral("-charset"), QStringLiteral("filename=utf8"),
+			QStringLiteral("-@"), QStringLiteral("-")});
+#else
+	arguments.append({QStringLiteral("--"), path});
+#endif
 	process->setArguments(arguments);
 
 	auto finished = make_shared<bool>(false);
@@ -672,6 +681,10 @@ Window::launch_exiftool(const QUrl &url)
 			process->deleteLater();
 		});
 	process->start();
+#ifdef Q_OS_WIN
+	process->write(path.toUtf8() + '\n');
+	process->closeWriteChannel();
+#endif
 }
 
 void
