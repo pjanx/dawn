@@ -697,7 +697,7 @@ fn decode_raw(
 		"Exif.Photo.PixelXDimension",
 		"Exif.Photo.PixelYDimension",
 	] {
-		if let Some(dimension) = rawfile
+		if let Ok(dimension) = rawfile
 			.metadata_value(key)
 			.and_then(|value| value.integer())
 		{
@@ -709,6 +709,7 @@ fn decode_raw(
 
 	let xmp = rawfile
 		.metadata_value("Exif.Image.ApplicationNotes")
+		.ok()
 		.and_then(|value| match value {
 			Value::Bytes(bytes) => Some(bytes),
 			_ => None,
@@ -736,7 +737,7 @@ fn decode_raw(
 	let frames = vec![frame_from_rendered(&rendered)?];
 	let mut decoder =
 		decoder_from_frames("libopenraw".into(), frames, 0, metadata)?;
-	decoder.pages[0].orientation = rawfile.orientation();
+	decoder.pages[0].orientation = rawfile.orientation() as u32;
 	Ok(decoder)
 }
 

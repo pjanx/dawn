@@ -126,8 +126,8 @@ modules:
       - --disable-static
     sources:
       - type: archive
-        url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.15.tar.gz
-        sha256: 379ae041dd53ab35f55c9b73a78a31f1ce530e925023c31607b05f2199d867e6
+        url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.16.tar.gz
+        sha256: 50f36f939b751274b5f0abef9fb38c23c101ebf8bba0934cfbf5444ec37011f0
       - type: shell
         commands:
           - autoreconf -fi
@@ -141,5 +141,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/mircomir/jxrlib.git
-        tag: '1.4.2'
-        commit: 568cc2c4e09cf04412bc53a3e03e678ecd1d4693
+        tag: '1.4.3'
+        commit: 16db741dff5986a8f66ce6c9409937b70feb0730
