@@ -127,6 +127,7 @@ struct TiffEpJpeg {
 	const uint8_t *jpeg = nullptr;  ///< JPEG data stream
 	size_t jpeg_length = 0;         ///< JPEG data stream length
 	int64_t pixels = 0;             ///< Number of pixels in the JPEG
+	int64_t colorspace = TIFF_PreviewColorSpace_Unknown;  ///< Of the JPEG
 };
 
 }  // namespace
@@ -163,8 +164,6 @@ tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 
 	// Note that to get the largest JPEG,
 	// we don't need to descend into Exif thumbnails.
-	// TODO(p): Consider DNG 1.2.0.0 PreviewColorSpace.
-	// But first, try to find some real-world files with it.
 	const uint8_t *jpeg = T->begin + ipointer;
 	size_t jpeg_length = size_t(ilength);
 
@@ -173,6 +172,8 @@ tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 		out->jpeg = jpeg;
 		out->jpeg_length = jpeg_length;
 		out->pixels = pixels;
+		out->colorspace = TIFF_PreviewColorSpace_Unknown;
+		(void) tiffer_find_integer(T, TIFF_PreviewColorSpace, &out->colorspace);
 	}
 }
 
@@ -195,6 +196,60 @@ tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out)
 		if (!tiff_ep_find_jpeg(&subT, out))
 			return false;
 	return true;
+}
+
+// NEF previews carry no metadata of their own, so only the MakerNote tells
+// Adobe RGB ones apart.  Type 3 MakerNotes, which all preview-bearing NEFs
+// have, start with "Nikon\0", a version, and two bytes of padding,
+// followed by a TIFF whose offsets are relative to its own header.
+static int64_t
+nikon_preview_colorspace(const tiffer *T)
+{
+	int64_t offset = 0, colorspace = 0;
+	tiffer exifT = {}, noteT = {};
+	tiffer_entry note = {};
+	if (tiffer_find_integer(T, TIFF_ExifIFDPointer, &offset) && offset >= 0 &&
+		offset <= UINT32_MAX && tiffer_subifd(T, uint32_t(offset), &exifT) &&
+		tiffer_find(&exifT, Exif_MakerNote, &note) &&
+		note.type == TIFFER_UNDEFINED && note.remaining_count > 10 &&
+		!memcmp(note.p, "Nikon", 6) &&
+		tiffer_init(&noteT, note.p + 10, note.remaining_count - 10) &&
+		tiffer_next_ifd(&noteT) &&
+		tiffer_find_integer(&noteT, Nikon_ColorSpace, &colorspace)) {
+		if (colorspace == Nikon_ColorSpace_sRGB)
+			return TIFF_PreviewColorSpace_sRGB;
+		if (colorspace == Nikon_ColorSpace_AdobeRGB)
+			return TIFF_PreviewColorSpace_AdobeRGB;
+	}
+	return TIFF_PreviewColorSpace_Unknown;
+}
+
+// The Adobe RGB gamma is what Nikon's own Adobe RGB JPEGs state in Exif.
+static constexpr double kAdobeRgbGamma = 2.2;
+static constexpr double kAdobeRgbPrimaries[6] = {
+	0.64, 0.33, 0.21, 0.71, 0.15, 0.06};
+static constexpr double kProPhotoGamma = 1.8;
+static constexpr double kProPhotoWhite[2] = {0.3457, 0.3585};
+static constexpr double kProPhotoPrimaries[6] = {
+	0.7347, 0.2653, 0.1596, 0.8404, 0.0366, 0.0001};
+
+static shared_ptr<Profile>
+preview_profile(Cmm &cmm, int64_t colorspace)
+{
+	switch (colorspace) {
+	case TIFF_PreviewColorSpace_GrayGamma2_2:
+		return cmm.get_profile_sRGB_gamma(2.2);
+	case TIFF_PreviewColorSpace_sRGB:
+		return cmm.get_profile_sRGB();
+	case TIFF_PreviewColorSpace_AdobeRGB:
+		return cmm.get_profile_parametric(
+			kAdobeRgbGamma, kD65White, kAdobeRgbPrimaries);
+	case TIFF_PreviewColorSpace_ProPhotoRGB:
+		return cmm.get_profile_parametric(
+			kProPhotoGamma, kProPhotoWhite, kProPhotoPrimaries);
+	default:
+		return nullptr;
+	}
 }
 
 static ImagePtr
@@ -249,10 +304,29 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image =
-		load_jpeg(span<const uint8_t>(out.jpeg, out.jpeg_length), ctx, error);
+	// load_jpeg() would convert a bare preview as the sRGB it assumes,
+	// so where the container knows better, the conversion happens here.
+	if (out.colorspace == TIFF_PreviewColorSpace_Unknown)
+		out.colorspace = nikon_preview_colorspace(T);
+	shared_ptr<Profile> profile =
+		preview_profile(*cmm_or_default(ctx), out.colorspace);
+	OpenContext jpeg_ctx = ctx;
+	if (profile)
+		jpeg_ctx.screen_profile = nullptr;
+
+	ImagePtr image = load_jpeg(
+		span<const uint8_t>(out.jpeg, out.jpeg_length), jpeg_ctx, error);
 	if (!image)
 		return nullptr;
+
+	if (profile) {
+		if (image->profile_assumed) {
+			image->effective_profile = profile;
+			image->profile_assumed = false;
+		}
+		finish_image(*image, ctx, image->effective_profile.get(),
+			/*input_premul=*/true);
+	}
 
 	// Note that Exif may override this later in open_from_data().
 	// TODO(p): Try to use the Orientation field nearest to the target IFD.
@@ -261,9 +335,6 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	if (tiffer_find_integer(T, TIFF_Orientation, &orientation) &&
 		orientation >= 1 && orientation <= 8)
 		image->orientation = Orientation(orientation);
-
-	// XXX: AdobeRGB Nikon NEFs can only be distinguished by a ColorSpace tag
-	// from within their MakerNote.
 	return image;
 }
 

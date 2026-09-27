@@ -1051,6 +1051,63 @@ write_gain_map_jxl(const fs::path &out)
 	write_all(out / "gainmap.jxl", o.data(), o.size());
 }
 
+// --- TIFF/EP -----------------------------------------------------------------
+
+// A raw as far as the TIFF/EP loader looks at one: a main image it never
+// decodes, and a preview of the same size, whose colour space is stated by
+// DNG's PreviewColorSpace, or in a Nikon type 3 MakerNote.  Zero omits either.
+static void
+write_tiff_ep(const fs::path &path, const vector<uint8_t> &jpeg,
+	uint32_t preview_colorspace, uint16_t nikon_colorspace)
+{
+	TiffFile f;
+	Ifd preview;
+	preview.add_long(254, 1);                      // NewSubfileType: reduced
+	preview.add_short(259, 6);                     // Compression: JPEG
+	preview.add_long(513, f.blob(jpeg));           // JPEGInterchangeFormat
+	preview.add_long(514, uint32_t(jpeg.size()));  // ...Length
+	if (preview_colorspace)
+		preview.add_long(50970, preview_colorspace);  // PreviewColorSpace
+
+	Ifd exif;
+	if (nikon_colorspace) {
+		TiffFile note;
+		Ifd nikon;
+		nikon.add_short(30, nikon_colorspace);  // ColorSpace
+		note.page(nikon);
+		vector<uint8_t> makernote = {'N', 'i', 'k', 'o', 'n', 0, 2, 0x10, 0, 0};
+		makernote.insert(makernote.end(), note.out.begin(), note.out.end());
+		exif.add(
+			37500, 7 /* UNDEFINED */, uint32_t(makernote.size()), makernote);
+	}
+
+	Ifd ifd;
+	ifd.add_long(254, 0);                           // NewSubfileType: main
+	ifd.add_long(256, 1);                           // ImageWidth
+	ifd.add_long(257, 1);                           // ImageLength
+	ifd.add(37398, 1 /* BYTE */, 4, {1, 0, 0, 0});  // TIFF/EPStandardID
+	ifd.add_long(330, f.directory(preview));        // SubIFDs
+	ifd.add_long(34665, f.directory(exif));         // ExifIFD
+	f.page(ifd);
+	write_all(path, f.out.data(), f.out.size());
+}
+
+static void
+write_tiff_ep_fixtures(const fs::path &out)
+{
+	const fs::path preview_path = out / "tiff-ep-preview.jpg";
+	run_magick({"-size", "1x1", "xc:rgb(192,128,96)", "-quality", "100",
+		"-sampling-factor", "4:4:4", preview_path.string().c_str()});
+	const vector<uint8_t> preview = read_all(preview_path);
+	if (preview.size() < 4) {
+		fprintf(stderr, "gen_fixtures: warning: no TIFF/EP preview\n");
+		return;
+	}
+	write_tiff_ep(out / "nikon-srgb.nef", preview, 0, 1);
+	write_tiff_ep(out / "nikon-adobergb.nef", preview, 0, 2);
+	write_tiff_ep(out / "preview-adobergb.tif", preview, 3, 0);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -1131,6 +1188,7 @@ main(int argc, char **argv)
 	write_gain_maps(out);
 	write_gain_map_avifs(out);
 	write_gain_map_jxl(out);
+	write_tiff_ep_fixtures(out);
 
 	printf("wrote fixtures in %s\n", out.string().c_str());
 	return 0;

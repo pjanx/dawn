@@ -1084,6 +1084,53 @@ test_tiff_colorimetry()
 
 #endif  // DAWN_WITH_LIBTIFF
 
+// Raw previews state no colour of their own, their container does.
+static void
+test_tiff_ep_colour()
+{
+	auto cmm = dawn::Cmm::get_default();
+	dawn::OpenContext ctx;
+	ctx.cmm = cmm;
+	ctx.screen_profile = cmm->get_profile_sRGB();
+
+	const struct {
+		const char *name;
+		dawn::Transfer transfer;
+		double green_x, green_y;
+		bool converted;
+	} fixtures[] = {
+		{"nikon-srgb.nef", dawn::Transfer::Srgb, 0.30, 0.60, false},
+		{"nikon-adobergb.nef", dawn::Transfer::AdobeRgb, 0.21, 0.71, true},
+		{"preview-adobergb.tif", dawn::Transfer::AdobeRgb, 0.21, 0.71, true},
+	};
+	for (const auto &fixture : fixtures) {
+		dawn::Error error;
+		dawn::ImagePtr image =
+			dawn::load_tiff_ep(read_fixture(fixture.name), ctx, &error);
+		if (!image) {
+			test::fail("%s: %s", fixture.name, error.message.c_str());
+			continue;
+		}
+
+		CHECK(!image->profile_assumed);
+		if (dawn::profile_transfer(image->effective_profile.get()) !=
+			fixture.transfer)
+			test::fail("%s: unexpected transfer function", fixture.name);
+		dawn::Chromaticities c =
+			dawn::profile_chromaticities(image->effective_profile.get());
+		CHECK(c.have_primaries && c.n == 3);
+		if (c.n == 3)
+			near_xy(fixture.name, c.x[1], c.y[1], fixture.green_x,
+				fixture.green_y, 0.002);
+
+		// Only the red channel of the mid colour stays in gamut either way.
+		const uint16_t red = pixel0(*image).r;
+		if (near_u16(red, 192 * 257, 2 * 257) == fixture.converted ||
+			red >= 65535)
+			test::fail("%s: red %u", fixture.name, red);
+	}
+}
+
 static void
 test_png_text_after_idat()
 {
@@ -1257,6 +1304,7 @@ main()
 #if DAWN_WITH_LIBTIFF
 		{"TIFF colorimetry", test_tiff_colorimetry},
 #endif
+		{"TIFF/EP colour", test_tiff_ep_colour},
 		{"profile transfer", test_profile_transfer},
 		{"profile encoding", test_profile_encoding},
 		{"display matrices", test_display_matrices},

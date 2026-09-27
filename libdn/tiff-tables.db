@@ -38,6 +38,9 @@
 #
 # CIPA DC-007-2021 (Multi-Picture Format)
 # https://www.cipa.jp/e/std/std-sec.html
+#
+# ExifTool Nikon Tags (reverse engineered)
+# https://exiftool.org/TagNames/Nikon.html
 
 # TIFF 6.0
 = TIFF
@@ -220,6 +223,12 @@
 50707, DNGBackwardVersion  # DNG 1.5.0.0
 50708, UniqueCameraModel  # DNG 1.5.0.0
 50709, LocalizedCameraModel  # DNG 1.5.0.0
+50970, PreviewColorSpace  # DNG 1.5.0.0
+	0, Unknown
+	1, Gray Gamma 2.2
+	2, sRGB
+	3, Adobe RGB
+	4, ProPhoto RGB
 # TODO(p): Add more DNG tags that can be only in IFD0.
 
 # Exif 2.3 4.6.5
@@ -469,3 +478,9 @@
 45579, Yaw Angle  # YawAngle
 45580, Pitch Angle  # PitchAngle
 45581, Roll Angle  # RollAngle
+
+# ExifTool Nikon Tags, within type 3 MakerNotes.
+= Nikon
+30, ColorSpace
+	1, sRGB
+	2, Adobe RGB
