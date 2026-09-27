@@ -773,8 +773,9 @@ Window::shutdown()
 // format for it, and a matrix/TRC working space.  The order of profiles is:
 // the override, the display's ICC, the output's own primaries, and sRGB.
 // Under Windows Advanced Color, Windows decides how our pixels are read:
-// the override does not apply, and a window that can present extended
-// takes the output's primaries, since its every frame is extended.
+// neither the override nor the display's ICC applies, and a window that can
+// present extended takes the output's primaries, since its every frame is
+// extended.
 bool
 Window::refresh_screen_profile(QScreen *target_screen)
 {
@@ -801,11 +802,11 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	}
 #endif
 #ifdef Q_OS_WIN
-	// A profile from the legacy getters under Advanced Color is that of the
-	// compatibility helper, with which Windows would convert us twice.
+	// The legacy getters answer sRGB under Advanced Color, which Microsoft
+	// tells Advanced Color-aware applications not to ask at all.
 	this->advanced_color_ = discover().advanced_color;
 	const bool system_managed = this->advanced_color_.active;
-	platform = system_managed && discover().icc.empty();
+	platform = system_managed;
 	range = this->advanced_color_.range;
 	sdr_white = this->advanced_color_.white;
 #else
@@ -840,7 +841,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 					 "unusable ICC profile");
 		}
 	}
-	if (!next && !discover().icc.empty()) {
+	if (!next && !system_managed && !discover().icc.empty()) {
 		next = usable(this->cmm_->get_profile(discover().icc));
 		if (next) {
 			label =
@@ -850,9 +851,9 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	}
 	// The output's own primaries.  Under Advanced Color, any working space
 	// that covers the display converts exactly to scRGB, and this one never
-	// meets an integer swapchain, which Windows reads as sRGB; the legacy
-	// getters return no ICC then.  On Wayland, they are the display's actual
-	// gamut, not the BT.2020 container of PQ.
+	// meets an integer swapchain, which Windows reads as sRGB, the fallback.
+	// On Wayland, they are the display's actual gamut, not the BT.2020
+	// container of PQ.
 #ifdef Q_OS_WIN
 	const bool own_gamut = offers_extended;
 	const char *own_label = N_("DXGI output primaries"), *own_source = "dxgi";

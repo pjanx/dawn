@@ -23,24 +23,20 @@ Features
 --------
 We care about
 ~~~~~~~~~~~~~
- - *Wide-gamut*, high-bit-depth SDR: 10-bit displays in Adobe RGB or Display P3.
+ - *Wide-gamut, high-bit-depth* output:
+   10-bit displays in Adobe RGB or Display P3.
  - *16-bit* internal precision in order to minimise quantisation errors.
  - *Gamma-correct* scaling if appropriate.
  - *Good scaling*: GIMP's NoHalo is an awesome compromise for upscaling
    both photos and man-made images.
  - *Loading as much as we can* from any file format at the best possible
-   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, etc.;
+   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, HDR, etc.;
    at least 65535 pixels on one side.
  - *Making good use of computing resources*: exercise the GPU and all CPU cores.
  - *Superb keyboard accessibility*: we recognise
    https://p.janouch.name/text/human-interface-guidelines.html[HIGs]
    and also have Vimium-style link hints.
  - *We never silently move or modify image files.*
-
-Do it yourself
-~~~~~~~~~~~~~~
- - HDR: verified to roughly work on Linux and macOS but it's not the focus.
- - Right-to-left layouts.
 
 Rejected
 ~~~~~~~~
@@ -54,7 +50,7 @@ Packages
 
  - Latest https://janouch.name/cd/Dawn-latest-Windows-x86_64.zip[Windows ZIP],
    https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
-   Wine has text issues.
+   using Wine is not recommended.
 
  - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
    *unsigned* macOS Apple Silicon bundle] needs either

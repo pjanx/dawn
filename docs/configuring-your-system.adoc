@@ -10,6 +10,9 @@ targets are either already stored somewhere on your system, or they can be
 downloaded off the Internet.  For miserable sub-sRGB laptop screens, check your
 manufacturer's download page.  Windows may also pull these in automatically.
 
+HDR may not be supported over HDMI or at all.  Further, as an example,
+my monitor needed to be put specifically in PQ over BT.2020.
+
 macOS
 -----
 You're probably all set already.  Make sure your _Displays_ in _System Settings_
@@ -68,8 +71,8 @@ based on something other than 'colord'.
 
 *nix/Wayland
 ------------
-You've chosen to go with an experimental system at the edge of usefulness.
-Good luck.  (Time of evaluation: 2026/08)
+You've chosen to go with an experimental system at the edge of usefulness,
+though at least it may support HDR.  Good luck.  (Time of evaluation: 2026/09)
 
 *GNOME Shell:* In _~/.config/monitors.xml_, put the following snippet within
 `<monitor>` sections:
