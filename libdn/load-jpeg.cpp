@@ -119,101 +119,6 @@ parse_mpf(vector<MpfEntry> &individuals, const uint8_t *mpf, size_t len,
 	}
 }
 
-// --- Exif-derived colour profile ---------------------------------------------
-
-namespace
-{
-
-struct ExifProfileParams {
-	double whitepoint[2] = {};             ///< TIFF_WhitePoint
-	double primaries[6] = {};              ///< TIFF_PrimaryChromaticities
-	enum Exif_ColorSpace colorspace = {};  ///< Exif_ColorSpace
-	double gamma = 0;                      ///< Exif_Gamma
-
-	bool have_whitepoint = false;
-	bool have_primaries = false;
-	bool have_colorspace = false;
-	bool have_gamma = false;
-};
-
-}  // namespace
-
-static bool
-parse_exif_profile_reals(const tiffer *T, tiffer_entry *entry, double *out)
-{
-	while (tiffer_real(T, entry, out++))
-		if (!tiffer_next_value(entry))
-			return false;
-	return true;
-}
-
-static void
-parse_exif_profile_subifd(
-	ExifProfileParams *params, const tiffer *T, uint32_t offset)
-{
-	tiffer subT = {};
-	if (!tiffer_subifd(T, offset, &subT))
-		return;
-
-	tiffer_entry entry = {};
-	while (tiffer_next_entry(&subT, &entry)) {
-		int64_t value = 0;
-		if (entry.tag == Exif_ColorSpace && entry.type == TIFFER_SHORT &&
-			entry.remaining_count == 1 &&
-			tiffer_integer(&subT, &entry, &value)) {
-			params->have_colorspace = true;
-			params->colorspace = (enum Exif_ColorSpace) value;
-		} else if (entry.tag == Exif_Gamma && entry.type == TIFFER_RATIONAL &&
-			entry.remaining_count == 1 &&
-			tiffer_real(&subT, &entry, &params->gamma)) {
-			params->have_gamma = true;
-		}
-	}
-}
-
-/// Derives an ICC-like colour profile from Exif tags, mirroring fiv's
-/// handling of sRGB/AdobeRGB Nikon JPEGs that carry no embedded ICC profile.
-static shared_ptr<Profile>
-parse_exif_profile(Cmm &cmm, span<const uint8_t> exif)
-{
-	tiffer T = {};
-	if (!tiffer_init(&T, exif.data(), exif.size()) || !tiffer_next_ifd(&T))
-		return nullptr;
-
-	ExifProfileParams params;
-	tiffer_entry entry = {};
-	while (tiffer_next_entry(&T, &entry)) {
-		int64_t offset = 0;
-		if (entry.tag == TIFF_ExifIFDPointer && entry.type == TIFFER_LONG &&
-			entry.remaining_count == 1 && tiffer_integer(&T, &entry, &offset) &&
-			offset >= 0 && offset <= UINT32_MAX) {
-			parse_exif_profile_subifd(&params, &T, uint32_t(offset));
-		} else if (entry.tag == TIFF_WhitePoint &&
-			entry.type == TIFFER_RATIONAL && entry.remaining_count == 2) {
-			params.have_whitepoint =
-				parse_exif_profile_reals(&T, &entry, params.whitepoint);
-		} else if (entry.tag == TIFF_PrimaryChromaticities &&
-			entry.type == TIFFER_RATIONAL && entry.remaining_count == 6) {
-			params.have_primaries =
-				parse_exif_profile_reals(&T, &entry, params.primaries);
-		}
-	}
-	if (!params.have_colorspace)
-		return nullptr;
-
-	// If sRGB is claimed, assume all parameters are standard.
-	if (params.colorspace == Exif_ColorSpace_sRGB)
-		return cmm.get_profile_sRGB();
-
-	// AdobeRGB Nikon JPEGs provide all of these.
-	if (params.colorspace != Exif_ColorSpace_Uncalibrated ||
-		!params.have_gamma || !params.have_whitepoint || !params.have_primaries)
-		return nullptr;
-
-	return cmm.get_profile_parametric(
-		params.gamma, params.whitepoint, params.primaries);
-}
-
 // --- JPEG segment scanning ---------------------------------------------------
 
 namespace
@@ -617,7 +522,7 @@ load_jpeg_finalize(ImagePtr &image, bool cmyk, int bits, const OpenContext &ctx,
 	if (!image->icc.empty())
 		source = cmm->get_profile(image->icc);
 	else if (!image->exif.empty())
-		source = parse_exif_profile(*cmm, image->exif);
+		source = exif_profile(*cmm, image->exif);
 	if (source)
 		image->effective_profile = source;
 	else if (!cmyk) {

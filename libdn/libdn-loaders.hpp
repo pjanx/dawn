@@ -75,6 +75,12 @@ bool inflate_raw(std::span<const uint8_t> src, std::span<uint8_t> dst);
 /// Returns nothing when the offset does not fit the payload.
 std::vector<uint8_t> iso_exif_payload(std::span<const uint8_t> payload);
 
+/// Derives a colour profile from Exif tags, mirroring fiv's handling of
+/// sRGB/AdobeRGB Nikon JPEGs that carry no embedded ICC profile.
+/// Null when the tags do not describe one.
+std::shared_ptr<Profile> exif_profile(
+	Cmm &cmm, std::span<const uint8_t> exif);
+
 // --- Gain maps ---------------------------------------------------------------
 
 /// Values of an XMP property named by namespace URI and local name: as an
