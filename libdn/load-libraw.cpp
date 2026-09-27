@@ -14,8 +14,11 @@
 #if DAWN_WITH_LIBRAW
 #include <libraw.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <memory>
+#include <vector>
 
 using namespace std;
 
@@ -35,9 +38,81 @@ static constexpr Orientation kFlipOrientations[] = {
 	Orientation::Mirror90,   // 7
 };
 
+// With output_color = 0, dcraw_process() stops at white-balanced camera
+// colours.  The rest follows convert_to_rgb() and copy_mem_image(), except
+// that the output is Rec. 2020 under the sRGB curve, while auto-brighten
+// still measures linear sRGB, so that exposure does not follow the container.
+static void
+develop(const libraw_data_t *iprc, Image &image)
+{
+	const int colors = min(iprc->idata.colors, 4);
+	float to_srgb[3][4] = {};
+	if (iprc->rawdata.ioparams.raw_color || colors == 1) {
+		for (int c = 0; c < 3; c++)
+			to_srgb[c][colors == 1 ? 0 : c] = 1;
+	} else {
+		memcpy(to_srgb, iprc->color.rgb_cam, sizeof to_srgb);
+	}
+
+	const RgbMatrix m =
+		primaries_to_primaries(kRec709Primaries, kRec2020Primaries);
+	float to_output[3][3] = {};
+	for (int c = 0; c < 3; c++)
+		for (int k = 0; k < 3; k++)
+			to_output[c][k] = float(m[k][c]);
+
+	vector<uint32_t> histogram(3 << 13);
+	for (uint32_t y = 0; y < image.height; y++) {
+		const uint16_t (*in)[4] = iprc->image + size_t(y) * image.width;
+		uint16_t *out = row_u16(image, y);
+		for (uint32_t x = 0; x < image.width; x++, out += 4) {
+			const uint16_t *p = in[x];
+			const float r = to_srgb[0][0] * p[0] + to_srgb[0][1] * p[1] +
+				to_srgb[0][2] * p[2] + to_srgb[0][3] * p[3];
+			const float g = to_srgb[1][0] * p[0] + to_srgb[1][1] * p[1] +
+				to_srgb[1][2] * p[2] + to_srgb[1][3] * p[3];
+			const float b = to_srgb[2][0] * p[0] + to_srgb[2][1] * p[1] +
+				to_srgb[2][2] * p[2] + to_srgb[2][3] * p[3];
+			histogram[0 << 13 | clamp(int(r), 0, 65535) >> 3]++;
+			histogram[1 << 13 | clamp(int(g), 0, 65535) >> 3]++;
+			histogram[2 << 13 | clamp(int(b), 0, 65535) >> 3]++;
+			for (int c = 0; c < 3; c++) {
+				const float output = to_output[c][0] * r + to_output[c][1] * g +
+					to_output[c][2] * b + .5f;
+				out[2 - c] = uint16_t(clamp(int(output), 0, 65535));
+			}
+			out[3] = 65535;
+		}
+	}
+
+	// White is where the brightest 1% of some channel starts.
+	size_t clipped = size_t(
+		double(image.width) * image.height * iprc->params.auto_bright_thr);
+	int white = 32;
+	for (int c = 0; c < 3; c++) {
+		size_t total = 0;
+		int value = 0x2000;
+		while (--value > 32)
+			if ((total += histogram[c << 13 | value]) > clipped)
+				break;
+		white = max(white, value);
+	}
+
+	vector<uint16_t> curve(0x10000, 65535);
+	const int top = white << 3;
+	for (int i = 0; i < top; i++)
+		curve[i] = uint16_t(lround(
+			transfer_encode(float(i) / float(top), Transfer::Srgb) * 65535));
+	for (uint32_t y = 0; y < image.height; y++) {
+		uint16_t *out = row_u16(image, y);
+		for (uint32_t x = 0; x < image.width; x++, out += 4)
+			for (int c = 0; c < 3; c++)
+				out[c] = curve[out[c]];
+	}
+}
+
 // Unpacks, demosaics and colour-converts (to `profile`) a single shot already
-// opened into `iprc`, producing one working-format page. LibRaw hands back
-// tightly packed, interleaved 16-bit RGB rows, which carry no alpha.
+// opened into `iprc`, producing one working-format page.
 static ImagePtr
 load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx,
 	const shared_ptr<Profile> &profile, Error *error)
@@ -51,35 +126,20 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx,
 		return nullptr;
 	}
 
-	// TODO(p): Documentation says I should look at the code and do it myself.
+	// LibRaw's documentation expects applications to replace its dcraw
+	// emulation.  Only its colour conversion needed replacing, see develop().
 	if ((err = libraw_dcraw_process(iprc))) {
 		set_error(error, libraw_strerror(err));
 		return nullptr;
 	}
 
-	libraw_processed_image_t *image = libraw_dcraw_make_mem_image(iprc, &err);
-	if (!image) {
-		set_error(error, libraw_strerror(err));
-		return nullptr;
-	}
-
-	// This should have been transformed, and kept, respectively.
-	if (image->colors != 3 || image->bits != 16) {
-		set_error(error, _("unexpected number of colours, or bit depth"));
-		libraw_dcraw_clear_mem(image);
-		return nullptr;
-	}
-
-	ImagePtr result = image_new(image->width, image->height);
+	ImagePtr result = image_new(iprc->sizes.width, iprc->sizes.height);
 	if (!result) {
 		set_error(error, _("image allocation failure"));
-		libraw_dcraw_clear_mem(image);
 		return nullptr;
 	}
 
-	pack_rgb16le_to_bgra16(*result, assume_aligned<const uint16_t>(image->data),
-		size_t(image->width) * 3 * sizeof(uint16_t), 16);
-	libraw_dcraw_clear_mem(image);
+	develop(iprc, *result);
 	result->orientation = orientation;
 	result->effective_profile = profile;
 	finish_image(*result, ctx, profile.get(), /*input_premul=*/false);
@@ -102,14 +162,10 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// Leave the orientation to the viewer.
 	iprc->params.user_flip = 0;
 	iprc->params.use_camera_wb = 1;
-	iprc->params.output_bps = 16;
+	iprc->params.output_color = 0;
 
 	// Rec. 2020 keeps camera colours that sRGB would clip before our CMS
-	// sees them.  The default curve is BT.709's; the sRGB-shaped one comes
-	// within 0.6 of a 16-bit code of what the profile below describes.
-	iprc->params.output_color = 8;
-	iprc->params.gamm[0] = 1 / 2.4;
-	iprc->params.gamm[1] = 12.92;
+	// sees them.
 	auto profile = cmm_or_default(ctx)->get_profile_parametric(
 		nullopt, kD65White, kRec2020Primaries);
 	if (!profile) {
