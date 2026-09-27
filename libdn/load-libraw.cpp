@@ -146,18 +146,24 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx,
 	return result;
 }
 
+// LibRaw goes on decoding past corrupt data, and only fails on its end.
+static void
+on_data_error(void *data, const char *file, INT64 offset)
+{
+	add_warning(*(const OpenContext *) data,
+		offset < 0 ? _("truncated raw data") : _("corrupted raw data"));
+}
+
 ImagePtr
 load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	// https://github.com/LibRaw/LibRaw/issues/418
-	// Memory allocation failures are reported via return codes and need no
-	// callback flag (unlike in older LibRaw releases fiv-io.c targeted).
 	unique_ptr<libraw_data_t, void (*)(libraw_data_t *)> iprc(
-		libraw_init(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK), libraw_close);
+		libraw_init(0), libraw_close);
 	if (!iprc) {
 		set_error(error, _("failed to obtain a LibRaw handle"));
 		return nullptr;
 	}
+	libraw_set_dataerror_handler(iprc.get(), on_data_error, (void *) &ctx);
 
 	// Leave the orientation to the viewer.
 	iprc->params.user_flip = 0;
@@ -202,6 +208,10 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			append_page(head, tail, std::move(shot));
 		}
 	}
+
+	// Recycling keeps these, so they cover every shot.
+	if (iprc->process_warnings & LIBRAW_WARN_BAD_CAMERA_WB)
+		add_warning(ctx, _("unusable camera white balance"));
 	return head;
 }
 
