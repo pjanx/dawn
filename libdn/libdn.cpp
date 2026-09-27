@@ -129,8 +129,9 @@ image_new(uint32_t width, uint32_t height)
 	if (height > SIZE_MAX / stride)
 		return nullptr;
 
-	auto image = make_shared<Image>();
+	ImagePtr image;
 	try {
+		image = make_shared<Image>();
 		StageClock clk(&OpenTiming::alloc_ms);
 		image->data.assign(size_t(stride) * height, 0);
 	} catch (const bad_alloc &) {

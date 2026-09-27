@@ -91,7 +91,7 @@ app_url_for_bundle_id(NSString *bid)
 	NSURL *url = nil;
 	if (CFArrayGetCount(urls) > 0)
 		url = (__bridge NSURL *) CFArrayGetValueAtIndex(urls, 0);
-	NSURL *copy = url ? [url copy] : nil;
+	NSURL *copy = url ? [[url copy] autorelease] : nil;
 	CFRelease(urls);
 	return copy;
 }

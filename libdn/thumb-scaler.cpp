@@ -24,7 +24,6 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -249,8 +248,6 @@ struct ThumbScaler::Impl {
 	vector<Range> free_ranges;
 	unordered_map<uint32_t, Range> live;
 	vector<Waiter *> waiters;
-	unordered_map<uint64_t, Priority> priority_overrides;
-	unordered_set<uint64_t> canceled;
 	vector<Pending> pending;
 	vector<Result> failed_results;
 	array<Batch, kBatchSlots> batches;
@@ -385,7 +382,6 @@ destroy_all(ThumbScaler::Impl &e)
 	e.free_ranges.clear();
 	e.live.clear();
 	e.waiters.clear();
-	e.priority_overrides.clear();
 	e.pending.clear();
 	e.failed_results.clear();
 	e.ready = false;
@@ -477,8 +473,22 @@ release_range(ThumbScaler::Impl &e, uint32_t id)
 }
 
 static bool
-claim(ThumbScaler::Impl &e, size_t bytes, uint64_t user,
-	ThumbScaler::Priority priority, Slot *slot)
+canceled(const ThumbScaler::Job &job)
+{
+	return job.control && job.control->canceled;
+}
+
+// Read under the lock that reprioritize() takes, so that whatever it misses
+// in the queues is seen here.
+static ThumbScaler::Priority
+current_priority(const ThumbScaler::Job &job)
+{
+	return job.control ? job.control->priority.load() : job.priority;
+}
+
+static bool
+claim(
+	ThumbScaler::Impl &e, size_t bytes, const ThumbScaler::Job &job, Slot *slot)
 {
 	if (!slot)
 		return false;
@@ -488,25 +498,19 @@ claim(ThumbScaler::Impl &e, size_t bytes, uint64_t user,
 		return false;
 
 	unique_lock lock(e.mu);
-	if (e.canceled.contains(user))
+	if (canceled(job))
 		return false;
 
-	if (auto found = e.priority_overrides.find(user);
-		found != e.priority_overrides.end())
-		priority = found->second;
-	Waiter waiter{user, priority, e.next_waiter++, bytes};
+	Waiter waiter{job.user, current_priority(job), e.next_waiter++, bytes};
 	if (!e.next_waiter)
 		e.next_waiter = 1;
 	e.waiters.push_back(&waiter);
 	while (!e.stop) {
-		if (e.canceled.contains(user)) {
+		if (canceled(job)) {
 			erase(e.waiters, &waiter);
 			e.cv.notify_all();
 			return false;
 		}
-		if (auto found = e.priority_overrides.find(user);
-			found != e.priority_overrides.end())
-			waiter.priority = found->second;
 		Waiter *first = nullptr;
 		for (Waiter *candidate : e.waiters)
 			if (!first || higher(candidate->priority, first->priority) ||
@@ -648,7 +652,8 @@ ensure_reduced(ThumbScaler::Impl &e, Session &s, string *error)
 }
 
 static bool
-begin_session(ThumbScaler::Impl &e, const SessionInfo &info, uint32_t *id)
+begin_session(ThumbScaler::Impl &e, const SessionInfo &info,
+	const ThumbScaler::Job &job, uint32_t *id)
 {
 	if (!e.ready || !id || !info.src_w || !info.src_h || info.outputs.empty() ||
 		!info.tile_count)
@@ -663,9 +668,7 @@ begin_session(ThumbScaler::Impl &e, const SessionInfo &info, uint32_t *id)
 		return false;
 
 	lock_guard lock(e.mu);
-	if (auto priority = e.priority_overrides.find(info.user);
-		priority != e.priority_overrides.end())
-		s->info.priority = priority->second;
+	s->info.priority = current_priority(job);
 	s->id = e.next_session++;
 	if (!e.next_session)
 		e.next_session = 1;
@@ -1070,13 +1073,12 @@ build_batch(ThumbScaler::Impl &e, Batch &b, vector<Pending> jobs,
 // --- Queueing ----------------------------------------------------------------
 
 static bool
-enqueue(ThumbScaler::Impl &e, const Request &req)
+enqueue(ThumbScaler::Impl &e, const Request &req, const ThumbScaler::Job &job)
 {
 	lock_guard lock(e.mu);
 	auto found = e.live.find(req.slot);
 	if (!e.ready || e.stop || found == e.live.end() || !req.src_w ||
-		!req.src_h || (!req.session && req.outputs.empty()) ||
-		e.canceled.contains(req.user)) {
+		!req.src_h || (!req.session && req.outputs.empty()) || canceled(job)) {
 		release_range(e, req.slot);
 		return false;
 	}
@@ -1089,9 +1091,7 @@ enqueue(ThumbScaler::Impl &e, const Request &req)
 		s->enqueued++;
 	}
 	Request queued = req;
-	if (auto priority = e.priority_overrides.find(req.user);
-		priority != e.priority_overrides.end())
-		queued.priority = priority->second;
+	queued.priority = current_priority(job);
 	e.pending.push_back({std::move(queued), found->second});
 	return true;
 }
@@ -1104,7 +1104,7 @@ queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 		return false;
 
 	Slot slot;
-	if (!claim(e, size_t(bytes), job.user, job.priority, &slot))
+	if (!claim(e, size_t(bytes), job, &slot))
 		return false;
 
 	const Image &image = *job.image;
@@ -1135,7 +1135,7 @@ queue_full(ThumbScaler::Impl &e, const ThumbScaler::Job &job)
 	req.user = job.user;
 	req.priority = job.priority;
 	req.path = job.path;
-	return enqueue(e, req);
+	return enqueue(e, req, job);
 }
 
 // --- Interface ---------------------------------------------------------------
@@ -1267,27 +1267,19 @@ ThumbScaler::queue(const Job &job)
 	if (!impl_ || !impl_->ready)
 		return false;
 	Impl &e = *impl_;
-	auto fail = [&] {
-		lock_guard lock(e.mu);
-		e.priority_overrides.erase(job.user);
-		return false;
-	};
 	uint64_t bytes = 0;
 	if (!job_size(job, nullptr, &bytes))
-		return fail();
+		return false;
 	const Image &image = *job.image;
 	if (bytes <= e.ring_bytes && image.width <= e.max_image_dim &&
-		image.height <= e.max_image_dim) {
-		if (queue_full(e, job))
-			return true;
-		return fail();
-	}
+		image.height <= e.max_image_dim)
+		return queue_full(e, job);
 
 	uint32_t k = 0;
 	vector<Tile> tiles;
 	if (!choose_k(e, image.width, image.height, &k) ||
 		!plan_tiles(e, image.width, image.height, k, &tiles) || tiles.empty())
-		return fail();
+		return false;
 
 	SessionInfo info;
 	info.path = job.path;
@@ -1303,13 +1295,13 @@ ThumbScaler::queue(const Job &job)
 	info.opaque = opaque_bgra16(
 		image.data.data(), image.width, image.height, image.stride);
 	uint32_t session = 0;
-	if (!begin_session(e, info, &session))
-		return fail();
+	if (!begin_session(e, info, job, &session))
+		return false;
 
 	for (const Tile &tile : tiles) {
 		Slot slot;
 		const size_t tile_row = size_t(tile.w) * kBytesPerPixel;
-		if (!claim(e, tile_row * tile.h, job.user, job.priority, &slot))
+		if (!claim(e, tile_row * tile.h, job, &slot))
 			break;
 
 		auto *dst = (uint8_t *) slot.mapped;
@@ -1335,7 +1327,7 @@ ThumbScaler::queue(const Job &job)
 		req.tile_oy = tile.oy;
 		req.tile_w = tile.w;
 		req.tile_h = tile.h;
-		if (!enqueue(e, req))
+		if (!enqueue(e, req, job))
 			break;
 	}
 	end_session(e, session);
@@ -1351,7 +1343,6 @@ ThumbScaler::reprioritize(uint64_t user, Priority priority)
 	Impl &e = *impl_;
 	lock_guard lock(e.mu);
 	bool found = false;
-	e.priority_overrides[user] = priority;
 	for (Waiter *waiter : e.waiters) {
 		if (waiter->user == user) {
 			found = true;
@@ -1384,7 +1375,6 @@ ThumbScaler::cancel(uint64_t user)
 	Impl &e = *impl_;
 	lock_guard lock(e.mu);
 	bool found = false;
-	e.canceled.insert(user);
 	for (auto it = e.pending.begin(); it != e.pending.end();) {
 		if (it->req.user != user) {
 			it++;
@@ -1404,7 +1394,6 @@ ThumbScaler::cancel(uint64_t user)
 	}
 	for (Waiter *waiter : e.waiters)
 		found |= waiter->user == user;
-	e.priority_overrides.erase(user);
 	e.cv.notify_all();
 	return found;
 }
@@ -1566,12 +1555,6 @@ ThumbScaler::poll(vector<Result> *done)
 						finished.end())
 						finished.push_back(s->id);
 				}
-				e.priority_overrides.erase(item.req.user);
-				e.canceled.erase(item.req.user);
-			} else {
-				lock_guard lock(e.mu);
-				e.priority_overrides.erase(item.req.user);
-				e.canceled.erase(item.req.user);
 			}
 		}
 		for (Result &result : batch_results)
@@ -1597,11 +1580,8 @@ ThumbScaler::poll(vector<Result> *done)
 	}
 	{
 		lock_guard lock(e.mu);
-		for (Result &result : e.failed_results) {
-			e.priority_overrides.erase(result.user);
-			e.canceled.erase(result.user);
+		for (Result &result : e.failed_results)
 			done->push_back(std::move(result));
-		}
 		e.failed_results.clear();
 		vector<uint32_t> erase;
 		for (auto &entry : e.sessions) {

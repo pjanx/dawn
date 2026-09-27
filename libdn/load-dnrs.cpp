@@ -308,11 +308,11 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			? Orientation(page_info.orientation)
 			: Orientation::Unknown;
 		frames->loops = page_info.loop_count;
-		copy_blob(frames->icc, document.icc);
-		copy_blob(frames->exif, document.exif);
-		copy_blob(frames->xmp, document.xmp);
-		for (size_t i = 0; i < document.text_length; i++) {
-			const dnrs_text &entry = document.text[i];
+		copy_blob(frames->icc, page_info.icc);
+		copy_blob(frames->exif, page_info.exif);
+		copy_blob(frames->xmp, page_info.xmp);
+		for (size_t i = 0; i < page_info.text_length; i++) {
+			const dnrs_text &entry = page_info.text[i];
 			if (entry.key && entry.value)
 				frames->text.emplace(entry.key, entry.value);
 		}

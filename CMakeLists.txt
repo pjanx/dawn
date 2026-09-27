@@ -162,6 +162,7 @@ if (APPLE)
 endif()
 
 include(FetchContent)
+include(CTest)
 
 # The GPL fast float plugin improves performance a ton,
 # but distributions usually omit it.
@@ -199,6 +200,7 @@ else()
 	set(LCMS2_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 	set(LCMS2_WITH_FASTFLOAT ON CACHE BOOL "" FORCE)
 	set(LCMS2_WITH_THREADED_PLUGIN ON CACHE BOOL "" FORCE)
+	set(LCMS2_BUILD_TESTS "${BUILD_TESTING}" CACHE BOOL "Build tests (testbed)")
 
 	# Bundled static lib; do not ship headers/.a with the app package.
 	FetchContent_Declare(lcms2
@@ -225,7 +227,9 @@ else()
 		lcms2 lcms2_fast_float lcms2_threaded)
 
 	# Have CTest not fail.
-	set_target_properties(testcms PROPERTIES EXCLUDE_FROM_ALL FALSE)
+	if (TARGET testcms)
+		set_target_properties(testcms PROPERTIES EXCLUDE_FROM_ALL FALSE)
+	endif()
 endif()
 
 option(DAWN_WITH_JPEG_QS "Bundled JPEG Quant Smooth" ON)
@@ -296,7 +300,6 @@ configure_file(
 	"${PROJECT_BINARY_DIR}/dawn-config.h")
 
 include_directories("${PROJECT_SOURCE_DIR}")
-include(CTest)
 
 # Keep diagnostics after bundled dependencies so that they don't apply to them.
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

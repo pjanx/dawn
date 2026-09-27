@@ -189,7 +189,8 @@ main(int argc, char **argv)
 	// These are stable command-line spellings, so they are never translated.
 	QStringList mode_names;
 	for (const dn::ModeDef &mode : dn::modes())
-		mode_names += QLatin1String(mode.name);
+		if (mode.available)
+			mode_names += QLatin1String(mode.name);
 
 	const QCommandLineOption mode_opt(QStringLiteral("mode"),
 		// TRANSLATORS: %1 is a comma-separated list of mode names.
@@ -248,14 +249,12 @@ main(int argc, char **argv)
 		}
 		mode = *parsed;
 	}
-#if !DAWN_WITH_WIP
-	if (mode == dn::Mode::Commander) {
+	if (!dn::mode_def(mode).available) {
 		qWarning("%s",
 			qUtf8Printable(QString::fromUtf8(_("unsupported mode: %1"))
 					.arg(QLatin1String(dn::mode_def(mode).name))));
 		return EXIT_FAILURE;
 	}
-#endif
 
 	dn::App app(argc, argv);
 	dn::accessible_init();

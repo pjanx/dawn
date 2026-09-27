@@ -157,6 +157,10 @@ InstanceHost::Impl::on_request(
 			"unknown mode or empty open request");
 		return;
 	}
+	if (!mode_def(*mode).available) {
+		call.fail(dawn::ipc::ErrorCode::Unsupported, "unsupported mode");
+		return;
+	}
 	for (const string_view url : open_body->open.urls) {
 		const QByteArray encoded(url.data(), qsizetype(url.size()));
 		if (!this->app_.open(QUrl::fromEncoded(encoded), token, {}, *mode)) {

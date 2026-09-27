@@ -151,16 +151,15 @@ fn png_rgba8_metadata_and_iteration() {
 		true,
 	);
 	let decoder = open(&data, false);
-	let document = document_info(&decoder);
-	assert_eq!(document.page_count, 1);
-	assert!(!document.exif.data.is_null());
-	assert!(document.exif.length >= 26);
-	assert_eq!(document.text_length, 1);
-	let text = unsafe { &*document.text };
-	assert_eq!(unsafe { CStr::from_ptr(text.key) }.to_bytes(), b"prompt");
-	assert_eq!(unsafe { CStr::from_ptr(text.value) }.to_bytes(), b"hello");
+	assert_eq!(document_info(&decoder).page_count, 1);
 
 	let page = next_page(&decoder);
+	assert!(!page.exif.data.is_null());
+	assert!(page.exif.length >= 26);
+	assert_eq!(page.text_length, 1);
+	let text = unsafe { &*page.text };
+	assert_eq!(unsafe { CStr::from_ptr(text.key) }.to_bytes(), b"prompt");
+	assert_eq!(unsafe { CStr::from_ptr(text.value) }.to_bytes(), b"hello");
 	assert_eq!((page.width, page.height, page.frame_count), (2, 1, 1));
 	assert_eq!(page.orientation, 6);
 	let mut frame = next_frame(&decoder);
@@ -271,6 +270,37 @@ fn tiff_pages_are_separate() {
 			&expected
 		);
 		unsafe { dnrs_frame_clear(&mut frame) };
+	}
+}
+
+#[test]
+fn tiff_pages_keep_their_own_metadata() {
+	use tiff::encoder::{colortype, TiffEncoder};
+	use tiff::tags::Tag;
+
+	// Nothing here parses the profiles, so any distinct bytes will do.
+	// The tiff crate budgets tag values against the decoded image size, as
+	// several times their byte length, so the pages cannot be tiny.
+	let mut cursor = Cursor::new(Vec::new());
+	{
+		let mut encoder = TiffEncoder::new(&mut cursor).unwrap();
+		for icc in [&b"first"[..], &b"second"[..]] {
+			let mut image =
+				encoder.new_image::<colortype::RGB8>(16, 16).unwrap();
+			image.encoder().write_tag(Tag::IccProfile, icc).unwrap();
+			image.write_data(&[0; 16 * 16 * 3]).unwrap();
+		}
+	}
+	let decoder = open(&cursor.into_inner(), false);
+	assert_eq!(document_info(&decoder).page_count, 2);
+	for expected in [&b"first"[..], &b"second"[..]] {
+		let page = next_page(&decoder);
+		assert_eq!(
+			unsafe {
+				std::slice::from_raw_parts(page.icc.data, page.icc.length)
+			},
+			expected
+		);
 	}
 }
 

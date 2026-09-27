@@ -2499,6 +2499,10 @@ Browser::set_files(vector<File> files)
 	for (int i = 0; i < int(this->files_.size()); i++)
 		this->file_by_path_.emplace(this->files_[size_t(i)].path, i);
 	this->file_rev_++;
+
+	// Indexes into the old listing would now name other files.
+	this->press_file_ = -1;
+	this->mid_file_ = -1;
 }
 
 int
@@ -2859,7 +2863,6 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 
 	// A press that travels far enough drags the file out rather than
 	// opening it; until then it is still an ordinary click.
-	// XXX: We don't reset this when indexes change meaning.
 	this->press_file_ = (kit.touch_press_ || !kit.start_drag) ? -1 : i;
 	this->press_x_ = x;
 	this->press_y_ = y;

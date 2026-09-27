@@ -54,7 +54,7 @@ fetch() {
 	url=https://aka.ms/vs/17/release/vc_redist.x64.exe
 	sha256=cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b
 	name=$(basename "$url")
-	echo "$sha256 *packages/$name" >> db.sums
+	echo "$sha256 *$name" >> db.sums
 	status Fetching "$name"
 	[ -f "$name" ] || curl -#Lo "$name" "$url"
 
@@ -70,7 +70,7 @@ fetch() {
 	url=https://github.com/linebender/resvg/releases/download/v0.48.1/resvg-0.48.1.tar.xz
 	sha256=13ed5a2bae7a01156288ecae5bf944cf7d1c572742c19fc68027947a4d87294c
 	name=$(basename "$url")
-	echo "$sha256 *packages/$name" >> db.sums
+	echo "$sha256 *$name" >> db.sums
 	status Fetching "$name"
 	[ -f "$name" ] || curl -#Lo "$name" "$url"
 	ln -sf "$name" resvg.tar.xz

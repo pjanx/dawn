@@ -160,6 +160,8 @@ struct ModeDef {
 	const char *title;
 	std::span<const MenuNode> menu;
 	std::span<const Action> keys;
+	// Whether this build may open it; unfinished ones are parsed regardless.
+	bool available;
 };
 
 std::span<const ModeDef> modes();

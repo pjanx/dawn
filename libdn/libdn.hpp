@@ -505,8 +505,10 @@ std::shared_ptr<Cmm> cmm_or_default(const OpenContext &ctx);
 void finish_image(
 	Image &image, const OpenContext &ctx, Profile *source, bool input_premul);
 
-/// finish_image() for a page and all its animation frames, which inherit
-/// the page's source profile when they carry none of their own.
+/// finish_image() for a page and all its animation frames, all converted
+/// from the page's source profile, whatever ICC the frames carry themselves.
+/// Frames that have no `effective_profile` take the page's.  A format whose
+/// frames may embed profiles of their own finishes them one by one instead.
 void finish_frames(
 	Image &page, const OpenContext &ctx, Profile *source, bool input_premul);
 

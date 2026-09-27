@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <optional>
 #include <thread>
 #include <vector>
@@ -98,8 +99,12 @@ transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 		return true;
 	}
 
+	// Allocate everything that can throw before there is anything to release.
 	const unsigned n = cms_workers(height);
 	vector<cmsHTRANSFORM> xforms(n);
+	vector<thread> pool;
+	if (n > 1)
+		pool.reserve(n - 1);
 	for (unsigned i = 0; i < n; i++) {
 		xforms[i] = create();
 		if (!xforms[i]) {
@@ -109,15 +114,17 @@ transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 		}
 	}
 
-	vector<thread> pool;
-	if (n > 1)
-		pool.reserve(n - 1);
 	for (unsigned i = 1; i < n; i++) {
 		const uint32_t y0 = uint32_t(uint64_t(height) * i / n);
 		const uint32_t y1 = uint32_t(uint64_t(height) * (i + 1) / n);
 		if (y0 >= y1)
 			continue;
-		pool.emplace_back([&, i, y0, y1] { run_band(xforms[i], y0, y1); });
+
+		try {
+			pool.emplace_back([&, i, y0, y1] { run_band(xforms[i], y0, y1); });
+		} catch (const exception &) {
+			run_band(xforms[i], y0, y1);
+		}
 	}
 	run_band(xforms[0], 0, uint32_t(uint64_t(height) / n));
 	for (thread &t : pool)

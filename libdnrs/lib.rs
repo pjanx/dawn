@@ -55,11 +55,6 @@ pub enum dnrs_pixel_format {
 pub struct dnrs_document_info {
 	codec: *const c_char,
 	page_count: u32,
-	icc: dnrs_blob,
-	exif: dnrs_blob,
-	xmp: dnrs_blob,
-	text: *const dnrs_text,
-	text_length: usize,
 }
 
 #[repr(C)]
@@ -69,6 +64,11 @@ pub struct dnrs_page_info {
 	frame_count: u32,
 	orientation: u32,
 	loop_count: u64,
+	icc: dnrs_blob,
+	exif: dnrs_blob,
+	xmp: dnrs_blob,
+	text: *const dnrs_text,
+	text_length: usize,
 }
 
 #[repr(C)]
@@ -101,6 +101,11 @@ struct Page {
 	orientation: u32,
 	loop_count: u64,
 	frames: Vec<Frame>,
+	icc: Vec<u8>,
+	exif: Vec<u8>,
+	xmp: Vec<u8>,
+	_text_storage: Vec<(CString, CString)>,
+	text: Vec<dnrs_text>,
 }
 
 #[derive(Default)]
@@ -114,11 +119,6 @@ struct Metadata {
 
 pub struct dnrs_decoder {
 	codec: CString,
-	icc: Vec<u8>,
-	exif: Vec<u8>,
-	xmp: Vec<u8>,
-	_text_storage: Vec<(CString, CString)>,
-	text: Vec<dnrs_text>,
 	pages: Vec<Page>,
 	page_index: Option<usize>,
 	frame_index: usize,
@@ -791,20 +791,14 @@ fn decoder_from_pages(
 	codec: String,
 	decoded: Vec<(Frame, Metadata)>,
 ) -> Result<dnrs_decoder, String> {
-	let mut first = None;
-	let mut pages = Vec::new();
-	for (frame, metadata) in decoded {
-		pages.push(Page {
-			width: frame.width,
-			height: frame.height,
-			orientation: metadata.orientation,
-			loop_count: 0,
-			frames: vec![frame],
-		});
-		first.get_or_insert(metadata);
+	let pages = decoded
+		.into_iter()
+		.map(|(frame, metadata)| make_page(vec![frame], 0, metadata))
+		.collect::<Result<Vec<_>, String>>()?;
+	if pages.is_empty() {
+		return Err("the image has no pages".into());
 	}
-	let first = first.ok_or("the image has no pages")?;
-	make_decoder(codec, pages, first)
+	make_decoder(codec, pages)
 }
 
 fn decoder_from_frames(
@@ -813,24 +807,30 @@ fn decoder_from_frames(
 	loop_count: u64,
 	metadata: Metadata,
 ) -> Result<dnrs_decoder, String> {
-	let first = frames
-		.first()
-		.ok_or_else(|| "the image has no frames".to_string())?;
-	let page = Page {
-		width: first.width,
-		height: first.height,
-		orientation: metadata.orientation,
-		loop_count,
-		frames,
-	};
-	make_decoder(codec, vec![page], metadata)
+	make_decoder(codec, vec![make_page(frames, loop_count, metadata)?])
 }
 
 fn make_decoder(
 	codec: String,
 	pages: Vec<Page>,
-	metadata: Metadata,
 ) -> Result<dnrs_decoder, String> {
+	Ok(dnrs_decoder {
+		codec: CString::new(codec).map_err(|_| "invalid codec name")?,
+		pages,
+		page_index: None,
+		frame_index: 0,
+	})
+}
+
+fn make_page(
+	frames: Vec<Frame>,
+	loop_count: u64,
+	metadata: Metadata,
+) -> Result<Page, String> {
+	let (width, height) = frames
+		.first()
+		.map(|first| (first.width, first.height))
+		.ok_or_else(|| "the image has no frames".to_string())?;
 	let text_storage = metadata
 		.text
 		.into_iter()
@@ -849,16 +849,17 @@ fn make_decoder(
 			value: value.as_ptr(),
 		})
 		.collect();
-	Ok(dnrs_decoder {
-		codec: CString::new(codec).map_err(|_| "invalid codec name")?,
+	Ok(Page {
+		width,
+		height,
+		orientation: metadata.orientation,
+		loop_count,
+		frames,
 		icc: metadata.icc,
 		exif: metadata.exif,
 		xmp: metadata.xmp,
 		_text_storage: text_storage,
 		text,
-		pages,
-		page_index: None,
-		frame_index: 0,
 	})
 }
 
@@ -922,20 +923,6 @@ pub unsafe extern "C" fn dnrs_decoder_get_info(
 		*info = dnrs_document_info {
 			codec: decoder.codec.as_ptr(),
 			page_count: u32::try_from(decoder.pages.len()).unwrap_or(u32::MAX),
-			icc: dnrs_blob {
-				data: decoder.icc.as_ptr(),
-				length: decoder.icc.len(),
-			},
-			exif: dnrs_blob {
-				data: decoder.exif.as_ptr(),
-				length: decoder.exif.len(),
-			},
-			xmp: dnrs_blob {
-				data: decoder.xmp.as_ptr(),
-				length: decoder.xmp.len(),
-			},
-			text: decoder.text.as_ptr(),
-			text_length: decoder.text.len(),
 		};
 		Ok(true)
 	})
@@ -963,6 +950,20 @@ pub unsafe extern "C" fn dnrs_decoder_next_page(
 			frame_count: u32::try_from(page.frames.len()).unwrap_or(u32::MAX),
 			orientation: page.orientation,
 			loop_count: page.loop_count,
+			icc: dnrs_blob {
+				data: page.icc.as_ptr(),
+				length: page.icc.len(),
+			},
+			exif: dnrs_blob {
+				data: page.exif.as_ptr(),
+				length: page.exif.len(),
+			},
+			xmp: dnrs_blob {
+				data: page.xmp.as_ptr(),
+				length: page.xmp.len(),
+			},
+			text: page.text.as_ptr(),
+			text_length: page.text.len(),
 		};
 		decoder.page_index = Some(next);
 		decoder.frame_index = 0;

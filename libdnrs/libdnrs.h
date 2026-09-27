@@ -45,19 +45,21 @@ enum dnrs_pixel_format {
 struct dnrs_document_info {
 	const char *codec;
 	uint32_t page_count;
-	struct dnrs_blob icc;
-	struct dnrs_blob exif;
-	struct dnrs_blob xmp;
-	const struct dnrs_text *text;
-	size_t text_length;
 };
 
+// Metadata is per page, as multipage TIFF has it, and borrowed from the
+// decoder until it is freed.
 struct dnrs_page_info {
 	uint32_t width;
 	uint32_t height;
 	uint32_t frame_count;
 	uint32_t orientation;
 	uint64_t loop_count;
+	struct dnrs_blob icc;
+	struct dnrs_blob exif;
+	struct dnrs_blob xmp;
+	const struct dnrs_text *text;
+	size_t text_length;
 };
 
 struct dnrs_frame {

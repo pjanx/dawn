@@ -924,6 +924,7 @@ Hint::collect(Widget *scope)
 		Target t;
 		t.browser = browser;
 		t.file_i = i;
+		t.file_rev = browser->file_rev_;
 		t.at = clipped;
 		this->targets_.push_back(t);
 	}
@@ -952,8 +953,7 @@ Hint::refresh_rects()
 			keep.push_back(t);
 			continue;
 		}
-		if (!t.browser || t.file_i < 0 ||
-			t.file_i >= int(t.browser->files_.size()))
+		if (!t.browser || t.file_rev != t.browser->file_rev_)
 			continue;
 		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
 		const Rect clipped = f.tile.intersect(t.browser->r);
@@ -989,6 +989,7 @@ Hint::fire(Kit &kit, Target t)
 	Widget *widget = t.widget;
 	Browser *browser = t.browser;
 	const int file_i = t.file_i;
+	const uint64_t file_rev = t.file_rev;
 	close(kit);
 	if (widget) {
 		// Whatever this widget calls its default action; one that has none
@@ -998,7 +999,7 @@ Hint::fire(Kit &kit, Target t)
 		kit.activate(widget);
 		return;
 	}
-	if (!browser || file_i < 0 || file_i >= int(browser->files_.size()))
+	if (!browser || file_rev != browser->file_rev_)
 		return;
 
 	browser->activate_file(browser->file_url(file_i));

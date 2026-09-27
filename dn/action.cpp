@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <dawn-config.h>
+
 #include <libdn/gettext.hpp>
 
 #include "action.hpp"
@@ -626,11 +628,11 @@ static constexpr ModeDef kModes[] = {
 	// TRANSLATORS: The application's name, in window titles.  Transliterate
 	// it if that is what your script does with foreign names; do not
 	// translate the word.
-	{"view", N_("Dawn"), kViewerMenu, kViewerKeys},
-	{"browse", N_("Dawn"), kBrowserMenu, kBrowserKeys},
-	{"cropjpeg", N_("Dawn Lossless JPEG Cropper"), kCropJpegMenu,
-		kCropJpegKeys},
-	{"commander", N_("Dawn Commander"), kCommanderMenu, {}},
+	{"view", N_("Dawn"), kViewerMenu, kViewerKeys, true},
+	{"browse", N_("Dawn"), kBrowserMenu, kBrowserKeys, true},
+	{"cropjpeg", N_("Dawn Lossless JPEG Cropper"), kCropJpegMenu, kCropJpegKeys,
+		true},
+	{"commander", N_("Dawn Commander"), kCommanderMenu, {}, DAWN_WITH_WIP},
 };
 static_assert(size(kModes) == size_t(Mode::Count));
 

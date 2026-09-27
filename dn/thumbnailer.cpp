@@ -35,8 +35,8 @@ constexpr size_t kPriorityCount = 4;
 constexpr size_t kGuiBatch = 32;
 
 // A worker may queue GPU work before returning the GUI completion which
-// records that work in its client. Hold such GPU callbacks until the CPU
-// completion has at least been placed on the GUI queue.
+// records that work in its client. Hold such GPU callbacks until pump() has
+// taken that completion off the GUI queue, or the worker has found it has none.
 static thread_local shared_ptr<atomic_bool> current_cpu_gate;
 
 static bool
@@ -99,6 +99,7 @@ struct GuiTask {
 	uint64_t epoch = 0;
 	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
 	Thumbnailer::Completion completion;
+	shared_ptr<atomic_bool> gate;
 };
 
 struct GpuTask {
@@ -108,6 +109,7 @@ struct GpuTask {
 	string key;
 	Thumbnailer::GpuCompletion completion;
 	shared_ptr<atomic_bool> gate;
+	shared_ptr<dawn::ThumbScaler::Control> control;
 	optional<dawn::ThumbScaler::Result> result;
 };
 
@@ -300,10 +302,11 @@ Thumbnailer::Impl::worker_loop()
 				client->second.epoch == task->epoch) {
 				client->second.gui++;
 				gui.push_back({task->client, task->epoch,
-					task->running_priority, std::move(completion)});
+					task->running_priority, std::move(completion), task->gate});
+			} else {
+				task->gate->store(true, memory_order_release);
 			}
 		}
-		task->gate->store(true, memory_order_release);
 		cv.notify_all();
 		owner->schedule_pump();
 	}
@@ -390,6 +393,7 @@ Thumbnailer::Impl::erase_gpu(Client id, ClientState &state)
 {
 	for (auto it = gpu_tasks.begin(); it != gpu_tasks.end();) {
 		if (it->second.client == id) {
+			it->second.control->canceled = true;
 			if (scaler)
 				scaler->cancel(it->first);
 			state.gpu--;
@@ -580,6 +584,7 @@ Thumbnailer::reprioritize(
 		found_any = true;
 		if (priority != task.priority) {
 			task.priority = priority;
+			task.control->priority = scaler_priority(priority);
 			if (!task.result)
 				gpu.push_back(gpu_id);
 		}
@@ -621,6 +626,7 @@ Thumbnailer::cancel(Client id, const string &key)
 				it++;
 				continue;
 			}
+			it->second.control->canceled = true;
 			if (impl_->scaler)
 				impl_->scaler->cancel(it->first);
 			client->second.gpu--;
@@ -656,6 +662,9 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 		gpu_id = impl_->next_gpu++;
 		if (!gpu_id)
 			gpu_id = impl_->next_gpu++;
+		auto control = make_shared<dawn::ThumbScaler::Control>();
+		control->priority = scaler_priority(priority);
+		job.control = control;
 		impl_->gpu_tasks.emplace(gpu_id,
 			GpuTask{
 				.client = id,
@@ -664,12 +673,12 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 				.key = key,
 				.completion = std::move(completion),
 				.gate = current_cpu_gate,
+				.control = std::move(control),
 			});
 		client->second.gpu++;
 		client->second.activity_pending = true;
 	}
 	job.user = gpu_id;
-	job.priority = scaler_priority(priority);
 	// queue() waits for pump() to free ring space.  Workers may block;
 	// this thread may not.  Hand GUI callers a CPU task that does the copy.
 	if (QThread::currentThread() != thread()) {
@@ -886,6 +895,8 @@ Thumbnailer::pump()
 				break;
 			GuiTask task = std::move(impl_->gui.front());
 			impl_->gui.pop_front();
+			// Its GPU callbacks are only collected below, after it has run.
+			task.gate->store(true, memory_order_release);
 			auto client = impl_->clients.find(task.client);
 			if (client == impl_->clients.end())
 				continue;
