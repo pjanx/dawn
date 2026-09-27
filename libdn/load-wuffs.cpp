@@ -487,8 +487,7 @@ png_cicp(span<const uint8_t> data, uint8_t *primaries, uint8_t *transfer)
 
 	for (size_t at = sizeof signature; data.size() - at >= 12;) {
 		const uint8_t *chunk = data.data() + at;
-		const size_t length = size_t(chunk[0]) << 24 | size_t(chunk[1]) << 16 |
-			size_t(chunk[2]) << 8 | chunk[3];
+		const size_t length = be32(chunk);
 		if (!memcmp(chunk + 4, "IDAT", 4) || data.size() - at - 12 < length)
 			return false;
 		if (!memcmp(chunk + 4, "cICP", 4)) {

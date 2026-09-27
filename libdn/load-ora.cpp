@@ -50,27 +50,6 @@ constexpr uint32_t kOverflow = 0xFFFFFFFF;
 /// No preview worth showing is anywhere near this large.
 constexpr uint64_t kMaxEntrySize = 256 << 20;
 
-// --- Reading -----------------------------------------------------------------
-
-static uint16_t
-le16(const uint8_t *p)
-{
-	return uint16_t(uint32_t(p[1]) << 8 | p[0]);
-}
-
-static uint32_t
-le32(const uint8_t *p)
-{
-	return uint32_t(p[3]) << 24 | uint32_t(p[2]) << 16 | uint32_t(p[1]) << 8 |
-		uint32_t(p[0]);
-}
-
-static uint64_t
-le64(const uint8_t *p)
-{
-	return uint64_t(le32(p + 4)) << 32 | le32(p);
-}
-
 // --- Central directory -------------------------------------------------------
 
 struct ZipEntry {

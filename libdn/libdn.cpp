@@ -1122,8 +1122,7 @@ iso_exif_payload(span<const uint8_t> payload)
 	if (payload.size() < 4)
 		return {};
 
-	size_t offset = size_t(payload[0]) << 24 | size_t(payload[1]) << 16 |
-		size_t(payload[2]) << 8 | size_t(payload[3]);
+	size_t offset = be32(payload.data());
 	if (offset > payload.size() - 4)
 		return {};
 	return vector<uint8_t>(
@@ -1423,8 +1422,7 @@ struct BigEndianReader {
 	{
 		if (end - p < 4)
 			return false;
-		*out = uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 |
-			uint32_t(p[2]) << 8 | p[3];
+		*out = be32(p);
 		p += 4;
 		return true;
 	}
@@ -1526,8 +1524,7 @@ split_jhgm_bundle(span<const uint8_t> box, span<const uint8_t> *metadata,
 	if (box.size() - at < encoding_size + 4)
 		return false;
 	at += encoding_size;
-	const size_t icc_size = size_t(box[at]) << 24 | size_t(box[at + 1]) << 16 |
-		size_t(box[at + 2]) << 8 | box[at + 3];
+	const size_t icc_size = be32(box.data() + at);
 	at += 4;
 	if (box.size() - at <= icc_size)
 		return false;

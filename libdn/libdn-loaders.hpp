@@ -81,6 +81,40 @@ std::vector<uint8_t> iso_exif_payload(std::span<const uint8_t> payload);
 std::shared_ptr<Profile> exif_profile(
 	Cmm &cmm, std::span<const uint8_t> exif);
 
+// --- Byte order --------------------------------------------------------------
+
+inline uint16_t
+be16(const uint8_t *p)
+{
+	return uint16_t(uint32_t(p[0]) << 8 | p[1]);
+}
+
+inline uint32_t
+be32(const uint8_t *p)
+{
+	return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 |
+		uint32_t(p[3]);
+}
+
+inline uint16_t
+le16(const uint8_t *p)
+{
+	return uint16_t(uint32_t(p[1]) << 8 | p[0]);
+}
+
+inline uint32_t
+le32(const uint8_t *p)
+{
+	return uint32_t(p[3]) << 24 | uint32_t(p[2]) << 16 | uint32_t(p[1]) << 8 |
+		uint32_t(p[0]);
+}
+
+inline uint64_t
+le64(const uint8_t *p)
+{
+	return uint64_t(le32(p + 4)) << 32 | le32(p);
+}
+
 // --- Gain maps ---------------------------------------------------------------
 
 /// Values of an XMP property named by namespace URI and local name: as an

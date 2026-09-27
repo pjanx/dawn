@@ -149,8 +149,7 @@ png_length(const char *data)
 
 	const uint8_t *chunk = png + 8;
 	for (bool last = false; !last;) {
-		size_t length = size_t(chunk[0]) << 24 | size_t(chunk[1]) << 16 |
-			size_t(chunk[2]) << 8 | chunk[3];
+		size_t length = be32(chunk);
 		last = !memcmp(chunk + 4, "IEND", 4);
 		chunk += 12 + length;
 	}

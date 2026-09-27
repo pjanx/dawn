@@ -70,19 +70,6 @@ take(Reader &r, size_t length)
 }
 
 static uint16_t
-be16(const uint8_t *p)
-{
-	return uint16_t(uint32_t(p[0]) << 8 | p[1]);
-}
-
-static uint32_t
-be32(const uint8_t *p)
-{
-	return uint32_t(p[0]) << 24 | uint32_t(p[1]) << 16 | uint32_t(p[2]) << 8 |
-		uint32_t(p[3]);
-}
-
-static uint16_t
 read16(Reader &r)
 {
 	const uint8_t *p = take(r, 2);
