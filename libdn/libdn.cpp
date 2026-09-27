@@ -2086,19 +2086,6 @@ constexpr Loader kLoaders[] = {
 	{"OpenRaster", &load_ora, N_("OpenRaster, Krita"),
 		{"image/openraster", "application/x-krita"}, {}},
 
-	// Try to extract full-size previews from TIFF/EP-compatible raws.
-	// XXX: The name should be translated, though it is an exception.
-	{"TIFF/EP previews", &load_tiff_ep, N_("raw photos"), {"image/x-dcraw"},
-		{}},
-
-	{"LibRaw",
-#if DAWN_WITH_LIBRAW
-		&load_libraw,
-#else
-		{},
-#endif
-		N_("raw photos"), {"image/x-dcraw"}, {}},
-
 	{"resvg", &load_resvg, N_("SVG"), {"image/svg+xml"}, {}},
 
 	{"librsvg",
@@ -2152,15 +2139,6 @@ constexpr Loader kLoaders[] = {
 		// nor compound JPM, and claiming them would only fail later.
 		{"image/jp2", "image/x-jp2-codestream"}, {}},
 
-	// LibTIFF must be after LibRaw, or it will pick up thumbnails.
-	{"LibTIFF",
-#if DAWN_WITH_LIBTIFF
-		&load_tiff,
-#else
-		{},
-#endif
-		N_("TIFF"), {"image/tiff"}, {}},
-
 	{"jxrlib",
 #if DAWN_WITH_JXRLIB
 		&load_jxr,
@@ -2176,6 +2154,28 @@ constexpr Loader kLoaders[] = {
 		{},
 #endif
 		N_("WMF"), {"image/wmf", "image/x-wmf"}, {}},
+
+	// Try to extract full-size previews from TIFF/EP-compatible raws.
+	// XXX: The name should be translated, though it is an exception.
+	{"TIFF/EP previews", &load_tiff_ep, N_("raw photos"), {"image/x-dcraw"},
+		{}},
+
+	{"LibRaw",
+#if DAWN_WITH_LIBRAW
+		&load_libraw,
+#else
+		{},
+#endif
+		N_("raw photos"), {"image/x-dcraw"}, {}},
+
+	// LibTIFF must be after LibRaw, or it will pick up thumbnails.
+	{"LibTIFF",
+#if DAWN_WITH_LIBTIFF
+		&load_tiff,
+#else
+		{},
+#endif
+		N_("TIFF"), {"image/tiff"}, {}},
 
 	{"Rust",
 #if DAWN_WITH_DNRS
