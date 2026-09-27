@@ -202,9 +202,6 @@ struct TextLayoutImpl {
 		float x = 0;
 		float top = 0;
 		float baseline = 0;
-		float ascent = 0;
-		float descent = 0;
-		float leading = 0;
 	};
 
 	vector<NativeLine> lines;
@@ -472,11 +469,8 @@ TextBackend::layout_native(
 		if (native_line && count)
 			advance = CTLineGetTypographicBounds(
 				native_line, &ascent, &descent, &leading);
-		native.ascent = float(ascent);
-		native.descent = float(descent);
-		native.leading = float(leading);
 		native.top = top;
-		native.baseline = top + native.ascent;
+		native.baseline = top + float(ascent);
 		native.x = options.align == TextAlign::Center && options.wrap_width > 0
 			? max(0.f, (float(options.wrap_width) - float(advance)) * .5f)
 			: 0;
@@ -486,7 +480,7 @@ TextBackend::layout_native(
 		line.text_length = int(count);
 		line.baseline = native.baseline;
 		line.advance = float(advance);
-		line.height = native.ascent + native.descent + native.leading;
+		line.height = float(ascent) + float(descent) + float(leading);
 		if (!(line.height > 0))
 			line.height = float(CTFontGetSize(base));
 		line.underline_position = float(-CTFontGetUnderlinePosition(base));

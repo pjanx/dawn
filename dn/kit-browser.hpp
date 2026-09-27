@@ -13,8 +13,6 @@
 #include "thumbnailer.hpp"
 #include "types.hpp"
 
-#include <libdn/libdn.hpp>
-
 #include <QString>
 #include <QUrl>
 
@@ -120,8 +118,6 @@ struct Browser : Widget {
 
 	// Enumeration below is std::filesystem; this is the identity above it.
 	QUrl dir_url_;
-	std::shared_ptr<dawn::Cmm> cmm_;
-	std::shared_ptr<dawn::Profile> screen_profile_;
 	std::shared_ptr<const ScreenColour> screen_colour_;
 
 	bool show_names_ = true;
@@ -192,7 +188,6 @@ struct Browser : Widget {
 	[[nodiscard]] Rect tip_anchor() const override { return {}; }
 
 	void init();
-	void destroy();
 	void open_dir(const QUrl &url, bool record);
 	void rescan();
 	bool hist_back();

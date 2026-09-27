@@ -307,18 +307,14 @@ test_bundle_reservations()
 	b.uri = QByteArrayLiteral("file:///b");
 	dn::ThumbnailSource c = a;
 	c.uri = QByteArrayLiteral("file:///c");
-	const auto first = thumbnailer.reserve_bundle(
-		client, 7, a, 2, 4096, dn::Thumbnailer::Priority::Dimensions);
-	const auto second = thumbnailer.reserve_bundle(
-		client, 7, b, 2, 8192, dn::Thumbnailer::Priority::Visible);
+	const auto first = thumbnailer.reserve_bundle(client, 7, a, 2, 4096);
+	const auto second = thumbnailer.reserve_bundle(client, 7, b, 2, 8192);
 	if (!first || !second || thumbnailer.pending_bundle_limit() != 2 ||
 		thumbnailer.pending_bundle_bytes() != 12288 ||
-		thumbnailer.reserve_bundle(
-			client, 7, c, 2, 4096, dn::Thumbnailer::Priority::Prefetch))
+		thumbnailer.reserve_bundle(client, 7, c, 2, 4096))
 		return false;
 	thumbnailer.cancel_bundle(first);
-	const auto third = thumbnailer.reserve_bundle(
-		client, 7, c, 2, 4096, dn::Thumbnailer::Priority::Prefetch);
+	const auto third = thumbnailer.reserve_bundle(client, 7, c, 2, 4096);
 	if (!third || thumbnailer.pending_bundle_bytes() != 12288)
 		return false;
 	thumbnailer.set_epoch(client, 8);
@@ -347,11 +343,9 @@ test_reservation_handoff(QCoreApplication &app)
 	shared.mtime = 1;
 	shared.size = 2;
 
-	const auto held = thumbnailer.reserve_bundle(
-		owner, 0, shared, 2, 4096, dn::Thumbnailer::Priority::Visible);
+	const auto held = thumbnailer.reserve_bundle(owner, 0, shared, 2, 4096);
 	CHECK(held != 0);
-	CHECK(thumbnailer.reserve_bundle(other, 0, shared, 2, 4096,
-			  dn::Thumbnailer::Priority::Visible) == 0);
+	CHECK(thumbnailer.reserve_bundle(other, 0, shared, 2, 4096) == 0);
 
 	thumbnailer.cancel_bundle(held);
 	QTimer::singleShot(2000, &app, [&] { app.quit(); });
@@ -359,8 +353,7 @@ test_reservation_handoff(QCoreApplication &app)
 	CHECK(woken > 0);
 
 	// And the slot really is free now, not merely announced.
-	const auto taken = thumbnailer.reserve_bundle(
-		other, 0, shared, 2, 4096, dn::Thumbnailer::Priority::Visible);
+	const auto taken = thumbnailer.reserve_bundle(other, 0, shared, 2, 4096);
 	CHECK(taken != 0);
 	thumbnailer.cancel_bundle(taken);
 
@@ -368,8 +361,7 @@ test_reservation_handoff(QCoreApplication &app)
 	// a browser usually gives its reservations up.  Drain first, so that
 	// this stands on its own rather than on a pump the cancel left queued.
 	const auto third = thumbnailer.add_client(0, {});
-	CHECK(thumbnailer.reserve_bundle(third, 0, shared, 2, 4096,
-			  dn::Thumbnailer::Priority::Visible) != 0);
+	CHECK(thumbnailer.reserve_bundle(third, 0, shared, 2, 4096) != 0);
 	QCoreApplication::processEvents();
 	woken = 0;
 	thumbnailer.remove_client(third);

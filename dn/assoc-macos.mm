@@ -51,7 +51,6 @@ app_from_url(NSURL *url)
 		if (!name)
 			name = [bundle objectForInfoDictionaryKey:@"CFBundleName"];
 		a.name = from_ns(name);
-		a.icon = from_ns(bundle.bundlePath);
 	}
 	if (a.name.isEmpty())
 		a.name = from_ns(url.lastPathComponent);
@@ -97,8 +96,8 @@ app_url_for_bundle_id(NSString *bid)
 	return copy;
 }
 
-Handler
-default_for(const QString &path)
+static Handler
+preferred_for(const QString &path)
 {
 	NSURL *url = file_url(path);
 	if (!url)
@@ -116,21 +115,22 @@ default_for(const QString &path)
 	CFRelease(app);
 	return a;
 }
-vector<Handler>
-recommended_for(const QString &path)
+
+// Launch Services has no fallback group.
+Handlers
+handlers_for(const QString &path)
 {
-	NSURL *url = file_url(path);
-	NSString *uti = uti_from_file(url);
+	Handlers out;
+	out.preferred = preferred_for(path);
+	NSString *uti = uti_from_file(file_url(path));
 	if (!uti)
-		return {};
+		return out;
 
 	CFArrayRef handlers = LSCopyAllRoleHandlersForContentType(
 		(__bridge CFStringRef) uti, kLSRolesAll);
 	if (!handlers)
-		return {};
+		return out;
 
-	const Handler def = default_for(path);
-	vector<Handler> out;
 	const CFIndex n = CFArrayGetCount(handlers);
 	for (CFIndex i = 0; i < n; i++) {
 		NSString *bid =
@@ -143,17 +143,12 @@ recommended_for(const QString &path)
 		}
 		if (a.id.isEmpty())
 			continue;
-		if (!def.id.isEmpty() && a.id == def.id)
+		if (!out.preferred.id.isEmpty() && a.id == out.preferred.id)
 			continue;
-		out.push_back(std::move(a));
+		out.recommended.push_back(std::move(a));
 	}
 	CFRelease(handlers);
 	return out;
-}
-vector<Handler>
-fallback_for(const QString &)
-{
-	return {};
 }
 
 bool

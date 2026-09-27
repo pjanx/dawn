@@ -124,8 +124,7 @@ x11_property(xcb_connection_t *c, xcb_window_t root, xcb_atom_t atom)
 	if (!reply)
 		return {};
 
-	const auto *data =
-		static_cast<const unsigned char *>(xcb_get_property_value(reply));
+	const auto *data = (const unsigned char *) xcb_get_property_value(reply);
 	vector<unsigned char> bytes(
 		data, data + xcb_get_property_value_length(reply));
 	free(reply);
@@ -187,12 +186,11 @@ RootPropertyFilter::nativeEventFilter(
 	if (type != "xcb_generic_event_t")
 		return false;
 
-	auto *event = static_cast<xcb_generic_event_t *>(message);
+	auto *event = (xcb_generic_event_t *) message;
 	if ((event->response_type & ~0x80) != XCB_PROPERTY_NOTIFY)
 		return false;
 
-	const xcb_atom_t atom =
-		static_cast<xcb_property_notify_event_t *>(message)->atom;
+	const xcb_atom_t atom = ((xcb_property_notify_event_t *) message)->atom;
 	if (this->on_change &&
 		find(this->atoms.begin(), this->atoms.end(), atom) != this->atoms.end())
 		this->on_change();
@@ -293,7 +291,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 	CdDevice *matched = nullptr;
 	string method;
 	for (guint i = 0; i < devices->len; i++) {
-		auto *device = static_cast<CdDevice *>(g_ptr_array_index(devices, i));
+		auto *device = (CdDevice *) g_ptr_array_index(devices, i);
 		if (!cd_device_connect_sync(device, nullptr, &error)) {
 			g_clear_error(&error);
 			continue;
@@ -323,8 +321,7 @@ load_from_client(CdClient *client, const QScreen *screen)
 		qWarning("colord: load ICC: %s", error ? error->message : "failed");
 		return result;
 	}
-	result.icc =
-		profile_bytes(static_cast<cmsHPROFILE>(cd_icc_get_handle(icc)));
+	result.icc = profile_bytes(cmsHPROFILE(cd_icc_get_handle(icc)));
 	g_object_unref(icc);
 	if (result.icc.empty())
 		return {};
@@ -365,7 +362,7 @@ struct ColordSource final : DisplayProfileSource {
 static void
 on_device(CdClient *, CdDevice *device, gpointer data)
 {
-	auto *src = static_cast<ColordSource *>(data);
+	auto *src = (ColordSource *) data;
 	if (display_device(device))
 		src->notify();
 }
@@ -373,13 +370,13 @@ on_device(CdClient *, CdDevice *device, gpointer data)
 static void
 on_changed(CdClient *, gpointer data)
 {
-	static_cast<ColordSource *>(data)->notify();
+	((ColordSource *) data)->notify();
 }
 
 static void
 on_profile(CdClient *, CdProfile *, gpointer data)
 {
-	static_cast<ColordSource *>(data)->notify();
+	((ColordSource *) data)->notify();
 }
 
 static void
@@ -394,7 +391,7 @@ on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 		return;
 	}
 
-	auto *src = static_cast<ColordSource *>(data);
+	auto *src = (ColordSource *) data;
 	src->hook_signals();
 	src->notify();
 }
@@ -402,7 +399,7 @@ on_connect_ready(GObject *source, GAsyncResult *res, gpointer data)
 static void
 on_name_appeared(GDBusConnection *, const gchar *, const gchar *, gpointer data)
 {
-	auto *src = static_cast<ColordSource *>(data);
+	auto *src = (ColordSource *) data;
 	if (src->client && !cd_client_get_connected(src->client))
 		src->connect_async();
 }

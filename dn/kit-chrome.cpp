@@ -64,9 +64,7 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 
 	// Open With and Move to Trash are filesystem operations on a real file.
 	const QString path = url_to_path(url);
-	const Handler def = default_for(path);
-	const vector<Handler> rec = recommended_for(path);
-	const vector<Handler> fall = fallback_for(path);
+	const Handlers handlers = handlers_for(path);
 
 	auto apps = make_unique<Menu>();
 	apps->min_w = this->min_w;
@@ -89,9 +87,9 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 			apps_sep = true;
 	};
 
-	add_apps({&def, 1});
-	add_apps(rec);
-	add_apps(fall);
+	add_apps({&handlers.preferred, 1});
+	add_apps(handlers.recommended);
+	add_apps(handlers.fallback);
 
 	auto *new_win = add_item_with_mnemonic(N_("Open in New _Window"));
 	new_win->on_click = [this, url](Kit &) {
@@ -134,20 +132,6 @@ void
 ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 {
 	fill_items(kit, url);
-	bool any = false;
-	if (this->col) {
-		for (const auto &k : this->col->kids) {
-			if (k && !is_sep(k.get())) {
-				any = true;
-				break;
-			}
-		}
-	}
-	if (!any) {
-		if (this->visible)
-			close(kit);
-		return;
-	}
 	open_at(kit, anchor);
 	if (kbd)
 		kit.focus_first(this);
@@ -1067,8 +1051,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 
 	// macOS has a real menu bar for this; everywhere else it is a button
 	// at the far end of the toolbar.
-	this->app_menu_owned_ = make_unique<Menu>();
-	this->app_menu = this->app_menu_owned_.get();
+	this->app_menu = make_unique<Menu>();
 #ifndef Q_OS_MACOS
 	if (this->toolbar && this->toolbar->left) {
 		auto app = make_unique<Button>();
@@ -1088,11 +1071,9 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		this->toolbar->left->add_item(std::move(app), 0);
 	}
 #endif
-	this->hint_owned_ = make_unique<Hint>();
-	this->hint = this->hint_owned_.get();
+	this->hint = make_unique<Hint>();
 	this->hint->page = this;
-	this->context_owned_ = make_unique<ContextMenu>();
-	this->context = this->context_owned_.get();
+	this->context = make_unique<ContextMenu>();
 	if (this->sidebar) {
 		if (this->sidebar->min_w > 0.f)
 			this->sidebar_w = this->sidebar->min_w;
@@ -1143,7 +1124,7 @@ Page::open_app_menu(Kit &kit, bool kbd)
 		anchor = this->toolbar->left->more;
 	this->app_menu->open(kit, anchor);
 	if (kbd)
-		kit.focus_first(this->app_menu);
+		kit.focus_first(this->app_menu.get());
 }
 
 void

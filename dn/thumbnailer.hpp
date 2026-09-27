@@ -102,8 +102,7 @@ public:
 	bool submit_gpu(Client client, uint64_t epoch, Priority priority,
 		dawn::ThumbScaler::Job job, GpuCompletion completion, std::string key);
 	Reservation reserve_bundle(Client client, uint64_t epoch,
-		const ThumbnailSource &source, int top_tier, size_t bytes,
-		Priority priority);
+		const ThumbnailSource &source, int top_tier, size_t bytes);
 	void cancel_bundle(Reservation reservation);
 	bool publish_bundle(
 		Reservation reservation, std::shared_ptr<const ThumbnailBundle> bundle);

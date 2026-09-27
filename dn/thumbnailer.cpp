@@ -112,13 +112,10 @@ struct GpuTask {
 };
 
 struct BundleSlot {
-	Thumbnailer::Reservation id = 0;
 	Thumbnailer::Client client = 0;
-	uint64_t epoch = 0;
 	ThumbnailSource source;
 	int top_tier = 0;
 	size_t reserved_bytes = 0;
-	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
 	shared_ptr<const ThumbnailBundle> bundle;
 };
 struct EncodeJob {
@@ -160,7 +157,6 @@ struct Thumbnailer::Impl {
 	explicit Impl(Thumbnailer *thumbnailer, unsigned worker_count);
 	~Impl();
 	void shutdown();
-	bool have_cpu() const;
 	bool pop_cpu(shared_ptr<CpuTask> *task);
 	void worker_loop();
 	void encoder_loop();
@@ -232,23 +228,6 @@ Thumbnailer::Impl::shutdown()
 }
 
 bool
-Thumbnailer::Impl::have_cpu() const
-{
-	const bool reserve = worker_count > 1 && cpu_running >= worker_count - 1;
-	for (size_t priority = 0; priority < cpu.size(); priority++) {
-		if (priority == priority_index(Priority::Prefetch) && reserve)
-			continue;
-		if (priority >= priority_index(Priority::Dimensions) &&
-			(reserve || background_running >= background_max))
-			continue;
-		for (const auto &task : cpu[priority])
-			if (task->queued && priority_index(task->priority) == priority)
-				return true;
-	}
-	return false;
-}
-
-bool
 Thumbnailer::Impl::pop_cpu(shared_ptr<CpuTask> *task)
 {
 	for (size_t priority = 0; priority < cpu.size(); priority++) {
@@ -280,11 +259,10 @@ Thumbnailer::Impl::worker_loop()
 		shared_ptr<CpuTask> task;
 		{
 			unique_lock lock(mu);
-			cv.wait(lock, [this] { return stop || have_cpu(); });
+			// The predicate claims one live task, discarding stale entries.
+			cv.wait(lock, [&] { return stop || pop_cpu(&task); });
 			if (stop)
 				return;
-			if (!pop_cpu(&task))
-				continue;
 			auto client = clients.find(task->client);
 			if (client == clients.end())
 				continue;
@@ -720,8 +698,7 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 
 Thumbnailer::Reservation
 Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
-	const ThumbnailSource &source, int top_tier, size_t bytes,
-	Priority priority)
+	const ThumbnailSource &source, int top_tier, size_t bytes)
 {
 	if (!bytes || bytes > kPendingBundleBytes)
 		return 0;
@@ -733,19 +710,14 @@ Thumbnailer::reserve_bundle(Client id, uint64_t epoch,
 		impl_->bundles.size() >= impl_->encoders.size() ||
 		bytes > kPendingBundleBytes - impl_->bundle_bytes)
 		return 0;
-	for (auto &[reservation, slot] : impl_->bundles) {
-		if (same_source(slot.source, source) && slot.top_tier == top_tier) {
-			if (priority_index(priority) < priority_index(slot.priority))
-				slot.priority = priority;
+	for (const auto &[reservation, slot] : impl_->bundles)
+		if (same_source(slot.source, source) && slot.top_tier == top_tier)
 			return 0;
-		}
-	}
 	Reservation reservation = impl_->next_reservation++;
 	if (!reservation)
 		reservation = impl_->next_reservation++;
-	impl_->bundles.emplace(reservation,
-		BundleSlot{
-			reservation, id, epoch, source, top_tier, bytes, priority, {}});
+	impl_->bundles.emplace(
+		reservation, BundleSlot{id, source, top_tier, bytes, {}});
 	impl_->bundle_bytes += bytes;
 	return reservation;
 }
@@ -786,7 +758,6 @@ Thumbnailer::publish_bundle(
 			return false;
 
 		found->second.client = 0;
-		found->second.epoch = 0;
 		found->second.bundle = bundle;
 		impl_->encode.push_back({reservation, std::move(bundle)});
 	}

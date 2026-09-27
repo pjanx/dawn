@@ -3094,12 +3094,6 @@ constexpr float kItemGap = 2.f;
 constexpr float kMenuPad = 4.f;
 constexpr float kMenuHoldMs = 500.f;  // GTK MENU_SHELL_TIMEOUT
 
-static unique_ptr<Sep>
-hsep()
-{
-	return make_unique<Sep>();
-}
-
 // Where an item's columns land, relative to its own left edge.
 namespace
 {
@@ -3476,19 +3470,16 @@ Menu::add_item(const QString &text)
 MenuItem *
 Menu::add_item_with_mnemonic(const char *label)
 {
-	auto item = make_unique<MenuItem>();
+	MenuItem *item = add_item({});
 	item->text = menu_label(label, &item->mnemonic);
-	MenuItem *ref = item.get();
-	if (this->col)
-		this->col->add_child(std::move(item), size_t(-1));
-	return ref;
+	return item;
 }
 
 void
 Menu::add_sep()
 {
 	if (this->col)
-		this->col->add_child(hsep(), size_t(-1));
+		this->col->add_child(make_unique<Sep>(), size_t(-1));
 }
 
 void
@@ -4162,9 +4153,8 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	if (right_row)
 		add_child(std::move(right_row), size_t(-1));
 
-	this->overflow_owned_ = make_unique<Overflow>();
-	this->overflow_owned_->pad_y = kWinPadY;
-	this->overflow = this->overflow_owned_.get();
+	this->overflow = make_unique<Overflow>();
+	this->overflow->pad_y = kWinPadY;
 	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
 		if (!slot)
 			continue;
@@ -5881,8 +5871,8 @@ Kit::paint()
 	paint_tooltip(*this);
 	this->list_.end();
 	if (this->renderer_ && !this->atlas_.dirty.empty() &&
-		this->renderer_->upload_font(this->atlas_.pixels.data(), this->atlas_.w,
-			this->atlas_.h, this->atlas_.dirty))
+		this->renderer_->overlay.upload_font(this->atlas_.pixels.data(),
+			this->atlas_.w, this->atlas_.h, this->atlas_.dirty))
 		this->atlas_.dirty = {};
 }
 

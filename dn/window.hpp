@@ -103,15 +103,12 @@ class Window final : public QWindow
 	Mode mode_ = Mode::View;
 	ScreenState screen_state_;
 	VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-	std::shared_ptr<dawn::Cmm> cmm_;
-	std::shared_ptr<dawn::Profile> screen_profile_;
 	bool renderer_ready_ = false;
 	bool exposed_ = false;
 	bool resize_pending_ = false;
 	bool settings_apply_pending_ = false;
 	bool font_change_pending_ = false;
 	bool update_pending_ = false;
-	bool screen_profile_fallback_ = true;
 	std::string screen_profile_label_;  // Its name and source
 	// What the screen profile last saw of Windows Advanced Color, against
 	// which activation tells a brightness change from a mode change.

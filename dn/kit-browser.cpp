@@ -144,7 +144,6 @@ struct ThumbUpdate {
 
 struct FinishJob {
 	uint64_t gen = 0;
-	Thumbnailer::Priority priority = Thumbnailer::Priority::Maintenance;
 	string path;
 	int64_t mtime = 0;
 	uint64_t size = 0;
@@ -234,7 +233,7 @@ static int
 thumb_atlas_max(const Browser &b)
 {
 	if (b.kit_.renderer_)
-		return b.kit_.renderer_->thumb_atlas_max();
+		return b.kit_.renderer_->overlay.thumb_atlas_max();
 	return Sheet::kSize;
 }
 
@@ -810,18 +809,7 @@ reset_thumb_atlas(Browser &b)
 	b.sheet_.clear();
 	b.sheet_.grow(Sheet::kSize);
 	if (b.kit_.renderer_)
-		b.kit_.renderer_->reset_thumbs();
-}
-
-static void
-clear_gpu(Browser &b)
-{
-	for (Browser::File &f : b.files_) {
-		if (!f.gpu.empty()) {
-			b.sheet_.release(f.gpu);
-			f.gpu = {};
-		}
-	}
+		b.kit_.renderer_->overlay.reset_thumbs();
 }
 
 static void
@@ -932,7 +920,8 @@ repack_atlas(Browser &b, Browser::File &wanted)
 				uploads.push_back({f.pixels.ram.data(), f.pixels.w, f.pixels.h,
 					slot.x, slot.y});
 			}
-			if (uploads.empty() || !renderer->rebuild_thumbs(uploads, side))
+			if (uploads.empty() ||
+				!renderer->overlay.rebuild_thumbs(uploads, side))
 				return false;
 			for (Browser::File &f : b.files_)
 				f.gpu = {};
@@ -961,7 +950,7 @@ upload_thumbs(Browser &b)
 		for (const Browser::File *f : pending)
 			uploads.push_back({f->pixels.ram.data(), f->pixels.w, f->pixels.h,
 				f->gpu.x, f->gpu.y});
-		if (!renderer->upload_thumbs(uploads, b.sheet_.w)) {
+		if (!renderer->overlay.upload_thumbs(uploads, b.sheet_.w)) {
 			for (Browser::File *f : pending) {
 				b.sheet_.release(f->gpu);
 				f->gpu = {};
@@ -1016,7 +1005,6 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 
 		FinishJob display;
 		display.gen = finish.gen;
-		display.priority = finish.priority;
 		display.path = f.path;
 		display.mtime = finish.mtime;
 		display.size = finish.size;
@@ -1276,7 +1264,7 @@ enqueue_thumbs(Browser &b)
 			if (job.cacheable && job.skip_cache) {
 				job.reservation = b.thumbnailer_.reserve_bundle(
 					b.thumbnail_client_, job.gen, source, target_tier,
-					bundle_reservation_bytes(target_tier), priority);
+					bundle_reservation_bytes(target_tier));
 				if (!job.reservation)
 					continue;
 				f.progress.reservation = job.reservation;
@@ -2446,7 +2434,8 @@ Browser::Browser(Kit &kit, Thumbnailer &thumbnailer)
 
 Browser::~Browser()
 {
-	destroy();
+	if (this->thumbnail_client_)
+		this->thumbnailer_.remove_client(this->thumbnail_client_);
 }
 
 void
@@ -2666,22 +2655,6 @@ make_browser_page(
 }
 
 void
-Browser::destroy()
-{
-	if (this->thumbnail_client_) {
-		this->thumbnailer_.remove_client(this->thumbnail_client_);
-		this->thumbnail_client_ = 0;
-	}
-	this->thumb_inflight_.clear();
-	clear_gpu(*this);
-	this->set_files({});
-	this->side_dirs_.clear();
-	this->places_ = nullptr;
-	this->place_items_.clear();
-	this->page_ = nullptr;
-}
-
-void
 Browser::open_dir(const QUrl &url, bool record)
 {
 	open_directory(*this, url, record);
@@ -2749,8 +2722,6 @@ Browser::screen_changed(
 	const ScreenState &state, bool changed, bool force_reload)
 {
 	const bool reload = force_reload || changed;
-	this->cmm_ = state.cmm;
-	this->screen_profile_ = state.profile;
 	this->screen_colour_ = state.colour;
 
 	if (reload) {

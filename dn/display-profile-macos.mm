@@ -37,8 +37,8 @@ load_display_profile(QScreen *screen)
 	if (!number)
 		return result;
 
-	CGColorSpaceRef color_space = CGDisplayCopyColorSpace(
-		static_cast<CGDirectDisplayID>(number.unsignedIntValue));
+	CGColorSpaceRef color_space =
+		CGDisplayCopyColorSpace(CGDirectDisplayID(number.unsignedIntValue));
 	if (!color_space)
 		return result;
 
@@ -140,8 +140,8 @@ macos_watch_screen_parameters(function<void()> fn)
 				usingBlock:^(NSNotification *) {
 				  fn();
 				}] retain];
-	return shared_ptr<void>(static_cast<void *>(observer), [](void *p) {
-		id observer = static_cast<id>(p);
+	return shared_ptr<void>((void *) observer, [](void *p) {
+		id observer = id(p);
 		[[NSNotificationCenter defaultCenter] removeObserver:observer];
 		[observer release];
 	});

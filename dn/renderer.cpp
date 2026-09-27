@@ -280,8 +280,8 @@ Renderer::init(const GpuContext &gpu, QWindow *window, VkSurfaceKHR surface,
 		nullptr, &this->image_available_);
 
 	ensure_engine();
-	if (!this->overlay_.init(this->phys_, this->device_, this->queue_,
-			this->queue_family_, this->engine_.dest_render_pass()))
+	if (!this->overlay.init(
+			this->phys_, this->device_, this->engine_.dest_render_pass()))
 		return false;
 
 	this->want_extent_ = {pixel.width, pixel.height};
@@ -321,7 +321,7 @@ Renderer::destroy()
 {
 	if (this->device_) {
 		vkDeviceWaitIdle(this->device_);
-		this->overlay_.destroy();
+		this->overlay.destroy();
 		destroy_swapchain();
 		destroy_presentation();
 		this->engine_.destroy();
@@ -466,7 +466,7 @@ Renderer::create_swapchain()
 	}
 	if (this->engine_.dest_format() != compose_format()) {
 		ensure_engine();
-		this->overlay_.set_render_pass(this->engine_.dest_render_pass());
+		this->overlay.set_render_pass(this->engine_.dest_render_pass());
 	}
 	if (this->extent_.width == 0 || this->extent_.height == 0)
 		return;
@@ -564,7 +564,7 @@ Renderer::create_swapchain()
 		CALL_VK(CreateFramebuffer, "", this->device_, &framebuffer_info,
 			nullptr, &this->framebuffers_[i]);
 	}
-	this->overlay_.set_encoding_buffer(this->engine_.encoding_buffer());
+	this->overlay.set_encoding_buffer(this->engine_.encoding_buffer());
 }
 
 void
@@ -613,37 +613,6 @@ Renderer::set_checker_colour(float r, float g, float b)
 	this->checker_[0] = r;
 	this->checker_[1] = g;
 	this->checker_[2] = b;
-}
-
-bool
-Renderer::upload_font(
-	const uint16_t *pixels, int width, int height, Sheet::Packed dirty)
-{
-	return this->overlay_.upload_font(pixels, width, height, dirty);
-}
-
-int
-Renderer::thumb_atlas_max() const
-{
-	return this->overlay_.thumb_atlas_max();
-}
-
-bool
-Renderer::upload_thumbs(span<const AtlasUpload> uploads, int atlas_side)
-{
-	return this->overlay_.upload_thumbs(uploads, atlas_side);
-}
-
-bool
-Renderer::rebuild_thumbs(span<const AtlasUpload> uploads, int atlas_side)
-{
-	return this->overlay_.rebuild_thumbs(uploads, atlas_side);
-}
-
-void
-Renderer::reset_thumbs()
-{
-	this->overlay_.reset_thumbs();
 }
 
 void
@@ -716,7 +685,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	CALL_VK(BeginCommandBuffer, "", this->cmd_, &begin_info);
 	// Acquisition failures leave owned uploads pending. The frame fence now
 	// protects both staging reuse and atlas/descriptor replacement.
-	this->overlay_.record_uploads(this->cmd_);
+	this->overlay.record_uploads(this->cmd_);
 	const auto checker = dawn::sample_curves(this->encoding_->encode,
 		{this->checker_[0], this->checker_[1], this->checker_[2]});
 	dawn::ScaleView view = this->view;
@@ -743,7 +712,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	if (draw_image)
 		this->engine_.draw(this->cmd_, this->extent_.width,
 			this->extent_.height, view, clear, area);
-	this->overlay_.record(this->cmd_, mesh, this->extent_);
+	this->overlay.record(this->cmd_, mesh, this->extent_);
 	vkCmdEndRenderPass(this->cmd_);
 	record_presentation(this->cmd_, this->framebuffers_[index], white);
 	CALL_VK(EndCommandBuffer, "", this->cmd_);
@@ -1193,15 +1162,13 @@ OverlayVulkan::set_encoding_buffer(VkDescriptorBufferInfo info)
 }
 
 bool
-OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-	uint32_t queue_family, VkRenderPass render_pass)
+OverlayVulkan::init(
+	VkPhysicalDevice phys, VkDevice device, VkRenderPass render_pass)
 {
 	destroy();
 	this->phys_ = phys;
 	this->device_ = device;
-	this->queue_ = queue;
-	this->queue_family_ = queue_family;
-	if (!this->phys_ || !this->device_ || !this->queue_)
+	if (!this->phys_ || !this->device_)
 		return false;
 
 	compute_thumb_atlas_max();
@@ -1255,7 +1222,8 @@ OverlayVulkan::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	CALL_VK(AllocateDescriptorSets, " overlay", this->device_, &allocate_info,
 		this->descriptor_sets_);
 
-	return create_pipeline(render_pass);
+	create_pipeline(render_pass);
+	return true;
 }
 
 void
@@ -1268,7 +1236,7 @@ OverlayVulkan::set_render_pass(VkRenderPass render_pass)
 	create_pipeline(render_pass);
 }
 
-bool
+void
 OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 {
 	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE,
@@ -1376,7 +1344,6 @@ OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 	vkDestroyShaderModule(this->device_, vert, nullptr);
 	vkDestroyShaderModule(this->device_, frag, nullptr);
 	vkDestroyShaderModule(this->device_, thumb_frag, nullptr);
-	return true;
 }
 
 void
@@ -1954,7 +1921,6 @@ OverlayVulkan::destroy()
 	this->sampler_ = VK_NULL_HANDLE;
 	this->phys_ = VK_NULL_HANDLE;
 	this->device_ = VK_NULL_HANDLE;
-	this->queue_ = VK_NULL_HANDLE;
 }
 
 }  // namespace dn

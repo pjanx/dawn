@@ -188,7 +188,7 @@ EngineReadback::init(string *error)
 		!engine.create_offscreen(
 			2, 2, &image, &memory, &image_view, &fb, error))
 		return false;
-	if (!overlay.init(phys, device, queue, family, engine.dest_render_pass()))
+	if (!overlay.init(phys, device, engine.dest_render_pass()))
 		return false;
 	overlay.set_encoding_buffer(engine.encoding_buffer());
 	const uint16_t atlas[] = {

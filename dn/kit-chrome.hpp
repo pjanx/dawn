@@ -166,9 +166,6 @@ struct Page : Composite {
 	Splitter *splitter = nullptr;
 	Widget *content = nullptr;
 	Widget *banner = nullptr;
-	Hint *hint = nullptr;
-	ContextMenu *context = nullptr;
-	Menu *app_menu = nullptr;
 	Button *app_menu_button = nullptr;
 	Actor actor;
 	const HostActions *host = nullptr;
@@ -195,10 +192,10 @@ struct Page : Composite {
 	void arrange_content(Kit &kit, Rect alloc) override;
 	bool key(Kit &kit, const Key &ev) override;
 
-private:
-	std::unique_ptr<Menu> app_menu_owned_;
-	std::unique_ptr<Hint> hint_owned_;
-	std::unique_ptr<ContextMenu> context_owned_;
+	// Popups, owned apart from the children.
+	std::unique_ptr<Menu> app_menu;
+	std::unique_ptr<Hint> hint;
+	std::unique_ptr<ContextMenu> context;
 };
 
 enum class Slot : uint8_t { Left, Middle, Right };

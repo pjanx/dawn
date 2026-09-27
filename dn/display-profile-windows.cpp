@@ -273,7 +273,7 @@ struct DisplayChangeFilter final : QAbstractNativeEventFilter {
 		const QByteArray &type, void *message, qintptr *) override
 	{
 		if (type == "windows_generic_MSG" &&
-			static_cast<const MSG *>(message)->message == WM_DISPLAYCHANGE &&
+			((const MSG *) message)->message == WM_DISPLAYCHANGE &&
 			this->on_change)
 			this->on_change();
 		return false;

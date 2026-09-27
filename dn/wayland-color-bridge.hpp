@@ -45,7 +45,7 @@ class WaylandColorBridge
 	};
 	// The preferred description's information, as its events bring it.
 	struct Info {
-		uint32_t min = 0, max = 0, reference = 0;
+		uint32_t max = 0, reference = 0;
 		uint32_t target_min = 0, target_max = 0;
 		std::array<int32_t, 8> target_primaries{};
 		bool parametric = false;

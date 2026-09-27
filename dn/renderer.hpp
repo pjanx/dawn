@@ -74,7 +74,7 @@ class OverlayVulkan
 		VkImage *image, VkDeviceMemory *memory, VkImageView *view) const;
 	void destroy_buffer();
 	void destroy_pipeline();
-	bool create_pipeline(VkRenderPass render_pass);
+	void create_pipeline(VkRenderPass render_pass);
 	bool ensure_buffer(VkDeviceSize bytes);
 	struct UploadBatch {
 		std::vector<uint8_t> pixels;
@@ -99,8 +99,6 @@ class OverlayVulkan
 
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
 	VkDevice device_ = VK_NULL_HANDLE;
-	VkQueue queue_ = VK_NULL_HANDLE;
-	uint32_t queue_family_ = 0;
 
 	VkDescriptorSetLayout set_layout_ = VK_NULL_HANDLE;
 	VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
@@ -138,8 +136,7 @@ public:
 	OverlayVulkan(const OverlayVulkan &) = delete;
 	OverlayVulkan &operator=(const OverlayVulkan &) = delete;
 
-	bool init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
-		uint32_t queue_family, VkRenderPass render_pass);
+	bool init(VkPhysicalDevice phys, VkDevice device, VkRenderPass render_pass);
 	/// Rebuilds the pipelines for another composition pass, keeping atlases.
 	void set_render_pass(VkRenderPass render_pass);
 	void set_encoding_buffer(VkDescriptorBufferInfo info);
@@ -202,7 +199,12 @@ class Renderer
 	VkSemaphore image_available_ = VK_NULL_HANDLE;
 
 	dawn::ScaleEngine engine_;
-	OverlayVulkan overlay_;
+
+public:
+	// The kit fills its atlases; setting it up and recording stay here.
+	OverlayVulkan overlay;
+
+private:
 	std::shared_ptr<const dawn::ProfileEncoding> encoding_;
 	VkCompositeAlphaFlagBitsKHR composite_alpha_ =
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -268,12 +270,6 @@ public:
 	[[nodiscard]] std::string swapchain_summary() const;
 	/// What the last presented frame got.
 	[[nodiscard]] Presentation presented() const { return this->presented_; }
-	bool upload_font(
-		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
-	[[nodiscard]] int thumb_atlas_max() const;
-	bool upload_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
-	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
-	void reset_thumbs();
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.
 	bool draw_frame(const OverlayMesh &mesh, bool show_image);

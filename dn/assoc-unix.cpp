@@ -24,6 +24,7 @@
 #include <QUrl>
 
 #include <algorithm>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -492,7 +493,6 @@ to_app(const Desktop &d)
 	Handler a;
 	a.id = d.id;
 	a.name = d.name.isEmpty() ? d.id : d.name;
-	a.icon = d.icon;
 	return a;
 }
 
@@ -682,14 +682,10 @@ prepend_id(const QString &value, const QString &id)
 	return out;
 }
 
-Handler
-default_for(const QString &path)
+// The lookup is repeated from the most specific type to the least.
+static Handler
+preferred_for(span<const QString> types)
 {
-	const QString type = db().mimeTypeForFile(path).name();
-	vector<QString> types = ancestor_types(type);
-	types.insert(types.begin(), type);
-
-	// The lookup is repeated from the most specific type to the least.
 	for (const QString &t : types) {
 		const AssocSets acc = associations_for_type(t);
 		for (const QString &id : acc.defaults) {
@@ -701,56 +697,38 @@ default_for(const QString &path)
 	return {};
 }
 
-vector<Handler>
-recommended_for(const QString &path)
+Handlers
+handlers_for(const QString &path)
 {
 	const QString type = db().mimeTypeForFile(path).name();
-	const AssocSets acc = associations_for_type(type);
-	const vector<QString> cache_ids = cache_ids_for_type(type);
+	vector<QString> types = ancestor_types(type);
+	types.insert(types.begin(), type);
+	const span<const QString> ancestors = span(types).subspan(1);
 
-	const Handler def = default_for(path);
-	vector<Handler> out;
+	Handlers out;
+	out.preferred = preferred_for(types);
 	unordered_set<QString> seen;
-	if (!def.id.isEmpty())
-		seen.insert(def.id);
-	auto push = [&](const QString &id) {
+	if (!out.preferred.id.isEmpty())
+		seen.insert(out.preferred.id);
+
+	// Recommendations only heed the type's own removals, fallbacks all.
+	AssocSets acc = associations_for_type(type);
+	auto push = [&](vector<Handler> &group, const QString &id) {
 		if (seen.contains(id) || !usable_id(id, acc.removed))
 			return;
 		seen.insert(id);
-		out.push_back(to_app(*desktop_by_id(id)));
+		group.push_back(to_app(*desktop_by_id(id)));
 	};
 	for (const QString &id : acc.added)
-		push(id);
-	for (const QString &id : cache_ids)
-		push(id);
-	return out;
-}
+		push(out.recommended, id);
+	for (const QString &id : cache_ids_for_type(type))
+		push(out.recommended, id);
 
-vector<Handler>
-fallback_for(const QString &path)
-{
-	const QString type = db().mimeTypeForFile(path).name();
-	const vector<QString> ancestors = ancestor_types(type);
-	AssocSets acc = associations_for_type(type);
 	for (const QString &ancestor : ancestors)
 		merge_assoc(acc, associations_for_type(ancestor));
-
-	unordered_set<QString> seen;
-	const Handler def = default_for(path);
-	if (!def.id.isEmpty())
-		seen.insert(def.id);
-	for (const Handler &a : recommended_for(path))
-		seen.insert(a.id);
-
-	vector<Handler> out;
-	for (const QString &ancestor : ancestors) {
-		for (const QString &id : cache_ids_for_type(ancestor)) {
-			if (seen.contains(id) || !usable_id(id, acc.removed))
-				continue;
-			seen.insert(id);
-			out.push_back(to_app(*desktop_by_id(id)));
-		}
-	}
+	for (const QString &ancestor : ancestors)
+		for (const QString &id : cache_ids_for_type(ancestor))
+			push(out.fallback, id);
 	return out;
 }
 

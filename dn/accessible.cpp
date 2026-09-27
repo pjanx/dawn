@@ -1599,15 +1599,13 @@ ComboListAdapter::selectedItems() const
 	if (!this->selectedItemCount())
 		return items;
 
-	const int n = this->childCount();
-	for (int i = 0; i < n; i++) {
-		QAccessibleInterface *item = this->child(i);
-		if (this->choice_of(item) != this->combo()->current)
-			continue;
-
-		items.append(item);
-		break;
-	}
+	// The column is in Combo::items order, as combo_list_of() relies on.
+	const Column *col = ((ComboPopup *) this->widget_)->col;
+	Widget *item = col && col->shown()
+		? col->child(size_t(this->combo()->current))
+		: nullptr;
+	if (item && item->shown())
+		items.append(interface_for(this->window_, item));
 	return items;
 }
 
@@ -2553,7 +2551,7 @@ owned_popups(const Widget *w, vector<Widget *> &out)
 		out.push_back(combo->popup_.get());
 	if (auto *toolbar = dynamic_cast<const Toolbar *>(w);
 		toolbar && toolbar->overflow)
-		out.push_back(toolbar->overflow);
+		out.push_back(toolbar->overflow.get());
 	if (auto *menu = dynamic_cast<const Menu *>(w)) {
 		for (const auto &sub : menu->subs_) {
 			if (sub)

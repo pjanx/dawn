@@ -35,7 +35,7 @@ registry_note(
 	void *data, wl_registry *, uint32_t, const char *interface, uint32_t)
 {
 	if (interface && strcmp(interface, "zxdg_decoration_manager_v1") == 0)
-		*static_cast<bool *>(data) = true;
+		*(bool *) data = true;
 }
 
 static void
@@ -291,13 +291,13 @@ void
 WaylandColorBridge::registry_global(void *data, wl_registry *registry,
 	uint32_t name, const char *interface, uint32_t)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	if (self->manager_ ||
 		strcmp(interface, wp_color_manager_v1_interface.name) != 0)
 		return;
 
-	self->manager_ = static_cast<wp_color_manager_v1 *>(
-		wl_registry_bind(registry, name, &wp_color_manager_v1_interface, 1));
+	self->manager_ = (wp_color_manager_v1 *) wl_registry_bind(
+		registry, name, &wp_color_manager_v1_interface, 1);
 	wp_color_manager_v1_add_listener(self->manager_, &kManagerListener, self);
 	self->color_surface_ =
 		wp_color_manager_v1_get_surface(self->manager_, self->surface_);
@@ -322,7 +322,7 @@ void
 WaylandColorBridge::supported_feature(
 	void *data, wp_color_manager_v1 *, uint32_t feature)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	switch (feature) {
 	case WP_COLOR_MANAGER_V1_FEATURE_ICC_V2_V4:
 		self->icc_supported_ = true;
@@ -344,7 +344,7 @@ WaylandColorBridge::supported_tf_named(
 	void *data, wp_color_manager_v1 *, uint32_t tf)
 {
 	if (tf == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR)
-		static_cast<WaylandColorBridge *>(data)->ext_linear_ = true;
+		((WaylandColorBridge *) data)->ext_linear_ = true;
 }
 
 void
@@ -352,14 +352,14 @@ WaylandColorBridge::supported_primaries_named(
 	void *data, wp_color_manager_v1 *, uint32_t primaries)
 {
 	if (primaries == WP_COLOR_MANAGER_V1_PRIMARIES_BT2020)
-		static_cast<WaylandColorBridge *>(data)->bt2020_ = true;
+		((WaylandColorBridge *) data)->bt2020_ = true;
 }
 
 // The features are all in, and they decide what the output can take.
 void
 WaylandColorBridge::manager_done(void *data, wp_color_manager_v1 *)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	WaylandOutput &output = self->output_;
 	output.icc = self->icc_supported_;
 	output.own_primaries = self->set_primaries_;
@@ -371,14 +371,14 @@ void
 WaylandColorBridge::preferred_changed(
 	void *data, wp_color_management_surface_feedback_v1 *, uint32_t)
 {
-	static_cast<WaylandColorBridge *>(data)->request_preferred();
+	((WaylandColorBridge *) data)->request_preferred();
 }
 
 void
 WaylandColorBridge::description_failed(void *data,
 	wp_image_description_v1 *description, uint32_t, const char *message)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	const char *what = "preferred description";
 	if (description == self->icc_pending_) {
 		what = "display profile";
@@ -406,7 +406,7 @@ void
 WaylandColorBridge::description_ready(
 	void *data, wp_image_description_v1 *description, uint32_t)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	if (description == self->icc_pending_) {
 		self->icc_pending_ = nullptr;
 		self->encoded_icc_ = true;
@@ -450,7 +450,7 @@ WaylandColorBridge::info_target_primaries(void *data,
 	wp_image_description_info_v1 *, int32_t r_x, int32_t r_y, int32_t g_x,
 	int32_t g_y, int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	self->pending_.target_primaries = {r_x, r_y, g_x, g_y, b_x, b_y, w_x, w_y};
 	self->pending_.have_target_primaries = true;
 }
@@ -463,10 +463,9 @@ WaylandColorBridge::info_ignore_u32(
 
 void
 WaylandColorBridge::info_luminances(void *data, wp_image_description_info_v1 *,
-	uint32_t min_lum, uint32_t max_lum, uint32_t reference_lum)
+	uint32_t, uint32_t max_lum, uint32_t reference_lum)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
-	self->pending_.min = min_lum;
+	auto *self = (WaylandColorBridge *) data;
 	self->pending_.max = max_lum;
 	self->pending_.reference = reference_lum;
 	self->pending_.parametric = true;
@@ -476,7 +475,7 @@ void
 WaylandColorBridge::info_target_luminance(void *data,
 	wp_image_description_info_v1 *, uint32_t min_lum, uint32_t max_lum)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	self->pending_.target_min = min_lum;
 	self->pending_.target_max = max_lum;
 }
@@ -487,7 +486,7 @@ WaylandColorBridge::info_target_luminance(void *data,
 void
 WaylandColorBridge::info_done(void *data, wp_image_description_info_v1 *info)
 {
-	auto *self = static_cast<WaylandColorBridge *>(data);
+	auto *self = (WaylandColorBridge *) data;
 	wp_image_description_info_v1_destroy(info);
 	self->pending_info_ = nullptr;
 
@@ -609,9 +608,8 @@ WaylandColorBridge::attach(Window *window)
 	// (winId changes meaning across Qt versions.)
 	auto *iface = QGuiApplication::platformNativeInterface();
 	if (iface) {
-		this->surface_ =
-			static_cast<wl_surface *>(iface->nativeResourceForWindow(
-				QByteArrayLiteral("surface"), window));
+		this->surface_ = (wl_surface *) iface->nativeResourceForWindow(
+			QByteArrayLiteral("surface"), window);
 	}
 	if (!this->display_ || !this->surface_)
 		return;

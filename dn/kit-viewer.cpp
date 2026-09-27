@@ -120,7 +120,7 @@ constexpr ToolbarSpec kItems[] = {
 static bool
 hdr_available(const Viewer &v)
 {
-	return v.screen_capable_ && v.screen_hdr_ && v.current_ &&
+	return v.screen_.capable && v.screen_.hdr && v.current_ &&
 		v.current_->gain_map;
 }
 
@@ -205,21 +205,21 @@ spec_active(const Viewer &v, Action action)
 static void
 sync_scale_label(Viewer &v)
 {
-	char scale_buf[16];
-	snprintf(scale_buf, sizeof scale_buf, "%.f%%", double(v.scale_ * 100.f));
-	v.scale_text_ = QString::fromUtf8(scale_buf);
 	if (!v.scale_label_)
 		return;
 
+	char scale_buf[16];
+	snprintf(scale_buf, sizeof scale_buf, "%.f%%", double(v.scale_ * 100.f));
+	const QString text = QString::fromUtf8(scale_buf);
 	const float scale_slot =
 		float(max(v.kit_.text_width(QStringLiteral("100%"), false),
-			v.kit_.text_width(v.scale_text_, false)));
+			v.kit_.text_width(text, false)));
 	const float min_w = scale_slot / v.kit_.dpr_;
 	if (v.scale_label_->min_w != min_w) {
 		v.scale_label_->min_w = min_w;
 		v.scale_label_->invalidate_measure();
 	}
-	v.scale_label_->set_text(v.scale_text_);
+	v.scale_label_->set_text(text);
 }
 
 static unique_ptr<Widget>
@@ -313,10 +313,7 @@ struct OpenJob {
 
 struct OpenLoad {
 	uint64_t epoch = 0;
-	Viewer::OpenKey key;
-	dawn::ImagePtr image;
-	string message;
-	shared_ptr<const vector<uint8_t>> cms_icc;
+	Viewer::CachedOpen payload;
 };
 
 struct ScaleJob {
@@ -719,16 +716,17 @@ sync_ui(Viewer &v, Page &ui)
 			bool image_dashed = assumed || !src || !img.have_primaries;
 			shared_ptr<dawn::Profile> srgb;
 			if (!img.have_primaries) {
-				auto cmm = v.cmm_ ? v.cmm_ : dawn::Cmm::get_default();
+				auto cmm =
+					v.screen_.cmm ? v.screen_.cmm : dawn::Cmm::get_default();
 				srgb = cmm->get_profile_sRGB();
 				img = profile_chromaticities(srgb.get());
 				image_dashed = true;
 			}
 			v.cie_->image = img;
 			v.cie_->image_dashed = image_dashed;
-			v.cie_->screen = profile_chromaticities(v.screen_profile_.get());
+			v.cie_->screen = profile_chromaticities(v.screen_.profile.get());
 			v.cie_->show_screen = v.cie_->screen.have_primaries;
-			v.cie_->screen_dashed = v.screen_profile_fallback_;
+			v.cie_->screen_dashed = v.screen_.fallback;
 		}
 	}
 }
@@ -863,21 +861,17 @@ apply_open_result(Viewer &v, OpenLoad result)
 		return;
 
 	const string current = viewer_local_path(v);
-	if (!v.detached_ && result.key.path != current &&
-		result.key.path != v.previous_path_ && result.key.path != v.next_path_)
+	const Viewer::OpenKey &key = result.payload.key;
+	if (!v.detached_ && key.path != current && key.path != v.previous_path_ &&
+		key.path != v.next_path_)
 		return;
 	auto found = find_if(v.open_cache_.begin(), v.open_cache_.end(),
-		[&](const Viewer::CachedOpen &entry) {
-			return entry.key == result.key;
-		});
+		[&](const Viewer::CachedOpen &entry) { return entry.key == key; });
 	if (found == v.open_cache_.end()) {
-		v.open_cache_.push_back({std::move(result.key), std::move(result.image),
-			std::move(result.message), std::move(result.cms_icc)});
+		v.open_cache_.push_back(std::move(result.payload));
 		found = prev(v.open_cache_.end());
 	} else {
-		found->image = std::move(result.image);
-		found->message = std::move(result.message);
-		found->cms_icc = std::move(result.cms_icc);
+		*found = std::move(result.payload);
 	}
 	Viewer::CachedOpen *cached = &*found;
 	if (!v.detached_ &&
@@ -887,11 +881,10 @@ apply_open_result(Viewer &v, OpenLoad result)
 		v.open_cache_.erase(v.open_cache_.begin());
 }
 
-static OpenLoad
+static Viewer::CachedOpen
 decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 {
-	OpenLoad result;
-	result.epoch = open.epoch;
+	Viewer::CachedOpen result;
 	result.key = open.key;
 
 	dawn::OpenContext ctx;
@@ -1022,7 +1015,7 @@ worker_loop(Viewer &v, bool foreground)
 			}
 		}
 		if (have_open) {
-			OpenLoad result = decode_open(open, cmm);
+			OpenLoad result{open.epoch, decode_open(open, cmm)};
 			if (finish_decode(v, open, !foreground))
 				post_open_result(v, std::move(result));
 		} else if (have_scale) {
@@ -1068,7 +1061,7 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 				  .toStdString();
 	job.dpi = v.kit_.dpi_;
 	job.enable_cms = v.enable_cms_;
-	job.screen_colour = v.enable_cms_ ? v.screen_colour_ : nullptr;
+	job.screen_colour = v.enable_cms_ ? v.screen_.colour : nullptr;
 	job.loaders = v.loaders_;
 	return job;
 }
@@ -1217,7 +1210,7 @@ post_scale(Viewer &v)
 	job.page = v.current_;
 	job.scale = v.scale_;
 	job.enable_cms = v.enable_cms_;
-	job.screen_colour = v.enable_cms_ ? v.screen_colour_ : nullptr;
+	job.screen_colour = v.enable_cms_ ? v.screen_.colour : nullptr;
 	{
 		lock_guard<mutex> lock(v.worker_->mu);
 		v.worker_->pending_scale = std::move(job);
@@ -1949,7 +1942,7 @@ apply_view(const Viewer &v)
 		.filter = v.filter_ ? renderer.preferred_filter : dawn::Filter::Nearest,
 		.hdr = hdr,
 		.gain_weight = hdr
-			? dawn::gain_map_weight(*v.current_->gain_map, v.screen_headroom_)
+			? dawn::gain_map_weight(*v.current_->gain_map, v.screen_.headroom)
 			: 0.f,
 	};
 }
@@ -1961,13 +1954,12 @@ Viewer::Viewer(Kit &kit) : kit_(kit)
 
 Viewer::~Viewer()
 {
-	destroy();
+	stop_worker(*this);
 }
 
 void
 Viewer::init()
 {
-	this->scale_text_.clear();
 	start_worker(*this);
 }
 
@@ -2022,38 +2014,6 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	if (out)
 		*out = v;
 	return page;
-}
-
-void
-Viewer::destroy()
-{
-	stop_worker(*this);
-	this->scale_text_.clear();
-	this->opening_ = false;
-	this->open_done_ = false;
-	this->image_.reset();
-	this->current_.reset();
-	this->frame_.reset();
-	this->page_scaled_.reset();
-	this->open_cache_.clear();
-	this->previous_path_.clear();
-	this->next_path_.clear();
-	this->playing_ = false;
-	this->remaining_loops_ = 0;
-	this->scale_label_ = nullptr;
-	this->error_ = nullptr;
-	this->error_label_ = nullptr;
-	this->info_ = nullptr;
-	this->name_label_ = nullptr;
-	this->loader_label_ = nullptr;
-	this->width_label_ = nullptr;
-	this->height_label_ = nullptr;
-	this->jpeg_quant_smooth_ = nullptr;
-	this->exiftool_button_ = nullptr;
-	this->cie_ = nullptr;
-	this->tags_ = nullptr;
-	this->info_text_src_ = nullptr;
-	this->page_ = nullptr;
 }
 
 void
@@ -2140,13 +2100,7 @@ Viewer::screen_changed(
 {
 	const bool reload = !this->url_.isEmpty() &&
 		(force_reload || (this->enable_cms_ && changed));
-	this->cmm_ = state.cmm;
-	this->screen_profile_ = state.profile;
-	this->screen_colour_ = state.colour;
-	this->screen_profile_fallback_ = state.fallback;
-	this->screen_capable_ = state.capable;
-	this->screen_hdr_ = state.hdr;
-	this->screen_headroom_ = state.headroom;
+	this->screen_ = state;
 	if (reload) {
 		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,
 			this->orientation_, this->angle_, this->view_locked_};

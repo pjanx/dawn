@@ -72,7 +72,6 @@ struct Viewer : Widget {
 	CieDiagram *cie_ = nullptr;
 	Column *tags_ = nullptr;
 	const dawn::Image *info_text_src_ = nullptr;
-	QString scale_text_;
 	std::string message_;
 	bool message_dismissed_ = false;
 	bool opening_ = false;
@@ -85,12 +84,9 @@ struct Viewer : Widget {
 	std::string previous_path_;
 	std::string next_path_;
 	std::string basename_;
-	std::shared_ptr<dawn::Cmm> cmm_;
-	std::shared_ptr<dawn::Profile> screen_profile_;
-	std::shared_ptr<const ScreenColour> screen_colour_;
+	ScreenState screen_;
 	// OpenContext::loaders, as the settings have it.
 	std::shared_ptr<const std::vector<std::string>> loaders_;
-	bool screen_profile_fallback_ = true;
 	std::shared_ptr<const std::vector<uint8_t>> cms_icc_;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;
@@ -115,9 +111,6 @@ struct Viewer : Widget {
 	bool checkerboard_ = true;
 	bool nonlinear_processing_ = false;
 	bool hdr_ = true;
-	bool screen_capable_ = false;
-	bool screen_hdr_ = false;
-	float screen_headroom_ = 1;
 	bool browser_delays_ = false;
 	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
@@ -147,7 +140,6 @@ struct Viewer : Widget {
 	[[nodiscard]] bool focusable() const override;
 
 	void init();
-	void destroy();
 	void open(const QUrl &url);
 	void set_preload_urls(const QUrl &previous, const QUrl &next);
 	void cancel_loads();

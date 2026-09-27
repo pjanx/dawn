@@ -72,14 +72,6 @@ app_from_handler(IAssocHandler *handler)
 		a.name = from_wide(ui);
 		CoTaskMemFree(ui);
 	}
-	LPWSTR icon = nullptr;
-	int icon_index = 0;
-	if (SUCCEEDED(handler->GetIconLocation(&icon, &icon_index)) && icon) {
-		a.icon = from_wide(icon);
-		if (icon_index)
-			a.icon += QStringLiteral(",%1").arg(icon_index);
-		CoTaskMemFree(icon);
-	}
 	if (a.name.isEmpty())
 		a.name = a.id;
 	return a;
@@ -141,10 +133,9 @@ find_handler(const QString &ext, const QString &id)
 	return found;
 }
 
-Handler
-default_for(const QString &path)
+static Handler
+preferred_for(const QString &path)
 {
-	ensure_com();
 	if (QFileInfo(path).isDir()) {
 		Handler a;
 		a.id = QStringLiteral("explorer.exe");
@@ -178,36 +169,26 @@ default_for(const QString &path)
 		return rec.front();
 	return {};
 }
-vector<Handler>
-recommended_for(const QString &path)
+Handlers
+handlers_for(const QString &path)
 {
 	ensure_com();
-	const Handler def = default_for(path);
-	vector<Handler> out;
-	for (Handler &a :
-		enum_handlers(extension_of(path), ASSOC_FILTER_RECOMMENDED)) {
-		if (!def.id.isEmpty() && a.id == def.id)
-			continue;
-		out.push_back(std::move(a));
-	}
-	return out;
-}
-vector<Handler>
-fallback_for(const QString &path)
-{
-	ensure_com();
-	const QString ext = extension_of(path);
-	const vector<Handler> rec = enum_handlers(ext, ASSOC_FILTER_RECOMMENDED);
-	unordered_set<QString> seen;
-	for (const Handler &a : rec)
-		seen.insert(a.id);
+	Handlers out;
+	out.preferred = preferred_for(path);
 
-	vector<Handler> out;
+	// Fallbacks leave out the whole recommended list, the preferred included.
+	const QString ext = extension_of(path);
+	unordered_set<QString> seen;
+	for (Handler &a : enum_handlers(ext, ASSOC_FILTER_RECOMMENDED)) {
+		seen.insert(a.id);
+		if (out.preferred.id.isEmpty() || a.id != out.preferred.id)
+			out.recommended.push_back(std::move(a));
+	}
 	for (Handler &a : enum_handlers(ext, ASSOC_FILTER_NONE)) {
 		if (seen.contains(a.id))
 			continue;
 		seen.insert(a.id);
-		out.push_back(std::move(a));
+		out.fallback.push_back(std::move(a));
 	}
 	return out;
 }

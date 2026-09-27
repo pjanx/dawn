@@ -888,7 +888,7 @@ struct Toolbar : Panel {
 	ToolbarSlot *left = nullptr;
 	ToolbarSlot *mid = nullptr;
 	ToolbarSlot *right = nullptr;
-	Overflow *overflow = nullptr;
+	std::unique_ptr<Overflow> overflow;
 
 	Toolbar(std::unique_ptr<ToolbarSlot> left_row,
 		std::unique_ptr<ToolbarSlot> mid_row,
@@ -899,7 +899,6 @@ struct Toolbar : Panel {
 	void arrange_content(Kit &kit, Rect alloc) override;
 
 private:
-	std::unique_ptr<Overflow> overflow_owned_;
 	void place_slots(Kit &kit);
 };
 

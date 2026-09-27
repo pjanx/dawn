@@ -288,7 +288,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		return false;
 	this->renderer_ready_ = true;
 
-	this->cmm_ = dawn::Cmm::get_default();
+	this->screen_state_.cmm = dawn::Cmm::get_default();
 	this->app_->display_profiles.listen(
 		this, [this] { handle_screen_change(screen()); });
 	// EDR headroom changes, and ramps, which the profile source does not see.
@@ -779,8 +779,9 @@ Window::shutdown()
 bool
 Window::refresh_screen_profile(QScreen *target_screen)
 {
-	if (!this->cmm_)
-		this->cmm_ = dawn::Cmm::get_default();
+	ScreenState &state = this->screen_state_;
+	if (!state.cmm)
+		state.cmm = dawn::Cmm::get_default();
 
 	DisplayRange range;
 	bool platform = false, icc = true, own_primaries = false;
@@ -832,7 +833,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	const vector<unsigned char> &override =
 		this->app_->settings.icc_profile_override;
 	if (!override.empty() && !system_managed) {
-		next = usable(this->cmm_->get_profile(override));
+		next = usable(state.cmm->get_profile(override));
 		if (next) {
 			label = this->app_->settings.icc_profile_override_path;
 			source = "configuration";
@@ -842,7 +843,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		}
 	}
 	if (!next && !system_managed && !discover().icc.empty()) {
-		next = usable(this->cmm_->get_profile(discover().icc));
+		next = usable(state.cmm->get_profile(discover().icc));
 		if (next) {
 			label =
 				discover().label.empty() ? discover().source : discover().label;
@@ -866,14 +867,14 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		const auto &xy = *range.primaries;
 		const double white_point[2] = {xy[6], xy[7]};
 		next =
-			this->cmm_->get_profile_parametric(nullopt, white_point, xy.data());
+			state.cmm->get_profile_parametric(nullopt, white_point, xy.data());
 		if (next) {
 			label = own_label;
 			source = own_source;
 		}
 	}
 	if (!next)
-		next = this->cmm_->get_profile_sRGB();
+		next = state.cmm->get_profile_sRGB();
 
 #if DN_WITH_WAYLAND
 	// A compositor that failed to take the profile reads our pixels as sRGB,
@@ -883,7 +884,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	if (shell) {
 		described = next->to_bytes();
 		if (shell->color_bridge().unmatched()) {
-			next = this->cmm_->get_profile_sRGB();
+			next = state.cmm->get_profile_sRGB();
 			label = N_("sRGB (the compositor cannot take the display profile)");
 			source = "srgb";
 		}
@@ -892,7 +893,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 	const dawn::ProfileEncoding encoding = profile_encoding(next.get());
 	const bool capable = offers_extended && encoding.matrix_trc;
 	if (parametric_only && !capable) {
-		next = this->cmm_->get_profile_sRGB();
+		next = state.cmm->get_profile_sRGB();
 		label = N_("sRGB (extended range unavailable)");
 		source = "srgb";
 	}
@@ -901,15 +902,15 @@ Window::refresh_screen_profile(QScreen *target_screen)
 		shell->color_bridge().set_screen(
 			std::move(described), capable ? &encoding : nullptr);
 #endif
-	this->screen_profile_fallback_ = source == "srgb";
+	state.fallback = source == "srgb";
 	// The fixed labels have translations; names and paths pass through.
 	this->screen_profile_label_ = _(label.c_str());
 	if (source != "srgb")
 		this->screen_profile_label_ += " (" + source + ")";
 
-	this->screen_state_.capable = capable;
-	this->screen_state_.hdr = range.hdr;
-	this->screen_state_.headroom = range.headroom;
+	state.capable = capable;
+	state.hdr = range.hdr;
+	state.headroom = range.headroom;
 	PresentationTarget target;
 	target.capable = capable;
 	// Windows composes in scRGB anyway, and without ICC tagging on Wayland,
@@ -933,9 +934,8 @@ Window::refresh_screen_profile(QScreen *target_screen)
 #endif
 	this->renderer_.set_presentation(std::move(target));
 
-	const bool changed =
-		!profiles_equal(this->screen_profile_.get(), next.get());
-	this->screen_profile_ = std::move(next);
+	const bool changed = !profiles_equal(state.profile.get(), next.get());
+	state.profile = std::move(next);
 	if (changed)
 		qInfo("screen profile: %s", label.c_str());
 	return changed;
@@ -1019,18 +1019,14 @@ Window::apply_screen_profile(QScreen *target_screen, bool force_reload)
 
 	if (changed || !this->screen_state_.colour) {
 		auto colour = make_shared<ScreenColour>();
-		if (this->screen_profile_)
-			colour->icc = this->screen_profile_->to_bytes();
-		colour->encoding = profile_encoding(this->screen_profile_.get());
+		if (this->screen_state_.profile)
+			colour->icc = this->screen_state_.profile->to_bytes();
+		colour->encoding = profile_encoding(this->screen_state_.profile.get());
 		if (!colour->encoding.matrix_trc)
 			qWarning("screen profile: using approximate sRGB device curves; "
 					 "profile is not supported matrix/TRC RGB");
 		this->screen_state_.colour = std::move(colour);
 	}
-	this->screen_state_.cmm = this->cmm_;
-	this->screen_state_.profile = this->screen_profile_;
-	this->screen_state_.fallback = this->screen_profile_fallback_;
-
 	this->kit_.bake_colours(this->screen_state_);
 	this->renderer_.set_encoding(shared_ptr<const dawn::ProfileEncoding>(
 		this->screen_state_.colour, &this->screen_state_.colour->encoding));

@@ -167,7 +167,7 @@ WaylandWindow::eventFilter(QObject *watched, QEvent *event)
 	if (event->type() == QEvent::FocusOut)
 		finish_close();
 	if (event->type() == QEvent::PlatformSurface) {
-		auto *surface_event = static_cast<QPlatformSurfaceEvent *>(event);
+		auto *surface_event = (QPlatformSurfaceEvent *) event;
 		if (surface_event->surfaceEventType() ==
 			QPlatformSurfaceEvent::SurfaceAboutToBeDestroyed) {
 			this->color_bridge_->detach();
