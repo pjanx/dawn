@@ -120,9 +120,55 @@ parse_mpf(vector<MpfEntry> &individuals, const uint8_t *mpf, size_t len,
 }
 
 // --- JPEG segment scanning ---------------------------------------------------
+// Because the JPEG file format is simple, just do it manually.
+// See: https://www.w3.org/Graphics/JPEG/itu-t81.pdf
 
 namespace
 {
+
+enum JpegMarker : uint8_t {
+	TEM = 0x01,
+	SOF0 = 0xC0,
+	SOF1,
+	SOF2,
+	SOF3,
+	DHT,
+	SOF5,
+	SOF6,
+	SOF7,
+	JPG,
+	SOF9,
+	SOF10,
+	SOF11,
+	DAC,
+	SOF13,
+	SOF14,
+	SOF15,
+	RST0,
+	RST1,
+	RST2,
+	RST3,
+	RST4,
+	RST5,
+	RST6,
+	RST7,
+	SOI,
+	EOI,
+	SOS,
+	DQT,
+	DNL,
+	DRI,
+	DHP,
+	EXP,
+	APP0,
+	APP1,
+	APP2,
+	APP3,
+	APP4,
+	APP5,
+	APP6,
+	APP7,
+};
 
 struct JpegMetadata {
 	vector<uint8_t> exif;  ///< Exif buffer, may be empty
@@ -134,66 +180,27 @@ struct JpegMetadata {
 
 }  // namespace
 
-static void
-parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
+/// Advances `rest` past the next marker segment ahead of the scan,
+/// and returns its marker and its payload, which excludes the length field.
+/// False at SOS or EOI, and wherever the structure breaks.
+static bool
+next_jpeg_segment(
+	span<const uint8_t> &rest, uint8_t *marker, span<const uint8_t> *payload)
 {
-	// Because the JPEG file format is simple, just do it manually.
-	// See: https://www.w3.org/Graphics/JPEG/itu-t81.pdf
-	enum {
-		TEM = 0x01,
-		SOF0 = 0xC0,
-		SOF1,
-		SOF2,
-		SOF3,
-		DHT,
-		SOF5,
-		SOF6,
-		SOF7,
-		JPG,
-		SOF9,
-		SOF10,
-		SOF11,
-		DAC,
-		SOF13,
-		SOF14,
-		SOF15,
-		RST0,
-		RST1,
-		RST2,
-		RST3,
-		RST4,
-		RST5,
-		RST6,
-		RST7,
-		SOI,
-		EOI,
-		SOS,
-		DQT,
-		DNL,
-		DRI,
-		DHP,
-		EXP,
-		APP0,
-		APP1,
-		APP2,
-		APP3,
-		APP4,
-		APP5,
-		APP6,
-		APP7,
-	};
-
-	int icc_sequence = 0;
-	bool icc_done = false;
-	const uint8_t *p = data.data(), *end = p + data.size();
-	while (p + 3 < end && *p++ == 0xFF && *p != SOS && *p != EOI) {
-		// The previous byte is a fill byte, restart.
-		if (*p == 0xFF)
+	while (rest.size() >= 4 && rest[0] == 0xFF) {
+		// The first byte is a fill byte, restart.
+		if (rest[1] == 0xFF) {
+			rest = rest.subspan(1);
 			continue;
+		}
+
+		*marker = rest[1];
+		switch (*marker) {
+		case SOS:
+		case EOI:
+			return false;
 
 		// These markers stand alone, not starting a marker segment.
-		uint8_t marker = *p++;
-		switch (marker) {
 		case RST0:
 		case RST1:
 		case RST2:
@@ -204,59 +211,102 @@ parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 		case RST7:
 		case SOI:
 		case TEM:
+			rest = rest.subspan(2);
 			continue;
 		}
 
-		// Do not bother validating the structure.
-		uint16_t length = uint16_t(p[0] << 8 | p[1]);
-		const uint8_t *payload = p + 2;
-		if ((p += length) > end)
-			break;
+		// The length counts itself.  Do not bother validating the contents.
+		const size_t length = be16(rest.data() + 2);
+		if (length < 2 || length > rest.size() - 2)
+			return false;
 
+		*payload = rest.subspan(4, length - 2);
+		rest = rest.subspan(2 + length);
+		return true;
+	}
+	return false;
+}
+
+static void
+parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
+{
+	int icc_sequence = 0;
+	bool icc_done = false;
+	uint8_t marker = 0;
+	span<const uint8_t> payload;
+	for (auto rest = data; next_jpeg_segment(rest, &marker, &payload);) {
 		// https://www.cipa.jp/std/documents/e/DC-008-2012_E.pdf 4.7.2
 		// Adobe XMP Specification Part 3: Storage in Files, 2020/1, 1.1.3
 		// Not checking the padding byte is intentional.
 		// XXX: Thumbnails may in practice overflow into follow-up segments.
-		if (marker == APP1 && p - payload >= 6 &&
-			!memcmp(payload, "Exif\0", 5) && meta->exif.empty()) {
-			payload += 6;
-			meta->exif.assign(payload, p);
-		}
+		if (marker == APP1 && payload.size() >= 6 &&
+			!memcmp(payload.data(), "Exif\0", 5) && meta->exif.empty())
+			meta->exif.assign(payload.begin() + 6, payload.end());
 
 		// https://www.color.org/specification/ICC1v43_2010-12.pdf B.4
-		if (marker == APP2 && p - payload >= 14 &&
-			!memcmp(payload, "ICC_PROFILE\0", 12) && !icc_done &&
+		if (marker == APP2 && payload.size() >= 14 &&
+			!memcmp(payload.data(), "ICC_PROFILE\0", 12) && !icc_done &&
 			payload[12] == ++icc_sequence && payload[13] >= payload[12]) {
-			payload += 14;
-			meta->icc.insert(meta->icc.end(), payload, p);
-			icc_done = payload[-1] == icc_sequence;
+			meta->icc.insert(
+				meta->icc.end(), payload.begin() + 14, payload.end());
+			icc_done = payload[13] == icc_sequence;
 		}
 
 		// CIPA DC-007-2021 (Multi-Picture Format) 5.2
 		// https://www.cipa.jp/e/std/std-sec.html
-		if (marker == APP2 && p - payload >= 8 &&
-			!memcmp(payload, "MPF\0", 4) && meta->mpf.empty()) {
-			payload += 4;
-			parse_mpf(
-				meta->mpf, payload, size_t(p - payload), size_t(end - payload));
+		if (marker == APP2 && payload.size() >= 8 &&
+			!memcmp(payload.data(), "MPF\0", 4) && meta->mpf.empty()) {
+			const uint8_t *mpf = payload.data() + 4;
+			parse_mpf(meta->mpf, mpf, payload.size() - 4,
+				size_t(data.data() + data.size() - mpf));
 		}
 
 		// Adobe XMP Specification Part 3: Storage in Files, 2020/1, 1.1.3
 		static constexpr char xmp_ns[] = "http://ns.adobe.com/xap/1.0/";
-		if (marker == APP1 && size_t(p - payload) >= sizeof xmp_ns &&
-			!memcmp(payload, xmp_ns, sizeof xmp_ns) && meta->xmp.empty())
-			meta->xmp.assign(
-				(const char *) payload + sizeof xmp_ns, (const char *) p);
+		if (marker == APP1 && payload.size() >= sizeof xmp_ns &&
+			!memcmp(payload.data(), xmp_ns, sizeof xmp_ns) && meta->xmp.empty())
+			meta->xmp.assign(payload.begin() + sizeof xmp_ns, payload.end());
 
 		// ISO 21496-1 metadata, as Ultra HDR 1.1 stores it in JPEG.
 		static constexpr char iso_ns[] = "urn:iso:std:iso:ts:21496:-1";
-		if (marker == APP2 && size_t(p - payload) >= sizeof iso_ns &&
-			!memcmp(payload, iso_ns, sizeof iso_ns) && meta->iso.empty())
-			meta->iso.assign(payload + sizeof iso_ns, p);
+		if (marker == APP2 && payload.size() >= sizeof iso_ns &&
+			!memcmp(payload.data(), iso_ns, sizeof iso_ns) && meta->iso.empty())
+			meta->iso.assign(payload.begin() + sizeof iso_ns, payload.end());
 	}
 
 	if (!icc_done)
 		meta->icc.clear();
+}
+
+int64_t
+jpeg_sof_pixel_count(span<const uint8_t> data)
+{
+	int64_t width = 0, height = 0;
+	uint8_t marker = 0;
+	span<const uint8_t> payload;
+	for (auto rest = data; next_jpeg_segment(rest, &marker, &payload);) {
+		switch (marker) {
+		case SOF0:
+		case SOF1:
+		case SOF2:
+		case SOF3:
+		case SOF5:
+		case SOF6:
+		case SOF7:
+		case SOF9:
+		case SOF10:
+		case SOF11:
+		case SOF13:
+		case SOF14:
+		case SOF15:
+			// The fixed part of a frame header is (Lf,) P, Y, X, Nf.
+			if (payload.size() >= 6) {
+				width = be16(payload.data() + 3);
+				height = be16(payload.data() + 1);
+			}
+		}
+	}
+	return width * height;
 }
 
 // --- libjpeg error handling --------------------------------------------------
@@ -681,91 +731,6 @@ load_jpeg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	if (data.size() < 2 || data[0] != 0xff || data[1] != 0xd8)
 		return nullptr;
 	return open_libjpeg_turbo(data, ctx, error);
-}
-
-int64_t
-jpeg_sof_pixel_count(span<const uint8_t> data)
-{
-	// See: https://www.w3.org/Graphics/JPEG/itu-t81.pdf
-	enum {
-		TEM = 0x01,
-		SOF0 = 0xC0,
-		SOF1,
-		SOF2,
-		SOF3,
-		DHT,
-		SOF5,
-		SOF6,
-		SOF7,
-		JPG,
-		SOF9,
-		SOF10,
-		SOF11,
-		DAC,
-		SOF13,
-		SOF14,
-		SOF15,
-		RST0,
-		RST1,
-		RST2,
-		RST3,
-		RST4,
-		RST5,
-		RST6,
-		RST7,
-		SOI,
-		EOI,
-		SOS,
-	};
-
-	int64_t width = 0, height = 0;
-	const uint8_t *p = data.data(), *end = p + data.size();
-	while (p + 3 < end && *p++ == 0xFF && *p != SOS && *p != EOI) {
-		if (*p == 0xFF)
-			continue;
-
-		uint8_t marker = *p++;
-		switch (marker) {
-		case RST0:
-		case RST1:
-		case RST2:
-		case RST3:
-		case RST4:
-		case RST5:
-		case RST6:
-		case RST7:
-		case SOI:
-		case TEM:
-			continue;
-		}
-
-		uint16_t length = uint16_t(p[0] << 8 | p[1]);
-		const uint8_t *payload = p + 2;
-		if ((p += length) > end)
-			break;
-
-		switch (marker) {
-		case SOF0:
-		case SOF1:
-		case SOF2:
-		case SOF3:
-		case SOF5:
-		case SOF6:
-		case SOF7:
-		case SOF9:
-		case SOF10:
-		case SOF11:
-		case SOF13:
-		case SOF14:
-		case SOF15:
-			// The fixed part of a frame header is Lf, P, Y, X, Nf.
-			if (length >= 8) {
-				width = (payload[3] << 8) + payload[4];
-				height = (payload[1] << 8) + payload[2];
-			}
-		}
-	}
-	return width * height;
 }
 
 // --- Lossless transforms -----------------------------------------------------
