@@ -1200,10 +1200,10 @@ test_gain_map()
 		const float clear[4] = {};
 		array<uint16_t, 16> pixels{};
 		CHECK(gpu.draw(view, clear, &pixels, &error));
-		for (int i = 0; i < 4; i++) {
+		for (size_t i = 0; i < 4; i++) {
 			const float got = pixels[i * 4] / 65535.f;
 			if (abs(got - want[i % 2]) > .0005f)
-				test::fail("weight %g, pixel %d: %f != %f", double(weight), i,
+				test::fail("weight %g, pixel %zu: %f != %f", double(weight), i,
 					double(got), double(want[i % 2]));
 		}
 	};

@@ -55,7 +55,6 @@ namespace dn
 {
 
 constexpr float kWinPadX = 4.f;
-constexpr float kWinPadY = 2.f;
 constexpr float kItemGap = 2.f;
 constexpr float kZoomStep = 1.25f;
 constexpr float kZoomDragPts = 40.f;

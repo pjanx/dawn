@@ -536,7 +536,7 @@ map_base_correlation(const dawn::Image &image)
 		aa += (a[i] - ma) * (a[i] - ma);
 		bb += (b[i] - mb) * (b[i] - mb);
 	}
-	return aa && bb ? ab / sqrt(aa * bb) : 0;
+	return aa > 0 && bb > 0 ? ab / sqrt(aa * bb) : 0;
 }
 
 static void

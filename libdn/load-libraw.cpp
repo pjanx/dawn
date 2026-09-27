@@ -57,8 +57,8 @@ develop(const libraw_data_t *iprc, Image &image)
 	const RgbMatrix m =
 		primaries_to_primaries(kRec709Primaries, kRec2020Primaries);
 	float to_output[3][3] = {};
-	for (int c = 0; c < 3; c++)
-		for (int k = 0; k < 3; k++)
+	for (size_t c = 0; c < 3; c++)
+		for (size_t k = 0; k < 3; k++)
 			to_output[c][k] = float(m[k][c]);
 
 	vector<uint32_t> histogram(3 << 13);
@@ -73,9 +73,9 @@ develop(const libraw_data_t *iprc, Image &image)
 				to_srgb[1][2] * p[2] + to_srgb[1][3] * p[3];
 			const float b = to_srgb[2][0] * p[0] + to_srgb[2][1] * p[1] +
 				to_srgb[2][2] * p[2] + to_srgb[2][3] * p[3];
-			histogram[0 << 13 | clamp(int(r), 0, 65535) >> 3]++;
-			histogram[1 << 13 | clamp(int(g), 0, 65535) >> 3]++;
-			histogram[2 << 13 | clamp(int(b), 0, 65535) >> 3]++;
+			histogram[0 << 13 | size_t(clamp(r, 0.f, 65535.f)) >> 3]++;
+			histogram[1 << 13 | size_t(clamp(g, 0.f, 65535.f)) >> 3]++;
+			histogram[2 << 13 | size_t(clamp(b, 0.f, 65535.f)) >> 3]++;
 			for (int c = 0; c < 3; c++) {
 				const float output = to_output[c][0] * r + to_output[c][1] * g +
 					to_output[c][2] * b + .5f;
@@ -88,10 +88,10 @@ develop(const libraw_data_t *iprc, Image &image)
 	// White is where the brightest 1% of some channel starts.
 	size_t clipped = size_t(
 		double(image.width) * image.height * iprc->params.auto_bright_thr);
-	int white = 32;
-	for (int c = 0; c < 3; c++) {
+	size_t white = 32;
+	for (size_t c = 0; c < 3; c++) {
 		size_t total = 0;
-		int value = 0x2000;
+		size_t value = 0x2000;
 		while (--value > 32)
 			if ((total += histogram[c << 13 | value]) > clipped)
 				break;
@@ -99,8 +99,8 @@ develop(const libraw_data_t *iprc, Image &image)
 	}
 
 	vector<uint16_t> curve(0x10000, 65535);
-	const int top = white << 3;
-	for (int i = 0; i < top; i++)
+	const size_t top = white << 3;
+	for (size_t i = 0; i < top; i++)
 		curve[i] = uint16_t(lround(
 			transfer_encode(float(i) / float(top), Transfer::Srgb) * 65535));
 	for (uint32_t y = 0; y < image.height; y++) {

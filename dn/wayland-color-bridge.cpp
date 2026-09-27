@@ -680,7 +680,7 @@ WaylandColorBridge::set_screen(
 	array<int32_t, 8> primaries{0, 0, 0, 0, 0, 0, 312700, 329000};
 	if (extended) {
 		const dawn::RgbMatrix m = dawn::display_colourants_d65(*extended);
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			const double sum = m[c][0] + m[c][1] + m[c][2];
 			primaries[c * 2] = int32_t(lround(m[c][0] / sum * 1e6));
 			primaries[c * 2 + 1] = int32_t(lround(m[c][1] / sum * 1e6));

@@ -1205,7 +1205,7 @@ test_display_matrices()
 	const double bt2020_xy[6] = {.708, .292, .170, .797, .131, .046};
 
 	const dawn::RgbMatrix colourants = dawn::display_colourants_d65(srgb);
-	for (int c = 0; c < 3; c++) {
+	for (size_t c = 0; c < 3; c++) {
 		const double sum =
 			colourants[c][0] + colourants[c][1] + colourants[c][2];
 		CHECK(abs(colourants[c][0] / sum - srgb_xy[c * 2]) < .001);
@@ -1213,8 +1213,8 @@ test_display_matrices()
 	}
 
 	const dawn::RgbMatrix identity = dawn::display_to_primaries(srgb, srgb_xy);
-	for (int c = 0; c < 3; c++)
-		for (int r = 0; r < 3; r++)
+	for (size_t c = 0; c < 3; c++)
+		for (size_t r = 0; r < 3; r++)
 			CHECK(abs(identity[c][r] - (c == r)) < .002);
 
 	// Display P3 red leaves sRGB, as scRGB lets it, but not BT.2020, whose
@@ -1222,9 +1222,9 @@ test_display_matrices()
 	const dawn::RgbMatrix to_srgb = dawn::display_to_primaries(p3, srgb_xy);
 	CHECK(to_srgb[0][0] > 1.1 && to_srgb[0][1] < 0 && to_srgb[0][2] < 0);
 	const dawn::RgbMatrix to_bt2020 = dawn::display_to_primaries(p3, bt2020_xy);
-	for (int r = 0; r < 3; r++) {
+	for (size_t r = 0; r < 3; r++) {
 		double white = 0;
-		for (int c = 0; c < 3; c++) {
+		for (size_t c = 0; c < 3; c++) {
 			CHECK(to_bt2020[c][r] > -.002);
 			white += to_bt2020[c][r];
 		}
