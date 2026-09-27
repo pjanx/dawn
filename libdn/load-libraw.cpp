@@ -22,12 +22,28 @@ using namespace std;
 namespace dawn
 {
 
+// LibRaw's flip is a bit field, see flip_index(): 4 transposes,
+// then 2 mirrors rows, and 1 mirrors columns.
+static constexpr Orientation kFlipOrientations[] = {
+	Orientation::Rotate0,    // 0
+	Orientation::Mirror0,    // 1
+	Orientation::Mirror180,  // 2
+	Orientation::Rotate180,  // 3
+	Orientation::Mirror270,  // 4
+	Orientation::Rotate270,  // 5
+	Orientation::Rotate90,   // 6
+	Orientation::Mirror90,   // 7
+};
+
 // Unpacks, demosaics and colour-converts (to sRGB) a single shot already
 // opened into `iprc`, producing one working-format page. LibRaw hands back
 // tightly packed, interleaved 16-bit RGB rows, which carry no alpha.
 static ImagePtr
 load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 {
+	// Processing replaces sizes.flip with user_flip.
+	Orientation orientation = kFlipOrientations[iprc->sizes.flip & 7];
+
 	int err = 0;
 	if ((err = libraw_unpack(iprc))) {
 		set_error(error, libraw_strerror(err));
@@ -63,6 +79,7 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 	pack_rgb16le_to_bgra16(*result, assume_aligned<const uint16_t>(image->data),
 		size_t(image->width) * 3 * sizeof(uint16_t), 16);
 	libraw_dcraw_clear_mem(image);
+	result->orientation = orientation;
 
 	// LibRaw was told to output sRGB directly; there is no embedded profile
 	// to pass on, and the CMS falls back to sRGB by itself.
@@ -83,7 +100,8 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	// TODO(p): Check if we need to set anything for autorotation (sizes.flip).
+	// Leave the orientation to the viewer.
+	iprc->params.user_flip = 0;
 	iprc->params.use_camera_wb = 1;
 	iprc->params.output_color = 1;  // sRGB, TODO(p): Is this used?
 	iprc->params.output_bps = 16;
