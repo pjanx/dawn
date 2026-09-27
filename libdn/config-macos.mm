@@ -104,7 +104,7 @@ config_set(string_view key, string_view value, Error *error)
 	CFRelease(cf_value);
 	if (!CFPreferencesSynchronize(CFSTR(DAWN_NAMESPACE),
 			kCFPreferencesCurrentUser, kCFPreferencesAnyHost)) {
-		fail(error, _("cannot synchronize configuration"));
+		fail(error, _("cannot synchronise configuration"));
 		return false;
 	}
 	return true;

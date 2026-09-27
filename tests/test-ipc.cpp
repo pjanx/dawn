@@ -5,11 +5,12 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/ipc-instance.hpp"
-#include "libdn/ipc-loop.hpp"
-#include "libdn/ipc-shm.hpp"
-#include "libdn/ipc.hpp"
 #include "test.hpp"
+
+#include <libdn/ipc-instance.hpp>
+#include <libdn/ipc-loop.hpp>
+#include <libdn/ipc-shm.hpp>
+#include <libdn/ipc.hpp>
 
 #include <algorithm>
 #include <cerrno>

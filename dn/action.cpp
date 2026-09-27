@@ -162,8 +162,8 @@ constexpr ActionDef kDefs[] = {
 	// of digit keys that set it, and is not a label.
 	{0, {N_("Zoom _Level")}, {}, {}, "1-9"},
 	{kToggle, {N_("_Scale to Fit")}, {"zoom-fit-symbolic"}, {{Qt::Key_X}}, {}},
-	{0, {N_("Fit to _Width")}, {}, {{Qt::Key_W}}, {}},
-	{0, {N_("Fit to H_eight")}, {}, {{Qt::Key_H}}, {}},
+	{kMenu, {N_("Fit to _Width")}, {}, {{Qt::Key_W}}, {}},
+	{kMenu, {N_("Fit to H_eight")}, {}, {{Qt::Key_H}}, {}},
 	{kToggle, {N_("_Lock View")},
 		{"padlock-open-symbolic", "padlock-closed-symbolic"},
 		{{Qt::Key_L}}, {}},
@@ -175,7 +175,7 @@ constexpr ActionDef kDefs[] = {
 	{kToggle, {N_("S_mooth Scaling")}, {"blend-tool-symbolic"}, {{Qt::Key_I}}, {}},
 	{kToggle, {N_("Highlight _Transparency")},
 		{"transparent-background-symbolic"}, {{Qt::Key_T}}, {}},
-	{kToggle, {N_("Process in Encoded Space")}, {}, {}, {}},
+	{kToggle, {N_("_Process in Encoded Space")}, {}, {}, {}},
 	{kToggle, {N_("_Browser-like Animation Delays")}, {}, {}, {}},
 	{kMenu, {N_("Rotate _Left")}, {"rotate-acw-symbolic"}, {{Qt::Key_Less}}, {}},
 	// TRANSLATORS: A verb: flips the image horizontally.

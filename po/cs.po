@@ -60,7 +60,7 @@ msgstr "_Tmavý režim"
 #. TRANSLATORS: Labels every clickable thing with a letter to type.
 #: dn/action.cpp:57
 msgid "_Hint"
-msgstr "Označit prvky pro _klávesnici"
+msgstr "Oz_načit prvky pro klávesnici"
 
 #: dn/action.cpp:58
 msgid "_Back in History"
@@ -157,7 +157,7 @@ msgstr "Zobrazit _názvy souborů"
 
 #: dn/action.cpp:133
 msgid "Hide _Unsupported Files"
-msgstr "Skrýt _nepodporované soubory"
+msgstr "Sk_rýt nepodporované soubory"
 
 #: dn/action.cpp:135
 msgid "Sort As_cending"
@@ -251,8 +251,8 @@ msgid "Highlight _Transparency"
 msgstr "Zvýraznit průh_lednost"
 
 #: dn/action.cpp:178
-msgid "Process in Encoded Space"
-msgstr "Zpracovávat v kódovaném prostoru"
+msgid "_Process in Encoded Space"
+msgstr "Zpracovávat v _kódovaném prostoru"
 
 #: dn/action.cpp:179
 msgid "_Browser-like Animation Delays"
@@ -954,7 +954,7 @@ msgid "configuration value is not a string"
 msgstr "hodnota v konfiguraci není řetězec"
 
 #: libdn/config-macos.mm:107
-msgid "cannot synchronize configuration"
+msgid "cannot synchronise configuration"
 msgstr "konfiguraci nelze synchronizovat"
 
 #: libdn/config-unix.cpp:195
@@ -1044,8 +1044,8 @@ msgid "no output buffer"
 msgstr "chybí výstupní vyrovnávací paměť"
 
 #: libdn/libdn.cpp:1599
-msgid "Gain maps over an HDR base are not supported"
-msgstr "Mapy zisku nad základním obrázkem v HDR nejsou podporovány"
+msgid "gain maps over an HDR base are not supported"
+msgstr "mapy zisku nad základním obrázkem v HDR nejsou podporovány"
 
 #: libdn/libdn.cpp:1781 libdn/load-dnrs.cpp:110 libdn/load-dnrs.cpp:167
 msgid "invalid or truncated frame"
@@ -1056,8 +1056,8 @@ msgid "failed to describe the colour space"
 msgstr "barevný prostor se nepodařilo popsat"
 
 #: libdn/libdn.cpp:1808
-msgid "Non-finite values have been replaced with zero"
-msgstr "Nekonečné a nečíselné hodnoty byly nahrazeny nulou"
+msgid "non-finite values have been replaced with zero"
+msgstr "nekonečné a nečíselné hodnoty byly nahrazeny nulou"
 
 #. TRANSLATORS: What a loader reads, as the settings dialog lists it.
 #. These are format names throughout, bar the odd word such as "raw
@@ -1144,7 +1144,7 @@ msgid "%s: %s"
 msgstr "%s: %s"
 
 #: libdn/libdn.cpp:2213
-msgid "unrecognized or unsupported image format"
+msgid "unrecognised or unsupported image format"
 msgstr "nerozpoznaný nebo nepodporovaný formát obrázku"
 
 #: libdn/libdn.cpp:2235

@@ -5,12 +5,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/ipc.hpp"
+#include "test.hpp"
+
+#include <libdn/ipc.hpp>
 
 #include "ipc/imaged.lxdr.hpp"
 #include "ipc/instance.lxdr.hpp"
 #include "ipc/thumbd.lxdr.hpp"
-#include "test.hpp"
 
 #include <cstddef>
 #include <cstdint>

@@ -11,7 +11,7 @@
 #include "overlay.hpp"
 #include "text.hpp"
 
-#include "libdn/libdn.hpp"
+#include <libdn/libdn.hpp>
 
 #include <QFont>
 #include <QImage>

@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "app.hpp"
 #include "instance.hpp"
 
-#include "app.hpp"
-#include "libdn/ipc-instance.hpp"
+#include <libdn/ipc-instance.hpp>
 
 #include <QByteArray>
 #include <QUrl>

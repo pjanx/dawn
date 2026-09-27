@@ -416,7 +416,7 @@ struct OpenContext {
 	int screen_dpi = 96;
 	bool enhance = false;
 	bool first_frame_only = false;
-	/// Decode or synthesize gain maps.  Recognized gain maps never become
+	/// Decode or synthesize gain maps.  Recognised gain maps never become
 	/// pages, whether this is set or not.
 	bool gain_maps = false;
 	/// Loaders to try, by name, in this order; empty means all of them,

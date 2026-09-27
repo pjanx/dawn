@@ -5,8 +5,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/ipc-shm.hpp"
 #include "test.hpp"
+
+#include <libdn/ipc-shm.hpp>
 
 #include <cstring>
 

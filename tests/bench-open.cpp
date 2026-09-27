@@ -5,8 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/libdn.hpp"
-#include "libdn/scale-scaler.hpp"
+#include <libdn/libdn.hpp>
+#include <libdn/scale-scaler.hpp>
 
 #include <getopt.h>
 

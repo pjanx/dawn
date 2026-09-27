@@ -6,8 +6,9 @@
 //
 
 #include "exr.hpp"
-#include "libdn/libdn-loaders.hpp"
-#include "libdn/libdn.hpp"
+
+#include <libdn/libdn-loaders.hpp>
+#include <libdn/libdn.hpp>
 
 #include <cmath>
 #include <cstdint>

@@ -5,16 +5,16 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "renderer.hpp"
-
 #include "display-profile.hpp"
+#include "renderer.hpp"
 
 #include "dn-overlay-frag-spv.h"
 #include "dn-overlay-vert-spv.h"
 #include "dn-present-frag-spv.h"
 #include "dn-thumb-frag-spv.h"
 #include "fullscreen-vert-spv.h"
-#include "libdn/vk-device.hpp"
+
+#include <libdn/vk-device.hpp>
 
 #include <QtLogging>
 
@@ -110,7 +110,7 @@ colorspace_score(VkColorSpaceKHR cs)
 }
 
 // Extended presentation is linear, with a float swapchain in this space.
-#if defined _WIN32 || defined __APPLE__
+#if defined Q_OS_WIN || defined Q_OS_MACOS
 constexpr VkColorSpaceKHR kExtendedColorSpace =
 	VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
 #else

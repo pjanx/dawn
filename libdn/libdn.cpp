@@ -1694,7 +1694,7 @@ bool
 gain_map_applies(const GainMap &metadata, const OpenContext &ctx)
 {
 	if (metadata.base_headroom > metadata.alternate_headroom) {
-		add_warning(ctx, _("Gain maps over an HDR base are not supported"));
+		add_warning(ctx, _("gain maps over an HDR base are not supported"));
 		return false;
 	}
 	return metadata.alternate_headroom != metadata.base_headroom &&
@@ -1731,7 +1731,7 @@ make_gain_map(const Image &pixels, const GainMap &metadata, bool apple)
 		return map;
 
 	// Apple's gain is linear in the linearized texel.  Rewritten as
-	// normalized log2 gain, the renderer knows just the one formula.
+	// normalised log2 gain, the renderer knows just the one formula.
 	const double headroom = exp2(double(metadata.max));
 	vector<uint16_t> lut(65536);
 	for (uint32_t i = 0; i < lut.size(); i++) {
@@ -1903,7 +1903,7 @@ split_hdr(Image &image, const OpenContext &ctx, span<float> rgba,
 		peak = max({peak, p[0], p[1], p[2]});
 	}
 	if (nonfinite)
-		add_warning(ctx, _("Non-finite values have been replaced with zero"));
+		add_warning(ctx, _("non-finite values have been replaced with zero"));
 	// What stays negative past BT.2020 no display could show anyway,
 	// and lossy coding leaves plenty of it as noise around black.
 	if (negative)
@@ -2308,7 +2308,7 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	if (!image) {
 		if (error && error->message.empty())
-			set_error(error, _("unrecognized or unsupported image format"));
+			set_error(error, _("unrecognised or unsupported image format"));
 		return nullptr;
 	}
 

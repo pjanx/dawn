@@ -323,7 +323,7 @@ Cropper::turn(Action action)
 // --- Saving and actions ------------------------------------------------------
 
 constexpr FileType kJpegTypes[] = {
-	{N_("JPEG image (*.jpg, *.jpeg)"), "*.jpg;*.jpeg;*.jpe;*.jfif", ".jpg"},
+	{N_("JPEG image (*.jpg, *.jpeg, *.jpe, *.jfif)"), "*.jpg;*.jpeg;*.jpe;*.jfif", ".jpg"},
 	{N_("All files"), "*", nullptr},
 };
 

@@ -7,9 +7,10 @@
 
 #include <dawn-config.h>
 
-#include "libdn/libdn-loaders.hpp"
-#include "libdn/libdn.hpp"
 #include "test.hpp"
+
+#include <libdn/libdn-loaders.hpp>
+#include <libdn/libdn.hpp>
 
 #include <lcms2.h>
 

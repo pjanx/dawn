@@ -6,7 +6,8 @@
 //
 
 #include "gpu.hpp"
-#include "libdn/vk-device.hpp"
+
+#include <libdn/vk-device.hpp>
 
 #include <QtLogging>
 

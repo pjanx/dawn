@@ -5,9 +5,10 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "libdn/libdn-loaders.hpp"
-#include "libdn/libdn.hpp"
 #include "test.hpp"
+
+#include <libdn/libdn-loaders.hpp>
+#include <libdn/libdn.hpp>
 
 #include <algorithm>
 #include <cmath>

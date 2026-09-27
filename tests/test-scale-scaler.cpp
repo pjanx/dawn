@@ -5,14 +5,17 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "dn-present-frag-spv.h"
-#include "dn/renderer.hpp"
-#include "fullscreen-vert-spv.h"
-#include "libdn/libdnvk.hpp"
-#include "libdn/scale-scaler.hpp"
-#include "libdn/thumb-scaler.hpp"
-#include "libdn/vk-device.hpp"
 #include "test.hpp"
+
+#include "dn-present-frag-spv.h"
+#include "fullscreen-vert-spv.h"
+
+#include <dn/renderer.hpp>
+
+#include <libdn/libdnvk.hpp>
+#include <libdn/scale-scaler.hpp>
+#include <libdn/thumb-scaler.hpp>
+#include <libdn/vk-device.hpp>
 
 #include <array>
 #include <chrono>
