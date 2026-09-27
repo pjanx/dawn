@@ -157,8 +157,8 @@ ContextMenu::show(Kit &kit, const QUrl &url, Rect anchor, bool kbd)
 
 constexpr float kDialogActionPad = 16.f;
 
-static unique_ptr<Label>
-dialog_label(const char *text, bool bold = false, bool wrap = false)
+unique_ptr<Label>
+dialog_label(const char *text, bool bold, bool wrap)
 {
 	auto label = make_unique<Label>();
 	label->text = menu_label(text, &label->mnemonic);
@@ -167,7 +167,7 @@ dialog_label(const char *text, bool bold = false, bool wrap = false)
 	return label;
 }
 
-static unique_ptr<Button>
+unique_ptr<Button>
 dialog_action(const char *text, function<void(Kit &)> on_click)
 {
 	auto button = make_unique<Button>();
@@ -177,10 +177,24 @@ dialog_action(const char *text, function<void(Kit &)> on_click)
 	return button;
 }
 
-static unique_ptr<Button>
+unique_ptr<Button>
 dialog_dismiss_action(Dialog &dialog, const char *text)
 {
 	return dialog_action(text, [&dialog](Kit &kit) { dialog.close(kit); });
+}
+
+unique_ptr<GutterRow>
+dialog_field(const char *label, unique_ptr<Widget> control, Widget *buddy)
+{
+	auto text = dialog_label(label, false, false);
+	text->align = Align::End;
+	text->buddy = buddy;
+
+	auto row = make_unique<GutterRow>();
+	row->gap = 8.f;
+	row->add_child(std::move(text), size_t(-1));
+	row->add_child(std::move(control), size_t(-1));
+	return row;
 }
 
 static QString
@@ -249,7 +263,7 @@ dialog_about(Kit &kit, span<const pair<const char *, QString>> details)
 	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	col->add_child(dialog_label(DAWN_NAME, true), size_t(-1));
+	col->add_child(dialog_label(DAWN_NAME, true, false), size_t(-1));
 	col->add_child(dialog_label(N_("Colour-managed image browser and viewer."),
 					   false, true),
 		size_t(-1));
@@ -315,7 +329,7 @@ dialog_entry(Kit &kit, const char *title_text, const char *affirm,
 	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	auto title = dialog_label(title_text, true);
+	auto title = dialog_label(title_text, true, false);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
 	field->set_text(kit, initial);
@@ -373,7 +387,7 @@ dialog_location(
 	Dialog &dialog = kit.new_dialog();
 	auto col = make_unique<Column>();
 	col->gap = 8.f;
-	auto title = dialog_label(N_("Enter location"), true);
+	auto title = dialog_label(N_("Enter location"), true, false);
 	auto entry = make_unique<Entry>();
 	Entry *field = entry.get();
 	field->set_text(kit, initial);
@@ -478,22 +492,6 @@ loader_text(const SettingsDraft::Loader &loader)
 		QStringLiteral(")");
 }
 
-// The buddy is passed rather than taken off the control: a cell that holds
-// more than one widget still has exactly one that the mnemonic means.
-static unique_ptr<GutterRow>
-settings_row(const char *label, unique_ptr<Widget> control, Widget *buddy)
-{
-	auto text = dialog_label(label);
-	text->align = Align::End;
-	text->buddy = buddy;
-
-	auto row = make_unique<GutterRow>();
-	row->gap = 8.f;
-	row->add_child(std::move(text), size_t(-1));
-	row->add_child(std::move(control), size_t(-1));
-	return row;
-}
-
 static unique_ptr<Checkbox>
 settings_check(const char *label, bool checked)
 {
@@ -576,7 +574,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 
 	auto col = make_unique<GutterColumn>();
 	col->gap = 4.f;
-	col->add_child(dialog_label(N_("Settings"), true), size_t(-1));
+	col->add_child(dialog_label(N_("Settings"), true, false), size_t(-1));
 
 	auto combo = make_unique<Combo>();
 	for (const ThumbnailSize &size : thumbnail_sizes()) {
@@ -589,7 +587,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 	};
 	Combo *combo_ref = combo.get();
 	col->add_child(
-		settings_row(thumb_label, std::move(combo), combo_ref), size_t(-1));
+		dialog_field(thumb_label, std::move(combo), combo_ref), size_t(-1));
 
 	auto names =
 		settings_check(N_("Show _filenames by default"), state->show_filenames);
@@ -598,7 +596,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 		state->show_filenames = names_ref->checked;
 	};
 	col->add_child(
-		settings_row(nullptr, std::move(names), names_ref), size_t(-1));
+		dialog_field(nullptr, std::move(names), names_ref), size_t(-1));
 
 	auto entry = make_unique<Entry>();
 	entry->text = state->icc_profile_path;
@@ -629,7 +627,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 	icc_cell->add_child(std::move(entry), size_t(-1));
 	icc_cell->add_child(std::move(browse), size_t(-1));
 	col->add_child(
-		settings_row(icc_label, std::move(icc_cell), entry_ref), size_t(-1));
+		dialog_field(icc_label, std::move(icc_cell), entry_ref), size_t(-1));
 
 	auto dither = settings_check(
 		N_("Disable _dithering on 8-bit swapchains"), state->disable_dithering);
@@ -638,7 +636,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 		state->disable_dithering = dither_ref->checked;
 	};
 	col->add_child(
-		settings_row(nullptr, std::move(dither), dither_ref), size_t(-1));
+		dialog_field(nullptr, std::move(dither), dither_ref), size_t(-1));
 
 	col->add_child(make_unique<Sep>(), size_t(-1));
 

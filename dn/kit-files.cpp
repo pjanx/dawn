@@ -128,15 +128,22 @@ FileRow::FileRow()
 	this->flat = true;
 }
 
+// All rows are alike, and the list sizes itself in them.
+static int
+row_height(Kit &kit)
+{
+	return max(kit.px(kFramePadY) * 2 +
+			kit.text_height(QStringLiteral("Ag"), 0, false),
+		kit.icon_px());
+}
+
 // Never grow: in a column that would split the listing's height between the
 // rows instead of giving each of them the font's own.  The width comes from
 // the column arranging them, which hands every child its full inner width.
 Size
 FileRow::measure_content(Kit &kit, int max_w, int)
 {
-	const int h = kit.px(kFramePadY) * 2 +
-		kit.text_height(QStringLiteral("Ag"), 0, false);
-	return {max_w < kUnlim ? max_w : 0, max(h, kit.icon_px())};
+	return {max_w < kUnlim ? max_w : 0, row_height(kit)};
 }
 
 // A directory holds more rows than there is any point in shaping or drawing;
@@ -433,11 +440,8 @@ FileList::measure_content(Kit &kit, int max_w, int)
 		this->head_h_ =
 			max(this->head_h_, head->measure(kit, kUnlim, kUnlim).h);
 
-	const int row_h = kit.px(kFramePadY) * 2 +
-		kit.text_height(QStringLiteral("Ag"), 0, false);
 	return {max_w < kUnlim ? max_w : kit.px(kMinNameW * 3.f),
-		kit.hairline() * 2 + this->head_h_ +
-			max(row_h, kit.icon_px()) * kVisibleRows};
+		kit.hairline() * 2 + this->head_h_ + row_height(kit) * kVisibleRows};
 }
 
 void
@@ -703,21 +707,6 @@ chooser_tool(const char *icon, const char *tip, function<void(Kit &)> on_click)
 	return button;
 }
 
-static unique_ptr<GutterRow>
-chooser_field(const char *label, unique_ptr<Widget> control, Widget *buddy)
-{
-	auto text = make_unique<Label>();
-	text->text = menu_label(label, &text->mnemonic);
-	text->align = Align::End;
-	text->buddy = buddy;
-
-	auto row = make_unique<GutterRow>();
-	row->gap = 8.f;
-	row->add_child(std::move(text), size_t(-1));
-	row->add_child(std::move(control), size_t(-1));
-	return row;
-}
-
 // What the window would answer to, were it not shut out by the modal; only
 // the one verb the chooser has any use for.
 constexpr Action kChooserKeys[] = {Action::DirParent};
@@ -734,15 +723,13 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 	for (const FileType &type : setup.types)
 		state->globs.push_back(compile_globs(type.globs));
 	state->setup = std::move(setup);
+	const bool save = state->setup.save;
 
 	col->gap = 8.f;
 
 	// The first bold label is what the platform reads the dialog out as.
-	auto heading = make_unique<Label>();
-	heading->text =
-		QString::fromUtf8(state->setup.save ? _("Save As") : _("Open"));
-	heading->bold = true;
-	col->add_child(std::move(heading), size_t(-1));
+	col->add_child(dialog_label(save ? N_("Save As") : N_("Open"), true, false),
+		size_t(-1));
 	if (!state->setup.explanation.isEmpty()) {
 		auto note = make_unique<Label>();
 		note->text = state->setup.explanation;
@@ -803,13 +790,13 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 
 	auto fields = make_unique<GutterColumn>();
 	fields->gap = 4.f;
-	if (state->setup.save) {
+	if (save) {
 		auto name = make_unique<Entry>();
 		name->text = state->setup.name;
 		state->name = name.get();
 		Entry *name_ref = name.get();
 		fields->add_child(
-			chooser_field(N_("File _name"), std::move(name), name_ref),
+			dialog_field(N_("File _name"), std::move(name), name_ref),
 			size_t(-1));
 	}
 	if (!state->setup.types.empty()) {
@@ -821,8 +808,7 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 		state->type = type.get();
 		Combo *type_ref = type.get();
 		fields->add_child(
-			chooser_field(
-				state->setup.save ? N_("Save as _type") : N_("Files of _type"),
+			dialog_field(save ? N_("Save as _type") : N_("Files of _type"),
 				std::move(type), type_ref),
 			size_t(-1));
 	}
@@ -854,17 +840,6 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 			state->accept_path(k, entry.path);
 	};
 
-	auto affirm = make_unique<Button>();
-	affirm->text = menu_label(
-		state->setup.save ? N_("_Save") : N_("_Open"), &affirm->mnemonic);
-	affirm->pad_x = 16.f;
-	affirm->on_click = [state](Kit &k) { state->accept(k); };
-
-	auto cancel = make_unique<Button>();
-	cancel->text = menu_label(N_("_Cancel"), &cancel->mnemonic);
-	cancel->pad_x = 16.f;
-	cancel->on_click = [&dialog](Kit &k) { dialog.close(k); };
-
 	dialog.on_key = [state](Kit &k, const Key &ev) {
 		if (match_key(kChooserKeys, ev.key, ev.mods) != Action::DirParent)
 			return false;
@@ -872,8 +847,10 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 		return true;
 	};
 
-	dialog.show(
-		kit, std::move(col), 560.f, std::move(affirm), std::move(cancel));
+	dialog.show(kit, std::move(col), 560.f,
+		dialog_action(save ? N_("_Save") : N_("_Open"),
+			[state](Kit &k) { state->accept(k); }),
+		dialog_dismiss_action(dialog, N_("_Cancel")));
 
 	// After show(), so that a failure has somewhere to put its message.
 	QString start = state->setup.directory;

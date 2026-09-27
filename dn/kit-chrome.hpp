@@ -78,6 +78,18 @@ struct SettingsDraft {
 std::unique_ptr<Panel> make_banner(
 	Label **out, std::function<void(Kit &)> on_dismiss);
 
+/// A translated label, which may carry a mnemonic.
+std::unique_ptr<Label> dialog_label(const char *text, bool bold, bool wrap);
+/// A button for a dialog's action row.
+std::unique_ptr<Button> dialog_action(
+	const char *text, std::function<void(Kit &)> on_click);
+std::unique_ptr<Button> dialog_dismiss_action(Dialog &dialog, const char *text);
+/// A labelled row for a GutterColumn.  The buddy is passed rather than taken
+/// off the control: a cell that holds more than one widget still has exactly
+/// one that the mnemonic means.
+std::unique_ptr<GutterRow> dialog_field(
+	const char *label, std::unique_ptr<Widget> control, Widget *buddy);
+
 /// One field and a button.  on_commit returns an empty string once it is
 /// done, or the message to show while staying open.
 void dialog_entry(Kit &kit, const char *title, const char *affirm,
