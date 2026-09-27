@@ -602,14 +602,7 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 		});
 	setup.actor = chain_actor(
 		host, [c](Action a) { return c->apply(a); },
-		[c](Action a) { return c->enabled(a); },
-		[&kit](Action a) {
-			if (a == Action::DarkMode)
-				return kit.dark_;
-			if (a == Action::Fullscreen)
-				return kit.fullscreen_;
-			return false;
-		});
+		[c](Action a) { return c->enabled(a); }, {});
 
 	auto page = make_page(kit, host, std::move(setup));
 	auto banner = make_banner(

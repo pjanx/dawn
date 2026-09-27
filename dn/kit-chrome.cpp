@@ -1342,6 +1342,14 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 	page->menu_tree = mode_def(setup.mode).menu;
 	page->keys = mode_def(setup.mode).keys;
 	page->actor = std::move(setup.actor);
+	page->actor.checked = [&kit, checked = std::move(page->actor.checked)](
+							  Action action) {
+		if (action == Action::DarkMode)
+			return kit.dark_;
+		if (action == Action::Fullscreen)
+			return kit.fullscreen_;
+		return checked && checked(action);
+	};
 	page->content->page_ = page.get();
 	page->bind_actions(kit);
 	return page;

@@ -197,10 +197,6 @@ spec_active(const Viewer &v, Action action)
 		return v.view_locked_;
 	case Action::PlayPause:
 		return v.playing_;
-	case Action::Fullscreen:
-		return v.kit_.fullscreen_;
-	case Action::DarkMode:
-		return v.kit_.dark_;
 	default:
 		return false;
 	}

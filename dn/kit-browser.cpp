@@ -2180,10 +2180,6 @@ spec_active(const Browser &b, Action action)
 		return b.view_ == BrowserView::Grid;
 	case Action::SortDir:
 		return b.setup_.sort_desc;
-	case Action::Fullscreen:
-		return b.kit_.fullscreen_;
-	case Action::DarkMode:
-		return b.kit_.dark_;
 	default:
 		return false;
 	}

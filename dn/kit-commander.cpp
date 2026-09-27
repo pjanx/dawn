@@ -24,12 +24,7 @@ make_commander_page(Kit &kit, const HostActions &host, Commander **out)
 	setup.content = std::move(content);
 	setup.toolbar = make_toolbar({}, {});
 	setup.actor = chain_actor(
-		host, {}, [](Action a) { return a != Action::Reload; },
-		[&kit](Action a) {
-			return a == Action::DarkMode
-				? kit.dark_
-				: a == Action::Fullscreen && kit.fullscreen_;
-		});
+		host, {}, [](Action a) { return a != Action::Reload; }, {});
 	return make_page(kit, host, std::move(setup));
 }
 
