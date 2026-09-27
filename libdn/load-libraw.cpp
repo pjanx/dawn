@@ -15,6 +15,7 @@
 #include <libraw.h>
 
 #include <cstdint>
+#include <memory>
 
 using namespace std;
 
@@ -75,7 +76,8 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// https://github.com/LibRaw/LibRaw/issues/418
 	// Memory allocation failures are reported via return codes and need no
 	// callback flag (unlike in older LibRaw releases fiv-io.c targeted).
-	libraw_data_t *iprc = libraw_init(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK);
+	unique_ptr<libraw_data_t, void (*)(libraw_data_t *)> iprc(
+		libraw_init(LIBRAW_OPTIONS_NO_DATAERR_CALLBACK), libraw_close);
 	if (!iprc) {
 		set_error(error, _("failed to obtain a LibRaw handle"));
 		return nullptr;
@@ -87,18 +89,15 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	iprc->params.output_bps = 16;
 
 	int err = 0;
-	if ((err = libraw_open_buffer(iprc, data.data(), data.size()))) {
+	if ((err = libraw_open_buffer(iprc.get(), data.data(), data.size()))) {
 		set_error(error, libraw_strerror(err));
-		libraw_close(iprc);
 		return nullptr;
 	}
 
 	ImagePtr head, tail;
-	ImagePtr page = load_libraw_page(iprc, ctx, error);
-	if (!page) {
-		libraw_close(iprc);
+	ImagePtr page = load_libraw_page(iprc.get(), ctx, error);
+	if (!page)
 		return nullptr;
-	}
 	append_page(head, tail, std::move(page));
 
 	if (!ctx.first_frame_only) {
@@ -106,22 +105,18 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			iprc->rawparams.shot_select = i;
 
 			// This library is terrible, we need to start again.
-			if ((err = libraw_open_buffer(iprc, data.data(), data.size()))) {
+			if ((err = libraw_open_buffer(
+					 iprc.get(), data.data(), data.size()))) {
 				set_error(error, libraw_strerror(err));
-				libraw_close(iprc);
 				return nullptr;
 			}
 
-			ImagePtr shot = load_libraw_page(iprc, ctx, error);
-			if (!shot) {
-				libraw_close(iprc);
+			ImagePtr shot = load_libraw_page(iprc.get(), ctx, error);
+			if (!shot)
 				return nullptr;
-			}
 			append_page(head, tail, std::move(shot));
 		}
 	}
-
-	libraw_close(iprc);
 	return head;
 }
 
