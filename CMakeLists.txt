@@ -121,6 +121,16 @@ dawn_optional_pkg(OPENJPEG "JPEG 2000 support" libopenjp2)
 dawn_optional_pkg(POPPLER "PDF via Poppler" poppler-cpp)
 dawn_optional_pkg(XCURSOR "Xcursor support" xcursor)
 
+if (LIBRAW_FOUND)
+	get_property(options TARGET PkgConfig::LIBRAW
+		PROPERTY INTERFACE_LINK_OPTIONS)
+	# "Libs:" include -fopenmp, which Clang links as a second OpenMP runtime
+	# (-lomp) although we don't use it when linked dynamically.
+	list(REMOVE_ITEM options -fopenmp)
+	set_property(TARGET PkgConfig::LIBRAW
+		PROPERTY INTERFACE_LINK_OPTIONS "${options}")
+endif()
+
 find_program(CARGO_EXECUTABLE cargo)
 if (CARGO_EXECUTABLE)
 	set(CARGO_FOUND TRUE)
