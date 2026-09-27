@@ -35,11 +35,12 @@ static constexpr Orientation kFlipOrientations[] = {
 	Orientation::Mirror90,   // 7
 };
 
-// Unpacks, demosaics and colour-converts (to sRGB) a single shot already
+// Unpacks, demosaics and colour-converts (to `profile`) a single shot already
 // opened into `iprc`, producing one working-format page. LibRaw hands back
 // tightly packed, interleaved 16-bit RGB rows, which carry no alpha.
 static ImagePtr
-load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
+load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx,
+	const shared_ptr<Profile> &profile, Error *error)
 {
 	// Processing replaces sizes.flip with user_flip.
 	Orientation orientation = kFlipOrientations[iprc->sizes.flip & 7];
@@ -80,10 +81,8 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx, Error *error)
 		size_t(image->width) * 3 * sizeof(uint16_t), 16);
 	libraw_dcraw_clear_mem(image);
 	result->orientation = orientation;
-
-	// LibRaw was told to output sRGB directly; there is no embedded profile
-	// to pass on, and the CMS falls back to sRGB by itself.
-	finish_image(*result, ctx, nullptr, /*input_premul=*/false);
+	result->effective_profile = profile;
+	finish_image(*result, ctx, profile.get(), /*input_premul=*/false);
 	return result;
 }
 
@@ -103,8 +102,20 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// Leave the orientation to the viewer.
 	iprc->params.user_flip = 0;
 	iprc->params.use_camera_wb = 1;
-	iprc->params.output_color = 1;  // sRGB, TODO(p): Is this used?
 	iprc->params.output_bps = 16;
+
+	// Rec. 2020 keeps camera colours that sRGB would clip before our CMS
+	// sees them.  The default curve is BT.709's; the sRGB-shaped one comes
+	// within 0.6 of a 16-bit code of what the profile below describes.
+	iprc->params.output_color = 8;
+	iprc->params.gamm[0] = 1 / 2.4;
+	iprc->params.gamm[1] = 12.92;
+	auto profile = cmm_or_default(ctx)->get_profile_parametric(
+		nullopt, kD65White, kRec2020Primaries);
+	if (!profile) {
+		set_error(error, _("failed to describe the colour space"));
+		return nullptr;
+	}
 
 	int err = 0;
 	if ((err = libraw_open_buffer(iprc.get(), data.data(), data.size()))) {
@@ -113,7 +124,7 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	ImagePtr head, tail;
-	ImagePtr page = load_libraw_page(iprc.get(), ctx, error);
+	ImagePtr page = load_libraw_page(iprc.get(), ctx, profile, error);
 	if (!page)
 		return nullptr;
 	append_page(head, tail, std::move(page));
@@ -129,7 +140,7 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				return nullptr;
 			}
 
-			ImagePtr shot = load_libraw_page(iprc.get(), ctx, error);
+			ImagePtr shot = load_libraw_page(iprc.get(), ctx, profile, error);
 			if (!shot)
 				return nullptr;
 			append_page(head, tail, std::move(shot));
