@@ -634,6 +634,21 @@ srgb_tone_curve(cmsContext context)
 	return cmsBuildParametricToneCurve(context, 4, p);
 }
 
+/// A matrix/TRC profile from CIE 1931 xy chromaticities.
+/// The curves remain the caller's to free.
+static cmsHPROFILE
+rgb_profile(cmsContext context, const double whitepoint[2],
+	const double primaries[6], cmsToneCurve *const curves[3])
+{
+	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
+	const cmsCIExyYTRIPLE prim{
+		{primaries[0], primaries[1], 1.0},
+		{primaries[2], primaries[3], 1.0},
+		{primaries[4], primaries[5], 1.0},
+	};
+	return cmsCreateRGBProfileTHR(context, &wp, &prim, curves);
+}
+
 shared_ptr<Profile>
 Cmm::get_profile_display_p3()
 {
@@ -645,14 +660,8 @@ Cmm::get_profile_display_p3()
 	if (!curve)
 		return nullptr;
 	cmsToneCurve *curves[3] = {curve, curve, curve};
-	const cmsCIExyY whitepoint{0.3127, 0.3290, 1.0};
-	const cmsCIExyYTRIPLE primaries{
-		{0.6800, 0.3200, 1.0},
-		{0.2650, 0.6900, 1.0},
-		{0.1500, 0.0600, 1.0},
-	};
-	cmsHPROFILE p = cmsCreateRGBProfileTHR(
-		cmsContext(context_), &whitepoint, &primaries, curves);
+	cmsHPROFILE p =
+		rgb_profile(cmsContext(context_), kD65White, kP3Primaries, curves);
 	cmsFreeToneCurve(curve);
 	if (!p)
 		return nullptr;
@@ -667,13 +676,6 @@ shared_ptr<Profile>
 Cmm::get_profile_parametric(optional<double> gamma, const double whitepoint[2],
 	const double primaries[6])
 {
-	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
-	const cmsCIExyYTRIPLE prim{
-		{primaries[0], primaries[1], 1.0},
-		{primaries[2], primaries[3], 1.0},
-		{primaries[4], primaries[5], 1.0},
-	};
-
 	cmsToneCurve *curve = gamma ? cmsBuildGamma(cmsContext(context_), *gamma)
 								: srgb_tone_curve(cmsContext(context_));
 	if (!curve)
@@ -681,7 +683,7 @@ Cmm::get_profile_parametric(optional<double> gamma, const double whitepoint[2],
 
 	cmsToneCurve *curves[3] = {curve, curve, curve};
 	cmsHPROFILE p =
-		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, curves);
+		rgb_profile(cmsContext(context_), whitepoint, primaries, curves);
 	cmsFreeToneCurve(curve);
 	if (!p)
 		return nullptr;
@@ -711,13 +713,6 @@ shared_ptr<Profile>
 Cmm::get_profile_tabulated(const double whitepoint[2],
 	const double primaries[6], span<const uint16_t> curves[3])
 {
-	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
-	const cmsCIExyYTRIPLE prim{
-		{primaries[0], primaries[1], 1.0},
-		{primaries[2], primaries[3], 1.0},
-		{primaries[4], primaries[5], 1.0},
-	};
-
 	cmsToneCurve *built[3] = {};
 	for (int i = 0; i < 3; i++) {
 		if (!(built[i] =
@@ -729,7 +724,7 @@ Cmm::get_profile_tabulated(const double whitepoint[2],
 	}
 
 	cmsHPROFILE p =
-		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, built);
+		rgb_profile(cmsContext(context_), whitepoint, primaries, built);
 	for (cmsToneCurve *curve : built)
 		cmsFreeToneCurve(curve);
 	if (!p)
@@ -834,15 +829,9 @@ Cmm::get_profile_cicp(uint8_t color_primaries, uint8_t transfer_characteristics)
 	if (!curve)
 		return nullptr;
 
-	const cmsCIExyY wp{whitepoint[0], whitepoint[1], 1.0};
-	const cmsCIExyYTRIPLE prim{
-		{primaries[0], primaries[1], 1.0},
-		{primaries[2], primaries[3], 1.0},
-		{primaries[4], primaries[5], 1.0},
-	};
 	cmsToneCurve *curves[3] = {curve, curve, curve};
 	cmsHPROFILE p =
-		cmsCreateRGBProfileTHR(cmsContext(context_), &wp, &prim, curves);
+		rgb_profile(cmsContext(context_), whitepoint, primaries, curves);
 	cmsFreeToneCurve(curve);
 	if (!p)
 		return nullptr;
