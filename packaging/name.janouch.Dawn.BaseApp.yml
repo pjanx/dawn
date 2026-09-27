@@ -113,6 +113,7 @@ modules:
     config-opts:
       - --disable-static
       - --disable-examples
+      - --disable-lcms
     sources:
       - type: archive
         url: https://www.libraw.org/data/LibRaw-0.22.2.tar.gz
