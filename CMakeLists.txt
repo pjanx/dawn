@@ -126,7 +126,9 @@ if (LIBRAW_FOUND)
 		PROPERTY INTERFACE_LINK_OPTIONS)
 	# "Libs:" include -fopenmp, which Clang links as a second OpenMP runtime
 	# (-lomp) although we don't use it when linked dynamically.
-	list(REMOVE_ITEM options -fopenmp)
+	# Homebrew spells it "-Xpreprocessor -fopenmp", and a lone -Xpreprocessor
+	# would swallow whatever follows, such as -o.
+	list(REMOVE_ITEM options -Xpreprocessor -fopenmp)
 	set_property(TARGET PkgConfig::LIBRAW
 		PROPERTY INTERFACE_LINK_OPTIONS "${options}")
 endif()
