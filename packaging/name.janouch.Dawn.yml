@@ -36,7 +36,7 @@ cleanup-commands:
       -exec rm -rf {} +
   - rm -rf /app/libexec
 
-  - rm -f /app/lib/libcolorhug.so* /app/lib/libgusb.so* /app/lib/libraw_r.so*
+  - rm -f /app/lib/libcolorhug.so* /app/lib/libgusb.so* /app/lib/libraw.so*
   - rm -rf /app/plugins/generic /app/plugins/imageformats
       /app/plugins/platforms/libqlinuxfb.so
       /app/plugins/platforms/libqminimal.so

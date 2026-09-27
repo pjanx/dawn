@@ -113,7 +113,7 @@ endmacro()
 
 dawn_optional_pkg(LIBHEIF "HEIF/AVIF support" libheif)
 dawn_optional_pkg(LIBJXL "JPEG XL support" libjxl)
-dawn_optional_pkg(LIBRAW "LibRaw support" libraw)
+dawn_optional_pkg(LIBRAW "LibRaw support" libraw_r)
 dawn_optional_pkg(LIBRSVG "SVG via librsvg" librsvg-2.0)
 dawn_optional_pkg(LIBTIFF "TIFF support" libtiff-4)
 dawn_optional_pkg(LIBWMF "WMF support" libwmf)
