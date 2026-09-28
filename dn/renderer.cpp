@@ -424,8 +424,9 @@ string
 Renderer::swapchain_summary() const
 {
 	return string(vk_format_name(this->format_)) + " + " +
-		vk_colorspace_name(this->color_space) + " (dither: " +
-		to_string(dithering() ? dither_bits(this->format_) : 0) + " bpc)";
+		vk_colorspace_name(this->color_space) +
+		" (dither: " + to_string(dithering() ? dither_bits(this->format_) : 0) +
+		" bpc)";
 }
 
 void
@@ -796,23 +797,11 @@ Renderer::create_compose()
 	};
 	CALL_VK(CreateImage, " compose", this->device_, &image_info, nullptr,
 		&this->compose_image_);
-	VkMemoryRequirements requirements{};
-	vkGetImageMemoryRequirements(
-		this->device_, this->compose_image_, &requirements);
-	const uint32_t type =
-		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr, nullptr);
-	if (type == UINT32_MAX)
-		die("linear compose: no device-local memory");
-	VkMemoryAllocateInfo allocate{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = requirements.size,
-		.memoryTypeIndex = type,
-	};
-	CALL_VK(AllocateMemory, " compose", this->device_, &allocate, nullptr,
-		&this->compose_memory_);
-	CALL_VK(BindImageMemory, " compose", this->device_, this->compose_image_,
-		this->compose_memory_, 0);
+	string error;
+	if (!dawn::vk_bind_image_memory(this->phys_, this->device_,
+			this->compose_image_, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			&this->compose_memory_, &error))
+		die(("compose: " + error).c_str());
 	VkImageViewCreateInfo view_info{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.image = this->compose_image_,
@@ -1383,25 +1372,8 @@ OverlayVulkan::create_sampled(
 	const VkImageCreateInfo image_info = sampled_info(width, height);
 	CALL_VK(CreateImage, " overlay tex", this->device_, &image_info, nullptr,
 		image);
-	VkMemoryRequirements requirements{};
-	vkGetImageMemoryRequirements(this->device_, *image, &requirements);
-	const uint32_t image_type =
-		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr, nullptr);
-	if (image_type == UINT32_MAX) {
-		vkDestroyImage(this->device_, *image, nullptr);
-		*image = VK_NULL_HANDLE;
-		return false;
-	}
-	VkMemoryAllocateInfo allocate{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = requirements.size,
-		.memoryTypeIndex = image_type,
-	};
-	CALL_VK(AllocateMemory, " overlay tex", this->device_, &allocate, nullptr,
-		memory);
-	CALL_VK(BindImageMemory, " overlay tex", this->device_, *image, *memory, 0);
-	return true;
+	return dawn::vk_bind_image_memory(this->phys_, this->device_, *image,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memory, nullptr);
 }
 
 void
@@ -1454,27 +1426,11 @@ OverlayVulkan::ensure_staging(VkDeviceSize bytes)
 	CALL_VK(CreateBuffer, " overlay tex staging", this->device_, &buffer_info,
 		nullptr, &this->staging_);
 
-	VkMemoryRequirements requirements{};
-	vkGetBufferMemoryRequirements(this->device_, this->staging_, &requirements);
-	const uint32_t host_type =
-		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
+	if (!dawn::vk_bind_buffer_memory(this->phys_, this->device_, this->staging_,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			nullptr, nullptr);
-	if (host_type == UINT32_MAX) {
-		destroy_staging();
+			&this->staging_memory_, nullptr))
 		return false;
-	}
-
-	VkMemoryAllocateInfo allocate{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = requirements.size,
-		.memoryTypeIndex = host_type,
-	};
-	CALL_VK(AllocateMemory, " overlay tex staging", this->device_, &allocate,
-		nullptr, &this->staging_memory_);
-	CALL_VK(BindBufferMemory, " overlay tex staging", this->device_,
-		this->staging_, this->staging_memory_, 0);
 	this->staging_size_ = size;
 	return true;
 }
@@ -1717,25 +1673,13 @@ OverlayVulkan::ensure_buffer(VkDeviceSize bytes)
 	};
 	CALL_VK(CreateBuffer, " overlay", this->device_, &info, nullptr,
 		&this->quad_buffer_);
-	VkMemoryRequirements requirements{};
-	vkGetBufferMemoryRequirements(
-		this->device_, this->quad_buffer_, &requirements);
-	const uint32_t type =
-		dawn::vk_memory_type(this->phys_, requirements.memoryTypeBits,
+	string error;
+	if (!dawn::vk_bind_buffer_memory(this->phys_, this->device_,
+			this->quad_buffer_,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			nullptr, nullptr);
-	if (type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo allocate{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = requirements.size,
-		.memoryTypeIndex = type,
-	};
-	CALL_VK(AllocateMemory, " overlay", this->device_, &allocate, nullptr,
-		&this->quad_memory_);
-	CALL_VK(BindBufferMemory, " overlay", this->device_, this->quad_buffer_,
-		this->quad_memory_, 0);
+			&this->quad_memory_, &error))
+		die(("overlay: " + error).c_str());
 	this->quad_size_ = capacity;
 	return true;
 }

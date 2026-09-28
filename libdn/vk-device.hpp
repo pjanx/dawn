@@ -28,6 +28,14 @@ void vk_add_bundled_driver_files();
 uint32_t vk_memory_type(VkPhysicalDevice phys, uint32_t bits,
 	VkMemoryPropertyFlags flags, std::string *error, VkDeviceSize *heap_size);
 
+// Allocate memory with the given properties, and bind it.  Whatever was
+// allocated is in *memory even on failure, for the caller to free.
+bool vk_bind_buffer_memory(VkPhysicalDevice phys, VkDevice device,
+	VkBuffer buffer, VkMemoryPropertyFlags flags, VkDeviceMemory *memory,
+	std::string *error);
+bool vk_bind_image_memory(VkPhysicalDevice phys, VkDevice device, VkImage image,
+	VkMemoryPropertyFlags flags, VkDeviceMemory *memory, std::string *error);
+
 bool vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	std::function<bool(VkPhysicalDevice, uint32_t)> present,
 	std::initializer_list<const char *> extra_exts, VkPhysicalDevice *phys,

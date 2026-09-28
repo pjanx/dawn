@@ -145,28 +145,11 @@ render_offscreen(ScaleScaler::Impl &s, uint32_t out_w, uint32_t out_h,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
 	if (!CALL_VK(CreateBuffer, " readback", s.device, &bci, nullptr,
-			&staging.buffer))
-		return false;
-
-	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(s.device, staging.buffer, &mr);
-	uint32_t mem_type = vk_memory_type(s.phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-		error, nullptr);
-	if (mem_type == UINT32_MAX)
-		return false;
-
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(AllocateMemory, " readback", s.device, &mai, nullptr,
-			&staging.memory))
-		return false;
-	if (!CALL_VK(BindBufferMemory, " readback", s.device, staging.buffer,
-			staging.memory, 0))
+			&staging.buffer) ||
+		!vk_bind_buffer_memory(s.phys, s.device, staging.buffer,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
+			&staging.memory, error))
 		return false;
 
 	if (!CALL_VK(

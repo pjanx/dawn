@@ -199,21 +199,11 @@ EngineReadback::init(string *error)
 		.size = 32,
 		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE};
-	if (!CALL_VK(CreateBuffer, " test", device, &bci, nullptr, &buffer))
-		return false;
-	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(device, buffer, &mr);
-	const uint32_t type = dawn::vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		error, nullptr);
-	if (type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo mai{.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = type};
-	return CALL_VK(AllocateMemory, " test", device, &mai, nullptr, &staging) &&
-		CALL_VK(BindBufferMemory, " test", device, buffer, staging, 0);
+	return CALL_VK(CreateBuffer, " test", device, &bci, nullptr, &buffer) &&
+		dawn::vk_bind_buffer_memory(phys, device, buffer,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&staging, error);
 }
 
 bool

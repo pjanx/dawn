@@ -588,22 +588,9 @@ ScaleEngine::Impl::create_sampled(VkFormat format, uint32_t w, uint32_t h,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	if (!CALL_VK(CreateImage, " upload", device, &ici, nullptr, image))
-		return false;
-
-	VkMemoryRequirements mr{};
-	vkGetImageMemoryRequirements(device, *image, &mr);
-	const uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
-	if (mem_type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(AllocateMemory, " upload", device, &mai, nullptr, memory) ||
-		!CALL_VK(BindImageMemory, " upload", device, *image, *memory, 0))
+	if (!CALL_VK(CreateImage, " upload", device, &ici, nullptr, image) ||
+		!vk_bind_image_memory(phys, device, *image,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, memory, error))
 		return false;
 
 	VkImageViewCreateInfo vi{
@@ -633,27 +620,12 @@ ScaleEngine::Impl::create_staging(
 		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
-	if (!CALL_VK(
-			CreateBuffer, " staging", device, &bci, nullptr, &staging.buffer))
-		return false;
-
-	VkMemoryRequirements mr{};
-	vkGetBufferMemoryRequirements(device, staging.buffer, &mr);
-	const uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		error, nullptr);
-	if (mem_type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	return CALL_VK(AllocateMemory, " staging", device, &mai, nullptr,
-			   &staging.memory) &&
-		CALL_VK(BindBufferMemory, " staging", device, staging.buffer,
-			staging.memory, 0) &&
+	return CALL_VK(CreateBuffer, " staging", device, &bci, nullptr,
+			   &staging.buffer) &&
+		vk_bind_buffer_memory(phys, device, staging.buffer,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&staging.memory, error) &&
 		CALL_VK(MapMemory, " staging", device, staging.memory, 0, bytes, 0,
 			(void **) &staging.mapped);
 }
@@ -953,23 +925,9 @@ ScaleEngine::Impl::create_mid(string *error)
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 	};
-	if (!CALL_VK(CreateImage, " mid", device, &ici, nullptr, &mid_image))
-		return false;
-
-	VkMemoryRequirements mr{};
-	vkGetImageMemoryRequirements(device, mid_image, &mr);
-	uint32_t mem_type = vk_memory_type(phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
-	if (mem_type == UINT32_MAX)
-		return false;
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(AllocateMemory, " mid", device, &mai, nullptr, &mid_memory))
-		return false;
-	if (!CALL_VK(BindImageMemory, " mid", device, mid_image, mid_memory, 0))
+	if (!CALL_VK(CreateImage, " mid", device, &ici, nullptr, &mid_image) ||
+		!vk_bind_image_memory(phys, device, mid_image,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &mid_memory, error))
 		return false;
 
 	VkImageViewCreateInfo avi{
@@ -1426,24 +1384,11 @@ ScaleEngine::set_encoding(const ProfileEncoding &encoding, string *error)
 			.size = size,
 			.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT};
 		if (!CALL_VK(CreateBuffer, " curves", e.device, &bci, nullptr,
-				&e.encoding_buffer))
-			return false;
-		VkMemoryRequirements mr{};
-		vkGetBufferMemoryRequirements(e.device, e.encoding_buffer, &mr);
-		const uint32_t type = vk_memory_type(e.phys, mr.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			error, nullptr);
-		if (type == UINT32_MAX)
-			return false;
-		VkMemoryAllocateInfo mai{
-			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-			.allocationSize = mr.size,
-			.memoryTypeIndex = type};
-		if (!CALL_VK(AllocateMemory, " curves", e.device, &mai, nullptr,
-				&e.encoding_memory) ||
-			!CALL_VK(BindBufferMemory, " curves", e.device, e.encoding_buffer,
-				e.encoding_memory, 0))
+				&e.encoding_buffer) ||
+			!vk_bind_buffer_memory(e.phys, e.device, e.encoding_buffer,
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+					VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				&e.encoding_memory, error))
 			return false;
 	}
 	void *mapped = nullptr;
@@ -1714,24 +1659,8 @@ ScaleEngine::create_offscreen(uint32_t w, uint32_t h, VkImage *image,
 	if (!CALL_VK(CreateImage, " offscreen", e.device, &ici, nullptr, image))
 		return false;
 
-	VkMemoryRequirements mr{};
-	vkGetImageMemoryRequirements(e.device, *image, &mr);
-	uint32_t mem_type = vk_memory_type(e.phys, mr.memoryTypeBits,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, error, nullptr);
-	if (mem_type == UINT32_MAX) {
-		destroy_offscreen(image, mem, view, fb);
-		return false;
-	}
-	VkMemoryAllocateInfo mai{
-		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-		.allocationSize = mr.size,
-		.memoryTypeIndex = mem_type,
-	};
-	if (!CALL_VK(AllocateMemory, " offscreen", e.device, &mai, nullptr, mem)) {
-		destroy_offscreen(image, mem, view, fb);
-		return false;
-	}
-	if (!CALL_VK(BindImageMemory, " offscreen", e.device, *image, *mem, 0)) {
+	if (!vk_bind_image_memory(e.phys, e.device, *image,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem, error)) {
 		destroy_offscreen(image, mem, view, fb);
 		return false;
 	}

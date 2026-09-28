@@ -106,6 +106,43 @@ vk_memory_type(VkPhysicalDevice phys, uint32_t bits,
 	return best;
 }
 
+static bool
+allocate_memory(VkPhysicalDevice phys, VkDevice device,
+	const VkMemoryRequirements &mr, VkMemoryPropertyFlags flags,
+	VkDeviceMemory *memory, string *error)
+{
+	const uint32_t type =
+		vk_memory_type(phys, mr.memoryTypeBits, flags, error, nullptr);
+	if (type == UINT32_MAX)
+		return false;
+	VkMemoryAllocateInfo mai{
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = mr.size,
+		.memoryTypeIndex = type,
+	};
+	return CALL_VK(AllocateMemory, "", device, &mai, nullptr, memory);
+}
+
+bool
+vk_bind_buffer_memory(VkPhysicalDevice phys, VkDevice device, VkBuffer buffer,
+	VkMemoryPropertyFlags flags, VkDeviceMemory *memory, string *error)
+{
+	VkMemoryRequirements mr{};
+	vkGetBufferMemoryRequirements(device, buffer, &mr);
+	return allocate_memory(phys, device, mr, flags, memory, error) &&
+		CALL_VK(BindBufferMemory, "", device, buffer, *memory, 0);
+}
+
+bool
+vk_bind_image_memory(VkPhysicalDevice phys, VkDevice device, VkImage image,
+	VkMemoryPropertyFlags flags, VkDeviceMemory *memory, string *error)
+{
+	VkMemoryRequirements mr{};
+	vkGetImageMemoryRequirements(device, image, &mr);
+	return allocate_memory(phys, device, mr, flags, memory, error) &&
+		CALL_VK(BindImageMemory, "", device, image, *memory, 0);
+}
+
 bool
 vk_create_graphics_device(VkInstance instance, VkSurfaceKHR surface,
 	function<bool(VkPhysicalDevice, uint32_t)> present,
