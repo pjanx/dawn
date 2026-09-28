@@ -100,7 +100,7 @@ function array_decode(f, type,    block, vt) {
 		"\t\tfor (size_t i = 0; i < count; ++i) {\n" \
 		"\t\t\t" vt " elem{};\n" \
 		indent(indent(sprintf(CodegenDeserialize[type], "elem"))) \
-		"\t\t\t" f ".push_back(elem);\n" \
+		"\t\t\t" f ".push_back(std::move(elem));\n" \
 		"\t\t}\n" \
 		"\t}\n"
 }
@@ -129,6 +129,7 @@ function emit_preamble(    i, src) {
 	print "#include <span>"
 	print "#include <string>"
 	print "#include <string_view>"
+	print "#include <utility>"
 	print "#include <variant>"
 	print "#include <vector>"
 	for (i = 1; i <= ExternCount; i++) {
@@ -409,7 +410,7 @@ function emit_union(name, cg,    view, n, i, own_list, view_list, tag) {
 		print "\t\t" cg["view", i] " arm{};"
 		print "\t\tif (!decode(decoder, arm))"
 		print "\t\t\treturn false;"
-		print "\t\tvalue.value = arm;"
+		print "\t\tvalue.value = std::move(arm);"
 		print "\t\treturn true;"
 		print "\t}"
 	}
