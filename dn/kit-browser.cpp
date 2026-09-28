@@ -2963,7 +2963,7 @@ Browser::pan(Kit &, float, float, float, float dy)
 int
 Browser::wake_ms() const
 {
-	return busy() ? 0 : this->scroll_.wake_ms();
+	return this->scroll_.wake_ms();
 }
 
 }  // namespace dn
