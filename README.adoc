@@ -32,7 +32,8 @@ We care about
  - *Loading as much as we can* from any file format at the best possible
    quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, HDR, etc.;
    at least 65535 pixels on one side.
- - *Making good use of computing resources*: exercise the GPU and all CPU cores.
+ - *Making good use of computing resources*,
+   exercising the GPU and all CPU cores.
  - *Superb keyboard accessibility*: we recognise
    https://p.janouch.name/text/human-interface-guidelines.html[HIGs]
    and also have Vimium-style link hints.
@@ -53,8 +54,8 @@ Packages
    using Wine is not recommended.
 
  - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
-   *unsigned* macOS Apple Silicon bundle] needs either
-   `xattr -r -d com.apple.quarantine ...`, or $99 a year.
+   *unsigned* macOS Apple Silicon bundle] may need
+   `xattr -r -d com.apple.quarantine ...`.  Notarisation costs $99 a year.
 
 On Windows, if you run the application with a high integrity level and you
 have no true Vulkan backend installed, it may not initialise.  Manually rename
@@ -104,7 +105,7 @@ Acknowledgments
  - Nigel Tao for
    https://github.com/google/wuffs[Wuffs]
 
-Contributing and Support
+Contributing and support
 ------------------------
 Use https://git.janouch.name/p/dawn to report any bugs, request features,
 or submit pull requests.  The lead developer also accepts `git send-email`.
@@ -113,7 +114,7 @@ ircs://irc.janouch.name, channel #dev.
 
 Bitcoin donations are accepted at: 12r5uEWEgcHC46xd64tt3hHt9EUvYYDHe9
 
-License
+Licence
 -------
 This software is released under the terms of the MPL 2.0 licence, the text of
 which is included within the package along with the list of authors.

@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Dawn 0.1.0\n"
 "Report-Msgid-Bugs-To: https://git.janouch.name/p/dawn\n"
-"POT-Creation-Date: 2026-09-26 18:29+0200\n"
+"POT-Creation-Date: 2026-09-28 19:09+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -21,364 +21,364 @@ msgstr ""
 #. TRANSLATORS: The underscore in a label marks the mnemonic, the letter
 #. that follows it.  Every label in this file works that way; keep one,
 #. on a letter that no other entry of the same menu has taken.
-#: dn/action.cpp:42
+#: dn/action.cpp:44
 msgid "_New Window"
 msgstr "_Nové okno"
 
-#: dn/action.cpp:43
+#: dn/action.cpp:45
 msgid "_Close Window"
 msgstr "_Zavřít okno"
 
-#: dn/action.cpp:44
+#: dn/action.cpp:46
 msgid "_Minimise"
 msgstr "_Minimalizovat"
 
-#: dn/action.cpp:45
+#: dn/action.cpp:47
 msgid "Res_tore"
 msgstr "_Obnovit"
 
-#: dn/action.cpp:45
+#: dn/action.cpp:47
 msgid "_Maximise"
 msgstr "_Maximalizovat"
 
-#: dn/action.cpp:46
+#: dn/action.cpp:48
 msgid "_Quit"
 msgstr "U_končit"
 
-#: dn/action.cpp:47
+#: dn/action.cpp:49
 msgid "Enter _Full Screen"
 msgstr "_Celá obrazovka"
 
-#: dn/action.cpp:47
+#: dn/action.cpp:49
 msgid "Exit _Full Screen"
 msgstr "Opustit _celou obrazovku"
 
-#: dn/action.cpp:55
+#: dn/action.cpp:57
 msgid "_Dark Mode"
 msgstr "_Tmavý režim"
 
 #. TRANSLATORS: Labels every clickable thing with a letter to type.
-#: dn/action.cpp:57
+#: dn/action.cpp:59
 msgid "_Hint"
 msgstr "Oz_načit prvky pro klávesnici"
 
-#: dn/action.cpp:58
+#: dn/action.cpp:60
 msgid "_Back in History"
 msgstr "_Zpět v historii"
 
-#: dn/action.cpp:65
+#: dn/action.cpp:67
 msgid "_Forward in History"
 msgstr "_Vpřed v historii"
 
-#: dn/action.cpp:72
+#: dn/action.cpp:74
 msgid "_Location..."
 msgstr "_Umístění..."
 
-#: dn/action.cpp:79
+#: dn/action.cpp:81
 msgid "_Contents"
 msgstr "_Obsah"
 
-#: dn/action.cpp:86
+#: dn/action.cpp:88
 msgid "_About"
 msgstr "O _aplikaci"
 
-#: dn/action.cpp:87
+#: dn/action.cpp:89
 msgid "_Keyboard Shortcuts"
 msgstr "_Klávesové zkratky"
 
-#: dn/action.cpp:92
+#: dn/action.cpp:94
 msgid "_Settings..."
 msgstr "Nas_tavení..."
 
-#: dn/action.cpp:94
+#: dn/action.cpp:96
 msgid "_Menu"
 msgstr "_Menu"
 
-#: dn/action.cpp:96
+#: dn/action.cpp:98
 msgid "_Context Menu"
 msgstr "Kontextové _menu"
 
-#: dn/action.cpp:97 dn/kit-chrome.cpp:343 dn/kit-chrome.cpp:367
-#: dn/kit-chrome.cpp:390 dn/kit-chrome.cpp:698 dn/kit-files.cpp:864
+#: dn/action.cpp:99 dn/kit-chrome.cpp:340 dn/kit-chrome.cpp:364
+#: dn/kit-chrome.cpp:390 dn/kit-chrome.cpp:682 dn/kit-files.cpp:853
 msgid "_Cancel"
 msgstr "_Zrušit"
 
-#: dn/action.cpp:98
+#: dn/action.cpp:100
 msgid "_Next Pane"
 msgstr "_Další panel"
 
-#: dn/action.cpp:99
+#: dn/action.cpp:101
 msgid "_Previous Pane"
 msgstr "_Předchozí panel"
 
-#: dn/action.cpp:101
+#: dn/action.cpp:103
 msgid "Show _Sidebar"
 msgstr "Zobrazit _postranní panel"
 
-#: dn/action.cpp:103
+#: dn/action.cpp:105
 msgid "_Previous Directory in Tree"
 msgstr "_Předchozí adresář ve stromu"
 
-#: dn/action.cpp:105
+#: dn/action.cpp:107
 msgid "_Next Directory in Tree"
 msgstr "Da_lší adresář ve stromu"
 
-#: dn/action.cpp:107
+#: dn/action.cpp:109
 msgid "Parent _Directory"
 msgstr "_Nadřazený adresář"
 
-#: dn/action.cpp:114
+#: dn/action.cpp:116
 msgid "_Home"
 msgstr "_Domů"
 
-#: dn/action.cpp:121
+#: dn/action.cpp:123
 msgid "S_maller Thumbnails"
 msgstr "M_enší náhledy"
 
-#: dn/action.cpp:123
+#: dn/action.cpp:125
 msgid "_Larger Thumbnails"
 msgstr "_Větší náhledy"
 
-#: dn/action.cpp:125
+#: dn/action.cpp:127
 msgid "Tiled _View"
 msgstr "_Dlaždice"
 
-#: dn/action.cpp:127
+#: dn/action.cpp:129
 msgid "_Grid View"
 msgstr "_Mřížka"
 
-#: dn/action.cpp:129
+#: dn/action.cpp:131
 msgid "L_ist View"
 msgstr "_Seznam"
 
-#: dn/action.cpp:131
+#: dn/action.cpp:133
 msgid "Sho_w Filenames"
 msgstr "Zobrazit _názvy souborů"
 
-#: dn/action.cpp:133
+#: dn/action.cpp:135
 msgid "Hide _Unsupported Files"
 msgstr "Sk_rýt nepodporované soubory"
 
-#: dn/action.cpp:135
+#: dn/action.cpp:137
 msgid "Sort As_cending"
 msgstr "Řadit vze_stupně"
 
-#: dn/action.cpp:135
+#: dn/action.cpp:137
 msgid "Sort Des_cending"
 msgstr "Řadit _sestupně"
 
-#: dn/action.cpp:138
+#: dn/action.cpp:140
 msgid "Sort by _Name"
 msgstr "Řadit podle ná_zvu"
 
-#: dn/action.cpp:139
+#: dn/action.cpp:141
 msgid "Sort by _Time"
 msgstr "Řadit podle č_asu"
 
-#: dn/action.cpp:140
+#: dn/action.cpp:142
 msgid "_Filter"
 msgstr "_Filtr"
 
-#: dn/action.cpp:141 dn/kit-chrome.cpp:383 dn/kit-files.cpp:859
+#: dn/action.cpp:143 dn/kit-chrome.cpp:383 dn/kit-files.cpp:851
 msgid "_Open"
 msgstr "_Otevřít"
 
-#: dn/action.cpp:149
+#: dn/action.cpp:151
 msgid "_Browse"
 msgstr "Pro_cházet"
 
-#: dn/action.cpp:151
+#: dn/action.cpp:153
 msgid "_Previous File"
 msgstr "_Předchozí soubor"
 
-#: dn/action.cpp:153
+#: dn/action.cpp:155
 msgid "_Next File"
 msgstr "_Další soubor"
 
-#: dn/action.cpp:155
+#: dn/action.cpp:157
 msgid "Zoom _In"
 msgstr "_Přiblížit"
 
-#: dn/action.cpp:157
+#: dn/action.cpp:159
 msgid "Zoom _Out"
 msgstr "O_ddálit"
 
-#: dn/action.cpp:159
+#: dn/action.cpp:161
 msgid "O_riginal Size"
 msgstr "_Skutečná velikost"
 
 #. TRANSLATORS: The toolbar's zoom readout; "1-9" beside it is the range
 #. of digit keys that set it, and is not a label.
-#: dn/action.cpp:163
+#: dn/action.cpp:165
 msgid "Zoom _Level"
 msgstr "_Přiblížení"
 
-#: dn/action.cpp:164
+#: dn/action.cpp:166
 msgid "_Scale to Fit"
 msgstr "Přizpůsobit _oknu"
 
-#: dn/action.cpp:165
+#: dn/action.cpp:167
 msgid "Fit to _Width"
 msgstr "Přizpůsobit šířc_e"
 
-#: dn/action.cpp:166
+#: dn/action.cpp:168
 msgid "Fit to H_eight"
 msgstr "Přizpůsobit _výšce"
 
-#: dn/action.cpp:167
+#: dn/action.cpp:169
 msgid "_Lock View"
 msgstr "_Zamknout zobrazení"
 
 #. TRANSLATORS: Keeps the current zoom and scroll position across images.
-#: dn/action.cpp:171
+#: dn/action.cpp:173
 msgid "_Keep Zoom and Position"
 msgstr "Zachovat _měřítko a polohu"
 
-#: dn/action.cpp:173
+#: dn/action.cpp:175
 msgid "_Colour Management"
 msgstr "Správa _barev"
 
-#: dn/action.cpp:174
+#: dn/action.cpp:176
 msgid "_High Dynamic Range"
 msgstr "Vysoký dynamický _rozsah"
 
-#: dn/action.cpp:175
+#: dn/action.cpp:177
 msgid "S_mooth Scaling"
 msgstr "_Hladké škálování"
 
-#: dn/action.cpp:176
+#: dn/action.cpp:178
 msgid "Highlight _Transparency"
 msgstr "Zvýraznit průh_lednost"
 
-#: dn/action.cpp:178
+#: dn/action.cpp:180
 msgid "_Process in Encoded Space"
 msgstr "Zpracovávat v _kódovaném prostoru"
 
-#: dn/action.cpp:179
+#: dn/action.cpp:181
 msgid "_Browser-like Animation Delays"
 msgstr "Prodlevy _animací jako v prohlížeči"
 
-#: dn/action.cpp:180
+#: dn/action.cpp:182
 msgid "Rotate _Left"
 msgstr "Otočit _vlevo"
 
 #. TRANSLATORS: A verb: flips the image horizontally.
-#: dn/action.cpp:182
+#: dn/action.cpp:184
 msgid "_Mirror"
 msgstr "_Zrcadlit"
 
-#: dn/action.cpp:183
+#: dn/action.cpp:185
 msgid "Rotate _Right"
 msgstr "Otočit vp_ravo"
 
-#: dn/action.cpp:185
+#: dn/action.cpp:187
 msgid "Save _As..."
 msgstr "Uložit _jako..."
 
-#: dn/action.cpp:187
+#: dn/action.cpp:189
 msgid "Save _Frame As..."
 msgstr "Uložit _snímek jako..."
 
-#: dn/action.cpp:189
+#: dn/action.cpp:191
 msgid "Show I_nformation"
 msgstr "Zobrazit _informace"
 
-#: dn/action.cpp:191
+#: dn/action.cpp:193
 msgid "_First Page"
 msgstr "_První stránka"
 
-#: dn/action.cpp:192
+#: dn/action.cpp:194
 msgid "Pr_evious Page"
 msgstr "Př_edchozí stránka"
 
-#: dn/action.cpp:194
+#: dn/action.cpp:196
 msgid "_Next Page"
 msgstr "_Další stránka"
 
-#: dn/action.cpp:196
+#: dn/action.cpp:198
 msgid "La_st Page"
 msgstr "Pos_lední stránka"
 
-#: dn/action.cpp:197
+#: dn/action.cpp:199
 msgid "Re_wind"
 msgstr "Přetočit _na začátek"
 
-#: dn/action.cpp:198
+#: dn/action.cpp:200
 msgid "Pre_vious Frame"
 msgstr "Předchozí _snímek"
 
-#: dn/action.cpp:200
+#: dn/action.cpp:202
 msgid "_Pause"
 msgstr "P_ozastavit"
 
-#: dn/action.cpp:200
+#: dn/action.cpp:202
 msgid "_Play"
 msgstr "Pře_hrát"
 
-#: dn/action.cpp:203
+#: dn/action.cpp:205
 msgid "Ne_xt Frame"
 msgstr "Další sní_mek"
 
-#: dn/action.cpp:205 dn/kit-chrome.cpp:117 dn/kit.cpp:1829
+#: dn/action.cpp:207 dn/kit-chrome.cpp:115 dn/kit.cpp:1838
 msgid "_Copy"
 msgstr "_Kopírovat"
 
-#: dn/action.cpp:206 dn/kit-chrome.cpp:124
+#: dn/action.cpp:208 dn/kit-chrome.cpp:122
 msgid "Move to _Trash"
 msgstr "_Přesunout do koše"
 
-#: dn/action.cpp:207
+#: dn/action.cpp:209
 msgid "_Reload"
 msgstr "O_bnovit"
 
-#: dn/action.cpp:211
+#: dn/action.cpp:213
 msgid "_Open..."
 msgstr "_Otevřít..."
 
-#: dn/action.cpp:212
+#: dn/action.cpp:214
 msgid "Reset _Crop"
 msgstr "Obnovit _ořez"
 
-#: dn/action.cpp:213
+#: dn/action.cpp:215
 msgid "Crop _Region"
 msgstr "Oblast _ořezu"
 
-#: dn/action.cpp:213
+#: dn/action.cpp:215
 msgid "Left/Right mouse button"
 msgstr "Levé/pravé tlačítko myši"
 
-#: dn/action.cpp:340 dn/action.cpp:351 dn/action.cpp:368
+#: dn/action.cpp:342 dn/action.cpp:353 dn/action.cpp:370
 msgid "_File"
 msgstr "_Soubor"
 
-#: dn/action.cpp:382
+#: dn/action.cpp:384
 msgid "_Help"
 msgstr "_Nápověda"
 
-#: dn/action.cpp:390 dn/action.cpp:427
+#: dn/action.cpp:392 dn/action.cpp:429
 msgid "_Go"
 msgstr "_Přejít"
 
-#: dn/action.cpp:400 dn/action.cpp:436 dn/action.cpp:480
+#: dn/action.cpp:402 dn/action.cpp:438 dn/action.cpp:482
 msgid "_View"
 msgstr "_Zobrazit"
 
-#: dn/action.cpp:460 dn/action.cpp:490
+#: dn/action.cpp:462 dn/action.cpp:492
 msgid "_Image"
 msgstr "_Obrázek"
 
 #. TRANSLATORS: The application's name, in window titles.  Transliterate
 #. it if that is what your script does with foreign names; do not
 #. translate the word.
-#: dn/action.cpp:629 dn/action.cpp:630
+#: dn/action.cpp:631 dn/action.cpp:632
 msgid "Dawn"
 msgstr "Dawn"
 
-#: dn/action.cpp:631 packaging/name.janouch.Dawn.CropJpeg.desktop:5
+#: dn/action.cpp:633 packaging/name.janouch.Dawn.CropJpeg.desktop:5
 msgid "Dawn Lossless JPEG Cropper"
 msgstr "Dawn bezztrátový ořezávač JPEG"
 
-#: dn/action.cpp:633 packaging/name.janouch.Dawn.Commander.desktop:5
+#: dn/action.cpp:635 packaging/name.janouch.Dawn.Commander.desktop:5
 msgid "Dawn Commander"
 msgstr "Dawn Commander"
 
@@ -400,52 +400,52 @@ msgstr "Změnit velikost"
 msgid "Bring All to Front"
 msgstr "Převést vše do popředí"
 
-#: dn/kit-browser.cpp:1982
+#: dn/kit-browser.cpp:1970
 msgid "Home"
 msgstr "Domů"
 
-#: dn/kit-browser.cpp:2199
+#: dn/kit-browser.cpp:2183
 msgid "Filter"
 msgstr "Filtr"
 
-#: dn/kit-browser.cpp:2224 dn/kit-files.cpp:254
+#: dn/kit-browser.cpp:2208 dn/kit-files.cpp:261
 msgid "Name"
 msgstr "Název"
 
 #. TRANSLATORS: Column headings the browser sorts by, kept short.
-#: dn/kit-browser.cpp:2224
+#: dn/kit-browser.cpp:2208
 msgid "Time"
 msgstr "Čas"
 
-#: dn/kit-chrome.cpp:96
+#: dn/kit-chrome.cpp:94
 msgid "Open in New _Window"
 msgstr "Otevřít v _novém okně"
 
-#: dn/kit-chrome.cpp:102
+#: dn/kit-chrome.cpp:100
 msgid "Open _With"
 msgstr "_Otevřít pomocí"
 
-#: dn/kit-chrome.cpp:109
+#: dn/kit-chrome.cpp:107
 msgid "Remove from _Bookmarks"
 msgstr "Odebrat ze _záložek"
 
-#: dn/kit-chrome.cpp:110
+#: dn/kit-chrome.cpp:108
 msgid "Add to _Bookmarks"
 msgstr "Přidat do _záložek"
 
-#: dn/kit-chrome.cpp:253
+#: dn/kit-chrome.cpp:251
 msgid "Colour-managed image browser and viewer."
 msgstr "Prohlížeč obrázků se správou barev."
 
-#: dn/kit-chrome.cpp:273 dn/kit-chrome.cpp:451
+#: dn/kit-chrome.cpp:271 dn/kit-chrome.cpp:451
 msgid "_Close"
 msgstr "_Zavřít"
 
-#: dn/kit-chrome.cpp:293
+#: dn/kit-chrome.cpp:291
 msgid "Dismiss"
 msgstr "Zavřít"
 
-#: dn/kit-chrome.cpp:376
+#: dn/kit-chrome.cpp:374
 msgid "Enter location"
 msgstr "Zadejte umístění"
 
@@ -481,49 +481,53 @@ msgstr "Velké"
 msgid "Normal"
 msgstr "Normální"
 
-#: dn/kit-chrome.cpp:572
+#: dn/kit-chrome.cpp:556
 msgid "Default _thumbnail size"
 msgstr "Výchozí _velikost náhledů"
 
-#: dn/kit-chrome.cpp:573
-msgid "ICC _profile override\n(when applicable)"
-msgstr "Vynutit ICC _profil\n(kde to lze použít)"
+#: dn/kit-chrome.cpp:557
+msgid ""
+"ICC _profile override\n"
+"(when applicable)"
+msgstr ""
+"Vynutit ICC _profil\n"
+"(kde to lze použít)"
 
-#: dn/kit-chrome.cpp:577
+#: dn/kit-chrome.cpp:561
 msgid "Settings"
 msgstr "Nastavení"
 
-#: dn/kit-chrome.cpp:593
+#: dn/kit-chrome.cpp:577
 msgid "Show _filenames by default"
 msgstr "Ve výchozím stavu zobrazovat _názvy souborů"
 
-#: dn/kit-chrome.cpp:603
+#: dn/kit-chrome.cpp:587
 msgid "Path to an ICC profile"
 msgstr "Cesta k ICC profilu"
 
-#: dn/kit-chrome.cpp:610
+#: dn/kit-chrome.cpp:594
 msgid "B_rowse..."
 msgstr "P_rocházet..."
 
-#: dn/kit-chrome.cpp:633
+#: dn/kit-chrome.cpp:617
 msgid "Disable _dithering on 8-bit swapchains"
 msgstr "Vypnout _dithering u 8bitových swapchainů"
 
-#: dn/kit-chrome.cpp:643
+#: dn/kit-chrome.cpp:627
 msgid ""
 "Image loaders may be able to handle multiple formats. Failures pass through."
 msgstr ""
 "Načítače obrázků mohou umět více formátů. Při selhání se zkoušejí následné."
 
-#: dn/kit-chrome.cpp:658
+#: dn/kit-chrome.cpp:642
 msgid "Move up"
 msgstr "Posunout nahoru"
 
-#: dn/kit-chrome.cpp:660
+#: dn/kit-chrome.cpp:644
 msgid "Move down"
 msgstr "Posunout dolů"
 
-#: dn/kit-chrome.cpp:691 dn/kit-files.cpp:859
+#: dn/kit-chrome.cpp:675 dn/kit-files.cpp:851
 msgid "_Save"
 msgstr "_Uložit"
 
@@ -544,8 +548,8 @@ msgstr[1] "Uložením se ztratí %u připojené obrázky"
 msgstr[2] "Uložením se ztratí %u připojených obrázků"
 
 #: dn/kit-crop-jpeg.cpp:326
-msgid "JPEG image (*.jpg, *.jpeg)"
-msgstr "Obrázek JPEG (*.jpg, *.jpeg)"
+msgid "JPEG image (*.jpg, *.jpeg, *.jpe, *.jfif)"
+msgstr "Obrázek JPEG (*.jpg, *.jpeg, *.jpe, *.jfif)"
 
 #: dn/kit-crop-jpeg.cpp:337
 msgid "Not a local path"
@@ -559,141 +563,141 @@ msgstr ".ořez."
 msgid "Open a JPEG file"
 msgstr "Otevřete soubor JPEG"
 
-#: dn/kit-files.cpp:254
+#: dn/kit-files.cpp:261
 msgid "Modified"
 msgstr "Změněno"
 
-#: dn/kit-files.cpp:254
+#: dn/kit-files.cpp:261
 msgid "Size"
 msgstr "Velikost"
 
-#: dn/kit-files.cpp:559
+#: dn/kit-files.cpp:563
 msgid "Not a directory"
 msgstr "Nejde o adresář"
 
-#: dn/kit-files.cpp:583
+#: dn/kit-files.cpp:587
 msgid "No name given"
 msgstr "Nebyl zadán název"
 
-#: dn/kit-files.cpp:585
+#: dn/kit-files.cpp:589
 msgid "Could not create the directory"
 msgstr "Adresář se nepodařilo vytvořit"
 
-#: dn/kit-files.cpp:652
+#: dn/kit-files.cpp:656
 msgid "No file selected"
 msgstr "Není vybrán žádný soubor"
 
-#: dn/kit-files.cpp:665
+#: dn/kit-files.cpp:669
 msgid "No filename given"
 msgstr "Nebyl zadán název souboru"
 
-#: dn/kit-files.cpp:688
+#: dn/kit-files.cpp:692
 #, qt-format
 msgid "%1 already exists. Overwrite it?"
 msgstr "%1 již existuje. Přepsat?"
 
-#: dn/kit-files.cpp:690
+#: dn/kit-files.cpp:694
 msgid "_Overwrite"
 msgstr "_Přepsat"
 
-#: dn/kit-files.cpp:743
+#: dn/kit-files.cpp:731
 msgid "Open"
 msgstr "Otevřít"
 
-#: dn/kit-files.cpp:743
+#: dn/kit-files.cpp:731
 msgid "Save As"
 msgstr "Uložit jako"
 
-#: dn/kit-files.cpp:764
+#: dn/kit-files.cpp:751
 msgid "Parent directory"
 msgstr "Nadřazený adresář"
 
-#: dn/kit-files.cpp:767
+#: dn/kit-files.cpp:754
 msgid "Refresh"
 msgstr "Obnovit"
 
-#: dn/kit-files.cpp:773
+#: dn/kit-files.cpp:760
 msgid "New folder"
 msgstr "Nová složka"
 
-#: dn/kit-files.cpp:776
+#: dn/kit-files.cpp:763
 msgid "New Folder"
 msgstr "Nová složka"
 
-#: dn/kit-files.cpp:776
+#: dn/kit-files.cpp:763
 msgid "_Create"
 msgstr "_Vytvořit"
 
-#: dn/kit-files.cpp:784
+#: dn/kit-files.cpp:771
 msgid "Hide hidden files"
 msgstr "Nezobrazovat skryté soubory"
 
-#: dn/kit-files.cpp:812
+#: dn/kit-files.cpp:799
 msgid "File _name"
 msgstr "_Název souboru"
 
-#: dn/kit-files.cpp:825
+#: dn/kit-files.cpp:811
 msgid "Files of _type"
 msgstr "_Typ souborů"
 
-#: dn/kit-files.cpp:825
+#: dn/kit-files.cpp:811
 msgid "Save as _type"
 msgstr "Uložit jako _typ"
 
-#: dn/kit-viewer.cpp:610
+#: dn/kit-viewer.cpp:602
 msgid "Height:"
 msgstr "Výška:"
 
-#: dn/kit-viewer.cpp:610
+#: dn/kit-viewer.cpp:602
 msgid "Loader:"
 msgstr "Zavaděč:"
 
-#: dn/kit-viewer.cpp:610
+#: dn/kit-viewer.cpp:602
 msgid "Name:"
 msgstr "Název:"
 
-#: dn/kit-viewer.cpp:610
+#: dn/kit-viewer.cpp:602
 msgid "Width:"
 msgstr "Šířka:"
 
-#: dn/kit-viewer.cpp:634
+#: dn/kit-viewer.cpp:626
 msgid "Enable JPEG Quant Smooth"
 msgstr "Zapnout JPEG Quant Smooth"
 
-#: dn/kit-viewer.cpp:654
+#: dn/kit-viewer.cpp:646
 msgid "Launch ExifTool"
 msgstr "Spustit ExifTool"
 
-#: dn/kit-viewer.cpp:693
+#: dn/kit-viewer.cpp:685
 #, qt-format
 msgid "Error: %1"
 msgstr "Chyba: %1"
 
-#: dn/kit-viewer.cpp:1708
+#: dn/kit-viewer.cpp:1696
 msgid "Lossless WebP (*.webp)"
 msgstr "Bezztrátový WebP (*.webp)"
 
-#: dn/kit-viewer.cpp:1709
+#: dn/kit-viewer.cpp:1697
 msgid "Exiv2 metadata (*.exv)"
 msgstr "Exiv2 metadata (*.exv)"
 
-#: dn/kit-viewer.cpp:1761
+#: dn/kit-viewer.cpp:1749
 msgid "-frame"
 msgstr "-snímek"
 
-#: dn/kit-viewer.cpp:1768
+#: dn/kit-viewer.cpp:1756
 msgid "Colour management overrides attached colour profiles."
 msgstr "Správa barev nahrazuje připojené barevné profily."
 
-#: dn/kit.cpp:1828
+#: dn/kit.cpp:1837
 msgid "Cu_t"
 msgstr "_Vyjmout"
 
-#: dn/kit.cpp:1830
+#: dn/kit.cpp:1839
 msgid "_Paste"
 msgstr "V_ložit"
 
-#: dn/kit.cpp:1832
+#: dn/kit.cpp:1841
 msgid "Select _All"
 msgstr "Vybr_at vše"
 
@@ -738,25 +742,25 @@ msgid "Remove invalid wide thumbnails and exit."
 msgstr "Odstranit neplatné široké náhledy a skončit."
 
 #. TRANSLATORS: %1 is a comma-separated list of mode names.
-#: dn/main.cpp:196
+#: dn/main.cpp:197
 #, qt-format
 msgid "Application: %1."
 msgstr "Aplikace: %1."
 
-#: dn/main.cpp:202
+#: dn/main.cpp:203
 msgid "Output supported media types and exit."
 msgstr "Vypsat podporované typy médií a skončit."
 
-#: dn/main.cpp:207
+#: dn/main.cpp:208
 msgid "Output supported filename globs and exit."
 msgstr "Vypsat podporované masky názvů souborů a skončit."
 
 #. TRANSLATORS: The name of the positional argument, and its syntax.
-#: dn/main.cpp:211
+#: dn/main.cpp:212
 msgid "path | URL"
 msgstr "cesta | URL"
 
-#: dn/main.cpp:213
+#: dn/main.cpp:214
 msgid ""
 "Image file or directory. Repeat to open multiple windows. Defaults to an "
 "empty cropper or the current directory."
@@ -764,11 +768,11 @@ msgstr ""
 "Soubor s obrázkem nebo adresář. Opakováním se otevře více oken. Výchozí je "
 "prázdný ořezávač nebo aktuální adresář."
 
-#: dn/main.cpp:215
+#: dn/main.cpp:216
 msgid "[path | URL]..."
 msgstr "[cesta | URL]..."
 
-#: dn/main.cpp:245
+#: dn/main.cpp:246
 #, qt-format
 msgid "unknown mode: %1"
 msgstr "neznámý režim: %1"
@@ -799,145 +803,149 @@ msgstr "parametrické SDR"
 msgid "preferred"
 msgstr "upřednostňovaný"
 
-#: dn/window.cpp:583
+#: dn/window.cpp:588
 #, qt-format
 msgid "Help document not found: %1"
 msgstr "Dokument s nápovědou nebyl nalezen: %1"
 
-#: dn/window.cpp:590
+#: dn/window.cpp:595
 #, qt-format
 msgid "Could not open the help document: %1"
 msgstr "Dokument s nápovědou se nepodařilo otevřít: %1"
 
-#: dn/window.cpp:615
+#: dn/window.cpp:620
 #, qt-format
 msgid "Could not create a temporary ExifTool report: %1"
 msgstr "Nepodařilo se vytvořit dočasný ExifTool výpis: %1"
 
-#: dn/window.cpp:649
+#: dn/window.cpp:654
 #, qt-format
 msgid "Could not launch ExifTool: %1"
 msgstr "Nepodařilo se spustit ExifTool: %1"
 
-#: dn/window.cpp:664
+#: dn/window.cpp:669
 msgid "ExifTool terminated abnormally."
 msgstr "ExifTool neočekávaně skončil."
 
-#: dn/window.cpp:668
+#: dn/window.cpp:673
 #, qt-format
 msgid "ExifTool exited with status %1."
 msgstr "ExifTool skončil se stavem %1."
 
-#: dn/window.cpp:673
+#: dn/window.cpp:678
 msgid "ExifTool produced no output."
 msgstr "ExifTool nic nevypsal."
 
-#: dn/window.cpp:678
+#: dn/window.cpp:683
 msgid "Could not open the ExifTool report through a .txt association."
 msgstr ""
 "Výpis ExifTool se nepodařilo otevřít aplikací přiřazenou k souborům .txt."
 
-#: dn/window.cpp:824
+#: dn/window.cpp:831
 msgid "sRGB (fallback)"
 msgstr "sRGB (náhradní)"
 
-#: dn/window.cpp:853
+#: dn/window.cpp:864
+msgid "the compositor's output description"
+msgstr "popis výstupu kompozitoru"
+
+#: dn/window.cpp:877
 msgid "DXGI output primaries"
 msgstr "primární barvy DXGI výstupu"
 
-#: dn/window.cpp:856
+#: dn/window.cpp:880
 msgid "the compositor's target primaries"
 msgstr "cílové primární barvy kompozitoru"
 
-#: dn/window.cpp:881
+#: dn/window.cpp:905
 msgid "sRGB (the compositor cannot take the display profile)"
 msgstr "sRGB (kompozitor nepřijme profil displeje)"
 
-#: dn/window.cpp:890
+#: dn/window.cpp:914
 msgid "sRGB (extended range unavailable)"
 msgstr "sRGB (rozšířený rozsah není k dispozici)"
 
 #. TRANSLATORS: A screen's name, its size in pixels, and its scale.
-#: dn/window.cpp:947
+#: dn/window.cpp:970
 msgid "Screen"
 msgstr "Obrazovka"
 
-#: dn/window.cpp:948
+#: dn/window.cpp:971
 #, qt-format
 msgid "%1, %L2×%L3 at %L4×"
 msgstr "%1, %L2×%L3 při %L4×"
 
-#: dn/window.cpp:958
+#: dn/window.cpp:981
 #, qt-format
 msgid "%1, approximate sRGB curves"
 msgstr "%1, přibližné sRGB křivky"
 
-#: dn/window.cpp:959
+#: dn/window.cpp:982
 msgid "Profile"
 msgstr "Profil"
 
-#: dn/window.cpp:960
+#: dn/window.cpp:983
 msgid "Swapchain"
 msgstr "Swapchain"
 
-#: dn/window.cpp:966
+#: dn/window.cpp:989
 msgid "Encoded"
 msgstr "Kódovaná"
 
-#: dn/window.cpp:966
+#: dn/window.cpp:989
 msgid "HDR"
 msgstr "HDR"
 
-#: dn/window.cpp:966 dn/window.cpp:980
+#: dn/window.cpp:989 dn/window.cpp:1003
 msgid "SDR"
 msgstr "SDR"
 
-#: dn/window.cpp:971
+#: dn/window.cpp:994
 #, qt-format
 msgid "%1, extended presentation unavailable"
 msgstr "%1, rozšířená prezentace není k dispozici"
 
-#: dn/window.cpp:973
+#: dn/window.cpp:996
 msgid "Presentation"
 msgstr "Prezentace"
 
 #. TRANSLATORS: Headroom is how many times brighter than SDR white
 #. the display can currently go.
-#: dn/window.cpp:976
+#: dn/window.cpp:999
 msgid "Range"
 msgstr "Rozsah"
 
-#: dn/window.cpp:978
+#: dn/window.cpp:1001
 #, qt-format
 msgid "HDR, headroom %L1"
 msgstr "HDR, rezerva jasu %L1"
 
-#: dn/window.cpp:985
+#: dn/window.cpp:1008
 msgid "GPU"
 msgstr "GPU"
 
-#: dn/window.cpp:988
+#: dn/window.cpp:1011
 msgid "Layer colour space"
 msgstr "Barevný prostor vrstvy"
 
-#: dn/window.cpp:989
+#: dn/window.cpp:1012
 msgid "untagged"
 msgstr "bez označení"
 
-#: dn/window.cpp:993
+#: dn/window.cpp:1016
 msgid "Advanced Color"
 msgstr "Advanced Color"
 
-#: dn/window.cpp:995
+#: dn/window.cpp:1018
 #, qt-format
 msgid "on, SDR white %L1 cd/m²"
 msgstr "zapnuto, SDR bílá %L1 cd/m²"
 
-#: dn/window.cpp:997
+#: dn/window.cpp:1020
 msgid "off"
 msgstr "vypnuto"
 
-#: dn/window.cpp:1001
+#: dn/window.cpp:1024
 msgid "Image description"
 msgstr "Popis obrazu"
 
@@ -1019,110 +1027,110 @@ msgstr "hodnotu nelze zapsat do konfigurace"
 msgid "image dimensions overflow"
 msgstr "přetečení rozměrů obrázku"
 
-#: libdn/libdn.cpp:349
+#: libdn/libdn.cpp:350
 #, c-format
 msgid "failed to open: %s"
 msgstr "otevření selhalo: %s"
 
-#: libdn/libdn.cpp:359
+#: libdn/libdn.cpp:360
 #, c-format
 msgid "failed to size: %s"
 msgstr "zjištění velikosti selhalo: %s"
 
-#: libdn/libdn.cpp:377
+#: libdn/libdn.cpp:378
 #, c-format
 msgid "failed to read: %s"
 msgstr "čtení selhalo: %s"
 
-#: libdn/libdn.cpp:421
+#: libdn/libdn.cpp:422
 #, c-format
 msgid "%s metadata is too large to save"
 msgstr "%s metadata jsou pro uložení příliš velká"
 
-#: libdn/libdn.cpp:445 libdn/load-webp.cpp:355
+#: libdn/libdn.cpp:446 libdn/load-webp.cpp:355
 msgid "no output buffer"
 msgstr "chybí výstupní vyrovnávací paměť"
 
-#: libdn/libdn.cpp:1599
+#: libdn/libdn.cpp:1695
 msgid "gain maps over an HDR base are not supported"
 msgstr "mapy zisku nad základním obrázkem v HDR nejsou podporovány"
 
-#: libdn/libdn.cpp:1781 libdn/load-dnrs.cpp:110 libdn/load-dnrs.cpp:167
+#: libdn/libdn.cpp:1877 libdn/load-dnrs.cpp:110 libdn/load-dnrs.cpp:167
 msgid "invalid or truncated frame"
 msgstr "neplatný nebo useknutý snímek"
 
-#: libdn/libdn.cpp:1796 libdn/load-imageio.mm:237
+#: libdn/libdn.cpp:1892 libdn/load-imageio.mm:237 libdn/load-libraw.cpp:178
 msgid "failed to describe the colour space"
 msgstr "barevný prostor se nepodařilo popsat"
 
-#: libdn/libdn.cpp:1808
+#: libdn/libdn.cpp:1904
 msgid "non-finite values have been replaced with zero"
 msgstr "nekonečné a nečíselné hodnoty byly nahrazeny nulou"
 
 #. TRANSLATORS: What a loader reads, as the settings dialog lists it.
 #. These are format names throughout, bar the odd word such as "raw
 #. photos" or "(subset)"; leave the names as they are.
-#: libdn/libdn.cpp:1962
+#: libdn/libdn.cpp:2058
 msgid "JPEG"
 msgstr "JPEG"
 
-#: libdn/libdn.cpp:1964
+#: libdn/libdn.cpp:2060
 msgid "WebP"
 msgstr "WebP"
 
-#: libdn/libdn.cpp:1968
+#: libdn/libdn.cpp:2064
 msgid "BMP, GIF, JPEG (subset), PNG, PNM, QOI, TARGA, WBMP, WebP (subset)"
 msgstr "BMP, GIF, JPEG (částečně), PNG, PNM, QOI, TARGA, WBMP, WebP (částečně)"
 
-#: libdn/libdn.cpp:1983
+#: libdn/libdn.cpp:2079
 msgid "ICNS"
 msgstr "ICNS"
 
-#: libdn/libdn.cpp:1985
+#: libdn/libdn.cpp:2081
 msgid "PSD/PSB (subset)"
 msgstr "PSD/PSB (částečně)"
 
-#: libdn/libdn.cpp:1988
+#: libdn/libdn.cpp:2084
 msgid "OpenRaster, Krita"
 msgstr "OpenRaster, Krita"
 
-#: libdn/libdn.cpp:1993 libdn/libdn.cpp:2002
-msgid "raw photos"
-msgstr "fotografie raw"
-
-#: libdn/libdn.cpp:2004 libdn/libdn.cpp:2012
+#: libdn/libdn.cpp:2087 libdn/libdn.cpp:2095
 msgid "SVG"
 msgstr "SVG"
 
-#: libdn/libdn.cpp:2020
+#: libdn/libdn.cpp:2103
 msgid "Xcursor"
 msgstr "Xcursor"
 
-#: libdn/libdn.cpp:2030
+#: libdn/libdn.cpp:2113
 msgid "JPEG XL"
 msgstr "JPEG XL"
 
-#: libdn/libdn.cpp:2038
+#: libdn/libdn.cpp:2121
 msgid "AVIF, HEIC, HEIF"
 msgstr "AVIF, HEIC, HEIF"
 
-#: libdn/libdn.cpp:2052
+#: libdn/libdn.cpp:2135
 msgid "JPEG 2000"
 msgstr "JPEG 2000"
 
-#: libdn/libdn.cpp:2064
-msgid "TIFF"
-msgstr "TIFF"
-
-#: libdn/libdn.cpp:2072
+#: libdn/libdn.cpp:2146
 msgid "JPEG XR"
 msgstr "JPEG XR"
 
-#: libdn/libdn.cpp:2080
+#: libdn/libdn.cpp:2154
 msgid "WMF"
 msgstr "WMF"
 
-#: libdn/libdn.cpp:2085
+#: libdn/libdn.cpp:2158 libdn/libdn.cpp:2167
+msgid "raw photos"
+msgstr "raw fotografie"
+
+#: libdn/libdn.cpp:2176
+msgid "TIFF"
+msgstr "TIFF"
+
+#: libdn/libdn.cpp:2181
 msgid ""
 "BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, Radiance HDR, "
 "TARGA, TIFF, WebP, XBM, XPM, ..."
@@ -1130,28 +1138,28 @@ msgstr ""
 "BMP, DDS, farbfeld, GIF, ICO, JPEG, OpenEXR, PNG, PNM, QOI, Radiance HDR, "
 "TARGA, TIFF, WebP, XBM, XPM, ..."
 
-#: libdn/libdn.cpp:2115
+#: libdn/libdn.cpp:2211
 msgid "PDF"
 msgstr "PDF"
 
-#: libdn/libdn.cpp:2179
+#: libdn/libdn.cpp:2275
 msgid "empty input"
 msgstr "prázdný vstup"
 
-#: libdn/libdn.cpp:2193 libdn/load-dnrs.cpp:50
+#: libdn/libdn.cpp:2289 libdn/load-dnrs.cpp:50
 #, c-format
 msgid "%s: %s"
 msgstr "%s: %s"
 
-#: libdn/libdn.cpp:2213
+#: libdn/libdn.cpp:2309
 msgid "unrecognised or unsupported image format"
 msgstr "nerozpoznaný nebo nepodporovaný formát obrázku"
 
-#: libdn/libdn.cpp:2235
+#: libdn/libdn.cpp:2331
 msgid "empty URI"
 msgstr "prázdné URI"
 
-#: libdn/libdn.cpp:2244
+#: libdn/libdn.cpp:2340
 msgid "invalid URI"
 msgstr "neplatné URI"
 
@@ -1170,8 +1178,8 @@ msgstr "nelze vytvořit bitmapový kontext"
 #: libdn/load-cgpdf.mm:126 libdn/load-cgpdf.mm:152 libdn/load-cgpdf.mm:159
 #: libdn/load-dnrs.cpp:115 libdn/load-dnrs.cpp:173 libdn/load-heif.cpp:177
 #: libdn/load-heif.cpp:696 libdn/load-imageio.mm:258 libdn/load-imageio.mm:313
-#: libdn/load-imageio.mm:425 libdn/load-jpeg.cpp:710 libdn/load-jxl.cpp:292
-#: libdn/load-jxr.cpp:372 libdn/load-libraw.cpp:57 libdn/load-librsvg.cpp:78
+#: libdn/load-imageio.mm:425 libdn/load-jpeg.cpp:665 libdn/load-jxl.cpp:292
+#: libdn/load-jxr.cpp:372 libdn/load-libraw.cpp:138 libdn/load-librsvg.cpp:78
 #: libdn/load-librsvg.cpp:104 libdn/load-openjpeg.cpp:393
 #: libdn/load-poppler.cpp:119 libdn/load-resvg.cpp:90 libdn/load-tiff.cpp:344
 #: libdn/load-tiff.cpp:458 libdn/load-webp.cpp:67 libdn/load-webp.cpp:122
@@ -1201,7 +1209,7 @@ msgid "unsupported pixel format"
 msgstr "nepodporovaný formát pixelů"
 
 #: libdn/load-dnrs.cpp:275 libdn/load-heif.cpp:170 libdn/load-jxl.cpp:286
-#: libdn/load-jxr.cpp:341 libdn/load-libwmf.cpp:132 libdn/load-wuffs.cpp:559
+#: libdn/load-jxr.cpp:341 libdn/load-libwmf.cpp:132 libdn/load-wuffs.cpp:558
 msgid "invalid image dimensions"
 msgstr "neplatné rozměry obrázku"
 
@@ -1250,77 +1258,77 @@ msgstr "nepodařilo se získat libheif kontext"
 msgid "empty or unsupported image"
 msgstr "prázdný nebo nepodporovaný obrázek"
 
-#: libdn/load-icns.cpp:272
+#: libdn/load-icns.cpp:265
 msgid "truncated indexed icon data"
 msgstr "useknutá data indexované ikony"
 
-#: libdn/load-icns.cpp:287
+#: libdn/load-icns.cpp:280
 msgid "failed to allocate indexed icon image"
 msgstr "nepodařilo se alokovat obrázek indexované ikony"
 
-#: libdn/load-icns.cpp:320
+#: libdn/load-icns.cpp:313
 msgid "truncated RLE icon data"
 msgstr "useknutá data RLE ikony"
 
-#: libdn/load-icns.cpp:326
+#: libdn/load-icns.cpp:319
 msgid "RLE icon run exceeds its channel"
 msgstr "běh RLE ikony přesahuje svůj kanál"
 
-#: libdn/load-icns.cpp:331
+#: libdn/load-icns.cpp:324
 msgid "truncated RLE icon literal"
 msgstr "useknutý literál RLE ikony"
 
-#: libdn/load-icns.cpp:338
+#: libdn/load-icns.cpp:331
 msgid "truncated RLE icon repeat"
 msgstr "useknuté opakování RLE ikony"
 
-#: libdn/load-icns.cpp:353
+#: libdn/load-icns.cpp:346
 msgid "invalid ARGB icon data"
 msgstr "neplatná data ARGB ikony"
 
-#: libdn/load-icns.cpp:367 libdn/load-icns.cpp:437
+#: libdn/load-icns.cpp:360 libdn/load-icns.cpp:430
 msgid "failed to allocate ARGB icon image"
 msgstr "nepodařilo se alokovat obrázek ARGB ikony"
 
-#: libdn/load-icns.cpp:392
+#: libdn/load-icns.cpp:385
 msgid "truncated 128x128 icon prefix"
 msgstr "useknutá předpona 128x128 ikony"
 
-#: libdn/load-icns.cpp:408
+#: libdn/load-icns.cpp:401
 msgid "failed to allocate RGB icon image"
 msgstr "nepodařilo se alokovat obrázek RGB ikony"
 
-#: libdn/load-icns.cpp:432
+#: libdn/load-icns.cpp:425
 msgid "unsupported ARGB icon encoding"
 msgstr "nepodporované kódování ARGB ikony"
 
-#: libdn/load-icns.cpp:462
+#: libdn/load-icns.cpp:455
 msgid "JPEG 2000 support is disabled"
 msgstr "podpora JPEG 2000 je vypnutá"
 
-#: libdn/load-icns.cpp:490
+#: libdn/load-icns.cpp:483
 msgid "not an ICNS image"
 msgstr "nejde o ICNS obrázek"
 
-#: libdn/load-icns.cpp:495
+#: libdn/load-icns.cpp:488
 msgid "invalid ICNS file length"
 msgstr "neplatná délka ICNS souboru"
 
-#: libdn/load-icns.cpp:503
+#: libdn/load-icns.cpp:496
 msgid "truncated ICNS entry header"
 msgstr "useknutá hlavička ICNS položky"
 
-#: libdn/load-icns.cpp:510
+#: libdn/load-icns.cpp:503
 #, c-format
 msgid "invalid ICNS %s entry length"
 msgstr "neplatná délka ICNS položky %s"
 
-#: libdn/load-icns.cpp:528
+#: libdn/load-icns.cpp:521
 #, c-format
 msgid "ICNS %s: %s"
 msgstr "ICNS %s: %s"
 
-#: libdn/load-icns.cpp:533
+#: libdn/load-icns.cpp:526
 msgid "empty or unsupported ICNS image"
 msgstr "prázdný nebo nepodporovaný ICNS obrázek"
 
@@ -1340,16 +1348,16 @@ msgstr "prázdný ImageIO obrázek"
 msgid "not an ImageIO-decodable image"
 msgstr "nejde o obrázek dekódovatelný přes ImageIO"
 
-#: libdn/load-jpeg.cpp:564 libdn/load-jpeg.cpp:605
+#: libdn/load-jpeg.cpp:519 libdn/load-jpeg.cpp:560
 #, c-format
 msgid "MPF image %d: %s"
 msgstr "MPF obrázek %d: %s"
 
-#: libdn/load-jpeg.cpp:886
+#: libdn/load-jpeg.cpp:756
 msgid "Unsupported chroma subsampling"
 msgstr "Nepodporované podvzorkování chrominance"
 
-#: libdn/load-jpeg.cpp:922
+#: libdn/load-jpeg.cpp:792
 msgid "Invalid lossless JPEG crop"
 msgstr "Neplatný bezztrátový JPEG ořez"
 
@@ -1429,13 +1437,21 @@ msgstr "nepodařilo se získat jxrlib proud"
 msgid "unsupported or unrecognized JPEG XR image"
 msgstr "nepodporovaný nebo nerozpoznaný JPEG XR obrázek"
 
-#: libdn/load-libraw.cpp:50
-msgid "unexpected number of colours, or bit depth"
-msgstr "neočekávaný počet barev nebo bitová hloubka"
+#: libdn/load-libraw.cpp:154
+msgid "corrupted raw data"
+msgstr "porušená raw data"
 
-#: libdn/load-libraw.cpp:80
+#: libdn/load-libraw.cpp:154
+msgid "truncated raw data"
+msgstr "useknutá raw data"
+
+#: libdn/load-libraw.cpp:163
 msgid "failed to obtain a LibRaw handle"
 msgstr "nepodařilo se získat LibRaw popisovač"
+
+#: libdn/load-libraw.cpp:214
+msgid "unusable camera white balance"
+msgstr "nepoužitelné vyvážení bílé fotoaparátu"
 
 #: libdn/load-librsvg.cpp:144 libdn/load-librsvg.cpp:152
 msgid "cannot compute pixel dimensions"
@@ -1449,7 +1465,7 @@ msgstr "vstup je příliš velký"
 msgid "built without PNG support"
 msgstr "sestaveno bez podpory PNG"
 
-#: libdn/load-libwmf.cpp:187
+#: libdn/load-libwmf.cpp:186
 msgid "GD device produced no image"
 msgstr "GD zařízení nevytvořilo žádný obrázek"
 
@@ -1485,23 +1501,23 @@ msgstr "nepodporovaná složka obrázku"
 msgid "not a JPEG 2000 image"
 msgstr "nejde o JPEG 2000 obrázek"
 
-#: libdn/load-ora.cpp:263
+#: libdn/load-ora.cpp:242
 msgid "not a ZIP archive"
 msgstr "nejde o ZIP archiv"
 
-#: libdn/load-ora.cpp:269
+#: libdn/load-ora.cpp:248
 msgid "malformed ZIP archive"
 msgstr "poškozený ZIP archiv"
 
-#: libdn/load-ora.cpp:282
+#: libdn/load-ora.cpp:261
 msgid "not an OpenRaster or Krita image"
 msgstr "nejde o OpenRaster ani Krita obrázek"
 
-#: libdn/load-ora.cpp:304
+#: libdn/load-ora.cpp:283
 msgid "the archive carries no composite image"
 msgstr "archiv neobsahuje žádný složený obrázek"
 
-#: libdn/load-ora.cpp:309
+#: libdn/load-ora.cpp:288
 #, c-format
 msgid "%s is a reduced-size preview"
 msgstr "%s je zmenšený náhled"
@@ -1518,58 +1534,58 @@ msgstr "vykreslení knihovnou Poppler selhalo"
 msgid "Poppler has been built without Splash"
 msgstr "Poppler byl sestaven bez Splash"
 
-#: libdn/load-psd.cpp:195 libdn/load-psd.cpp:416
+#: libdn/load-psd.cpp:182 libdn/load-psd.cpp:403
 msgid "truncated PSD image resources"
 msgstr "useknuté zdroje PSD obrázku"
 
-#: libdn/load-psd.cpp:241
+#: libdn/load-psd.cpp:228
 msgid "truncated PSD image data section"
 msgstr "useknutá sekce PSD obrazových dat"
 
-#: libdn/load-psd.cpp:249 libdn/load-psd.cpp:258
+#: libdn/load-psd.cpp:236 libdn/load-psd.cpp:245
 msgid "PSD composite too large"
 msgstr "složený PSD obrázek je příliš velký"
 
-#: libdn/load-psd.cpp:267 libdn/load-psd.cpp:280
+#: libdn/load-psd.cpp:254 libdn/load-psd.cpp:267
 msgid "truncated PSD composite"
 msgstr "useknutý složený PSD obrázek"
 
-#: libdn/load-psd.cpp:286
+#: libdn/load-psd.cpp:273
 msgid "unsupported PSD composite compression"
 msgstr "nepodporovaná komprese složeného PSD obrázku"
 
-#: libdn/load-psd.cpp:359
+#: libdn/load-psd.cpp:346
 msgid "not a PSD image"
 msgstr "nejde o PSD obrázek"
 
-#: libdn/load-psd.cpp:372
+#: libdn/load-psd.cpp:359
 msgid "truncated PSD header"
 msgstr "useknutá PSD hlavička"
 
-#: libdn/load-psd.cpp:379
+#: libdn/load-psd.cpp:366
 #, c-format
 msgid "unsupported PSD version %u"
 msgstr "nepodporovaná PSD verze %u"
 
-#: libdn/load-psd.cpp:396
+#: libdn/load-psd.cpp:383
 #, c-format
 msgid "unsupported PSD colour mode: %s"
 msgstr "nepodporovaný PSD barevný režim: %s"
 
-#: libdn/load-psd.cpp:402
+#: libdn/load-psd.cpp:389
 #, c-format
 msgid "unsupported PSD bit depth %u"
 msgstr "nepodporovaná PSD bitová hloubka %u"
 
-#: libdn/load-psd.cpp:406
+#: libdn/load-psd.cpp:393
 msgid "PSD channel count does not match its colour mode"
 msgstr "počet kanálů PSD neodpovídá jeho barevnému režimu"
 
-#: libdn/load-psd.cpp:427
+#: libdn/load-psd.cpp:414
 msgid "truncated PSD layer and mask section"
 msgstr "useknutá PSD sekce vrstev a masek"
 
-#: libdn/load-psd.cpp:441
+#: libdn/load-psd.cpp:428
 msgid ""
 "PSD carries no composite image, it needs to be saved with Maximize "
 "Compatibility"
@@ -1577,35 +1593,35 @@ msgstr ""
 "PSD neobsahuje žádný složený obrázek, je třeba jej uložit s Maximalizovat "
 "kompatibilitu"
 
-#: libdn/load-psd.cpp:448
+#: libdn/load-psd.cpp:435
 msgid "unsupported PSD image dimensions"
 msgstr "nepodporované rozměry PSD obrázku"
 
-#: libdn/load-tiff-ep.cpp:219
+#: libdn/load-tiff-ep.cpp:274
 msgid "not a supported TIFF/EP or DNG image"
 msgstr "nejde o podporovaný TIFF/EP nebo DNG obrázek"
 
-#: libdn/load-tiff-ep.cpp:225
+#: libdn/load-tiff-ep.cpp:280
 msgid "could not find a main image"
 msgstr "nepodařilo se najít hlavní obrázek"
 
-#: libdn/load-tiff-ep.cpp:233
+#: libdn/load-tiff-ep.cpp:288
 msgid "missing or invalid main image dimensions"
 msgstr "chybějící nebo neplatné rozměry hlavního obrázku"
 
-#: libdn/load-tiff-ep.cpp:239
+#: libdn/load-tiff-ep.cpp:294
 msgid "error looking for a full-size JPEG preview"
 msgstr "chyba při hledání JPEG náhledu v plné velikosti"
 
-#: libdn/load-tiff-ep.cpp:248
+#: libdn/load-tiff-ep.cpp:303
 msgid "could not find a large enough JPEG preview"
 msgstr "nepodařilo se najít dostatečně velký JPEG náhled"
 
-#: libdn/load-tiff-ep.cpp:275
+#: libdn/load-tiff-ep.cpp:346
 msgid "not a TIFF file"
 msgstr "nejde o TIFF soubor"
 
-#: libdn/load-tiff-ep.cpp:297
+#: libdn/load-tiff-ep.cpp:368
 msgid "not a TIFF/EP or DNG image with a usable preview"
 msgstr "nejde o TIFF/EP nebo DNG obrázek s použitelným náhledem"
 
@@ -1694,19 +1710,19 @@ msgstr "ignoruji opakovaný ICC profil"
 msgid "ignoring repeated XMP"
 msgstr "ignoruji opakovaná XMP data"
 
-#: libdn/load-wuffs.cpp:552
+#: libdn/load-wuffs.cpp:551
 msgid "invalid Wuffs image configuration"
 msgstr "neplatná konfigurace Wuffs obrázku"
 
-#: libdn/load-wuffs.cpp:609
+#: libdn/load-wuffs.cpp:608
 msgid "no frames decoded"
 msgstr "nebyly dekódovány žádné snímky"
 
-#: libdn/load-wuffs.cpp:620
+#: libdn/load-wuffs.cpp:619
 msgid "memory allocation failed or internal error"
 msgstr "alokace paměti selhala nebo vnitřní chyba"
 
-#: libdn/load-wuffs.cpp:700
+#: libdn/load-wuffs.cpp:699
 msgid "unsupported or unrecognized Wuffs format"
 msgstr "nepodporovaný nebo nerozpoznaný Wuffs formát"
 

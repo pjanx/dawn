@@ -5,7 +5,7 @@ This guide addresses two features of modern monitors that you can exploit:
 10-bit colour depth, and non-sRGB gamuts (hopefully wider).
 
 Your system generally does not know the effective gamut of your monitor, so you
-must associate it manually, such as to an ICC profile.  Popular colour profile
+must associate it manually, such as with an ICC profile.  Popular colour profile
 targets are either already stored somewhere on your system, or they can be
 downloaded off the Internet.  For miserable sub-sRGB laptop screens, check your
 manufacturer's download page.  Windows may also pull these in automatically.

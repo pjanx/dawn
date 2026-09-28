@@ -45,10 +45,10 @@ be applied strictly.  On top of that, these additional rules keep authors sane:
 
  * Avoid using Qt facilities where STL will do exactly as well.
 
- * Avoid using declarations.  Between class definitions and method definitions,
-   the way to achieve this is to keep everything public, and to make methods
-   C-style.  Between free-standing functions, make use of their natural
-   order of dependency.
+ * Avoid using function or method declarations.  Between class definitions
+   and method definitions, the way to achieve this is to keep everything public,
+   and to make methods C-style.  Between free-standing functions,
+   make use of their natural order of dependency.
 
  * Avoid pointless getters.  If something is not a public API, making fields
    private is not considered helpful.

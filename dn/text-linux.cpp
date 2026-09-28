@@ -554,7 +554,7 @@ load_flags(PangoFont *font, FT_Face face)
 	int style = FC_HINT_FULL;
 	FcPatternGetInteger(pattern, FC_HINT_STYLE, 0, &style);
 
-	// Match Skia's grayscale load policy; full hinting also uses NORMAL.
+	// Match Skia's greyscale load policy; full hinting also uses NORMAL.
 	FT_Int32 flags = FT_LOAD_DEFAULT | FT_LOAD_COLOR | FT_LOAD_TARGET_NORMAL;
 	if (FT_IS_SCALABLE(face))
 		flags |= FT_LOAD_NO_BITMAP;
