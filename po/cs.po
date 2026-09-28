@@ -486,8 +486,8 @@ msgid "Default _thumbnail size"
 msgstr "Výchozí _velikost náhledů"
 
 #: dn/kit-chrome.cpp:573
-msgid "ICC _profile override (when applicable)"
-msgstr "Vynutit ICC _profil (kde to lze použít)"
+msgid "ICC _profile override\n(when applicable)"
+msgstr "Vynutit ICC _profil\n(kde to lze použít)"
 
 #: dn/kit-chrome.cpp:577
 msgid "Settings"

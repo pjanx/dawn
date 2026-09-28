@@ -1028,7 +1028,9 @@ Label::paint(Kit &kit) const
 
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const auto &cached = this->text_cache_.get(kit, this->text,
-		max(1, this->r.w - pad_x * 2), this->wrap ? 0 : 1, this->bold,
+		max(1, this->r.w - pad_x * 2),
+		this->wrap ? 0 : int(this->text.count(QLatin1Char('\n'))) + 1,
+		this->bold,
 		this->wrap && this->align == Align::Center);
 	int tx = this->r.x + pad_x;
 	if (!this->wrap && this->align != Align::Start) {
