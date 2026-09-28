@@ -132,9 +132,7 @@ FileRow::FileRow()
 static int
 row_height(Kit &kit)
 {
-	return max(kit.px(kFramePadY) * 2 +
-			kit.text_height(QStringLiteral("Ag"), 0, false),
-		kit.icon_px());
+	return max(kit.px(kFramePadY) * 2 + kit.line_height(false), kit.icon_px());
 }
 
 // Never grow: in a column that would split the listing's height between the
@@ -192,7 +190,7 @@ FileRow::paint(Kit &kit) const
 
 	const int pad = kit.px(kFramePadX);
 	const int icon = kit.icon_px();
-	const int th = kit.text_height(QStringLiteral("Ag"), 0, false);
+	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	const Colour fg = col(kit.colours_[ColourInk], kit.ink_alpha());
 	kit.draw_icon(this->r.x + pad, this->r.y + (this->r.h - icon) / 2, icon,

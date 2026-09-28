@@ -748,8 +748,7 @@ Button::measure_content(Kit &kit, int, int)
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	int cw = 0;
-	int ch =
-		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, this->bold);
+	int ch = kit.line_height(this->bold);
 	if (this->icon) {
 		cw = icon;
 		ch = max(ch, icon);
@@ -1483,8 +1482,7 @@ TextHit
 Entry::hit_text(const Kit &kit, float x, float y) const
 {
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
-	const int th =
-		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	return this->text_cache_.hit_test(
 		kit, this->text, x - float(in.x) + this->scroll_, y - float(ty), false);
@@ -1553,8 +1551,7 @@ Entry::measure_content(Kit &kit, int, int)
 {
 	// This is the width the field asks for, never the one it settles for:
 	// growing is the container's business, and it arranges what it gives.
-	const int h =
-		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int h = kit.line_height(false);
 	return {max(kit.px(this->min_w), kit.px(this->pad_x) * 2),
 		h + kit.px(kEntryPadY) * 2};
 }
@@ -1587,8 +1584,7 @@ Entry::paint(Kit &kit) const
 	kit.clip_to(in);
 
 	const QString full = painted();
-	const int th =
-		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	const float tx = float(in.x) - this->scroll_;
 	if (full.isEmpty()) {
@@ -1920,8 +1916,7 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	const TextRect caret =
 		this->text_cache_.caret_rect(kit, full, at, affinity, false);
 	const int tx = this->r.x + kit.px(this->pad_x);
-	const int th =
-		this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	out.caret_rect = {
 		int(lround(double(tx) - double(this->scroll_) + double(caret.x))),
@@ -3610,8 +3605,7 @@ MenuItem::measure_content(Kit &kit, int, int)
 	int width = kit.px(kIconPts + kFramePadX * 5.f) + lw + aw;
 	if (this->sub)
 		width += icon;
-	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
-	ch = max(ch, icon);
+	int ch = max(kit.line_height(false), icon);
 	if (!this->text.isEmpty())
 		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
 	if (!this->accel.isEmpty())
@@ -3714,7 +3708,7 @@ fill_combo_popup(Kit &kit, Combo &combo)
 Size
 ComboItem::measure_content(Kit &kit, int, int)
 {
-	int ch = this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	int ch = kit.line_height(false);
 	if (!this->text.isEmpty())
 		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
 	return {kit.px(kFramePadX) * 2 +
@@ -3812,9 +3806,7 @@ Combo::measure_content(Kit &kit, int, int)
 	int cw = 0;
 	for (const QString &item : this->items)
 		cw = max(cw, this->text_cache_.text_width(kit, item, false));
-	int ch =
-		max(this->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false),
-			icon);
+	int ch = max(kit.line_height(false), icon);
 	return {pad_x * 2 + cw + kit.px(4.f) + icon, kit.px(kFramePadY) * 2 + ch};
 }
 
@@ -4610,6 +4602,12 @@ int
 Kit::text_height(const QString &text, int wrap_px, bool bold) const
 {
 	return this->text_cache_.text_height(*this, text, wrap_px, bold);
+}
+
+int
+Kit::line_height(bool bold) const
+{
+	return text_height(QStringLiteral("Ag"), 0, bold);
 }
 
 static bool

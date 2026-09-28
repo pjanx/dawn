@@ -549,7 +549,8 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 	auto state = make_shared<SettingsDraft>(std::move(draft));
 
 	const char *const thumb_label = N_("Default _thumbnail size");
-	const char *const icc_label = N_("ICC _profile override\n(when applicable)");
+	const char *const icc_label =
+		N_("ICC _profile override\n(when applicable)");
 
 	auto col = make_unique<GutterColumn>();
 	col->gap = 4.f;
@@ -777,7 +778,7 @@ Hint::paint(Kit &kit) const
 		return;
 
 	kit.draw_fill(this->r, col(kit.colours_[ColourInk], kWashAlpha));
-	const float th = float(kit.text_height(QStringLiteral("Ag"), 0.f, true));
+	const float th = float(kit.line_height(true));
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())
 			continue;
@@ -957,7 +958,7 @@ Hint::refresh_rects()
 void
 Hint::layout_chips(const Kit &kit)
 {
-	const int th = kit.text_height(QStringLiteral("Ag"), 0, true);
+	const int th = kit.line_height(true);
 	const int ch = th + kit.px(kChipPadY) * 2;
 	for (Target &t : this->targets_) {
 		const int tw = kit.text_width(t.label, true);

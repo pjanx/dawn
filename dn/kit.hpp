@@ -1150,6 +1150,7 @@ struct Kit {
 	[[nodiscard]] int text_width(const QString &text, bool bold) const;
 	[[nodiscard]] int text_height(
 		const QString &text, int wrap_px, bool bold) const;
+	[[nodiscard]] int line_height(bool bold) const;
 
 	// Points to device pixels.  Converted on use rather than cached: a sum of
 	// point terms rounds once here, where baked-up constants would each round

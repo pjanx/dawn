@@ -2024,8 +2024,7 @@ EntryAdapter::characterRect(int offset) const
 		right = max(right, rect.x + rect.width);
 		bottom = max(bottom, rect.y + rect.height);
 	}
-	const int text_height =
-		entry->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int text_height = kit.line_height(false);
 	const float tx = float(entry->r.x + kit.px(entry->pad_x)) - entry->scroll_;
 	const float ty = float(entry->r.y + (entry->r.h - text_height) / 2);
 	const int x = int(floor(tx + left));
@@ -2046,8 +2045,7 @@ EntryAdapter::offsetAtPoint(const QPoint &point) const
 	Kit &kit = this->window_->kit();
 	const QPoint at = kit_point(*this->window_, point.x(), point.y());
 	const QString painted = entry->painted();
-	const int text_height =
-		entry->text_cache_.text_height(kit, QStringLiteral("Ag"), 0, false);
+	const int text_height = kit.line_height(false);
 	const float x = float(at.x()) - float(entry->r.x + kit.px(entry->pad_x)) +
 		entry->scroll_;
 	const float y = float(at.y() - entry->r.y - (entry->r.h - text_height) / 2);
