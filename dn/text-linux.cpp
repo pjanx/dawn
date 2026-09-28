@@ -216,8 +216,9 @@ make_layout(
 		pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
 	}
 	pango_layout_set_alignment(layout,
-		options.align == TextAlign::Center ? PANGO_ALIGN_CENTER
-										   : PANGO_ALIGN_LEFT);
+		options.align == TextAlign::Center    ? PANGO_ALIGN_CENTER
+			: options.align == TextAlign::End ? PANGO_ALIGN_RIGHT
+											  : PANGO_ALIGN_LEFT);
 	return layout;
 }
 

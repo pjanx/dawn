@@ -321,7 +321,7 @@ cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 
 TextCache::Text &
 TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
-	bool bold, bool center)
+	bool bold, TextAlign align)
 {
 	if (this->epoch != kit.font_epoch_) {
 		this->texts.clear();
@@ -336,7 +336,7 @@ TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
 	}
 
 	auto [it, fresh] =
-		this->texts.try_emplace({text, wrap, max_lines, bold, center});
+		this->texts.try_emplace({text, wrap, max_lines, bold, align});
 	Text &cached = it->second;
 	cached.used = this->frame;
 	if (!fresh)
@@ -346,7 +346,7 @@ TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
 	options.wrap_width = wrap;
 	options.max_lines = max_lines;
 	options.bold = bold;
-	options.align = center ? TextAlign::Center : TextAlign::Start;
+	options.align = align;
 	string error;
 	cached.layout = kit.text_backend_.layout(text, options, &error);
 	if (!cached.layout) {
@@ -355,9 +355,10 @@ TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
 	}
 	cached.width = int(ceil(cached.layout->width()));
 	cached.height = int(ceil(cached.layout->height()));
-	// A single-line control positions the text itself. Native leading
-	// alignment may have placed RTL text at the far edge of the width limit.
-	if (max_lines == 1 && !center) {
+	// A line-limited control positions the text itself. Native leading
+	// alignment may have placed RTL text at the far edge of the width limit,
+	// and trailing alignment is only meant to line up the lines.
+	if (max_lines > 0 && align != TextAlign::Center) {
 		const auto rects =
 			cached.layout->range_rects(0, int(cached.layout->text().size()));
 		if (!rects.empty()) {
@@ -372,20 +373,20 @@ TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
 int
 TextCache::text_width(const Kit &kit, const QString &text, bool bold)
 {
-	return get(kit, text, 0, 0, bold, false).width;
+	return get(kit, text, 0, 0, bold, TextAlign::Start).width;
 }
 
 int
 TextCache::text_height(const Kit &kit, const QString &text, int wrap, bool bold)
 {
-	return get(kit, text, wrap, 0, bold, false).height;
+	return get(kit, text, wrap, 0, bold, TextAlign::Start).height;
 }
 
 TextRect
 TextCache::caret_rect(const Kit &kit, const QString &text, int index,
 	TextAffinity affinity, bool bold)
 {
-	Text &cached = get(kit, text, 0, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, TextAlign::Start);
 	if (!cached.layout)
 		return {};
 	const int at = clamp(index, 0, int(text.size()));
@@ -396,7 +397,7 @@ TextHit
 TextCache::hit_test(
 	const Kit &kit, const QString &text, float x, float y, bool bold)
 {
-	Text &cached = get(kit, text, 0, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, TextAlign::Start);
 	if (!cached.layout)
 		return {};
 	TextHit hit = cached.layout->hit_test(x, y);
@@ -414,7 +415,7 @@ TextCache::range_rects(
 {
 	if (length <= 0)
 		return {};
-	Text &cached = get(kit, text, 0, 0, bold, false);
+	Text &cached = get(kit, text, 0, 0, bold, TextAlign::Start);
 	if (!cached.layout)
 		return {};
 	const int size = int(text.size());
@@ -533,8 +534,9 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 	Colour colour, bool bold, int mnemonic)
 {
 	if (!text.isEmpty())
-		kit.emit_layout(
-			x, y, cache.get(kit, text, 0, 0, bold, false), colour, mnemonic);
+		kit.emit_layout(x, y,
+			cache.get(kit, text, 0, 0, bold, TextAlign::Start), colour,
+			mnemonic);
 }
 
 static void
@@ -816,7 +818,7 @@ Button::paint(Kit &kit) const
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
 		const auto &cached = this->text_cache_.get(kit, this->text,
-			button_text_avail(kit, *this), 1, this->bold, false);
+			button_text_avail(kit, *this), 1, this->bold, TextAlign::Start);
 		kit.emit_layout(float(tx),
 			float(this->r.y + (this->r.h - cached.height) / 2), cached,
 			col(kit.colours_[ColourInk], ink_a),
@@ -972,7 +974,7 @@ Checkbox::paint(Kit &kit) const
 		const int tx = bx + box + kit.px(4.f);
 		const auto &cached = this->text_cache_.get(kit, this->text,
 			checkbox_text_avail(kit, *this, this->r.w), this->wrap ? 0 : 1,
-			false, false);
+			false, TextAlign::Start);
 		kit.emit_layout(float(tx),
 			float(this->r.y + (this->r.h - cached.height) / 2), cached,
 			col(kit.colours_[ColourInk], ink_a),
@@ -1026,12 +1028,17 @@ Label::paint(Kit &kit) const
 	if (!shown())
 		return;
 
+	TextAlign align = TextAlign::Start;
+	if (this->wrap && this->align == Align::Center)
+		align = TextAlign::Center;
+	else if (!this->wrap && this->align == Align::End)
+		align = TextAlign::End;
+
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
-	const auto &cached = this->text_cache_.get(kit, this->text,
-		max(1, this->r.w - pad_x * 2),
-		this->wrap ? 0 : int(this->text.count(QLatin1Char('\n'))) + 1,
-		this->bold,
-		this->wrap && this->align == Align::Center);
+	const auto &cached =
+		this->text_cache_.get(kit, this->text, max(1, this->r.w - pad_x * 2),
+			this->wrap ? 0 : int(this->text.count(QLatin1Char('\n'))) + 1,
+			this->bold, align);
 	int tx = this->r.x + pad_x;
 	if (!this->wrap && this->align != Align::Start) {
 		const int tw = cached.width;
@@ -1634,7 +1641,7 @@ Entry::paint(Kit &kit) const
 	// positioned its glyphs.
 	if (!this->preedit.isEmpty()) {
 		TextCache::Text &cached =
-			this->text_cache_.get(kit, full, 0, 0, false, false);
+			this->text_cache_.get(kit, full, 0, 0, false, TextAlign::Start);
 		if (cached.layout) {
 			const TextLayout &layout = *cached.layout;
 			for (const TextRect &rect :
@@ -3675,8 +3682,8 @@ MenuItem::paint(Kit &kit) const
 	if (this->checkable && this->checked)
 		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
-		const auto &cached =
-			this->text_cache_.get(kit, this->text, cols.avail, 1, false, false);
+		const auto &cached = this->text_cache_.get(
+			kit, this->text, cols.avail, 1, false, TextAlign::Start);
 		kit.emit_layout(float(label_x),
 			float(this->r.y + (this->r.h - cached.height) / 2), cached, label_c,
 			shown_mnemonic(this->text, this->mnemonic, cached));
@@ -3768,8 +3775,8 @@ ComboItem::paint(Kit &kit) const
 		return;
 
 	const int pad = kit.px(kFramePadX);
-	const auto &cached = this->text_cache_.get(
-		kit, this->text, max(1, this->r.w - pad * 2), 1, false, false);
+	const auto &cached = this->text_cache_.get(kit, this->text,
+		max(1, this->r.w - pad * 2), 1, false, TextAlign::Start);
 	kit.emit_layout(float(this->r.x + pad),
 		float(this->r.y + (this->r.h - cached.height) / 2), cached,
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha), -1);
@@ -3876,7 +3883,8 @@ Combo::paint(Kit &kit) const
 		col(kit.colours_[ColourInk], ink_a));
 
 	const auto &cached = this->text_cache_.get(kit, current_text(),
-		max(1, this->r.w - pad_x * 2 - kit.px(4.f) - icon), 1, false, false);
+		max(1, this->r.w - pad_x * 2 - kit.px(4.f) - icon), 1, false,
+		TextAlign::Start);
 	kit.emit_layout(float(this->r.x + pad_x),
 		float(this->r.y + (this->r.h - cached.height) / 2), cached,
 		col(kit.colours_[ColourInk], ink_a), -1);

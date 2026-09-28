@@ -471,9 +471,15 @@ TextBackend::layout_native(
 				native_line, &ascent, &descent, &leading);
 		native.top = top;
 		native.baseline = top + float(ascent);
-		native.x = options.align == TextAlign::Center && options.wrap_width > 0
-			? max(0.f, (float(options.wrap_width) - float(advance)) * .5f)
-			: 0;
+		native.x = 0;
+		if (options.wrap_width > 0) {
+			const float slack =
+				max(0.f, float(options.wrap_width) - float(advance));
+			if (options.align == TextAlign::Center)
+				native.x = slack * .5f;
+			else if (options.align == TextAlign::End)
+				native.x = slack;
+		}
 
 		TextLine line;
 		line.text_start = int(start);

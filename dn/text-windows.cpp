@@ -400,6 +400,8 @@ make_layout(TextBackendImpl &backend, const QString &text,
 	if (SUCCEEDED(hr))
 		hr = layout->SetTextAlignment(options.align == TextAlign::Center
 				? DWRITE_TEXT_ALIGNMENT_CENTER
+				: options.align == TextAlign::End
+				? DWRITE_TEXT_ALIGNMENT_TRAILING
 				: DWRITE_TEXT_ALIGNMENT_LEADING);
 	if (SUCCEEDED(hr) && text.isRightToLeft())
 		hr =

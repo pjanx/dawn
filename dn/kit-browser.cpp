@@ -1561,8 +1561,8 @@ layout_grid(Browser &b, Rect area)
 		if (!b.show_names_) {
 			f.cap = {};
 		} else if (f.cap.w != ow) {
-			const auto &cached = b.text_cache_.get(
-				b.kit_, caption_name(f.name), ow, kCapLines, false, true);
+			const auto &cached = b.text_cache_.get(b.kit_, caption_name(f.name),
+				ow, kCapLines, false, TextAlign::Center);
 			f.cap = {0, 0, ow, cached.height + b.kit_.px(kCapPad)};
 		}
 		if (!row.empty() && row_w + gap + ow > avail)
@@ -2613,8 +2613,9 @@ Browser::paint(Kit &kit) const
 				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
 		}
 		if (this->show_names_ && f.cap.h > 0) {
-			const auto &cached = this->text_cache_.get(
-				kit, caption_name(f.name), f.cap.w, kCapLines, false, true);
+			const auto &cached =
+				this->text_cache_.get(kit, caption_name(f.name), f.cap.w,
+					kCapLines, false, TextAlign::Center);
 			kit.clip_to(f.cap);
 			kit.emit_layout(float(f.cap.x),
 				float(f.cap.y + (f.cap.h - cached.height) / 2), cached,

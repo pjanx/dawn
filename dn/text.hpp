@@ -32,6 +32,7 @@ struct TextRect {
 enum class TextAlign : uint8_t {
 	Start,
 	Center,
+	End,
 };
 
 // Affinity associates an insertion point with the character on one side of

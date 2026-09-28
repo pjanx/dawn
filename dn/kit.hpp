@@ -184,12 +184,12 @@ struct TextCache {
 		float x = 0;  // Remove native single-line alignment when placing text.
 		uint64_t used = 0;
 	};
-	std::map<std::tuple<QString, int, int, bool, bool>, Text> texts;
+	std::map<std::tuple<QString, int, int, bool, TextAlign>, Text> texts;
 	uint64_t frame = 0;
 	uint64_t epoch = 0;
 
 	Text &get(const Kit &kit, const QString &text, int wrap, int max_lines,
-		bool bold, bool center);
+		bool bold, TextAlign align);
 	int text_width(const Kit &kit, const QString &text, bool bold);
 	int text_height(const Kit &kit, const QString &text, int wrap, bool bold);
 	TextRect caret_rect(const Kit &kit, const QString &text, int index,

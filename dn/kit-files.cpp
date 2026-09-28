@@ -159,8 +159,8 @@ static TextCache::Text &
 file_name_layout(const Kit &kit, const FileRow &row)
 {
 	const int pad = kit.px(kFramePadX) * 2 + kit.icon_px() + kit.px(4.f);
-	return row.text_cache_.get(
-		kit, row.text, max(1, row.list->col_w[ColName] - pad), 1, false, false);
+	return row.text_cache_.get(kit, row.text,
+		max(1, row.list->col_w[ColName] - pad), 1, false, TextAlign::Start);
 }
 
 void
