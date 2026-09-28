@@ -180,12 +180,9 @@ target_include_directories(test-overlay PRIVATE
 	"${PROJECT_SOURCE_DIR}/dn" "${PROJECT_BINARY_DIR}")
 add_test(NAME overlay COMMAND test-overlay)
 
-add_executable(test-text test-text.cpp
-	"${PROJECT_SOURCE_DIR}/dn/text.cpp"
-	"${PROJECT_SOURCE_DIR}/${DN_TEXT_SOURCE}")
+add_executable(test-text test-text.cpp)
 target_include_directories(test-text PRIVATE "${PROJECT_SOURCE_DIR}/dn")
-# The native backend needs whatever dn links it with.
-target_link_libraries(test-text PRIVATE $<TARGET_PROPERTY:dn,LINK_LIBRARIES>)
+target_link_libraries(test-text PRIVATE dn-text)
 add_test(NAME text COMMAND test-text)
 
 add_executable(test-thumbnail-cache

@@ -535,7 +535,6 @@ qt_add_executable(dn
 	dn/main.cpp
 	dn/overlay.cpp
 	dn/renderer.cpp
-	dn/text.cpp
 	dn/thumbnail-cache.cpp
 	dn/thumbnailer.cpp
 	dn/url.cpp
@@ -576,17 +575,23 @@ dawn_embed_shader(dn dn-overlay.frag dn_overlay_frag)
 dawn_embed_shader(dn dn-thumb.frag dn_thumb_frag)
 dawn_embed_shader(dn dn-present.frag dn_present_frag)
 
+# The native text backend, which test-text builds as well.
+add_library(dn-text INTERFACE)
+target_sources(dn-text INTERFACE dn/text.cpp)
+target_link_libraries(dn-text INTERFACE Qt6::Gui)
+target_link_libraries(dn PRIVATE dn-text)
+
 if (WIN32)
-	set(DN_TEXT_SOURCE dn/text-windows.cpp)
+	target_sources(dn-text INTERFACE dn/text-windows.cpp)
+	target_link_libraries(dn-text INTERFACE dwrite)
 	target_sources(dn PRIVATE
-		${DN_TEXT_SOURCE}
 		dn/display-profile-windows.cpp
 		dn/assoc-windows.cpp
 		dn/volumes-windows.cpp
 		dn/window-appearance-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE
-		dwrite dwmapi dxgi gdi32 shell32 shlwapi ole32 advapi32 user32)
+		dwmapi dxgi gdi32 shell32 shlwapi ole32 advapi32 user32)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
@@ -595,9 +600,12 @@ elseif (APPLE)
 	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
 	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
 	find_library(DN_IOKIT_FRAMEWORK IOKit REQUIRED)
-	set(DN_TEXT_SOURCE dn/text-macos.mm)
+	target_sources(dn-text INTERFACE dn/text-macos.mm)
+	target_link_libraries(dn-text INTERFACE
+		"${DN_APPKIT_FRAMEWORK}"
+		"${DN_COREGRAPHICS_FRAMEWORK}"
+		"${DN_CORETEXT_FRAMEWORK}")
 	target_sources(dn PRIVATE
-		${DN_TEXT_SOURCE}
 		dn/display-profile-macos.mm
 		dn/assoc-macos.mm
 		dn/app-menu-macos.mm
@@ -605,9 +613,6 @@ elseif (APPLE)
 		dn/volumes-macos.mm
 	)
 	target_link_libraries(dn PRIVATE
-		"${DN_APPKIT_FRAMEWORK}"
-		"${DN_COREGRAPHICS_FRAMEWORK}"
-		"${DN_CORETEXT_FRAMEWORK}"
 		"${DN_CORESERVICES_FRAMEWORK}"
 		"${DN_UNIFORMTYPES_FRAMEWORK}"
 		"${DN_IOKIT_FRAMEWORK}")
@@ -615,14 +620,14 @@ else()
 	pkg_check_modules(COLORD REQUIRED IMPORTED_TARGET colord)
 	pkg_check_modules(PANGOFT2 REQUIRED IMPORTED_TARGET
 		pangoft2>=1.48 pangofc>=1.48 freetype2>=2.11)
-	set(DN_TEXT_SOURCE dn/text-linux.cpp)
+	target_sources(dn-text INTERFACE dn/text-linux.cpp)
+	target_link_libraries(dn-text INTERFACE PkgConfig::PANGOFT2)
 	target_sources(dn PRIVATE
-		${DN_TEXT_SOURCE}
 		dn/display-profile-linux.cpp
 		dn/assoc-unix.cpp
 		dn/volumes-unix.cpp
 	)
-	target_link_libraries(dn PRIVATE PkgConfig::COLORD PkgConfig::PANGOFT2)
+	target_link_libraries(dn PRIVATE PkgConfig::COLORD)
 	if (dawn_qt_xcb)
 		pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb xcb-randr)
 		target_link_libraries(dn PRIVATE PkgConfig::XCB)
