@@ -187,7 +187,6 @@ struct Browser : Widget {
 	void rescan();
 	bool hist_back();
 	bool hist_forward();
-	void hist_clear_forward();
 	[[nodiscard]] bool hist_can_back() const;
 	[[nodiscard]] bool hist_can_forward() const;
 	// The listing, its path index and its revision, which only move as one.
@@ -198,13 +197,12 @@ struct Browser : Widget {
 	void file_gone(const QUrl &url);
 	[[nodiscard]] int file_index(const std::string &path) const;
 	[[nodiscard]] QUrl file_url(int index) const;
-	[[nodiscard]] BrowseSetup browse_setup() const { return this->setup_; }
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
 	void update(Kit &kit) override;
 	void placed(Kit &kit) override;
-	bool busy() const override { return thumbs_busy(); }
+	bool busy() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	Scroll *scrollbar() override { return &this->scroll_; }
@@ -215,7 +213,6 @@ struct Browser : Widget {
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
 	[[nodiscard]] int wake_ms() const override;
-	[[nodiscard]] bool thumbs_busy() const;
 };
 
 std::unique_ptr<Page> make_browser_page(

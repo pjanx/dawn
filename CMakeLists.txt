@@ -1077,7 +1077,7 @@ elseif (APPLE)
 		DN_MOLTENVK_LIBRARY "${DN_MOLTENVK_LIBRARY}" REALPATH)
 	install(FILES "${DN_MOLTENVK_LIBRARY}"
 		DESTINATION "${dn_bundle}/Contents/Frameworks")
-	file(WRITE "${CMAKE_BINARY_DIR}/MoltenVK_icd.json" [[{
+	file(WRITE "${PROJECT_BINARY_DIR}/MoltenVK_icd.json" [[{
 		"file_format_version": "1.0.0",
 		"ICD": {
 			"library_path": "../../../Frameworks/libMoltenVK.dylib",
@@ -1086,7 +1086,7 @@ elseif (APPLE)
 		}
 	}
 	]])
-	install(FILES "${CMAKE_BINARY_DIR}/MoltenVK_icd.json"
+	install(FILES "${PROJECT_BINARY_DIR}/MoltenVK_icd.json"
 		DESTINATION "${dn_bundle}/Contents/Resources/vulkan/icd.d")
 	unset(dn_bundle)
 

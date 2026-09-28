@@ -350,7 +350,6 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	return out;
 }
 
-static bool apply_action(Viewer &v, Action action);
 static void reload_open(Viewer &v);
 
 struct Viewer::Worker {

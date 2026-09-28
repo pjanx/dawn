@@ -386,13 +386,13 @@ thumbnail_cache_lookup(const ThumbnailSource &source, int desired_tier,
 	for (int tier = desired_tier + 1; tier < int(kNames.size()); tier++)
 		if (hit = wide(tier); !hit.pixels.empty())
 			return hit;
-	for (int tier = desired_tier - 1; tier >= 0; --tier)
+	for (int tier = desired_tier - 1; tier >= 0; tier--)
 		if (hit = wide(tier); !hit.pixels.empty())
 			return hit;
 	for (int tier = desired_tier + 1; tier < int(kNames.size()); tier++)
 		if (hit = png(tier); !hit.pixels.empty())
 			return hit;
-	for (int tier = desired_tier - 1; tier >= 0; --tier)
+	for (int tier = desired_tier - 1; tier >= 0; tier--)
 		if (hit = png(tier); !hit.pixels.empty())
 			return hit;
 	return {};

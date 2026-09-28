@@ -37,10 +37,7 @@ struct HostActions {
 // The menu that a right click on a file opens: what this application knows
 // how to do with it, plus whatever the desktop can open it with.
 struct ContextMenu : Menu {
-	std::function<void(const QUrl &url)> on_new_window;
-	std::function<void(const QUrl &url)> on_trash;
-	std::function<bool(const QUrl &url)> on_bookmarked;
-	std::function<void(const QUrl &url)> on_toggle_bookmark;
+	const HostActions *host = nullptr;
 
 	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 

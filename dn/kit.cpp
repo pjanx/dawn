@@ -697,7 +697,7 @@ Widget::hit_at(float x, float y)
 		return nullptr;
 
 	const auto kids = children();
-	for (size_t i = kids.size(); i > 0; --i) {
+	for (size_t i = kids.size(); i > 0; i--) {
 		if (Widget *h = kids[i - 1]->hit_at(x, y))
 			return h;
 	}

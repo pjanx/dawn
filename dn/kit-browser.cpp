@@ -172,8 +172,6 @@ struct GpuFinish {
 
 }  // namespace
 
-static bool apply_action(Browser &b, Action action);
-
 // Below this line the browser enumerates the local filesystem;
 // above it, and towards the host, everything is identified by URL.
 static string
@@ -284,7 +282,7 @@ static size_t
 bundle_reservation_bytes(int top_tier)
 {
 	size_t bytes = 0;
-	for (int tier = max(0, top_tier); tier >= 0; --tier) {
+	for (int tier = max(0, top_tier); tier >= 0; tier--) {
 		const size_t h = size_t(thumbnail_tier_height(tier));
 		bytes += 2 * h * h * dawn::kBytesPerPixel;
 	}
@@ -295,7 +293,7 @@ static vector<dawn::ThumbScaler::Job::Output>
 bundle_outputs(uint32_t image_w, uint32_t image_h, int top_tier)
 {
 	vector<dawn::ThumbScaler::Job::Output> outputs;
-	for (int tier = max(0, top_tier); tier >= 0; --tier) {
+	for (int tier = max(0, top_tier); tier >= 0; tier--) {
 		const int h = thumbnail_tier_height(tier);
 		uint32_t width = 1, height = 1;
 		thumb_dest_params(
@@ -518,8 +516,6 @@ SideRow::key(Kit &kit, const Key &ev)
 }
 
 }  // namespace
-
-static void layout_grid(Browser &b, Rect area);
 
 // --- GPU thumbnail input -----------------------------------------------------
 
@@ -2061,10 +2057,7 @@ open_directory(
 	}
 	b.dir_url_ = dir;
 	b.size_cache_.clear();
-	b.thumb_gen_++;
-	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
-	b.thumb_inflight_.clear();
-	reset_thumb_atlas(b);
+	invalidate_thumbs(b);
 	b.scroll_.offset = 0;
 	if (b.places_) {
 		b.places_->scroll_.offset = side_scroll;
@@ -2611,7 +2604,7 @@ Browser::paint(Kit &kit) const
 }
 
 bool
-Browser::thumbs_busy() const
+Browser::busy() const
 {
 	return this->thumbnailer_.foreground_busy(this->thumbnail_client_);
 }
@@ -2623,7 +2616,6 @@ make_browser_page(
 	auto content = make_unique<Browser>(kit, thumbnailer);
 	Browser *b = content.get();
 	b->init();
-	b->places_dirty_ = true;
 	PageSetup setup;
 	setup.mode = Mode::Browse;
 	setup.toolbar = make_toolbar(
@@ -2685,12 +2677,6 @@ Browser::hist_forward()
 	this->hist_forward_.pop_back();
 	open_directory(*this, e.url, false, e.side_scroll);
 	return true;
-}
-
-void
-Browser::hist_clear_forward()
-{
-	this->hist_forward_.clear();
 }
 
 bool
@@ -2977,10 +2963,7 @@ Browser::pan(Kit &, float, float, float, float dy)
 int
 Browser::wake_ms() const
 {
-	int ms = this->scroll_.wake_ms();
-	if (this->thumbs_busy())
-		ms = ms < 0 ? 0 : min(ms, 0);
-	return ms;
+	return busy() ? 0 : this->scroll_.wake_ms();
 }
 
 }  // namespace dn

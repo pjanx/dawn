@@ -519,7 +519,7 @@ Window::bind_host()
 		if (!this->viewer_)
 			return;
 		if (this->browser_)
-			this->browser_->hist_clear_forward();
+			this->browser_->hist_forward_.clear();
 		open_viewer(url);
 		this->awaiting_view_ = true;
 		request_render();
@@ -530,7 +530,7 @@ Window::bind_host()
 
 		BrowseSetup setup;
 		if (this->browser_)
-			setup = this->browser_->browse_setup();
+			setup = this->browser_->setup_;
 		this->app_->open(url, {}, setup, application());
 	};
 	if (!exiftool_command().isEmpty())

@@ -93,23 +93,21 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 
 	auto *new_win = add_item_with_mnemonic(N_("Open in New _Window"));
 	new_win->on_click = [this, url](Kit &) {
-		if (this->on_new_window)
-			this->on_new_window(url);
+		if (this->host && this->host->new_window)
+			this->host->new_window(url);
 	};
 	if (apps_sep) {
 		add_item_with_mnemonic(N_("Open _With"))->sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
-	if (QFileInfo(path).isDir() && this->on_bookmarked &&
-		this->on_toggle_bookmark) {
+	if (QFileInfo(path).isDir() && this->host && this->host->bookmarked &&
+		this->host->toggle_bookmark) {
 		add_sep();
-		auto *bookmark = add_item_with_mnemonic(this->on_bookmarked(url)
+		auto *bookmark = add_item_with_mnemonic(this->host->bookmarked(url)
 				? N_("Remove from _Bookmarks")
 				: N_("Add to _Bookmarks"));
-		bookmark->on_click = [this, url](Kit &) {
-			if (this->on_toggle_bookmark)
-				this->on_toggle_bookmark(url);
-		};
+		bookmark->on_click = [this, url](
+								 Kit &) { this->host->toggle_bookmark(url); };
 	}
 	add_sep();
 	auto *copy = add_item_with_mnemonic(N_("_Copy"));
@@ -118,13 +116,10 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 		const QUrl urls[] = {url};
 		copy_files(urls, false);
 	};
-	if (QFileInfo(path).isFile() && this->on_trash) {
+	if (QFileInfo(path).isFile() && this->host && this->host->trash) {
 		auto *trash = add_item_with_mnemonic(N_("Move to _Trash"));
 		trash->accel = accel_label(action_def(Action::Trash));
-		trash->on_click = [this, url](Kit &) {
-			if (this->on_trash)
-				this->on_trash(url);
-		};
+		trash->on_click = [this, url](Kit &) { this->host->trash(url); };
 	}
 }
 
@@ -719,7 +714,7 @@ label_at(int i, int len)
 {
 	QString s(len, QLatin1Char('A'));
 	int x = i;
-	for (int k = len - 1; k >= 0; --k) {
+	for (int k = len - 1; k >= 0; k--) {
 		s[k] = QLatin1Char(kChars[x % kNChars]);
 		x /= kNChars;
 	}
@@ -1315,10 +1310,7 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 	auto page = make_unique<Page>(std::move(setup.toolbar),
 		std::move(setup.sidebar), setup.side, std::move(setup.content));
 	page->host = &host;
-	page->context->on_new_window = host.new_window;
-	page->context->on_trash = host.trash;
-	page->context->on_bookmarked = host.bookmarked;
-	page->context->on_toggle_bookmark = host.toggle_bookmark;
+	page->context->host = &host;
 	page->menu_tree = mode_def(setup.mode).menu;
 	page->keys = mode_def(setup.mode).keys;
 	page->actor = std::move(setup.actor);
