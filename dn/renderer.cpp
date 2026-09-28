@@ -42,6 +42,20 @@ check_vk(VkResult result, const char *what)
 #define CALL_VK(name, suffix, ...)                                             \
 	check_vk(vk##name(__VA_ARGS__), "vk" #name suffix)
 
+static VkShaderModule
+make_shader(
+	VkDevice device, const uint32_t *words, size_t word_count, const char *what)
+{
+	VkShaderModuleCreateInfo info{
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = word_count * sizeof(uint32_t),
+		.pCode = words,
+	};
+	VkShaderModule shader = VK_NULL_HANDLE;
+	check_vk(vkCreateShaderModule(device, &info, nullptr, &shader), what);
+	return shader;
+}
+
 [[noreturn]] static void
 die(const char *message)
 {
@@ -1029,22 +1043,12 @@ Renderer::create_presentation_pipeline()
 	CALL_VK(CreateRenderPass, " presentation", this->device_, &rp_info, nullptr,
 		&this->presentation_rp_);
 
-	VkShaderModule presentation_vert = VK_NULL_HANDLE,
-				   presentation_frag = VK_NULL_HANDLE;
-	VkShaderModuleCreateInfo vert_info{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = fullscreen_vert_words * sizeof(uint32_t),
-		.pCode = fullscreen_vert,
-	};
-	CALL_VK(CreateShaderModule, " presentation vert", this->device_, &vert_info,
-		nullptr, &presentation_vert);
-	VkShaderModuleCreateInfo frag_info{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dn_present_frag_words * sizeof(uint32_t),
-		.pCode = dn_present_frag,
-	};
-	CALL_VK(CreateShaderModule, " presentation frag", this->device_, &frag_info,
-		nullptr, &presentation_frag);
+	VkShaderModule presentation_vert =
+		make_shader(this->device_, fullscreen_vert, fullscreen_vert_words,
+			"vkCreateShaderModule presentation vert");
+	VkShaderModule presentation_frag =
+		make_shader(this->device_, dn_present_frag, dn_present_frag_words,
+			"vkCreateShaderModule presentation frag");
 
 	VkPipelineShaderStageCreateInfo stages[2]{};
 	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1239,29 +1243,12 @@ OverlayVulkan::set_render_pass(VkRenderPass render_pass)
 void
 OverlayVulkan::create_pipeline(VkRenderPass render_pass)
 {
-	VkShaderModule vert = VK_NULL_HANDLE, frag = VK_NULL_HANDLE,
-				   thumb_frag = VK_NULL_HANDLE;
-	VkShaderModuleCreateInfo vert_info{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dn_overlay_vert_words * sizeof(uint32_t),
-		.pCode = dn_overlay_vert,
-	};
-	VkShaderModuleCreateInfo frag_info{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dn_overlay_frag_words * sizeof(uint32_t),
-		.pCode = dn_overlay_frag,
-	};
-	VkShaderModuleCreateInfo thumb_frag_info{
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = dn_thumb_frag_words * sizeof(uint32_t),
-		.pCode = dn_thumb_frag,
-	};
-	CALL_VK(CreateShaderModule, " overlay vert", this->device_, &vert_info,
-		nullptr, &vert);
-	CALL_VK(CreateShaderModule, " overlay frag", this->device_, &frag_info,
-		nullptr, &frag);
-	CALL_VK(CreateShaderModule, " thumb frag", this->device_, &thumb_frag_info,
-		nullptr, &thumb_frag);
+	VkShaderModule vert = make_shader(this->device_, dn_overlay_vert,
+		dn_overlay_vert_words, "vkCreateShaderModule overlay vert");
+	VkShaderModule frag = make_shader(this->device_, dn_overlay_frag,
+		dn_overlay_frag_words, "vkCreateShaderModule overlay frag");
+	VkShaderModule thumb_frag = make_shader(this->device_, dn_thumb_frag,
+		dn_thumb_frag_words, "vkCreateShaderModule thumb frag");
 
 	VkPushConstantRange push{
 		.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
