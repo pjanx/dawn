@@ -599,19 +599,13 @@ Cmm::get_default()
 }
 
 shared_ptr<Profile>
-Cmm::get_profile_data(const void *data, size_t len)
+Cmm::get_profile(span<const uint8_t> bytes)
 {
 	cmsHPROFILE p = cmsOpenProfileFromMemTHR(
-		cmsContext(context_), data, cmsUInt32Number(len));
+		cmsContext(context_), bytes.data(), cmsUInt32Number(bytes.size()));
 	if (!p)
 		return nullptr;
 	return shared_ptr<Profile>(new Profile(shared_from_this(), p));
-}
-
-shared_ptr<Profile>
-Cmm::get_profile(span<const uint8_t> bytes)
-{
-	return get_profile_data(bytes.data(), bytes.size());
 }
 
 shared_ptr<Profile>
