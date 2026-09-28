@@ -20,7 +20,6 @@ namespace dn
 // produce CPU pixels only.
 class GpuContext
 {
-	VkInstance instance_ = VK_NULL_HANDLE;  // borrowed from QVulkanInstance
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
 	VkDevice device_ = VK_NULL_HANDLE;
 	VkQueue queue_ = VK_NULL_HANDLE;
@@ -42,7 +41,6 @@ public:
 	// Later windows: present support on the chosen family. False if not ready.
 	[[nodiscard]] bool supports_present(VkSurfaceKHR surface) const;
 
-	[[nodiscard]] VkInstance instance() const { return this->instance_; }
 	[[nodiscard]] VkPhysicalDevice phys() const { return this->phys_; }
 	[[nodiscard]] VkDevice device() const { return this->device_; }
 	[[nodiscard]] VkQueue queue() const { return this->queue_; }

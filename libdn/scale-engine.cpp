@@ -123,7 +123,6 @@ struct ScaleEngine::Impl {
 	VkPhysicalDevice phys = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue queue = VK_NULL_HANDLE;
-	uint32_t queue_family = 0;
 
 	VkFormat dest_format = VK_FORMAT_R8G8B8A8_UNORM;
 	VkImageLayout dest_final_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -1284,7 +1283,6 @@ ScaleEngine::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	e.phys = phys;
 	e.device = device;
 	e.queue = queue;
-	e.queue_family = queue_family;
 	e.dest_format = dest_format;
 	e.dest_final_layout = dest_final_layout;
 
@@ -1560,18 +1558,6 @@ ScaleEngine::set_gain_map(const GainMap *map, string *error)
 	e.gain_gamma = map->gamma;
 	e.gain_offset = map->offset;
 	return true;
-}
-
-uint32_t
-ScaleEngine::image_width() const
-{
-	return impl_ ? impl_->image_w : 0;
-}
-
-uint32_t
-ScaleEngine::image_height() const
-{
-	return impl_ ? impl_->image_h : 0;
 }
 
 bool

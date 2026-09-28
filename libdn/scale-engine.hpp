@@ -98,8 +98,6 @@ public:
 	/// Maps over maxImageDimension2D are downscaled.
 	bool set_gain_map(const GainMap *map, std::string *error);
 
-	[[nodiscard]] uint32_t image_width() const;
-	[[nodiscard]] uint32_t image_height() const;
 	[[nodiscard]] bool has_image() const;
 
 	/// Record intermediate scaling outside a render pass. Call draw() next
