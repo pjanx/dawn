@@ -1855,12 +1855,8 @@ scan_dir(Browser &b)
 	}
 
 	const string root = dir_path(b);
-
-	b.can_prev_dir_ = !parent_dir(dir_path(b)).empty();
-	b.can_next_dir_ = !tree_next_dir(dir_path(b), b.setup_).empty();
 	const QString parent =
 		QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
-	b.can_parent_dir_ = !parent.isEmpty() && path_to_url(parent) != b.dir_url_;
 
 	error_code ec;
 	vector<Browser::File> files;
@@ -1908,6 +1904,11 @@ scan_dir(Browser &b)
 		}
 		files.push_back(std::move(f));
 	}
+
+	b.can_parent_dir_ = !parent.isEmpty() && path_to_url(parent) != b.dir_url_;
+	b.can_prev_dir_ = !parent_dir(root).empty();
+	b.can_next_dir_ =
+		!children.empty() || !next_dir_within_parents(root, b.setup_).empty();
 
 	sort(files.begin(), files.end(),
 		[&](const Browser::File &a, const Browser::File &bfile) {
