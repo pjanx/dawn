@@ -2117,7 +2117,7 @@ case_chooser()
 		return;
 
 	AtspiAccessible *icc =
-		find_role(settings, "text", "ICC profile override (when applicable)");
+		find_role(settings, "text", "ICC profile override\n(when applicable)");
 	if (!icc) {
 		test::fail("the ICC field is not named by its label");
 		g_object_unref(settings);
