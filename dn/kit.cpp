@@ -4327,6 +4327,7 @@ make_title_button(Action action, const char *icon)
 {
 	auto btn = make_unique<Button>();
 	btn->flat = true;
+	btn->focus_on_press = false;
 	btn->action = action;
 	btn->icon = icon;
 	const ActionDef &d = action_def(action);
