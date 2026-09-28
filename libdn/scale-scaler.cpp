@@ -124,10 +124,17 @@ Staging::~Staging()
 	vkFreeMemory(device, memory, nullptr);
 }
 
+// The render target and its readback buffer are gone by the time this
+// returns, so that a caller may tear the device down right after.
 static bool
-readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
-	ScaleOutput *result, string *error)
+render_offscreen(ScaleScaler::Impl &s, uint32_t out_w, uint32_t out_h,
+	const ScaleView &view, ScaleOutput *result, string *error)
 {
+	Offscreen dest{s.engine};
+	if (!s.engine.create_offscreen(
+			out_w, out_h, &dest.image, &dest.mem, &dest.view, &dest.fb, error))
+		return false;
+
 	const VkDeviceSize bytes = VkDeviceSize(out_w) * out_h * 4;
 
 	Staging staging{s.device};
@@ -162,25 +169,40 @@ readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
 			staging.memory, 0))
 		return false;
 
-	if (!CALL_VK(ResetCommandBuffer, " readback", s.cmd, 0))
+	if (!CALL_VK(
+			WaitForFences, "", s.device, 1, &s.fence, VK_TRUE, UINT64_MAX)) {
+		s.device_ready = false;
+		return false;
+	}
+
+	// Recording may still fail, and the fence has to stay signalled until
+	// there actually is a submission for the next scale() to wait on.
+	if (!CALL_VK(ResetCommandBuffer, "", s.cmd, 0))
 		return false;
 
 	VkCommandBufferBeginInfo begin{
 		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 		.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 	};
-	if (!CALL_VK(BeginCommandBuffer, " readback", s.cmd, &begin))
+	if (!CALL_VK(BeginCommandBuffer, "", s.cmd, &begin))
 		return false;
 
+	const float clear[4] = {0, 0, 0, 0};
+	if (!s.engine.record(s.cmd, dest.fb, out_w, out_h, view, clear, error)) {
+		vkEndCommandBuffer(s.cmd);
+		return false;
+	}
+
+	// Include the render pass' final layout transition, not just colour writes.
 	VkImageMemoryBarrier barrier{
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
 		.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
 		.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-		.image = image,
+		.image = dest.image,
 		.subresourceRange =
 			{
 				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -188,7 +210,7 @@ readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
 				.layerCount = 1,
 			},
 	};
-	vkCmdPipelineBarrier(s.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+	vkCmdPipelineBarrier(s.cmd, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
 	VkBufferImageCopy copy{
@@ -202,9 +224,9 @@ readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
 			},
 		.imageExtent = {out_w, out_h, 1},
 	};
-	vkCmdCopyImageToBuffer(s.cmd, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		staging.buffer, 1, &copy);
-	if (!CALL_VK(EndCommandBuffer, " readback", s.cmd))
+	vkCmdCopyImageToBuffer(s.cmd, dest.image,
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, staging.buffer, 1, &copy);
+	if (!CALL_VK(EndCommandBuffer, "", s.cmd))
 		return false;
 
 	VkSubmitInfo submit{
@@ -212,9 +234,10 @@ readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
 		.commandBufferCount = 1,
 		.pCommandBuffers = &s.cmd,
 	};
-	if (!CALL_VK(
-			QueueSubmit, " readback", s.queue, 1, &submit, VK_NULL_HANDLE) ||
-		!CALL_VK(QueueWaitIdle, " readback", s.queue)) {
+	if (!CALL_VK(ResetFences, "", s.device, 1, &s.fence) ||
+		!CALL_VK(QueueSubmit, "", s.queue, 1, &submit, s.fence) ||
+		!CALL_VK(WaitForFences, "", s.device, 1, &s.fence, VK_TRUE,
+			UINT64_MAX)) {
 		s.device_ready = false;
 		return false;
 	}
@@ -250,57 +273,6 @@ readback(ScaleScaler::Impl &s, VkImage image, uint32_t out_w, uint32_t out_h,
 
 	unpremultiply_xxxa8(result->rgba8.data(), out_w, out_h, size_t(out_w) * 4);
 	return true;
-}
-
-// The render target and its readback buffer are gone by the time this
-// returns, so that a caller may tear the device down right after.
-static bool
-render_offscreen(ScaleScaler::Impl &s, uint32_t out_w, uint32_t out_h,
-	const ScaleView &view, ScaleOutput *out, string *error)
-{
-	Offscreen dest{s.engine};
-	if (!s.engine.create_offscreen(
-			out_w, out_h, &dest.image, &dest.mem, &dest.view, &dest.fb, error))
-		return false;
-
-	if (!CALL_VK(
-			WaitForFences, "", s.device, 1, &s.fence, VK_TRUE, UINT64_MAX)) {
-		s.device_ready = false;
-		return false;
-	}
-
-	// Recording may still fail, and the fence has to stay signalled until
-	// there actually is a submission for the next scale() to wait on.
-	if (!CALL_VK(ResetCommandBuffer, "", s.cmd, 0))
-		return false;
-
-	VkCommandBufferBeginInfo begin{
-		.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-	if (!CALL_VK(BeginCommandBuffer, "", s.cmd, &begin))
-		return false;
-
-	const float clear[4] = {0, 0, 0, 0};
-	if (!s.engine.record(s.cmd, dest.fb, out_w, out_h, view, clear, error)) {
-		vkEndCommandBuffer(s.cmd);
-		return false;
-	}
-	if (!CALL_VK(EndCommandBuffer, "", s.cmd))
-		return false;
-
-	VkSubmitInfo submit{
-		.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-		.commandBufferCount = 1,
-		.pCommandBuffers = &s.cmd,
-	};
-	if (!CALL_VK(ResetFences, "", s.device, 1, &s.fence) ||
-		!CALL_VK(QueueSubmit, "", s.queue, 1, &submit, s.fence) ||
-		!CALL_VK(WaitForFences, " render", s.device, 1, &s.fence, VK_TRUE,
-			UINT64_MAX)) {
-		s.device_ready = false;
-		return false;
-	}
-
-	return readback(s, dest.image, out_w, out_h, out, error);
 }
 
 void
