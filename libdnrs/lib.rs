@@ -747,29 +747,28 @@ fn decode_raw(
 }
 
 fn decode_image(
-	data: Vec<u8>,
+	data: &[u8],
 	first_frame_only: bool,
 ) -> Result<dnrs_decoder, String> {
 	image_extras::register();
 
-	if let Ok(format) = image::guess_format(&data) {
-		return decode_image_rs(&data, format, first_frame_only);
+	if let Ok(format) = image::guess_format(data) {
+		return decode_image_rs(data, format, first_frame_only);
 	}
 	#[cfg(feature = "jpeg2000")]
 	if data.starts_with(&[0xff, 0x4f, 0xff, 0x51])
 		|| data.starts_with(&[0, 0, 0, 12, b'j', b'P', b' ', b' '])
 	{
-		return decode_jpeg2000(&data);
+		return decode_jpeg2000(data);
 	}
-	if let Ok(decoder) =
-		image::codecs::tga::TgaDecoder::new(Cursor::new(data.as_slice()))
+	if let Ok(decoder) = image::codecs::tga::TgaDecoder::new(Cursor::new(data))
 	{
 		return decoder_from_still("image-rs/Tga", decoder);
 	}
 	// XPM registers a signature with image, while XBM is C source with no
 	// magic number and has to be tried explicitly.
 	if let Ok(reader) =
-		ImageReader::new(Cursor::new(data.as_slice())).with_guessed_format()
+		ImageReader::new(Cursor::new(data)).with_guessed_format()
 	{
 		if let Ok((frame, metadata)) = decode_still(reader) {
 			return decoder_from_frames(
@@ -780,13 +779,11 @@ fn decode_image(
 			);
 		}
 	}
-	if let Ok(decoder) =
-		image_extras::xbm::XbmDecoder::new(Cursor::new(data.as_slice()))
-	{
+	if let Ok(decoder) = image_extras::xbm::XbmDecoder::new(Cursor::new(data)) {
 		return decoder_from_still("image-extras/XBM", decoder);
 	}
 	#[cfg(feature = "raw")]
-	if let Ok(rawfile) = libopenraw::rawfile_from_memory(data, None) {
+	if let Ok(rawfile) = libopenraw::rawfile_from_memory(data.to_vec(), None) {
 		return decode_raw(&rawfile);
 	}
 	Err("unrecognised image data".into())
@@ -903,10 +900,10 @@ pub unsafe extern "C" fn dnrs_decoder_new(
 		if length > isize::MAX as usize {
 			return Err("input is too large".into());
 		}
-		let input = if length == 0 {
-			Vec::new()
+		let input: &[u8] = if length == 0 {
+			&[]
 		} else {
-			unsafe { std::slice::from_raw_parts(data, length) }.to_vec()
+			unsafe { std::slice::from_raw_parts(data, length) }
 		};
 		decode_image(input, first_frame_only)
 			.map(|decoder| Box::into_raw(Box::new(decoder)))

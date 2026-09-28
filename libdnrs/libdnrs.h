@@ -43,7 +43,7 @@ enum dnrs_pixel_format {
 };
 
 struct dnrs_document_info {
-	const char *codec;
+	const char *codec;  ///< Borrowed from the decoder.
 	uint32_t page_count;
 };
 
@@ -62,6 +62,8 @@ struct dnrs_page_info {
 	size_t text_length;
 };
 
+// Pixel data is owned by the caller, and released by dnrs_frame_clear(),
+// which also accepts a zero-initialized frame.
 struct dnrs_frame {
 	uint32_t width;
 	uint32_t height;
@@ -73,16 +75,24 @@ struct dnrs_frame {
 };
 
 const char *const *dnrs_mime_types(size_t *length);
+
+// Decodes everything at once, so the input is only needed during the call.
+// Functions that fail return false or NULL, and set any non-NULL `error`,
+// which must then be freed with dnrs_error_free().  They reset it on success.
 struct dnrs_decoder *dnrs_decoder_new(const uint8_t *data, size_t length,
 	bool first_frame_only, struct dnrs_error **error);
 bool dnrs_decoder_get_info(const struct dnrs_decoder *decoder,
 	struct dnrs_document_info *info, struct dnrs_error **error);
+// Iteration only moves forward.  False without an error means exhaustion.
+// Frames are those of the current page, which next_page() must select first.
 bool dnrs_decoder_next_page(struct dnrs_decoder *decoder,
 	struct dnrs_page_info *page, struct dnrs_error **error);
+// Overwrites `frame`, which must be cleared first if it holds pixels.
 bool dnrs_decoder_next_frame(struct dnrs_decoder *decoder,
 	struct dnrs_frame *frame, struct dnrs_error **error);
 const char *dnrs_error_message(const struct dnrs_error *error);
 void dnrs_frame_clear(struct dnrs_frame *frame);
+// Invalidates everything borrowed from it, but not frames already returned.
 void dnrs_decoder_free(struct dnrs_decoder *decoder);
 void dnrs_error_free(struct dnrs_error *error);
 
