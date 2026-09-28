@@ -612,10 +612,11 @@ fn decode_image_rs(
 			)?
 		}
 		ImageFormat::Png => {
-			let mut decoder =
-				image::codecs::png::PngDecoder::new(Cursor::new(data))
-					.map_err(|e| e.to_string())?;
-			set_decoder_limits(&mut decoder)?;
+			let mut decoder = image::codecs::png::PngDecoder::with_limits(
+				Cursor::new(data),
+				image_limits(),
+			)
+			.map_err(|e| e.to_string())?;
 			let metadata = collect_metadata(&mut decoder)?;
 			if decoder.is_apng().map_err(|e| e.to_string())? {
 				let apng = decoder.apng().map_err(|e| e.to_string())?;
@@ -627,7 +628,9 @@ fn decode_image_rs(
 					first_frame_only,
 				)?
 			} else {
-				decode_still_frames(data, format)?
+				let image = DynamicImage::from_decoder(decoder)
+					.map_err(|e| e.to_string())?;
+				(vec![frame_from_dynamic(image, 0)?], metadata, 0)
 			}
 		}
 		ImageFormat::WebP => {
@@ -645,7 +648,9 @@ fn decode_image_rs(
 					first_frame_only,
 				)?
 			} else {
-				decode_still_frames(data, format)?
+				let image = DynamicImage::from_decoder(decoder)
+					.map_err(|e| e.to_string())?;
+				(vec![frame_from_dynamic(image, 0)?], metadata, 0)
 			}
 		}
 		ImageFormat::Tiff => {
