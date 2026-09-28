@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include <libdn/libdn.hpp>
+
 #include "url.hpp"
 
 #include <QDir>
@@ -84,6 +86,26 @@ url_parse_name(const QUrl &url)
 	if (abs.startsWith(home + sep, cs))
 		return QChar(u'~') + abs.mid(home.size());
 	return abs;
+}
+
+filesystem::path
+utf8_to_fs_path(const string &path)
+{
+#ifdef Q_OS_WIN
+	return dawn::utf8_to_wide(path);
+#else
+	return path;
+#endif
+}
+
+string
+fs_path_to_utf8(const filesystem::path &path)
+{
+#ifdef Q_OS_WIN
+	return dawn::wide_to_utf8(path.generic_wstring());
+#else
+	return path.generic_string();
+#endif
 }
 
 }  // namespace dn

@@ -104,8 +104,8 @@ list_volumes()
 			continue;
 
 		wchar_t drive[] = {letter, L':', L'\\', 0};
-		volumes.push_back({narrow(drive), narrow(get_drive_label(drive)),
-			get_drive_icon(letter)});
+		volumes.push_back({string{char('A' + i), ':', '/'},
+			narrow(get_drive_label(drive)), get_drive_icon(letter)});
 	}
 	return volumes;
 }

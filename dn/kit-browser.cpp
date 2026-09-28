@@ -1628,10 +1628,11 @@ hit_file(const Browser &b, float x, float y)
 }
 
 static bool
-same_path(const filesystem::path &a, const filesystem::path &b)
+same_path(const string &a, const string &b)
 {
 	error_code ec;
-	if (filesystem::equivalent(a, b, ec) && !ec)
+	if (filesystem::equivalent(utf8_to_fs_path(a), utf8_to_fs_path(b), ec) &&
+		!ec)
 		return true;
 	return a == b;
 }
@@ -1649,12 +1650,12 @@ without_trailing_sep(filesystem::path p)
 }
 
 static string
-dir_basename(const filesystem::path &dir)
+dir_basename(const string &dir)
 {
-	const filesystem::path p = without_trailing_sep(dir);
-	string s = p.filename().string();
+	const filesystem::path p = without_trailing_sep(utf8_to_fs_path(dir));
+	string s = fs_path_to_utf8(p.filename());
 	if (s.empty() || s == ".")
-		s = p.string();
+		s = fs_path_to_utf8(p);
 	return s.empty() ? string("/") : s;
 }
 
@@ -1713,23 +1714,24 @@ dir_ent_less(const BrowseSetup &setup, const DirEnt &a, const DirEnt &c)
 }
 
 static vector<string>
-list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
+list_subdirs(const string &dir, const BrowseSetup &setup)
 {
 	vector<DirEnt> kids;
 	error_code ec;
-	for (const auto &ent : filesystem::directory_iterator(dir, ec)) {
+	for (const auto &ent :
+		filesystem::directory_iterator(utf8_to_fs_path(dir), ec)) {
 		if (ec)
 			break;
 
 		error_code fec;
-		const string name = ent.path().filename().string();
+		const string name = fs_path_to_utf8(ent.path().filename());
 		if (setup.filter_files && hidden_name(name))
 			continue;
 		if (!ent.is_directory(fec) || fec)
 			continue;
 
 		DirEnt kid;
-		kid.path = ent.path().string();
+		kid.path = fs_path_to_utf8(ent.path());
 		kid.name = name;
 		kid.mtime = dir_ent_mtime(ent);
 		kids.push_back(std::move(kid));
@@ -1745,7 +1747,7 @@ list_subdirs(const filesystem::path &dir, const BrowseSetup &setup)
 }
 
 static int
-index_of_dir(const vector<string> &dirs, const filesystem::path &self)
+index_of_dir(const vector<string> &dirs, const string &self)
 {
 	for (int i = 0; i < int(dirs.size()); i++) {
 		if (same_path(dirs[size_t(i)], self))
@@ -1755,13 +1757,13 @@ index_of_dir(const vector<string> &dirs, const filesystem::path &self)
 }
 
 static string
-parent_dir(const filesystem::path &dir)
+parent_dir(const string &dir)
 {
-	const filesystem::path p = without_trailing_sep(dir);
+	const filesystem::path p = without_trailing_sep(utf8_to_fs_path(dir));
 	const filesystem::path parent = p.parent_path();
 	if (parent.empty() || parent == p)
 		return {};
-	return parent.string();
+	return fs_path_to_utf8(parent);
 }
 
 static string
@@ -1772,7 +1774,8 @@ last_deep_subdir(
 	if (!seen)
 		seen = &local;
 	error_code ec;
-	string key = filesystem::weakly_canonical(dir, ec).string();
+	string key =
+		fs_path_to_utf8(filesystem::weakly_canonical(utf8_to_fs_path(dir), ec));
 	if (key.empty())
 		key = dir;
 	if (!seen->insert(key).second)
@@ -1784,7 +1787,7 @@ last_deep_subdir(
 }
 
 static string
-next_dir_within_parents(const filesystem::path &dir, const BrowseSetup &setup)
+next_dir_within_parents(const string &dir, const BrowseSetup &setup)
 {
 	const string parent = parent_dir(dir);
 	if (parent.empty())
@@ -1798,7 +1801,7 @@ next_dir_within_parents(const filesystem::path &dir, const BrowseSetup &setup)
 }
 
 static string
-tree_prev_dir(const filesystem::path &dir, const BrowseSetup &setup)
+tree_prev_dir(const string &dir, const BrowseSetup &setup)
 {
 	const string parent = parent_dir(dir);
 	if (parent.empty())
@@ -1812,7 +1815,7 @@ tree_prev_dir(const filesystem::path &dir, const BrowseSetup &setup)
 }
 
 static string
-tree_next_dir(const filesystem::path &dir, const BrowseSetup &setup)
+tree_next_dir(const string &dir, const BrowseSetup &setup)
 {
 	const vector<string> kids = list_subdirs(dir, setup);
 	if (!kids.empty())
@@ -1821,8 +1824,8 @@ tree_next_dir(const filesystem::path &dir, const BrowseSetup &setup)
 }
 
 static void
-push_place(Browser &b, const filesystem::path &root, string path,
-	const char *name, const char *icon, string tip = {})
+push_place(Browser &b, const string &root, string path, const char *name,
+	const char *icon, string tip = {})
 {
 	Browser::DirRow row;
 	row.path = std::move(path);
@@ -1867,7 +1870,7 @@ scan_dir(Browser &b)
 		return;
 	}
 
-	const filesystem::path root(dir_path(b));
+	const string root = dir_path(b);
 
 	b.can_prev_dir_ = !parent_dir(dir_path(b)).empty();
 	b.can_next_dir_ = !tree_next_dir(dir_path(b), b.setup_).empty();
@@ -1878,17 +1881,18 @@ scan_dir(Browser &b)
 	error_code ec;
 	vector<Browser::File> files;
 	vector<DirEnt> children;
-	for (const auto &ent : filesystem::directory_iterator(root, ec)) {
+	for (const auto &ent :
+		filesystem::directory_iterator(utf8_to_fs_path(root), ec)) {
 		if (ec)
 			break;
 
 		error_code fec;
-		const string name = ent.path().filename().string();
+		const string name = fs_path_to_utf8(ent.path().filename());
 		if (b.setup_.filter_files && hidden_name(name))
 			continue;
 		if (ent.is_directory(fec) && !fec) {
 			DirEnt kid;
-			kid.path = ent.path().string();
+			kid.path = fs_path_to_utf8(ent.path());
 			kid.name = name;
 			kid.mtime = dir_ent_mtime(ent);
 			children.push_back(std::move(kid));
@@ -1903,8 +1907,7 @@ scan_dir(Browser &b)
 			continue;
 
 		Browser::File f;
-		// Generic, so that it also keys the lookup from URLs on Windows.
-		f.path = ent.path().generic_string();
+		f.path = fs_path_to_utf8(ent.path());
 		f.name = name;
 		QFileInfo info(QString::fromStdString(f.path));
 		f.mtime = info.lastModified().toMSecsSinceEpoch();
@@ -1991,7 +1994,7 @@ scan_dir(Browser &b)
 	b.side_dirs_.push_back({});
 
 	vector<filesystem::path> ancestors;
-	filesystem::path cur = without_trailing_sep(root);
+	filesystem::path cur = without_trailing_sep(utf8_to_fs_path(root));
 	while (true) {
 		filesystem::path ancestor = cur.parent_path();
 		if (ancestor.empty() || ancestor == cur)
@@ -2005,14 +2008,14 @@ scan_dir(Browser &b)
 	reverse(ancestors.begin(), ancestors.end());
 	for (const filesystem::path &p : ancestors) {
 		Browser::DirRow row;
-		row.path = p.string();
-		row.name = dir_basename(p);
+		row.path = fs_path_to_utf8(p);
+		row.name = dir_basename(row.path);
 		row.icon = "go-up-symbolic";
 		b.side_dirs_.push_back(std::move(row));
 	}
 	{
 		Browser::DirRow row;
-		row.path = without_trailing_sep(root).string();
+		row.path = fs_path_to_utf8(without_trailing_sep(utf8_to_fs_path(root)));
 		row.name = dir_basename(root);
 		row.icon = "dot-large-symbolic";
 		row.current = true;

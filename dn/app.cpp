@@ -199,16 +199,17 @@ static string
 canonical_dir(const string &path)
 {
 	error_code ec;
-	filesystem::path p = filesystem::weakly_canonical(path, ec);
+	filesystem::path p =
+		filesystem::weakly_canonical(utf8_to_fs_path(path), ec);
 	if (ec)
-		p = path;
+		p = utf8_to_fs_path(path);
 	while (p.filename().empty()) {
 		const filesystem::path parent = p.parent_path();
 		if (parent.empty() || parent == p)
 			break;
 		p = parent;
 	}
-	return p.string();
+	return fs_path_to_utf8(p);
 }
 
 void
