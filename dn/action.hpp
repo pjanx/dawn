@@ -181,7 +181,6 @@ QString menu_label(const char *label, int *mnemonic_index);
 const char *action_label(const ActionDef &, bool checked);
 const char *action_icon(const ActionDef &, bool checked);
 QString action_tip(const ActionDef &, bool checked);
-QString action_accel(const ActionDef &);
 
 std::span<const Action> window_keys();
 

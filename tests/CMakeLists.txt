@@ -184,7 +184,8 @@ add_executable(test-text test-text.cpp
 	"${PROJECT_SOURCE_DIR}/dn/text.cpp"
 	"${PROJECT_SOURCE_DIR}/${DN_TEXT_SOURCE}")
 target_include_directories(test-text PRIVATE "${PROJECT_SOURCE_DIR}/dn")
-target_link_libraries(test-text PRIVATE Qt6::Gui ${DN_TEXT_LIBRARIES})
+# The native backend needs whatever dn links it with.
+target_link_libraries(test-text PRIVATE $<TARGET_PROPERTY:dn,LINK_LIBRARIES>)
 add_test(NAME text COMMAND test-text)
 
 add_executable(test-thumbnail-cache

@@ -230,7 +230,7 @@ make_item(Viewer &v, const ToolbarSpec &spec)
 		n->hittable = true;
 		n->align = Align::Center;
 		n->tip_text = action_tip(action_def(Action::ZoomLevel), false);
-		n->tip_accel = action_accel(action_def(Action::ZoomLevel));
+		n->tip_accel = accel_label(action_def(Action::ZoomLevel));
 		v.scale_label_ = n.get();
 
 		sync_scale_label(v);
@@ -1112,11 +1112,8 @@ start_open(Viewer &v, bool invalidate)
 		v.worker_->detached = false;
 		v.worker_->desired[0] = path;
 		v.worker_->current_ready = cached;
-		v.worker_->pending_preloads.erase(
-			remove_if(v.worker_->pending_preloads.begin(),
-				v.worker_->pending_preloads.end(),
-				[&](const OpenJob &job) { return job.key.path == path; }),
-			v.worker_->pending_preloads.end());
+		erase_if(v.worker_->pending_preloads,
+			[&](const OpenJob &job) { return job.key.path == path; });
 		if (invalidate)
 			v.worker_->pending_preloads.clear();
 		if (cached || job_active(*v.worker_, v.load_epoch_, key))
@@ -1139,12 +1136,9 @@ schedule_preloads(Viewer &v)
 		return !path.empty() && path != current &&
 			(path == v.previous_path_ || path == v.next_path_);
 	};
-	v.open_cache_.erase(remove_if(v.open_cache_.begin(), v.open_cache_.end(),
-							[&](const Viewer::CachedOpen &entry) {
-								return entry.key.path != current &&
-									!wanted(entry.key.path);
-							}),
-		v.open_cache_.end());
+	erase_if(v.open_cache_, [&](const Viewer::CachedOpen &entry) {
+		return entry.key.path != current && !wanted(entry.key.path);
+	});
 	if (!v.worker_)
 		return;
 	vector<string> missing;
@@ -1166,11 +1160,8 @@ schedule_preloads(Viewer &v)
 		auto desired_job = [&](const OpenJob &job) {
 			return job.epoch == v.load_epoch_ && wanted(job.key.path);
 		};
-		v.worker_->pending_preloads.erase(
-			remove_if(v.worker_->pending_preloads.begin(),
-				v.worker_->pending_preloads.end(),
-				[&](const OpenJob &job) { return !desired_job(job); }),
-			v.worker_->pending_preloads.end());
+		erase_if(v.worker_->pending_preloads,
+			[&](const OpenJob &job) { return !desired_job(job); });
 		for (const string &path : missing) {
 			const Viewer::OpenKey key{path, false};
 			const bool pending = any_of(v.worker_->pending_preloads.begin(),

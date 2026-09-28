@@ -113,14 +113,14 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	}
 	add_sep();
 	auto *copy = add_item_with_mnemonic(N_("_Copy"));
-	copy->accel = action_accel(action_def(Action::Copy));
+	copy->accel = accel_label(action_def(Action::Copy));
 	copy->on_click = [url](Kit &) {
 		const QUrl urls[] = {url};
 		copy_files(urls, false);
 	};
 	if (QFileInfo(path).isFile() && this->on_trash) {
 		auto *trash = add_item_with_mnemonic(N_("Move to _Trash"));
-		trash->accel = action_accel(action_def(Action::Trash));
+		trash->accel = accel_label(action_def(Action::Trash));
 		trash->on_click = [this, url](Kit &) {
 			if (this->on_trash)
 				this->on_trash(url);
@@ -1052,7 +1052,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 
 	// macOS has a real menu bar for this; everywhere else it is a button
 	// at the far end of the toolbar.
-	this->app_menu = make_unique<Menu>();
 #ifndef Q_OS_MACOS
 	if (this->toolbar && this->toolbar->left) {
 		auto app = make_unique<Button>();
@@ -1063,10 +1062,11 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		// the keyboard; it is also what an icon-only control is read out as.
 		const ActionDef &def = action_def(Action::Menu);
 		app->tip_text = action_tip(def, false);
-		app->tip_accel = action_accel(def);
+		app->tip_accel = accel_label(def);
 		app->activate_on_press = true;
 		app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
 		this->app_menu_button = app.get();
+		this->app_menu = make_unique<Menu>();
 		if (!this->toolbar->left->items_.empty())
 			this->toolbar->left->add_item(make_unique<Sep>(), 0);
 		this->toolbar->left->add_item(std::move(app), 0);

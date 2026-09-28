@@ -523,6 +523,7 @@ qt_add_executable(dn
 	dn/app.cpp
 	dn/display-profile.cpp
 	dn/gpu.cpp
+	dn/instance.cpp
 	dn/kit-browser.cpp
 	dn/kit-chrome.cpp
 	dn/kit-cie-diagram.cpp
@@ -576,17 +577,16 @@ dawn_embed_shader(dn dn-thumb.frag dn_thumb_frag)
 dawn_embed_shader(dn dn-present.frag dn_present_frag)
 
 if (WIN32)
+	set(DN_TEXT_SOURCE dn/text-windows.cpp)
 	target_sources(dn PRIVATE
+		${DN_TEXT_SOURCE}
 		dn/display-profile-windows.cpp
 		dn/assoc-windows.cpp
-		dn/text-windows.cpp
 		dn/volumes-windows.cpp
 		dn/window-appearance-windows.cpp
 	)
 	target_link_libraries(dn PRIVATE
 		dwrite dwmapi dxgi gdi32 shell32 shlwapi ole32 advapi32 user32)
-	set(DN_TEXT_SOURCE dn/text-windows.cpp)
-	set(DN_TEXT_LIBRARIES dwrite)
 	set_target_properties(dn PROPERTIES WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 elseif (APPLE)
 	find_library(DN_APPKIT_FRAMEWORK AppKit REQUIRED)
@@ -595,11 +595,12 @@ elseif (APPLE)
 	find_library(DN_CORESERVICES_FRAMEWORK CoreServices REQUIRED)
 	find_library(DN_UNIFORMTYPES_FRAMEWORK UniformTypeIdentifiers REQUIRED)
 	find_library(DN_IOKIT_FRAMEWORK IOKit REQUIRED)
+	set(DN_TEXT_SOURCE dn/text-macos.mm)
 	target_sources(dn PRIVATE
+		${DN_TEXT_SOURCE}
 		dn/display-profile-macos.mm
 		dn/assoc-macos.mm
 		dn/app-menu-macos.mm
-		dn/text-macos.mm
 		dn/window-appearance-macos.mm
 		dn/volumes-macos.mm
 	)
@@ -610,18 +611,15 @@ elseif (APPLE)
 		"${DN_CORESERVICES_FRAMEWORK}"
 		"${DN_UNIFORMTYPES_FRAMEWORK}"
 		"${DN_IOKIT_FRAMEWORK}")
-	set(DN_TEXT_SOURCE dn/text-macos.mm)
-	set(DN_TEXT_LIBRARIES
-		"${DN_APPKIT_FRAMEWORK}" "${DN_COREGRAPHICS_FRAMEWORK}"
-		"${DN_CORETEXT_FRAMEWORK}")
 else()
 	pkg_check_modules(COLORD REQUIRED IMPORTED_TARGET colord)
 	pkg_check_modules(PANGOFT2 REQUIRED IMPORTED_TARGET
 		pangoft2>=1.48 pangofc>=1.48 freetype2>=2.11)
+	set(DN_TEXT_SOURCE dn/text-linux.cpp)
 	target_sources(dn PRIVATE
+		${DN_TEXT_SOURCE}
 		dn/display-profile-linux.cpp
 		dn/assoc-unix.cpp
-		dn/text-linux.cpp
 		dn/volumes-unix.cpp
 	)
 	target_link_libraries(dn PRIVATE PkgConfig::COLORD PkgConfig::PANGOFT2)
@@ -629,11 +627,7 @@ else()
 		pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb xcb-randr)
 		target_link_libraries(dn PRIVATE PkgConfig::XCB)
 	endif()
-	set(DN_TEXT_SOURCE dn/text-linux.cpp)
-	set(DN_TEXT_LIBRARIES PkgConfig::PANGOFT2)
 endif()
-
-target_sources(dn PRIVATE dn/instance.cpp)
 
 # Application icon: SVG → PNG/ICO (xT) on non-Apple; Swift squircle ICNS (xM)
 # on Darwin. Qt looks up IDI_ICON1 and nothing else.

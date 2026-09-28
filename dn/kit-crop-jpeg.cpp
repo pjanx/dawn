@@ -457,7 +457,7 @@ Cropper::paint(Kit &kit) const
 	if (!this->image_) {
 		Label hint;
 		hint.text = QString::fromUtf8(_("Open a JPEG file")) +
-			QStringLiteral(" — ") + action_accel(action_def(Action::Open));
+			QStringLiteral(" — ") + accel_label(action_def(Action::Open));
 		hint.dim = true;
 		hint.align = Align::Center;
 		hint.r = this->r;
@@ -593,7 +593,7 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 			label->hittable = true;
 			label->align = Align::Center;
 			label->tip_text = action_tip(action_def(spec.action), false);
-			label->tip_accel = action_accel(action_def(spec.action));
+			label->tip_accel = accel_label(action_def(spec.action));
 			if (spec.action == Action::CropRegion)
 				c->region_label_ = label.get();
 			if (spec.action == Action::ZoomLevel)

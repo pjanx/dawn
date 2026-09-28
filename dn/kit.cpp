@@ -4195,7 +4195,7 @@ Toolbar::sync_buttons()
 			btn->invalidate_measure();
 		btn->icon = icon;
 		btn->tip_text = action_tip(d, on);
-		btn->tip_accel = action_accel(d);
+		btn->tip_accel = accel_label(d);
 	};
 	// items_, not kids: what the overflow is holding is still ours to sync.
 	auto walk = [&apply](const ToolbarSlot *row) {
@@ -4331,7 +4331,7 @@ make_title_button(Action action, const char *icon)
 	btn->icon = icon;
 	const ActionDef &d = action_def(action);
 	btn->tip_text = action_tip(d, false);
-	btn->tip_accel = action_accel(d);
+	btn->tip_accel = accel_label(d);
 	return btn;
 }
 

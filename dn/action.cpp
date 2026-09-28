@@ -92,8 +92,12 @@ constexpr ActionDef kDefs[] = {
 #endif
 		}, {}},
 	{kMenu, {N_("_Settings...")}, {}, {{Qt::Key_Comma, kCtrl}}, {}},
-	// TODO(p): Skip on macOS entirely, as it uses the global menu.
-	{0, {N_("_Menu")}, {}, {{Qt::Key_F10}}, {}},
+	// macOS has a global menu bar instead.
+	{0, {N_("_Menu")}, {}, {
+#ifndef Q_OS_MACOS
+		{Qt::Key_F10},
+#endif
+		}, {}},
 	// The context menu action is mostly for documentation only.
 	{0, {N_("_Context Menu")}, {}, {{Qt::Key_Menu}, {Qt::Key_F10, kShift}}, {}},
 	{0, {N_("_Cancel")}, {}, {{Qt::Key_Escape}}, {}},
@@ -616,12 +620,6 @@ QString
 action_tip(const ActionDef &def, bool checked)
 {
 	return menu_label(action_label(def, checked), nullptr);
-}
-
-QString
-action_accel(const ActionDef &def)
-{
-	return accel_label(def);
 }
 
 static constexpr ModeDef kModes[] = {
