@@ -850,6 +850,23 @@ Window::refresh_screen_profile(QScreen *target_screen)
 			source = discover().source;
 		}
 	}
+#if DN_WITH_WAYLAND
+	// Short of a profile, an SDR output is what the compositor describes,
+	// which then applies any profile it has been set up with itself.
+	// KWin does so without registering its outputs with colord.
+	if (!next && shell) {
+		if (const auto &preferred = shell->color_bridge().output().preferred) {
+			const auto &xy = preferred->primaries;
+			const double white_point[2] = {xy[6], xy[7]};
+			next = state.cmm->get_profile_parametric(
+				preferred->gamma, white_point, xy.data());
+			if (next) {
+				label = N_("the compositor's output description");
+				source = "compositor";
+			}
+		}
+	}
+#endif
 	// The output's own primaries.  Under Advanced Color, any working space
 	// that covers the display converts exactly to scRGB, and this one never
 	// meets an integer swapchain, which Windows reads as sRGB, the fallback.

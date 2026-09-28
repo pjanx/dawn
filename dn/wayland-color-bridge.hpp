@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace dn
@@ -22,9 +23,18 @@ namespace dn
 
 class Window;
 
+/// An SDR description as an encoding: its own primaries, then white,
+/// in CIE 1931 xy, under a pure power curve.
+struct WaylandEncoding {
+	std::array<double, 8> primaries{};
+	double gamma = 0;
+};
+
 /// What the compositor tells of the output, and of itself.
 struct WaylandOutput {
 	DisplayRange range;
+	/// The preferred description, when it is an SDR encoding.
+	std::optional<WaylandEncoding> preferred;
 	/// Parametric descriptions with luminances, usable primaries,
 	/// and the extended linear transfer function.
 	bool extended = false;
@@ -47,8 +57,11 @@ class WaylandColorBridge
 	struct Info {
 		uint32_t max = 0, reference = 0;
 		uint32_t target_min = 0, target_max = 0;
+		std::array<int32_t, 8> primaries{};
 		std::array<int32_t, 8> target_primaries{};
+		uint32_t gamma = 0;  ///< Times 10000, zero for no pure power curve
 		bool parametric = false;
+		bool have_primaries = false;
 		bool have_target_primaries = false;
 	};
 
@@ -121,13 +134,18 @@ class WaylandColorBridge
 		void *data, wp_image_description_v1 *description, uint32_t);
 	static void info_icc_file(
 		void *, wp_image_description_info_v1 *, int32_t fd, uint32_t);
-	static void info_ignore_primaries(void *, wp_image_description_info_v1 *,
-		int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t);
+	static void info_primaries(void *data, wp_image_description_info_v1 *,
+		int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y, int32_t b_x,
+		int32_t b_y, int32_t w_x, int32_t w_y);
 	static void info_target_primaries(void *data,
 		wp_image_description_info_v1 *, int32_t r_x, int32_t r_y, int32_t g_x,
 		int32_t g_y, int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y);
 	static void info_ignore_u32(
 		void *, wp_image_description_info_v1 *, uint32_t);
+	static void info_tf_power(
+		void *data, wp_image_description_info_v1 *, uint32_t eexp);
+	static void info_tf_named(
+		void *data, wp_image_description_info_v1 *, uint32_t tf);
 	static void info_luminances(void *data, wp_image_description_info_v1 *,
 		uint32_t min_lum, uint32_t max_lum, uint32_t reference_lum);
 	static void info_target_luminance(void *data,

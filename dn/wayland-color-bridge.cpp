@@ -439,10 +439,13 @@ WaylandColorBridge::info_icc_file(
 }
 
 void
-WaylandColorBridge::info_ignore_primaries(void *,
-	wp_image_description_info_v1 *, int32_t, int32_t, int32_t, int32_t, int32_t,
-	int32_t, int32_t, int32_t)
+WaylandColorBridge::info_primaries(void *data, wp_image_description_info_v1 *,
+	int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y, int32_t b_x,
+	int32_t b_y, int32_t w_x, int32_t w_y)
 {
+	auto *self = (WaylandColorBridge *) data;
+	self->pending_.primaries = {r_x, r_y, g_x, g_y, b_x, b_y, w_x, w_y};
+	self->pending_.have_primaries = true;
 }
 
 void
@@ -459,6 +462,33 @@ void
 WaylandColorBridge::info_ignore_u32(
 	void *, wp_image_description_info_v1 *, uint32_t)
 {
+}
+
+void
+WaylandColorBridge::info_tf_power(
+	void *data, wp_image_description_info_v1 *, uint32_t eexp)
+{
+	((WaylandColorBridge *) data)->pending_.gamma = eexp;
+}
+
+// Only pure power curves describe SDR encodings we can target.  BT.1886 is 2.4
+// with a black offset, which Mutter leaves out, and so do we.
+void
+WaylandColorBridge::info_tf_named(
+	void *data, wp_image_description_info_v1 *, uint32_t tf)
+{
+	auto *self = (WaylandColorBridge *) data;
+	switch (tf) {
+	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22:
+		self->pending_.gamma = 22000;
+		break;
+	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA28:
+		self->pending_.gamma = 28000;
+		break;
+	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_BT1886:
+		self->pending_.gamma = 24000;
+		break;
+	}
 }
 
 void
@@ -481,8 +511,9 @@ WaylandColorBridge::info_target_luminance(void *data,
 }
 
 // Everything the information brought takes effect together.  Only the HDR
-// display test and the target primaries need the screen profile refreshed;
-// luminances just move the headroom, and the HDR variant with it.
+// display test, the preferred encoding, and the target primaries need
+// the screen profile refreshed; luminances just move the headroom,
+// and the HDR variant with it.
 void
 WaylandColorBridge::info_done(void *data, wp_image_description_info_v1 *info)
 {
@@ -508,6 +539,13 @@ WaylandColorBridge::info_done(void *data, wp_image_description_info_v1 *info)
 			xy[i] = now.target_primaries[i] / 1e6;
 		range.primaries = xy;
 	}
+	self->output_.preferred.reset();
+	if (!range.hdr && now.parametric && now.have_primaries && now.gamma) {
+		WaylandEncoding &encoding = self->output_.preferred.emplace();
+		for (size_t i = 0; i < encoding.primaries.size(); i++)
+			encoding.primaries[i] = now.primaries[i] / 1e6;
+		encoding.gamma = now.gamma / 1e4;
+	}
 
 	if (!range.hdr) {
 		// An SDR output takes the preferred description as it is.
@@ -529,6 +567,8 @@ WaylandColorBridge::info_done(void *data, wp_image_description_info_v1 *info)
 	}
 
 	const bool heavy = range.hdr != was_hdr ||
+		now.have_primaries != old.have_primaries ||
+		now.primaries != old.primaries || now.gamma != old.gamma ||
 		now.have_target_primaries != old.have_target_primaries ||
 		now.target_primaries != old.target_primaries;
 	if (heavy)
@@ -574,10 +614,10 @@ const wp_image_description_info_v1_listener WaylandColorBridge::kInfoListener =
 	{
 		.done = info_done,
 		.icc_file = info_icc_file,
-		.primaries = info_ignore_primaries,
+		.primaries = info_primaries,
 		.primaries_named = info_ignore_u32,
-		.tf_power = info_ignore_u32,
-		.tf_named = info_ignore_u32,
+		.tf_power = info_tf_power,
+		.tf_named = info_tf_named,
 		.luminances = info_luminances,
 		.target_primaries = info_target_primaries,
 		.target_luminance = info_target_luminance,
