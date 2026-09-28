@@ -35,6 +35,9 @@ type_name(uint32_t type)
 	return out;
 }
 
+namespace
+{
+
 struct Entry {
 	uint32_t type;
 	span<const uint8_t> data;
@@ -55,6 +58,12 @@ struct IconInfo {
 	uint32_t mask_type = 0;
 	bool combined_mask = false;
 };
+
+struct Color {
+	uint8_t r, g, b;
+};
+
+}  // namespace
 
 static IconInfo
 icon_info(uint32_t type)
@@ -160,10 +169,6 @@ find_entry(const vector<Entry> &entries, uint32_t type)
 		[type](const Entry &e) { return e.type == type; });
 	return it == entries.end() ? nullptr : &*it;
 }
-
-struct Color {
-	uint8_t r, g, b;
-};
 
 static Color
 palette4(uint8_t index)

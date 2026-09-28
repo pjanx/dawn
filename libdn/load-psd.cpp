@@ -51,11 +51,16 @@ enum {
 
 // --- Reading -----------------------------------------------------------------
 
+namespace
+{
+
 struct Reader {
 	span<const uint8_t> data;
 	size_t offset = 0;
 	bool ok = true;
 };
+
+}  // namespace
 
 static const uint8_t *
 take(Reader &r, size_t length)
@@ -92,6 +97,9 @@ read64(Reader &r)
 
 // --- Header ------------------------------------------------------------------
 
+namespace
+{
+
 struct Header {
 	bool psb = false;
 	uint16_t file_channels = 0;  ///< As stored, spot channels included.
@@ -101,6 +109,8 @@ struct Header {
 	uint32_t color_channels = 0;  ///< Implied by `color_mode`.
 	uint32_t channels = 0;        ///< What we actually decode.
 };
+
+}  // namespace
 
 static const char *
 color_mode_name(uint16_t mode)
@@ -129,6 +139,9 @@ color_mode_name(uint16_t mode)
 
 // --- Image resources ---------------------------------------------------------
 
+namespace
+{
+
 struct Resources {
 	vector<uint8_t> icc;
 	vector<uint8_t> exif;
@@ -136,6 +149,8 @@ struct Resources {
 	/// Resource 1057 was present, and said the composite is a white dummy.
 	bool dummy_merged_data = false;
 };
+
+}  // namespace
 
 static void
 parse_resources(

@@ -52,6 +52,9 @@ constexpr uint64_t kMaxEntrySize = 256 << 20;
 
 // --- Central directory -------------------------------------------------------
 
+namespace
+{
+
 struct ZipEntry {
 	string name;
 	uint16_t method = 0;
@@ -59,6 +62,14 @@ struct ZipEntry {
 	uint64_t uncompressed_size = 0;
 	uint64_t local_header_offset = 0;
 };
+
+struct Directory {
+	uint64_t entries = 0;
+	uint64_t offset = 0;
+	uint64_t size = 0;
+};
+
+}  // namespace
 
 /// The end of central directory record is last, but a comment may follow it,
 /// so it needs to be searched for, and its length field confirms the find.
@@ -73,12 +84,6 @@ find_eocd(span<const uint8_t> data)
 	}
 	return nullptr;
 }
-
-struct Directory {
-	uint64_t entries = 0;
-	uint64_t offset = 0;
-	uint64_t size = 0;
-};
 
 static bool
 find_directory(span<const uint8_t> data, Directory *out)
