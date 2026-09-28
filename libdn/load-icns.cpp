@@ -381,7 +381,7 @@ decode_rgb24(const Entry &entry, const IconInfo &info,
 	const vector<Entry> &entries, Error *error)
 {
 	size_t pixels = size_t(info.width) * info.height;
-	vector<uint8_t> channels(pixels * 3);
+	vector<uint8_t> channels;
 	span<const uint8_t> data = entry.data;
 	bool interleaved = data.size() == pixels * 4;
 	if (!interleaved) {
@@ -392,6 +392,7 @@ decode_rgb24(const Entry &entry, const IconInfo &info,
 			}
 			data = data.subspan(4);
 		}
+		channels.resize(pixels * 3);
 		for (int c = 0; c < 3; c++)
 			if (!decode_rle_channel(data,
 					span<uint8_t>(channels).subspan(size_t(c) * pixels, pixels),
