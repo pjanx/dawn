@@ -118,7 +118,6 @@ class OverlayVulkan
 	VkDeviceMemory thumb_memory_ = VK_NULL_HANDLE;
 	VkImageView thumb_view_ = VK_NULL_HANDLE;
 	int thumb_side_ = 0;
-	int thumb_atlas_max_ = 2048;
 
 	VkBuffer quad_buffer_ = VK_NULL_HANDLE;
 	VkDeviceMemory quad_memory_ = VK_NULL_HANDLE;
@@ -130,6 +129,9 @@ class OverlayVulkan
 	VkDeviceSize staging_size_ = 0;
 
 public:
+	/// The largest thumbnail atlas side the device takes, set by init().
+	int thumb_atlas_max = 2048;
+
 	OverlayVulkan() = default;
 	~OverlayVulkan() { destroy(); }
 
@@ -143,7 +145,6 @@ public:
 	// Upload requests copy borrowed pixels immediately; GPU work is deferred.
 	bool upload_font(
 		const uint16_t *pixels, int width, int height, Sheet::Packed dirty);
-	[[nodiscard]] int thumb_atlas_max() const { return this->thumb_atlas_max_; }
 	bool upload_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	bool rebuild_thumbs(std::span<const AtlasUpload> uploads, int atlas_side);
 	void reset_thumbs();
@@ -182,7 +183,6 @@ class Renderer
 	uint32_t queue_family_ = 0;
 
 	VkFormat format_ = VK_FORMAT_B8G8R8A8_UNORM;
-	VkColorSpaceKHR color_space_ = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
 	VkPresentModeKHR present_mode_ = VK_PRESENT_MODE_FIFO_KHR;
 	VkSwapchainKHR swapchain_ = VK_NULL_HANDLE;
 	VkExtent2D extent_{};
@@ -221,13 +221,7 @@ private:
 	VkSampler presentation_sampler_ = VK_NULL_HANDLE;
 	VkDescriptorPool presentation_pool_ = VK_NULL_HANDLE;
 	VkDescriptorSet presentation_set_ = VK_NULL_HANDLE;
-	bool needs_resize_ = false;
 	bool extended_ = false;
-	PresentationTarget presentation_;
-	Presentation presented_ = Presentation::Encoded;
-	bool prefer_premultiplied_ = false;
-	bool dither_enabled_ = true;
-	uint32_t dest_inset_ = 0;
 	std::function<void()> present_about_to_queue_;
 	std::function<void()> present_queued_;
 
@@ -236,6 +230,18 @@ public:
 	// belong to the renderer; checker_size is in device pixels.
 	dawn::ScaleView view;
 	dawn::Filter preferred_filter = dawn::Filter::Expensive;
+	/// Its white is SDR white for extended frames, where no latch gives it:
+	/// Windows's follows a slider that no notification reports.
+	PresentationTarget presentation;
+	bool prefer_premultiplied = false;
+	bool dither_enabled = true;
+	uint32_t dest_inset = 0;
+
+	/// As the swapchain has it.
+	VkColorSpaceKHR color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	/// What the last presented frame got.
+	Presentation presented = Presentation::Encoded;
+	bool needs_resize = false;
 
 	Renderer() = default;
 	~Renderer() { destroy(); }
@@ -251,25 +257,13 @@ public:
 		size_t stride, const dawn::GainMap *map);
 	void clear_image();
 	void set_well_colour(float r, float g, float b);
-	void set_prefer_premultiplied(bool enabled)
-	{
-		this->prefer_premultiplied_ = enabled;
-	}
-	void set_dither_enabled(bool enabled) { this->dither_enabled_ = enabled; }
-	void set_dest_inset(uint32_t px) { this->dest_inset_ = px; }
 	void set_checker_colour(float r, float g, float b);
 	void set_encoding(std::shared_ptr<const dawn::ProfileEncoding> encoding);
-	void set_presentation(PresentationTarget target);
-	/// SDR white for extended frames, where no latch gives it: Windows's
-	/// follows a slider that no notification reports.
-	void set_white(float white) { this->presentation_.white = white; }
 	/// Whether the surface has the format extended presentation needs.
 	/// Asked anew each time, as drivers may change it with the display mode.
 	[[nodiscard]] bool offers_extended() const;
 	/// Format, colour space and dithering, as the swapchain has them.
 	[[nodiscard]] std::string swapchain_summary() const;
-	/// What the last presented frame got.
-	[[nodiscard]] Presentation presented() const { return this->presented_; }
 	void resize(Extent pixel);
 	// False means no swapchain image was immediately available.
 	bool draw_frame(const OverlayMesh &mesh, bool show_image);
@@ -278,11 +272,6 @@ public:
 	[[nodiscard]] Extent extent() const
 	{
 		return {this->extent_.width, this->extent_.height};
-	}
-	[[nodiscard]] bool needs_resize() const { return this->needs_resize_; }
-	[[nodiscard]] VkColorSpaceKHR color_space() const
-	{
-		return this->color_space_;
 	}
 };
 

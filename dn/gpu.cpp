@@ -33,17 +33,17 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 	string err;
 	if (!dawn::vk_create_graphics_device(instance, surface,
 			std::move(supports_present), {VK_KHR_SWAPCHAIN_EXTENSION_NAME},
-			&this->phys_, &this->device_, &this->queue_, &this->queue_family_,
+			&this->phys, &this->device, &this->queue, &this->queue_family,
 			&err)) {
 		qWarning("%s", err.c_str());
 		return false;
 	}
 	// Vulkan 1.1 only knows the driver through this extension.
 	uint32_t count = 0;
-	vkEnumerateDeviceExtensionProperties(this->phys_, nullptr, &count, nullptr);
+	vkEnumerateDeviceExtensionProperties(this->phys, nullptr, &count, nullptr);
 	vector<VkExtensionProperties> extensions(count);
 	vkEnumerateDeviceExtensionProperties(
-		this->phys_, nullptr, &count, extensions.data());
+		this->phys, nullptr, &count, extensions.data());
 	const bool tells_driver = any_of(extensions.begin(), extensions.end(),
 		[](const VkExtensionProperties &e) {
 			return !strcmp(e.extensionName,
@@ -56,40 +56,39 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
 		.pNext = tells_driver ? &driver : nullptr,
 	};
-	vkGetPhysicalDeviceProperties2(this->phys_, &properties);
-	this->device_name_ = properties.properties.deviceName;
+	vkGetPhysicalDeviceProperties2(this->phys, &properties);
+	this->device_name = properties.properties.deviceName;
 	if (tells_driver)
-		this->driver_ =
+		this->driver =
 			string(driver.driverName) + " " + string(driver.driverInfo);
-	qInfo("device: %s (%s)", this->device_name_.c_str(),
-		this->driver_.c_str());
+	qInfo("device: %s (%s)", this->device_name.c_str(), this->driver.c_str());
 	return true;
 }
 
 void
 GpuContext::destroy()
 {
-	if (this->device_) {
-		vkDeviceWaitIdle(this->device_);
-		vkDestroyDevice(this->device_, nullptr);
+	if (this->device) {
+		vkDeviceWaitIdle(this->device);
+		vkDestroyDevice(this->device, nullptr);
 	}
-	this->phys_ = VK_NULL_HANDLE;
-	this->device_ = VK_NULL_HANDLE;
-	this->queue_ = VK_NULL_HANDLE;
-	this->queue_family_ = 0;
-	this->device_name_.clear();
-	this->driver_.clear();
+	this->phys = VK_NULL_HANDLE;
+	this->device = VK_NULL_HANDLE;
+	this->queue = VK_NULL_HANDLE;
+	this->queue_family = 0;
+	this->device_name.clear();
+	this->driver.clear();
 }
 
 bool
 GpuContext::supports_present(VkSurfaceKHR surface) const
 {
-	if (!this->phys_ || !surface)
+	if (!this->phys || !surface)
 		return false;
 
 	VkBool32 present = VK_FALSE;
 	vkGetPhysicalDeviceSurfaceSupportKHR(
-		this->phys_, this->queue_family_, surface, &present);
+		this->phys, this->queue_family, surface, &present);
 	return present == VK_TRUE;
 }
 

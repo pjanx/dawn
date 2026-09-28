@@ -250,11 +250,11 @@ Renderer::init(const GpuContext &gpu, QWindow *window, VkSurfaceKHR surface,
 	destroy();
 	this->window_ = window;
 	this->surface_ = surface;
-	this->phys_ = gpu.phys();
+	this->phys_ = gpu.phys;
 	this->preferred_filter = dawn::preferred_filter(this->phys_);
-	this->device_ = gpu.device();
-	this->queue_ = gpu.queue();
-	this->queue_family_ = gpu.queue_family();
+	this->device_ = gpu.device;
+	this->queue_ = gpu.queue;
+	this->queue_family_ = gpu.queue_family;
 	// TODO: Validate device_ and surface_ before querying their present modes.
 	// Current callers guarantee both, but Renderer::init should not rely on
 	// that.
@@ -366,7 +366,7 @@ bool
 Renderer::dithering() const
 {
 	const int bits = dither_bits(this->format_);
-	return !this->extended_ && this->dither_enabled_ && bits > 0 && bits <= 10;
+	return !this->extended_ && this->dither_enabled && bits > 0 && bits <= 10;
 }
 
 // Encoded presentation keeps its UNORM composition, bit for bit.
@@ -405,12 +405,6 @@ Renderer::set_encoding(shared_ptr<const dawn::ProfileEncoding> encoding)
 		die(error.c_str());
 }
 
-void
-Renderer::set_presentation(PresentationTarget target)
-{
-	this->presentation_ = std::move(target);
-}
-
 bool
 Renderer::offers_extended() const
 {
@@ -430,7 +424,7 @@ string
 Renderer::swapchain_summary() const
 {
 	return string(vk_format_name(this->format_)) + " + " +
-		vk_colorspace_name(this->color_space_) + " (dither: " +
+		vk_colorspace_name(this->color_space) + " (dither: " +
 		to_string(dithering() ? dither_bits(this->format_) : 0) + " bpc)";
 }
 
@@ -463,17 +457,17 @@ Renderer::create_swapchain()
 		die("surface exposes no formats");
 
 	const VkFormat old_format = this->format_;
-	const VkColorSpaceKHR old_color_space = this->color_space_;
+	const VkColorSpaceKHR old_color_space = this->color_space;
 	const VkSurfaceFormatKHR picked =
 		pick_surface_format(formats, this->extended_);
 	this->extended_ = picked.format == kExtendedFormat;
 	this->format_ = picked.format;
-	this->color_space_ = picked.colorSpace;
+	this->color_space = picked.colorSpace;
 	if (this->format_ != old_format)
 		destroy_presentation_pipeline();
-	if (this->format_ != old_format || this->color_space_ != old_color_space) {
+	if (this->format_ != old_format || this->color_space != old_color_space) {
 		qInfo("swapchain: %s", swapchain_summary().c_str());
-		if (this->color_space_ != VK_COLOR_SPACE_PASS_THROUGH_EXT &&
+		if (this->color_space != VK_COLOR_SPACE_PASS_THROUGH_EXT &&
 			!this->extended_)
 			qWarning("swapchain: PASS_THROUGH unavailable; "
 					 "using compositor-managed sRGB");
@@ -491,7 +485,7 @@ Renderer::create_swapchain()
 		image_count = capabilities.maxImageCount;
 	VkCompositeAlphaFlagBitsKHR composite_alpha =
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	if (this->prefer_premultiplied_) {
+	if (this->prefer_premultiplied) {
 		if (capabilities.supportedCompositeAlpha &
 			VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
 			composite_alpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
@@ -516,7 +510,7 @@ Renderer::create_swapchain()
 		.surface = this->surface_,
 		.minImageCount = image_count,
 		.imageFormat = this->format_,
-		.imageColorSpace = this->color_space_,
+		.imageColorSpace = this->color_space,
 		.imageExtent = this->extent_,
 		.imageArrayLayers = 1,
 		.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -632,7 +626,7 @@ Renderer::set_checker_colour(float r, float g, float b)
 void
 Renderer::resize(Extent pixel)
 {
-	this->needs_resize_ = false;
+	this->needs_resize = false;
 	this->want_extent_ = {pixel.width, pixel.height};
 	if (this->device_)
 		create_swapchain();
@@ -652,7 +646,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	// A frame the platform does not take drops what it latched.
 	const bool draw_image = show_image && this->engine_.has_image();
 	const bool hdr_page = draw_image && this->view.hdr;
-	const PresentationTarget &target = this->presentation_;
+	const PresentationTarget &target = this->presentation;
 	auto settle = [&](Presentation wanted, float *white) {
 		*white = target.white;
 		return target.latch ? target.latch(wanted, white) : wanted;
@@ -666,9 +660,9 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 		this->extended_ = !this->extended_;
 		create_swapchain();
 		// The format list may change with HDR before the profile does:
-		// wait for the next set_presentation() rather than retry every frame.
+		// wait for the next presentation target rather than retry every frame.
 		if (!this->extended_ && presentation != Presentation::Encoded) {
-			this->presentation_.capable = false;
+			this->presentation.capable = false;
 			presentation = settle(Presentation::Encoded, &white);
 		}
 		if (!this->swapchain_)
@@ -684,12 +678,12 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	if (acquire == VK_NOT_READY || acquire == VK_TIMEOUT)
 		return false;
 	if (acquire == VK_ERROR_OUT_OF_DATE_KHR) {
-		this->needs_resize_ = true;
+		this->needs_resize = true;
 		return true;
 	}
 	if (acquire != VK_SUCCESS && acquire != VK_SUBOPTIMAL_KHR)
 		check_vk(acquire, "vkAcquireNextImageKHR");
-	this->presented_ = presentation;
+	this->presented = presentation;
 
 	CALL_VK(ResetFences, "", this->device_, 1, &this->fence_);
 	CALL_VK(ResetCommandBuffer, "", this->cmd_, 0);
@@ -758,7 +752,7 @@ Renderer::draw_frame(const OverlayMesh &mesh, bool show_image)
 	if (this->present_queued_)
 		this->present_queued_();
 	if (present == VK_ERROR_OUT_OF_DATE_KHR || present == VK_SUBOPTIMAL_KHR)
-		this->needs_resize_ = true;
+		this->needs_resize = true;
 	else
 		check_vk(present, "vkQueuePresentKHR");
 	return true;
@@ -862,9 +856,9 @@ VkRect2D
 Renderer::begin_composition(VkCommandBuffer cmd) const
 {
 	const uint32_t inset =
-		(this->dest_inset_ > 0 && this->extent_.width > this->dest_inset_ * 2 &&
-			this->extent_.height > this->dest_inset_ * 2)
-		? this->dest_inset_
+		(this->dest_inset > 0 && this->extent_.width > this->dest_inset * 2 &&
+			this->extent_.height > this->dest_inset * 2)
+		? this->dest_inset
 		: 0;
 	const VkRect2D area{.offset = {int32_t(inset), int32_t(inset)},
 		.extent = {
@@ -1141,7 +1135,7 @@ Renderer::record_presentation(
 	};
 	for (size_t c = 0; c < 3; c++)
 		for (size_t r = 0; r < 3; r++)
-			push.matrix[c][r] = float(this->presentation_.matrix[c][r]);
+			push.matrix[c][r] = float(this->presentation.matrix[c][r]);
 	vkCmdPushConstants(cmd, this->presentation_layout_,
 		VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof push, &push);
 	vkCmdDraw(cmd, 3, 1, 0, 0);
@@ -1377,7 +1371,7 @@ OverlayVulkan::compute_thumb_atlas_max()
 			break;
 		side *= 2;
 	}
-	this->thumb_atlas_max_ = int(best);
+	this->thumb_atlas_max = int(best);
 }
 
 bool

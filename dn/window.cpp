@@ -247,7 +247,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		qWarning("Qt failed to create a Vulkan window surface");
 		return false;
 	}
-	if (!this->app_->gpu.device()) {
+	if (!this->app_->gpu.device) {
 		if (!this->app_->gpu.init(instance->vkInstance(), this->surface_,
 				[this, instance](VkPhysicalDevice physical, uint32_t family) {
 					return instance->supportsPresent(physical, family, this);
@@ -264,8 +264,8 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 	// path can wait inside vkQueuePresentKHR while the workspace is hidden.
 	// TODO: Pass an explicit presentation policy from WaylandWindow instead of
 	// using parenthood as this platform/role proxy.
-	this->renderer_.set_prefer_premultiplied(this->csd_);
-	this->renderer_.set_dither_enabled(!this->app_->settings.disable_dithering);
+	this->renderer_.prefer_premultiplied = this->csd_;
+	this->renderer_.dither_enabled = !this->app_->settings.disable_dithering;
 	if (!this->renderer_.init(
 			this->app_->gpu, this, this->surface_, pixel_size(),
 			parent() ? VK_PRESENT_MODE_MAILBOX_KHR : VK_PRESENT_MODE_FIFO_KHR,
@@ -288,8 +288,8 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		macos_watch_screen_parameters([this] { refresh_headroom(); });
 	this->app_->settings.listen(this, [this](SettingsChange change) {
 		if (change == SettingsChange::Preferences) {
-			this->renderer_.set_dither_enabled(
-				!this->app_->settings.disable_dithering);
+			this->renderer_.dither_enabled =
+				!this->app_->settings.disable_dithering;
 			this->settings_apply_pending_ = true;
 		}
 		if (this->browser_)
@@ -941,7 +941,7 @@ Window::refresh_screen_profile(QScreen *target_screen)
 			return shell->color_bridge().latch(wanted, white);
 		};
 #endif
-	this->renderer_.set_presentation(std::move(target));
+	this->renderer_.presentation = std::move(target);
 
 	const bool changed = !profiles_equal(state.profile.get(), next.get());
 	state.profile = std::move(next);
@@ -979,8 +979,8 @@ Window::about_details() const
 	// the others pass linear light on to the system.
 	static const char *const kPresentations[] = {
 		N_("Encoded"), N_("SDR"), N_("HDR")};
-	QString presentation = QString::fromUtf8(
-		_(kPresentations[size_t(this->renderer_.presented())]));
+	QString presentation =
+		QString::fromUtf8(_(kPresentations[size_t(this->renderer_.presented)]));
 	if (!this->screen_state_.capable)
 		presentation =
 			QString::fromUtf8(_("%1, extended presentation unavailable"))
@@ -994,9 +994,9 @@ Window::about_details() const
 				  .arg(this->screen_state_.headroom, 0, 'f', 2)
 			: QString::fromUtf8(_("SDR")));
 
-	QString gpu = QString::fromStdString(this->app_->gpu.device_name());
-	if (!this->app_->gpu.driver().empty())
-		gpu += " (" + QString::fromStdString(this->app_->gpu.driver()) + ")";
+	QString gpu = QString::fromStdString(this->app_->gpu.device_name);
+	if (!this->app_->gpu.driver.empty())
+		gpu += " (" + QString::fromStdString(this->app_->gpu.driver) + ")";
 	details.emplace_back(N_("GPU"), gpu);
 #ifdef Q_OS_MACOS
 	const string tag = macos_layer_colour_space(this);
@@ -1090,7 +1090,7 @@ Window::sync_csd()
 	const float dpr = host_dpr(*this);
 	const uint32_t inset =
 		shadow ? uint32_t(max(0L, lround(double(kGlowPts) * double(dpr)))) : 0;
-	this->renderer_.set_dest_inset(inset);
+	this->renderer_.dest_inset = inset;
 }
 
 void
@@ -1283,7 +1283,7 @@ Window::render()
 		// swapchain image. Visible surfaces get another bounded attempt.
 		this->present_retry_.start(16);
 	}
-	if (this->renderer_.needs_resize()) {
+	if (this->renderer_.needs_resize) {
 		this->resize_pending_ = true;
 		request_render();
 	}
@@ -1319,7 +1319,7 @@ Window::refresh_headroom()
 		return;
 	}
 	this->advanced_color_ = now;
-	this->renderer_.set_white(now.white);
+	this->renderer_.presentation.white = now.white;
 	set_headroom(now.range.headroom);
 	request_render();
 #endif

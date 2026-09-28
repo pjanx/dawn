@@ -177,7 +177,7 @@ public:
 	[[nodiscard]] bool renderer_ready() const { return this->renderer_ready_; }
 	[[nodiscard]] VkColorSpaceKHR color_space() const
 	{
-		return this->renderer_.color_space();
+		return this->renderer_.color_space;
 	}
 };
 

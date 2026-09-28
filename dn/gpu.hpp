@@ -20,14 +20,15 @@ namespace dn
 // produce CPU pixels only.
 class GpuContext
 {
-	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
-	VkDevice device_ = VK_NULL_HANDLE;
-	VkQueue queue_ = VK_NULL_HANDLE;
-	uint32_t queue_family_ = 0;
-	std::string device_name_;
-	std::string driver_;
-
 public:
+	VkPhysicalDevice phys = VK_NULL_HANDLE;
+	VkDevice device = VK_NULL_HANDLE;
+	VkQueue queue = VK_NULL_HANDLE;
+	uint32_t queue_family = 0;
+	std::string device_name;
+	/// The driver's name and version, where the device can tell.
+	std::string driver;
+
 	GpuContext() = default;
 	~GpuContext() { destroy(); }
 
@@ -40,17 +41,6 @@ public:
 
 	// Later windows: present support on the chosen family. False if not ready.
 	[[nodiscard]] bool supports_present(VkSurfaceKHR surface) const;
-
-	[[nodiscard]] VkPhysicalDevice phys() const { return this->phys_; }
-	[[nodiscard]] VkDevice device() const { return this->device_; }
-	[[nodiscard]] VkQueue queue() const { return this->queue_; }
-	[[nodiscard]] uint32_t queue_family() const { return this->queue_family_; }
-	[[nodiscard]] const std::string &device_name() const
-	{
-		return this->device_name_;
-	}
-	/// The driver's name and version, where the device can tell.
-	[[nodiscard]] const std::string &driver() const { return this->driver_; }
 };
 
 }  // namespace dn

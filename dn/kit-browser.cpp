@@ -231,7 +231,7 @@ static int
 thumb_atlas_max(const Browser &b)
 {
 	if (b.kit_.renderer_)
-		return b.kit_.renderer_->overlay.thumb_atlas_max();
+		return b.kit_.renderer_->overlay.thumb_atlas_max;
 	return Sheet::kSize;
 }
 

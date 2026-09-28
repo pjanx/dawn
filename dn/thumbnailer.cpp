@@ -460,12 +460,12 @@ Thumbnailer::init(const GpuContext &gpu)
 {
 	if (impl_->scaler)
 		return true;
-	if (!gpu.phys() || !gpu.device() || !gpu.queue())
+	if (!gpu.phys || !gpu.device || !gpu.queue)
 		return false;
 
 	auto scaler = make_unique<dawn::ThumbScaler>();
 	string error;
-	if (!scaler->init(gpu.phys(), gpu.device(), gpu.queue(), gpu.queue_family(),
+	if (!scaler->init(gpu.phys, gpu.device, gpu.queue, gpu.queue_family,
 			kThumbRingBytes, &error)) {
 		qWarning("dawn::ThumbScaler init failed: %s", error.c_str());
 		return false;
