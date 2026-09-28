@@ -1903,7 +1903,8 @@ scan_dir(Browser &b)
 			continue;
 
 		Browser::File f;
-		f.path = ent.path().string();
+		// Generic, so that it also keys the lookup from URLs on Windows.
+		f.path = ent.path().generic_string();
 		f.name = name;
 		QFileInfo info(QString::fromStdString(f.path));
 		f.mtime = info.lastModified().toMSecsSinceEpoch();
@@ -2234,24 +2235,18 @@ fill_places(Browser &b)
 	// drops the pointer into the dying rows, and this puts it back on their
 	// successor, leaving whatever decided the ring in the first place alone.
 	string restore_path;
-	for (const auto &item : b.place_items_) {
-		if (item.button == b.kit_.focus_) {
-			restore_path = item.path;
-			break;
-		}
-	}
-	b.place_items_.clear();
+	if (auto *focus = dynamic_cast<SideRow *>(b.kit_.focus_);
+		focus && focus->parent_ == list)
+		restore_path = focus->path;
 	list->erase_children(b.kit_, 0);
 	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
 		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
 		if (d.path.empty()) {
 			list->add_child(make_unique<Sep>(), size_t(-1));
-			b.place_items_.push_back({});
 			continue;
 		}
 
 		auto row = make_unique<SideRow>();
-		SideRow *item = row.get();
 		row->path = d.path;
 		row->browser = &b;
 		row->pad_x = kWinPadX;
@@ -2265,32 +2260,17 @@ fill_places(Browser &b)
 				open_directory(b, url_of(path));
 		};
 		list->add_child(std::move(row), size_t(-1));
-		b.place_items_.push_back({item, d.path});
 	}
 	if (!restore_path.empty()) {
-		for (size_t i = b.place_items_.size(); i--;) {
-			const auto &item = b.place_items_.at(i);
-			if (item.path == restore_path) {
-				b.kit_.reseat_focus(item.button);
+		for (size_t i = list->kids.size(); i--;) {
+			auto *row = dynamic_cast<SideRow *>(list->kids[i].get());
+			if (row && row->path == restore_path) {
+				b.kit_.reseat_focus(row);
 				break;
 			}
 		}
 	}
 	b.places_dirty_ = false;
-}
-
-static void
-sync_ui(Browser &b)
-{
-	if (b.places_dirty_)
-		fill_places(b);
-	else {
-		const size_t n = min(b.place_items_.size(), b.side_dirs_.size());
-		for (size_t i = 0; i < n; i++) {
-			if (Button *button = b.place_items_[i].button)
-				button->active = b.side_dirs_[i].current;
-		}
-	}
 }
 
 static bool
@@ -2739,7 +2719,8 @@ Browser::screen_changed(
 void
 Browser::update(Kit &)
 {
-	sync_ui(*this);
+	if (this->places_dirty_)
+		fill_places(*this);
 }
 
 void

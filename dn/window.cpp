@@ -1153,13 +1153,9 @@ Window::sync_viewer_preloads()
 int
 Window::viewer_file_index(const QUrl &url) const
 {
-	if (!this->browser_ || url.isEmpty())
+	if (!this->browser_)
 		return -1;
-	for (int n = 0; n < int(this->browser_->files_.size()); n++) {
-		if (this->browser_->file_url(n) == url)
-			return n;
-	}
-	return -1;
+	return this->browser_->file_index(url_to_path(url).toStdString());
 }
 
 void

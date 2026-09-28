@@ -91,10 +91,6 @@ struct Browser : Widget {
 		const char *icon = nullptr;
 		bool current = false;
 	};
-	struct PlaceItem {
-		Button *button = nullptr;
-		std::string path;
-	};
 	struct CachedSize {
 		int64_t mtime = 0;
 		uint64_t size = 0;
@@ -114,7 +110,6 @@ struct Browser : Widget {
 	Thumbnailer &thumbnailer_;
 	uint64_t thumbnail_client_ = 0;
 	ScrollColumn *places_ = nullptr;
-	std::vector<PlaceItem> place_items_;
 
 	// Enumeration below is std::filesystem; this is the identity above it.
 	QUrl dir_url_;
