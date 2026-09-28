@@ -1809,7 +1809,7 @@ tree_next_dir(const string &dir, const BrowseSetup &setup)
 
 static void
 push_place(Browser &b, const string &root, string path, const char *name,
-	const char *icon, string tip = {})
+	const char *icon, string tip)
 {
 	Browser::DirRow row;
 	row.path = std::move(path);
@@ -1953,10 +1953,10 @@ scan_dir(Browser &b)
 	}
 
 	for (const Volume &v : list_volumes())
-		push_place(b, root, v.path, v.name.c_str(), v.icon);
+		push_place(b, root, v.path, v.name.c_str(), v.icon, {});
 
-	push_place(
-		b, root, QDir::homePath().toStdString(), _("Home"), "go-home-symbolic");
+	push_place(b, root, QDir::homePath().toStdString(), _("Home"),
+		"go-home-symbolic", {});
 	{
 		const QString pictures =
 			QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
@@ -1965,7 +1965,7 @@ scan_dir(Browser &b)
 			const string name = info.fileName().toStdString();
 			if (!name.empty())
 				push_place(b, root, pictures.toStdString(), name.c_str(),
-					"image-symbolic");
+					"image-symbolic", {});
 		}
 	}
 
@@ -2034,8 +2034,7 @@ push_hist(vector<Browser::HistEntry> &st, const Browser &b)
 }
 
 static void
-open_directory(
-	Browser &b, const QUrl &url, bool record = true, float side_scroll = 0)
+open_directory(Browser &b, const QUrl &url, bool record, float side_scroll)
 {
 	const QUrl dir = dir_url_of(url);
 	if (dir == b.dir_url_)
@@ -2242,7 +2241,7 @@ fill_places(Browser &b)
 		const string path = d.path;
 		row->on_click = [&b, path](Kit &) {
 			if (!path.empty())
-				open_directory(b, url_of(path));
+				open_directory(b, url_of(path), true, 0);
 		};
 		list->add_child(std::move(row), size_t(-1));
 	}
@@ -2274,7 +2273,7 @@ apply_action(Browser &b, Action action)
 			return true;
 		const string p = tree_prev_dir(dir_path(b), b.setup_);
 		if (!p.empty())
-			open_directory(b, url_of(p));
+			open_directory(b, url_of(p), true, 0);
 		return true;
 	}
 	case Action::DirNext: {
@@ -2282,7 +2281,7 @@ apply_action(Browser &b, Action action)
 			return true;
 		const string p = tree_next_dir(dir_path(b), b.setup_);
 		if (!p.empty())
-			open_directory(b, url_of(p));
+			open_directory(b, url_of(p), true, 0);
 		return true;
 	}
 	case Action::DirParent: {
@@ -2290,11 +2289,11 @@ apply_action(Browser &b, Action action)
 			QFileInfo(url_to_path(b.dir_url_)).dir().absolutePath();
 		const QUrl up = path_to_url(parent);
 		if (!parent.isEmpty() && up != b.dir_url_)
-			open_directory(b, up);
+			open_directory(b, up, true, 0);
 		return true;
 	}
 	case Action::DirHome:
-		open_directory(b, path_to_url(QDir::homePath()));
+		open_directory(b, path_to_url(QDir::homePath()), true, 0);
 		return true;
 	case Action::ThumbPlus: {
 		const int idx = thumb_size_index(b.thumb_size_);
@@ -2626,7 +2625,7 @@ make_browser_page(
 void
 Browser::open_dir(const QUrl &url, bool record)
 {
-	open_directory(*this, url, record);
+	open_directory(*this, url, record, 0);
 }
 
 void

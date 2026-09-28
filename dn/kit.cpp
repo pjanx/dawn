@@ -1412,11 +1412,8 @@ Entry::reveal(const Kit &kit, int start, int end)
 	const int n = int(this->text.size());
 	start = grapheme_at_or_before(this->text, clamp(start, 0, n));
 	end = grapheme_at_or_after(this->text, clamp(end, 0, n));
-	if (end < start) {
-		const int tmp = start;
-		start = end;
-		end = tmp;
-	}
+	if (end < start)
+		swap(start, end);
 
 	const QString full = painted();
 	const int preedit_size = int(this->preedit.size());
@@ -2619,9 +2616,7 @@ Scroll::paint(Kit &kit, Rect viewport) const
 	if (thumb.w <= 0 || thumb.h <= 0)
 		return;
 
-	Colour c = kit.colours_[ColourInk];
-	c.a *= .375f;
-	kit.draw_fill(thumb, c);
+	kit.draw_fill(thumb, col(kit.colours_[ColourInk], .375f));
 }
 
 void
@@ -3897,7 +3892,7 @@ Combo::select(Kit &kit, int index)
 	if (n <= 0)
 		return;
 
-	index = max(0, min(index, n - 1));
+	index = clamp(index, 0, n - 1);
 	if (index == this->current)
 		return;
 
@@ -4015,7 +4010,7 @@ ToolbarSlot::lend_to(Overflow &overflow)
 	while (a < b && is_sep(this->items_[a]))
 		a++;
 	while (b > a && is_sep(this->items_[b - 1]))
-		--b;
+		b--;
 	if (this->borrower_ == &overflow && this->lent_first_ == a &&
 		this->lent_last_ == b)
 		return;
@@ -4125,7 +4120,7 @@ ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 			this->split_ = i + 1;
 		}
 		while (this->split_ > 0 && is_sep(this->items_[this->split_ - 1]))
-			--this->split_;
+			this->split_--;
 	}
 	this->more->set_visible(this->split_ < end);
 	sync_layout_visible();
@@ -4187,18 +4182,13 @@ Toolbar::sync_buttons()
 		btn->tip_text = action_tip(d, on);
 		btn->tip_accel = accel_label(d);
 	};
-	// items_, not kids: what the overflow is holding is still ours to sync.
-	auto walk = [&apply](const ToolbarSlot *row) {
-		if (!row)
-			return;
-		for (Widget *k : row->items_)
-			apply(k);
-	};
-	walk(this->left);
-	walk(this->mid);
-	walk(this->right);
 	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (slot && slot->more)
+		if (!slot)
+			continue;
+		// items_, not kids: what the overflow is holding is still ours to sync.
+		for (Widget *k : slot->items_)
+			apply(k);
+		if (slot->more)
 			slot->more->active = this->overflow && this->overflow->visible &&
 				this->overflow->opener == slot->more;
 	}

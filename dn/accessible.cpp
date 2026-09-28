@@ -634,12 +634,6 @@ find_registry(Window *window)
 	return it == g_registries.end() ? nullptr : &it->second;
 }
 
-static QAccessibleInterface *interface_for(Window *window, Widget *w);
-static QAccessibleInterface *interface_for_file(
-	Window *window, Browser *browser, const string &path);
-static QAccessibleInterface *client_interface(Window *window);
-static QAccessibleInterface *shell_interface(Window *window);
-
 // Whatever a mutation here changed has to reach the screen the same way it
 // would have after a keystroke; the frame settles layout, focus and the
 // input method.  Every action and every edit ends with this, and with only
@@ -650,22 +644,6 @@ schedule_render(Kit &kit)
 	if (kit.request_render)
 		kit.request_render();
 }
-
-static QAccessibleInterface *
-announced_focus(Window *window, Widget *w)
-{
-	if (!w)
-		return nullptr;
-
-	QAccessibleInterface *iface = interface_for(window, w);
-	if (iface) {
-		if (QAccessibleInterface *inner = iface->focusChild())
-			return inner;
-	}
-	return iface;
-}
-
-static void notify_focus(Window *window, Widget *w);
 
 // Nothing is listening until a client shows up, and composing notifications
 // for nobody would build the whole tree just to describe it.  Queries stay
@@ -788,6 +766,11 @@ struct WidgetAdapter : public QAccessibleInterface,
 	// Detached ahead of deletion, so that anything still holding this
 	// answers "gone" rather than walking a freed widget.
 	void detach() { this->widget_ = nullptr; }
+	// Whether a mutation may go through right now, see operable().
+	[[nodiscard]] bool actionable() const
+	{
+		return operable(this->window_, this->widget_);
+	}
 
 	bool isValid() const override { return this->widget_ != nullptr; }
 	QObject *object() const override { return nullptr; }
@@ -827,9 +810,6 @@ struct EntryAdapter final : public WidgetAdapter,
 	~EntryAdapter() override = default;
 
 	[[nodiscard]] Entry *entry() const;
-	// Whether an edit may go through right now, which is operable() plus
-	// the field still being there.
-	[[nodiscard]] bool writable() const;
 
 	void setText(QAccessible::Text t, const QString &value) override;
 	void *interface_cast(QAccessible::InterfaceType type) override;
@@ -882,8 +862,6 @@ struct BrowserAdapter final : public WidgetAdapter,
 	~BrowserAdapter() override = default;
 
 	[[nodiscard]] Browser *browser() const;
-	// Whether selection or activation may go through right now.
-	[[nodiscard]] bool actionable() const;
 	[[nodiscard]] int row_of(QAccessibleInterface *childItem) const;
 
 	QAccessibleInterface *child(int index) const override;
@@ -989,6 +967,132 @@ struct ShellAdapter final : public QAccessibleObject {
 	QAccessible::State state() const override;
 };
 }  // namespace
+
+// --- Registration ------------------------------------------------------------
+
+// The one place that decides which adapter a widget gets.  A widget never
+// changes class under it, so every later cast back is a static one.
+static WidgetAdapter *
+new_adapter(Window *window, Widget *w)
+{
+	if (auto *entry = dynamic_cast<Entry *>(w))
+		return new EntryAdapter(window, entry);
+	if (auto *browser = dynamic_cast<Browser *>(w))
+		return new BrowserAdapter(window, browser);
+	if (auto *list = dynamic_cast<ComboPopup *>(w))
+		return new ComboListAdapter(window, list);
+	if (auto *rows = dynamic_cast<FileRows *>(w))
+		return new FileRowsAdapter(window, rows);
+	return new WidgetAdapter(window, w);
+}
+
+static QAccessibleInterface *
+interface_for(Window *window, Widget *w)
+{
+	if (!window || !w)
+		return nullptr;
+
+	Registry &registry = g_registries[window];
+	auto it = registry.widgets.find(w);
+	if (it != registry.widgets.end())
+		return QAccessible::accessibleInterface(it->second);
+
+	WidgetAdapter *adapter = new_adapter(window, w);
+	registry.widgets[w] = QAccessible::registerAccessibleInterface(adapter);
+	return adapter;
+}
+
+static QAccessibleInterface *
+interface_for_file(Window *window, Browser *browser, const string &path)
+{
+	if (!window || !browser || path.empty() || browser->file_index(path) < 0)
+		return nullptr;
+
+	Registry &registry = g_registries[window];
+	auto &ids = registry.files[browser];
+	auto it = ids.find(path);
+	if (it != ids.end())
+		return QAccessible::accessibleInterface(it->second);
+
+	auto *adapter = new FileAdapter(window, browser, path);
+	ids[path] = QAccessible::registerAccessibleInterface(adapter);
+	return adapter;
+}
+
+static QAccessibleInterface *
+existing_file(Window *window, Browser *browser, const string &path)
+{
+	Registry *registry = find_registry(window);
+	if (!registry || !browser || path.empty())
+		return nullptr;
+	auto bit = registry->files.find(browser);
+	if (bit == registry->files.end())
+		return nullptr;
+	auto it = bit->second.find(path);
+	if (it == bit->second.end())
+		return nullptr;
+	return QAccessible::accessibleInterface(it->second);
+}
+
+static QAccessibleInterface *
+client_interface(Window *window)
+{
+	if (!window)
+		return nullptr;
+
+	// Where the content is a QWindow of its own, it is the client, and Qt
+	// owns that interface through the factory like any other object's.
+	if (window->shell() != window)
+		return QAccessible::queryAccessibleInterface(window);
+
+	Registry &registry = g_registries[window];
+	if (!registry.client) {
+		auto *adapter = new ClientAdapter(window);
+		registry.client = QAccessible::registerAccessibleInterface(adapter);
+	}
+	return QAccessible::accessibleInterface(registry.client);
+}
+
+static QAccessibleInterface *
+shell_interface(Window *window)
+{
+	return window ? QAccessible::queryAccessibleInterface(window->shell())
+				  : nullptr;
+}
+
+// Dawn's classes have no Q_OBJECT, so each of them answers to QWindow and
+// the class-name key says nothing useful; match the object itself instead.
+// Returning null declines, and leaves other factories free to answer.
+static QAccessibleInterface *
+accessible_factory(const QString &, QObject *object)
+{
+	auto *window = qobject_cast<QWindow *>(object);
+	if (!window)
+		return nullptr;
+
+	Window *content = content_window(window);
+	if (!content)
+		return nullptr;
+	if (content->shell() == window)
+		return new ShellAdapter(window);
+	return new ClientAdapter(content);
+}
+
+static QAccessibleInterface *
+announced_focus(Window *window, Widget *w)
+{
+	if (!w)
+		return nullptr;
+
+	QAccessibleInterface *iface = interface_for(window, w);
+	if (iface) {
+		if (QAccessibleInterface *inner = iface->focusChild())
+			return inner;
+	}
+	return iface;
+}
+
+// --- Adapters ----------------------------------------------------------------
 
 // The semantic child of scope under a screen point, or null.  Never scope
 // itself: a client descends with this, and would not know when to stop.
@@ -1170,12 +1274,6 @@ EntryAdapter::entry() const
 	return (Entry *) this->widget_;
 }
 
-bool
-EntryAdapter::writable() const
-{
-	return operable(this->window_, this->widget_);
-}
-
 BrowserAdapter::BrowserAdapter(Window *window, Browser *browser)
 	: WidgetAdapter(window, browser), last_file_rev_(browser->file_rev_)
 {
@@ -1190,12 +1288,6 @@ Browser *
 BrowserAdapter::browser() const
 {
 	return (Browser *) this->widget_;
-}
-
-bool
-BrowserAdapter::actionable() const
-{
-	return operable(this->window_, this->widget_);
 }
 
 QWindow *
@@ -1409,8 +1501,7 @@ void
 WidgetAdapter::setText(QAccessible::Text t, const QString &value)
 {
 	auto *combo = dynamic_cast<Combo *>(this->widget_);
-	if (!combo || t != QAccessible::Value ||
-		!operable(this->window_, this->widget_))
+	if (!combo || t != QAccessible::Value || !this->actionable())
 		return;
 
 	Kit &kit = this->window_->kit();
@@ -1613,7 +1704,7 @@ bool
 ComboListAdapter::select(QAccessibleInterface *childItem)
 {
 	const int choice = this->choice_of(childItem);
-	if (choice < 0 || !operable(this->window_, this->widget_))
+	if (choice < 0 || !this->actionable())
 		return false;
 
 	Kit &kit = this->window_->kit();
@@ -1675,8 +1766,7 @@ FileRowsAdapter::select(QAccessibleInterface *item)
 {
 	auto *adapter = dynamic_cast<WidgetAdapter *>(item);
 	auto *row = adapter ? dynamic_cast<FileRow *>(adapter->widget_) : nullptr;
-	if (!row || row->parent_ != this->widget_ ||
-		!operable(this->window_, this->widget_))
+	if (!row || row->parent_ != this->widget_ || !this->actionable())
 		return false;
 
 	Kit &kit = this->window_->kit();
@@ -1699,7 +1789,7 @@ FileRowsAdapter::unselect(QAccessibleInterface *item)
 bool
 FileRowsAdapter::clear()
 {
-	if (!operable(this->window_, this->widget_))
+	if (!this->actionable())
 		return false;
 	Kit &kit = this->window_->kit();
 	Kit::Input input(kit);
@@ -1734,7 +1824,7 @@ QStringList
 WidgetAdapter::actionNames() const
 {
 	QStringList names;
-	if (!operable(this->window_, this->widget_))
+	if (!this->actionable())
 		return names;
 
 	auto *button = dynamic_cast<const Button *>(this->widget_);
@@ -1782,23 +1872,10 @@ WidgetAdapter::keyBindingsForAction(const QString &name) const
 static void
 clamp_text_range(int n, int *start, int *end)
 {
-	int s = *start;
-	int e = *end;
-	if (s < 0)
-		s = 0;
-	if (e < 0)
-		e = n;
-	if (s > n)
-		s = n;
-	if (e > n)
-		e = n;
-	if (e < s) {
-		const int tmp = s;
-		s = e;
-		e = tmp;
-	}
-	*start = s;
-	*end = e;
+	*start = clamp(*start, 0, n);
+	*end = *end < 0 ? n : min(*end, n);
+	if (*end < *start)
+		swap(*start, *end);
 }
 
 // Entry has one selection at most, so adding one when there is one already
@@ -1829,7 +1906,7 @@ EntryAdapter::addSelection(int startOffset, int endOffset)
 void
 EntryAdapter::removeSelection(int selectionIndex)
 {
-	if (selectionIndex != 0 || !selectionCount() || !this->writable())
+	if (selectionIndex != 0 || !selectionCount() || !this->actionable())
 		return;
 	Kit &kit = this->window_->kit();
 	this->entry()->select(kit, this->entry()->caret, this->entry()->caret);
@@ -1839,7 +1916,7 @@ EntryAdapter::removeSelection(int selectionIndex)
 void
 EntryAdapter::setSelection(int selectionIndex, int startOffset, int endOffset)
 {
-	if (selectionIndex != 0 || !this->writable())
+	if (selectionIndex != 0 || !this->actionable())
 		return;
 	clamp_text_range(characterCount(), &startOffset, &endOffset);
 	Kit &kit = this->window_->kit();
@@ -1856,7 +1933,7 @@ EntryAdapter::cursorPosition() const
 void
 EntryAdapter::setCursorPosition(int position)
 {
-	if (!this->writable())
+	if (!this->actionable())
 		return;
 	Kit &kit = this->window_->kit();
 	this->entry()->select(kit, position, position);
@@ -2035,7 +2112,7 @@ EntryAdapter::insertText(int offset, const QString &value)
 void
 EntryAdapter::replaceText(int startOffset, int endOffset, const QString &value)
 {
-	if (!this->writable())
+	if (!this->actionable())
 		return;
 	Kit &kit = this->window_->kit();
 	this->entry()->replace(kit, startOffset, endOffset, value);
@@ -2353,116 +2430,6 @@ ShellAdapter::state() const
 	return state;
 }
 
-// --- Registration ------------------------------------------------------------
-
-// The one place that decides which adapter a widget gets.  A widget never
-// changes class under it, so every later cast back is a static one.
-static WidgetAdapter *
-new_adapter(Window *window, Widget *w)
-{
-	if (auto *entry = dynamic_cast<Entry *>(w))
-		return new EntryAdapter(window, entry);
-	if (auto *browser = dynamic_cast<Browser *>(w))
-		return new BrowserAdapter(window, browser);
-	if (auto *list = dynamic_cast<ComboPopup *>(w))
-		return new ComboListAdapter(window, list);
-	if (auto *rows = dynamic_cast<FileRows *>(w))
-		return new FileRowsAdapter(window, rows);
-	return new WidgetAdapter(window, w);
-}
-
-static QAccessibleInterface *
-interface_for(Window *window, Widget *w)
-{
-	if (!window || !w)
-		return nullptr;
-
-	Registry &registry = g_registries[window];
-	auto it = registry.widgets.find(w);
-	if (it != registry.widgets.end())
-		return QAccessible::accessibleInterface(it->second);
-
-	WidgetAdapter *adapter = new_adapter(window, w);
-	registry.widgets[w] = QAccessible::registerAccessibleInterface(adapter);
-	return adapter;
-}
-
-static QAccessibleInterface *
-interface_for_file(Window *window, Browser *browser, const string &path)
-{
-	if (!window || !browser || path.empty() || browser->file_index(path) < 0)
-		return nullptr;
-
-	Registry &registry = g_registries[window];
-	auto &ids = registry.files[browser];
-	auto it = ids.find(path);
-	if (it != ids.end())
-		return QAccessible::accessibleInterface(it->second);
-
-	auto *adapter = new FileAdapter(window, browser, path);
-	ids[path] = QAccessible::registerAccessibleInterface(adapter);
-	return adapter;
-}
-
-static QAccessibleInterface *
-existing_file(Window *window, Browser *browser, const string &path)
-{
-	Registry *registry = find_registry(window);
-	if (!registry || !browser || path.empty())
-		return nullptr;
-	auto bit = registry->files.find(browser);
-	if (bit == registry->files.end())
-		return nullptr;
-	auto it = bit->second.find(path);
-	if (it == bit->second.end())
-		return nullptr;
-	return QAccessible::accessibleInterface(it->second);
-}
-
-static QAccessibleInterface *
-client_interface(Window *window)
-{
-	if (!window)
-		return nullptr;
-
-	// Where the content is a QWindow of its own, it is the client, and Qt
-	// owns that interface through the factory like any other object's.
-	if (window->shell() != window)
-		return QAccessible::queryAccessibleInterface(window);
-
-	Registry &registry = g_registries[window];
-	if (!registry.client) {
-		auto *adapter = new ClientAdapter(window);
-		registry.client = QAccessible::registerAccessibleInterface(adapter);
-	}
-	return QAccessible::accessibleInterface(registry.client);
-}
-
-static QAccessibleInterface *
-shell_interface(Window *window)
-{
-	return window ? QAccessible::queryAccessibleInterface(window->shell())
-				  : nullptr;
-}
-
-// Dawn's classes have no Q_OBJECT, so each of them answers to QWindow and
-// the class-name key says nothing useful; match the object itself instead.
-// Returning null declines, and leaves other factories free to answer.
-static QAccessibleInterface *
-accessible_factory(const QString &, QObject *object)
-{
-	auto *window = qobject_cast<QWindow *>(object);
-	if (!window)
-		return nullptr;
-
-	Window *content = content_window(window);
-	if (!content)
-		return nullptr;
-	if (content->shell() == window)
-		return new ShellAdapter(window);
-	return new ClientAdapter(content);
-}
-
 // --- Notifications -----------------------------------------------------------
 
 static void
@@ -2522,9 +2489,7 @@ retire_widget(Registry &registry, Widget *w)
 	registry.widgets.erase(it);
 	if (registry.focus == id)
 		registry.focus = 0;
-	registry.popups.erase(
-		remove(registry.popups.begin(), registry.popups.end(), id),
-		registry.popups.end());
+	erase(registry.popups, id);
 
 	auto *adapter =
 		dynamic_cast<WidgetAdapter *>(QAccessible::accessibleInterface(id));
@@ -2723,6 +2688,45 @@ reconcile_file_selection(Window *window, BrowserAdapter *list, Browser *browser,
 	// list still has a selection change to announce.
 	QAccessibleEvent within(list, QAccessible::SelectionWithin);
 	notify(&within);
+}
+
+// Losing the focus is not gaining it elsewhere: there is one event for
+// taking the focus and none for dropping it, so the control that had it says
+// that it no longer does, and only a real new focus announces itself.
+static void
+notify_focus(Window *window, Widget *w)
+{
+	if (!QAccessible::isActive())
+		return;
+
+	Registry &registry = g_registries[window];
+	// A background window keeps its own idea of where the keyboard would go,
+	// and may even move it; none of that is the keyboard being there.
+	Widget *effective = window_active(window) ? w : nullptr;
+	QAccessibleInterface *iface = announced_focus(window, effective);
+	const QAccessible::Id id = iface ? QAccessible::uniqueId(iface) : 0;
+	// Qt hands activation from the shell to the content surface on the first
+	// click into it, which is no change at all to anybody outside.
+	if (id == registry.focus)
+		return;
+
+	const QAccessible::Id was = registry.focus;
+	registry.focus = id;
+	if (iface) {
+		// The bridge clears the previous focus as part of announcing this
+		// one, so saying it here as well would be the same news twice.
+		QAccessibleEvent event(iface, QAccessible::Focus);
+		notify(&event);
+		return;
+	}
+	// What it has no event for is focus going nowhere; without this the
+	// control that had it keeps it for as long as nothing else takes it.
+	if (QAccessibleInterface *before = QAccessible::accessibleInterface(was)) {
+		QAccessible::State changed;
+		changed.focused = 1;
+		QAccessibleStateChangeEvent event(before, changed);
+		notify(&event);
+	}
 }
 
 // Scrolling changes extents and offscreen state, and neither is anything the
@@ -2949,45 +2953,6 @@ reconcile_window(Window *window)
 
 		reconcile_children(window, adapter);
 		reconcile_widget(adapter);
-	}
-}
-
-// Losing the focus is not gaining it elsewhere: there is one event for
-// taking the focus and none for dropping it, so the control that had it says
-// that it no longer does, and only a real new focus announces itself.
-static void
-notify_focus(Window *window, Widget *w)
-{
-	if (!QAccessible::isActive())
-		return;
-
-	Registry &registry = g_registries[window];
-	// A background window keeps its own idea of where the keyboard would go,
-	// and may even move it; none of that is the keyboard being there.
-	Widget *effective = window_active(window) ? w : nullptr;
-	QAccessibleInterface *iface = announced_focus(window, effective);
-	const QAccessible::Id id = iface ? QAccessible::uniqueId(iface) : 0;
-	// Qt hands activation from the shell to the content surface on the first
-	// click into it, which is no change at all to anybody outside.
-	if (id == registry.focus)
-		return;
-
-	const QAccessible::Id was = registry.focus;
-	registry.focus = id;
-	if (iface) {
-		// The bridge clears the previous focus as part of announcing this
-		// one, so saying it here as well would be the same news twice.
-		QAccessibleEvent event(iface, QAccessible::Focus);
-		notify(&event);
-		return;
-	}
-	// What it has no event for is focus going nowhere; without this the
-	// control that had it keeps it for as long as nothing else takes it.
-	if (QAccessibleInterface *before = QAccessible::accessibleInterface(was)) {
-		QAccessible::State changed;
-		changed.focused = 1;
-		QAccessibleStateChangeEvent event(before, changed);
-		notify(&event);
 	}
 }
 

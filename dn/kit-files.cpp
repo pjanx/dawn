@@ -194,8 +194,7 @@ FileRow::paint(Kit &kit) const
 	const int icon = kit.icon_px();
 	const int th = kit.text_height(QStringLiteral("Ag"), 0, false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
-	Colour fg = kit.colours_[ColourInk];
-	fg.a *= kit.ink_alpha();
+	const Colour fg = col(kit.colours_[ColourInk], kit.ink_alpha());
 	kit.draw_icon(this->r.x + pad, this->r.y + (this->r.h - icon) / 2, icon,
 		this->icon, fg);
 

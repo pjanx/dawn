@@ -125,13 +125,10 @@ read_mime_subclasses(const QString &path, MimeDb &db)
 static bool
 read_mime_globs(const QString &path, bool is_globs2, MimeDb &db)
 {
-	QFile file(path);
-	if (!file.open(QIODevice::ReadOnly))
+	const QString text = read_text_file(path);
+	if (text.isEmpty())
 		return false;
 
-	QString text = QString::fromUtf8(file.readAll());
-	text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
-	text.replace(u'\r', u'\n');
 	for (const QString &raw : text.split(u'\n')) {
 		const QString line = raw.trimmed();
 		if (line.isEmpty() || line.startsWith(u'#'))

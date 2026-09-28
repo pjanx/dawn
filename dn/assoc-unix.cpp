@@ -793,11 +793,9 @@ set_last_used(const Handler &app, const QString &path)
 			value += u';';
 		}
 		if (value.isEmpty()) {
-			group.keys.erase(remove_if(group.keys.begin(), group.keys.end(),
-								 [&](const pair<string, string> &kv) {
-									 return kv.first == type_utf8;
-								 }),
-				group.keys.end());
+			erase_if(group.keys, [&](const pair<string, string> &kv) {
+				return kv.first == type_utf8;
+			});
 		} else {
 			dawn::ini::set(
 				group, type_utf8, value.toUtf8().toStdString());

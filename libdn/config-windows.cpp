@@ -117,7 +117,7 @@ config_get(string_view key, Error *error)
 
 	size_t length = bytes / sizeof(wchar_t);
 	while (length && data[length - 1] == L'\0')
-		--length;
+		length--;
 	return to_utf8(wstring_view(data.data(), length), error);
 }
 

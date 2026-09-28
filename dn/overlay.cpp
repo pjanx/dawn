@@ -190,8 +190,6 @@ merge_free(vector<Sheet::Packed> &free)
 	free.swap(out);
 }
 
-// --- Sheet -------------------------------------------------------------------
-
 Sheet::Sheet(int side, bool keep_pixels) : keep_pixels_(keep_pixels)
 {
 	if (side > 0)

@@ -2010,8 +2010,7 @@ Viewer::open(const QUrl &url)
 		this->image_->height) {
 		this->opening_ = false;
 		this->open_done_ = true;
-		if (this->kit_.request_render)
-			this->kit_.request_render();
+		request_render(*this);
 		return;
 	}
 	this->enhance_jpeg_ = false;
