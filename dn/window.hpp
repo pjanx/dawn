@@ -74,8 +74,6 @@ class Window final : public QWindow
 	void show_help();
 	int viewer_file_index(const QUrl &url) const;
 	void open_sibling(int delta);
-	Page *active_ui();
-	const Page *active_ui() const;
 	void drop_frames();
 	void bind_host();
 	void set_mode(Mode m);
@@ -171,7 +169,8 @@ public:
 	// QWindow itself leaves null.  The factory decides shell vs client.
 	QAccessibleInterface *accessibleRoot() const override;
 	[[nodiscard]] Kit &kit() { return this->kit_; }
-	[[nodiscard]] Page *active_page() { return active_ui(); }
+	[[nodiscard]] Page *active_page();
+	[[nodiscard]] const Page *active_page() const;
 	[[nodiscard]] const Actor *active_actor() const;
 	[[nodiscard]] std::span<const MenuNode> active_menu() const;
 	[[nodiscard]] bool renderer_ready() const { return this->renderer_ready_; }

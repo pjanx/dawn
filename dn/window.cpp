@@ -434,7 +434,7 @@ Window::bind_host()
 			open_sibling(1);
 			break;
 		case Action::Hint:
-			if (Page *ui = active_ui(); ui && ui->hint)
+			if (Page *ui = active_page(); ui && ui->hint)
 				ui->hint->open(this->kit_);
 			break;
 		case Action::Help:
@@ -442,7 +442,7 @@ Window::bind_host()
 			break;
 		case Action::About:
 		case Action::Shortcuts: {
-			Page *ui = active_ui();
+			Page *ui = active_page();
 			if (!ui)
 				break;
 
@@ -723,13 +723,13 @@ Window::sync_title()
 }
 
 Page *
-Window::active_ui()
+Window::active_page()
 {
 	return this->pages_[size_t(this->mode_)].get();
 }
 
 const Page *
-Window::active_ui() const
+Window::active_page() const
 {
 	return this->pages_[size_t(this->mode_)].get();
 }
@@ -737,7 +737,7 @@ Window::active_ui() const
 const Actor *
 Window::active_actor() const
 {
-	if (const Page *p = active_ui())
+	if (const Page *p = active_page())
 		return &p->actor;
 	return nullptr;
 }
@@ -745,7 +745,7 @@ Window::active_actor() const
 span<const MenuNode>
 Window::active_menu() const
 {
-	if (const Page *p = active_ui())
+	if (const Page *p = active_page())
 		return p->menu_tree;
 	return {};
 }
@@ -1230,7 +1230,7 @@ Window::render()
 		this->font_change_pending_ = false;
 		if (!rescale)
 			rescale = this->kit_.reset_fonts();
-	} else if (this->kit_.text_settings_changed())
+	} else if (this->kit_.text_backend_.settings_changed())
 		rescale = this->kit_.reset_fonts() || rescale;
 	if (rescale)
 		for (auto &page : this->pages_)
@@ -1239,7 +1239,7 @@ Window::render()
 
 	// Nothing to do for a resize: relayout_popups() re-places every popup
 	// and drops the ones whose opener stopped being shown.
-	Page *ui = active_ui();
+	Page *ui = active_page();
 	if (!ui)
 		return;
 
@@ -1621,11 +1621,11 @@ void
 Window::apply_window(Action a)
 {
 	if (a == Action::Menu) {
-		if (Page *ui = active_ui())
+		if (Page *ui = active_page())
 			ui->open_app_menu(this->kit_, true);
 		return;
 	}
-	if (Page *ui = active_ui(); ui && ui->actor.apply)
+	if (Page *ui = active_page(); ui && ui->actor.apply)
 		ui->actor.apply(a);
 	else if (this->host_.apply)
 		this->host_.apply(a);

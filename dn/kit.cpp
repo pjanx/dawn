@@ -533,30 +533,6 @@ emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
 			mnemonic);
 }
 
-static void
-emit_icon(Kit &kit, int x, int y, int size, const char *name, Colour colour)
-{
-	if (!name)
-		return;
-
-	const auto key = make_pair(string(name), size);
-	auto it = kit.icons_.find(key);
-	if (it == kit.icons_.end()) {
-		QImage image = raster_symbolic(name, size);
-		if (image.isNull())
-			image = raster_window_button(name, size);
-		if (image.isNull())
-			return;
-		const Kit::Packed packed = kit.pack_bitmap(image, true);
-		if (packed.empty())
-			return;
-		it = kit.icons_.emplace(key, packed).first;
-	}
-
-	kit.list_.add_image(
-		{x, y, x + size, y + size}, it->second.texels(), colour);
-}
-
 // --- Layout kit --------------------------------------------------------------
 
 constexpr float kSepW = 8.f;
@@ -806,7 +782,7 @@ Button::paint(Kit &kit) const
 	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	if (this->icon)
-		emit_icon(kit, this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
+		kit.draw_icon(this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
 			this->icon, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
@@ -960,7 +936,7 @@ Checkbox::paint(Kit &kit) const
 	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	if (this->checked)
-		emit_icon(kit, bx + border, by + border, icon, "object-select-symbolic",
+		kit.draw_icon(bx + border, by + border, icon, "object-select-symbolic",
 			col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
@@ -3665,7 +3641,7 @@ MenuItem::paint(Kit &kit) const
 		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha);
 
 	if (this->checkable && this->checked)
-		emit_icon(kit, lead_x, iy, icon, "object-select-symbolic", label_c);
+		kit.draw_icon(lead_x, iy, icon, "object-select-symbolic", label_c);
 	if (!this->text.isEmpty()) {
 		const auto &cached = this->text_cache_.get(
 			kit, this->text, cols.avail, 1, false, TextAlign::Start);
@@ -3682,7 +3658,7 @@ MenuItem::paint(Kit &kit) const
 			col(kit.colours_[ColourInk], kDimAlpha), false, -1);
 	}
 	if (this->sub) {
-		emit_icon(kit, this->r.right() - pad_x - cols.chevron, iy, icon,
+		kit.draw_icon(this->r.right() - pad_x - cols.chevron, iy, icon,
 			"go-next-symbolic",
 			col(kit.colours_[ColourInk],
 				this->enabled_ ? 1.f : kDisabledAlpha));
@@ -3863,7 +3839,7 @@ Combo::paint(Kit &kit) const
 	const int icon = kit.icon_px();
 	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
-	emit_icon(kit, this->r.right() - pad_x - icon,
+	kit.draw_icon(this->r.right() - pad_x - icon,
 		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
 		col(kit.colours_[ColourInk], ink_a));
 
@@ -4503,7 +4479,25 @@ Kit::emit_text(float x, float y, const QString &text, Colour colour, bool bold)
 void
 Kit::draw_icon(int x, int y, int size, const char *name, Colour colour)
 {
-	emit_icon(*this, x, y, size, name, colour);
+	if (!name)
+		return;
+
+	const auto key = make_pair(string(name), size);
+	auto it = this->icons_.find(key);
+	if (it == this->icons_.end()) {
+		QImage image = raster_symbolic(name, size);
+		if (image.isNull())
+			image = raster_window_button(name, size);
+		if (image.isNull())
+			return;
+		const Packed packed = pack_bitmap(image, true);
+		if (packed.empty())
+			return;
+		it = this->icons_.emplace(key, packed).first;
+	}
+
+	this->list_.add_image(
+		{x, y, x + size, y + size}, it->second.texels(), colour);
 }
 
 void
@@ -4604,12 +4598,6 @@ Kit::reset_fonts()
 	}
 	this->font_epoch_ = this->text_backend_.generation();
 	return true;
-}
-
-bool
-Kit::text_settings_changed() const
-{
-	return this->text_backend_.settings_changed();
 }
 
 int
@@ -4829,12 +4817,6 @@ Kit::focus_scope() const
 	return this->root_;
 }
 
-void
-Kit::cycle_focus(int dir)
-{
-	cycle_focus_in(focus_scope(), dir, true);
-}
-
 bool
 Kit::cycle_focus_in(Widget *scope, int dir, bool wrap)
 {
@@ -4887,7 +4869,7 @@ Kit::key(const Key &ev)
 							(ev.mods & unsigned(Qt::ShiftModifier)))
 			? -1
 			: 1;
-		cycle_focus(dir);
+		cycle_focus_in(focus_scope(), dir, true);
 		return true;
 	}
 

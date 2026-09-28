@@ -1097,7 +1097,6 @@ struct Kit {
 	// share can still reach both.
 	bool activate_mnemonic(Widget *scope, int key);
 	Widget *focus_scope() const;
-	void cycle_focus(int dir);
 	bool cycle_focus_in(Widget *scope, int dir, bool wrap);
 	void focus_first(Widget *scope);
 	bool key(const Key &ev);
@@ -1120,7 +1119,6 @@ struct Kit {
 	bool set_dpr(float dpr);
 	bool set_host(float width_pts, float height_pts, float dpr);
 	bool reset_fonts();
-	[[nodiscard]] bool text_settings_changed() const;
 	void bake_colours(const ScreenState &state);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);
 	// Coverage copies scalar alpha; other bitmaps are sRGB premultiplied.
