@@ -23,6 +23,12 @@ struct Colour {
 	bool operator==(const Colour &) const = default;
 };
 
+inline Colour
+col(const Colour &c, float alpha)
+{
+	return {c.r, c.g, c.b, c.a * alpha};
+}
+
 // Two corners in framebuffer pixels.  The overlay draws axis-aligned
 // rectangles and nothing else, and it draws them on whole pixels: anything
 // that wants to sit between two of them says so in its texture instead.

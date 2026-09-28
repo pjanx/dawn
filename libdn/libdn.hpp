@@ -259,14 +259,6 @@ enum class Orientation : int {
 	Rotate270 = 8,
 };
 
-/// 2D affine matrix (column-vector style: x' = xx*x + xy*y + x0).
-struct Matrix {
-	double xx = 1, yx = 0, xy = 0, yy = 1, x0 = 0, y0 = 0;
-};
-
-Matrix orientation_matrix(Orientation orientation, double width, double height);
-Orientation exif_orientation(std::span<const uint8_t> exif);
-
 [[nodiscard]] Orientation orientation_or_0(Orientation orientation);
 void orientation_display_size(uint32_t src_w, uint32_t src_h,
 	Orientation orientation, uint32_t *width, uint32_t *height);

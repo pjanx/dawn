@@ -206,12 +206,6 @@ resize_cursor(Qt::Edges edges)
 
 constexpr float kDialogPad = 16.f;
 
-static Colour
-col(const Colour &c, float alpha = 1.f)
-{
-	return {c.r, c.g, c.b, c.a * alpha};
-}
-
 static Kit::Packed
 pack_or_grow(Kit &kit, int width, int height)
 {
@@ -802,12 +796,11 @@ Button::paint(Kit &kit) const
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if ((this->enabled_ && pressed) || this->active)
-		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	else if (this->enabled_ && hot)
-		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
+		kit.draw_fill(this->r, kit.colours_[ColourHover]);
 	if (!this->flat)
-		kit.draw_border(
-			this->r, col(kit.colours_[ColourDivider]), kit.hairline());
+		kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
@@ -949,9 +942,9 @@ Checkbox::paint(Kit &kit) const
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if (this->enabled_ && pressed)
-		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	else if (this->enabled_ && hot)
-		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
+		kit.draw_fill(this->r, kit.colours_[ColourHover]);
 
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
@@ -960,10 +953,9 @@ Checkbox::paint(Kit &kit) const
 	const int bx = this->r.x + px;
 	const int by = this->r.y + (this->r.h - box) / 2;
 	kit.list_.add_rect_filled_vgradient({bx, by, bx + box, by + box},
-		col(kit.colours_[ColourEntryTop]),
-		col(kit.colours_[ColourEntryBottom]));
+		kit.colours_[ColourEntryTop], kit.colours_[ColourEntryBottom]);
 	kit.draw_border(
-		{bx, by, box, box}, col(kit.colours_[ColourDivider]), kit.hairline());
+		{bx, by, box, box}, kit.colours_[ColourDivider], kit.hairline());
 
 	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
@@ -1615,9 +1607,8 @@ Entry::paint(Kit &kit) const
 	const int hair = kit.hairline();
 	if (!this->flat || this->focused_ || !this->text.isEmpty())
 		kit.list_.add_rect_filled_vgradient(this->r.box(),
-			col(kit.colours_[ColourEntryTop]),
-			col(kit.colours_[ColourEntryBottom]));
-	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
+			kit.colours_[ColourEntryTop], kit.colours_[ColourEntryBottom]);
+	kit.draw_border(this->r, kit.colours_[ColourDivider], hair);
 
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 	kit.clip_to(in);
@@ -1686,7 +1677,7 @@ Entry::paint(Kit &kit) const
 			kit.draw_fill(block, col(kit.colours_[ColourInk], kit.ink_alpha()));
 			kit.clip_to(block);
 			emit_text(kit, this->text_cache_, tx, float(ty), full,
-				col(kit.colours_[ColourEntryBottom]), false, -1);
+				kit.colours_[ColourEntryBottom], false, -1);
 			kit.clip_pop();
 		}
 	}
@@ -1994,7 +1985,7 @@ Sep::paint(Kit &kit) const
 {
 	if (!shown() || this->r.w <= 0 || this->r.h <= 0)
 		return;
-	const Colour c = col(kit.colours_[ColourDivider]);
+	const Colour c = kit.colours_[ColourDivider];
 	const int inset = kit.px(2.f), gap = kit.px(4.f);
 	const int hair = kit.hairline();
 	// The rule is a band centred in the cell, which for an even hairline in
@@ -2036,7 +2027,7 @@ Splitter::paint(Kit &kit) const
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
-	kit.list_.add_rect_filled(this->r.box(), col(c));
+	kit.list_.add_rect_filled(this->r.box(), c);
 }
 
 Widget *
@@ -2816,14 +2807,13 @@ Panel::paint(Kit &kit) const
 	switch (this->fill) {
 	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.box(),
-			col(kit.colours_[ColourToolbarTop]),
-			col(kit.colours_[ColourToolbarBottom]));
+			kit.colours_[ColourToolbarTop], kit.colours_[ColourToolbarBottom]);
 		break;
 	case Fill::Tooltip:
-		kit.draw_fill(this->r, col(kit.colours_[ColourFrame]));
+		kit.draw_fill(this->r, kit.colours_[ColourFrame]);
 		break;
 	case Fill::Panel:
-		kit.draw_fill(this->r, col(kit.colours_[ColourPanel]));
+		kit.draw_fill(this->r, kit.colours_[ColourPanel]);
 		break;
 	case Fill::None:
 		break;
@@ -2832,13 +2822,13 @@ Panel::paint(Kit &kit) const
 	const int hair = kit.hairline();
 	switch (this->stroke) {
 	case Stroke::All:
-		kit.draw_border(this->r, col(kit.colours_[ColourDivider]), hair);
+		kit.draw_border(this->r, kit.colours_[ColourDivider], hair);
 		break;
 	case Stroke::Bottom:
 		kit.list_.add_rect_filled({this->r.x, this->r.bottom() - hair,
 									  this->r.right(), this->r.bottom()},
-			col(this->busy ? kit.colours_[ColourBusy]
-						   : kit.colours_[ColourDivider]));
+			this->busy ? kit.colours_[ColourBusy]
+					   : kit.colours_[ColourDivider]);
 		break;
 	case Stroke::None:
 		break;
@@ -3668,7 +3658,7 @@ MenuItem::paint(Kit &kit) const
 	// and it would stay lit behind the pointer when press-dragging through.
 	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
 	if (this->enabled_ && (this->active || kit.focus_ == this))
-		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 
 	const MenuCols cols = menu_cols(kit, *this);
 	const int icon = kit.icon_px(), pad_x = kit.px(kFramePadX);
@@ -3770,7 +3760,7 @@ ComboItem::paint(Kit &kit) const
 	// The same rule as MenuItem: the selection is kit.focus_ alone, never
 	// kit.pressed_, which would stay lit behind a press-drag through the list.
 	if (this->enabled_ && (this->active || kit.focus_ == this))
-		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	if (this->text.isEmpty())
 		return;
 
@@ -3869,10 +3859,10 @@ Combo::paint(Kit &kit) const
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if ((this->enabled_ && pressed) || this->active)
-		kit.draw_fill(this->r, col(kit.colours_[ColourPress]));
+		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	else if (this->enabled_ && hot)
-		kit.draw_fill(this->r, col(kit.colours_[ColourHover]));
-	kit.draw_border(this->r, col(kit.colours_[ColourDivider]), kit.hairline());
+		kit.draw_fill(this->r, kit.colours_[ColourHover]);
+	kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
@@ -4557,8 +4547,7 @@ Kit::draw_glow(Rect w, Colour col)
 void
 Kit::focus_ring(Rect w)
 {
-	this->list_.add_rect_stroke(
-		w.box(), col(this->colours_[ColourInk]), hairline());
+	this->list_.add_rect_stroke(w.box(), this->colours_[ColourInk], hairline());
 }
 
 void

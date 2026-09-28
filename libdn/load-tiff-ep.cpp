@@ -25,16 +25,6 @@ using namespace std;
 namespace dawn
 {
 
-// --- Minimal JPEG dimension sniffing -----------------------------------------
-// We only need pixel counts to pick the largest preview among candidates--
-// actual decoding, along with Exif/ICC extraction, is left to load_jpeg().
-
-static int64_t
-jpeg_pixel_count(const uint8_t *data, size_t len)
-{
-	return jpeg_sof_pixel_count(span<const uint8_t>(data, len));
-}
-
 // --- TIFF/EP + DNG -----------------------------------------------------------
 // In Nikon NEF files, which claim to be TIFF/EP-compatible, IFD0 is a tiny
 // uncompressed thumbnail with SubIFDs that, aside from raw sensor data,
@@ -167,7 +157,7 @@ tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 	const uint8_t *jpeg = T->begin + ipointer;
 	size_t jpeg_length = size_t(ilength);
 
-	int64_t pixels = jpeg_pixel_count(jpeg, jpeg_length);
+	int64_t pixels = jpeg_sof_pixel_count({jpeg, jpeg_length});
 	if (pixels > out->pixels) {
 		out->jpeg = jpeg;
 		out->jpeg_length = jpeg_length;

@@ -203,13 +203,7 @@ canonical_dir(const string &path)
 		filesystem::weakly_canonical(utf8_to_fs_path(path), ec);
 	if (ec)
 		p = utf8_to_fs_path(path);
-	while (p.filename().empty()) {
-		const filesystem::path parent = p.parent_path();
-		if (parent.empty() || parent == p)
-			break;
-		p = parent;
-	}
-	return fs_path_to_utf8(p);
+	return fs_path_to_utf8(without_trailing_sep(p));
 }
 
 void

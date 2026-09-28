@@ -21,7 +21,6 @@
 #include <limits>
 #include <locale>
 #include <new>
-#include <numbers>
 #include <sstream>
 #include <string_view>
 
@@ -853,92 +852,7 @@ blend_image(Image &dst, const Image &src, int dst_x, int dst_y, BlendOp op)
 	}
 }
 
-// --- Matrix ------------------------------------------------------------------
-
-static Matrix
-matrix_multiply(const Matrix &a, const Matrix &b)
-{
-	Matrix r;
-	r.xx = a.xx * b.xx + a.xy * b.yx;
-	r.yx = a.yx * b.xx + a.yy * b.yx;
-	r.xy = a.xx * b.xy + a.xy * b.yy;
-	r.yy = a.yx * b.xy + a.yy * b.yy;
-	r.x0 = a.xx * b.x0 + a.xy * b.y0 + a.x0;
-	r.y0 = a.yx * b.x0 + a.yy * b.y0 + a.y0;
-	return r;
-}
-
-static Matrix
-matrix_translate(double tx, double ty)
-{
-	Matrix m;
-	m.x0 = tx;
-	m.y0 = ty;
-	return m;
-}
-
-static Matrix
-matrix_scale(double sx, double sy)
-{
-	Matrix m;
-	m.xx = sx;
-	m.yy = sy;
-	return m;
-}
-
-static Matrix
-matrix_rotate(double radians)
-{
-	Matrix m;
-	m.xx = cos(radians);
-	m.yx = sin(radians);
-	m.xy = -sin(radians);
-	m.yy = cos(radians);
-	return m;
-}
-
 // --- Orientation -------------------------------------------------------------
-
-Matrix
-orientation_matrix(Orientation orientation, double width, double height)
-{
-	Matrix matrix;
-	constexpr double pi2 = numbers::pi / 2;
-	switch (orientation) {
-	case Orientation::Rotate90:
-		matrix = matrix_multiply(matrix_rotate(-pi2), matrix);
-		matrix = matrix_multiply(matrix_translate(-width, 0), matrix);
-		break;
-	case Orientation::Rotate180:
-		matrix = matrix_multiply(matrix_scale(-1, -1), matrix);
-		matrix = matrix_multiply(matrix_translate(-width, -height), matrix);
-		break;
-	case Orientation::Rotate270:
-		matrix = matrix_multiply(matrix_rotate(+pi2), matrix);
-		matrix = matrix_multiply(matrix_translate(0, -height), matrix);
-		break;
-	case Orientation::Mirror0:
-		matrix = matrix_multiply(matrix_scale(-1, +1), matrix);
-		matrix = matrix_multiply(matrix_translate(-width, 0), matrix);
-		break;
-	case Orientation::Mirror90:
-		matrix = matrix_multiply(matrix_rotate(+pi2), matrix);
-		matrix = matrix_multiply(matrix_scale(-1, +1), matrix);
-		matrix = matrix_multiply(matrix_translate(-width, -height), matrix);
-		break;
-	case Orientation::Mirror180:
-		matrix = matrix_multiply(matrix_scale(+1, -1), matrix);
-		matrix = matrix_multiply(matrix_translate(0, -height), matrix);
-		break;
-	case Orientation::Mirror270:
-		matrix = matrix_multiply(matrix_rotate(-pi2), matrix);
-		matrix = matrix_multiply(matrix_scale(-1, +1), matrix);
-		break;
-	default:
-		break;
-	}
-	return matrix;
-}
 
 Orientation
 orientation_or_0(Orientation orientation)
@@ -1130,7 +1044,7 @@ iso_exif_payload(span<const uint8_t> payload)
 		payload.begin() + ptrdiff_t(4 + offset), payload.end());
 }
 
-Orientation
+static Orientation
 exif_orientation(span<const uint8_t> exif)
 {
 	struct tiffer T = {};

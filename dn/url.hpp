@@ -33,5 +33,6 @@ QString url_parse_name(const QUrl &url);
 // Windows.
 std::filesystem::path utf8_to_fs_path(const std::string &path);
 std::string fs_path_to_utf8(const std::filesystem::path &path);
+std::filesystem::path without_trailing_sep(std::filesystem::path p);
 
 }  // namespace dn

@@ -81,14 +81,6 @@ namespace dn
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 800;
 
-static int
-sooner(int a, int b)
-{
-	if (a < 0)
-		return b;
-	return b < 0 ? a : min(a, b);
-}
-
 static float
 host_dpr(const QWindow &w)
 {
@@ -1121,18 +1113,12 @@ Window::toggle_fullscreen()
 }
 
 void
-Window::apply_dark(bool dark)
-{
-	this->kit_.dark_ = dark;
-	this->kit_.bake_colours(this->screen_state_);
-	sync_window_appearance(this, dark);
-	request_render();
-}
-
-void
 Window::toggle_dark()
 {
-	apply_dark(!this->kit_.dark_);
+	this->kit_.dark_ = !this->kit_.dark_;
+	this->kit_.bake_colours(this->screen_state_);
+	sync_window_appearance(this, this->kit_.dark_);
+	request_render();
 }
 
 void
@@ -1307,9 +1293,7 @@ Window::render()
 void
 Window::arm_ui_wake()
 {
-	int ms = this->kit_.wake_ms();
-	if (Page *page = active_ui(); page && page->content)
-		ms = sooner(ms, page->content->wake_ms());
+	const int ms = this->kit_.wake_ms();
 	if (ms >= 0)
 		this->ui_wake_.start(ms);
 	else
@@ -2015,10 +1999,7 @@ Window::wheelEvent(QWheelEvent *event)
 		}
 	}
 #endif
-	int delta = event->angleDelta().y();
-	if (!delta)
-		delta = event->pixelDelta().y();
-	this->kit_.mouse_scroll(x, y, delta);
+	this->kit_.mouse_scroll(x, y, wheel_axis(ang, pix, false));
 	request_render();
 	event->accept();
 }

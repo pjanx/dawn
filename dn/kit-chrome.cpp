@@ -684,12 +684,6 @@ constexpr int kNChars = size(kChars) - 1;
 constexpr float kChipPadX = 4.f;
 constexpr float kChipPadY = 2.f;
 
-static Colour
-col(const Colour &c, float alpha = 1.f)
-{
-	return {c.r, c.g, c.b, c.a * alpha};
-}
-
 // Anything the keyboard can reach is worth a hint, so this asks focusable()
 // rather than testing for a type: a widget opts in by being reachable at all.
 // The exception is a container that is focusable as a whole -- one chip over

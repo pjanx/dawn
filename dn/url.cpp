@@ -108,4 +108,16 @@ fs_path_to_utf8(const filesystem::path &path)
 #endif
 }
 
+filesystem::path
+without_trailing_sep(filesystem::path p)
+{
+	while (p.filename().empty()) {
+		const filesystem::path parent = p.parent_path();
+		if (parent.empty() || parent == p)
+			break;
+		p = parent;
+	}
+	return p;
+}
+
 }  // namespace dn

@@ -350,7 +350,7 @@ join_load_text(const vector<string> &warnings, const dawn::Error &error,
 	return out;
 }
 
-static void reload_open(Viewer &v);
+static void reload_open(Viewer &v, bool keep_view);
 
 struct Viewer::Worker {
 	struct ActiveOpen {
@@ -629,11 +629,8 @@ make_sidebar(Viewer &v, const HostActions &host)
 			return;
 
 		v.enhance_jpeg_ = v.jpeg_quant_smooth_->checked;
-		if (!v.url_.isEmpty()) {
-			v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_,
-				v.orientation_, v.angle_, v.view_locked_};
-			reload_open(v);
-		}
+		if (!v.url_.isEmpty())
+			reload_open(v, true);
 	};
 	v.jpeg_quant_smooth_ = jpegqs.get();
 	col->add_child(std::move(jpegqs), size_t(-1));
@@ -1179,8 +1176,11 @@ schedule_preloads(Viewer &v)
 }
 
 static void
-reload_open(Viewer &v)
+reload_open(Viewer &v, bool keep_view)
 {
+	if (keep_view)
+		v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_, v.orientation_,
+			v.angle_, v.view_locked_};
 	start_open(v, true);
 	schedule_preloads(v);
 }
@@ -1277,11 +1277,8 @@ static void
 toggle_cms(Viewer &v)
 {
 	v.enable_cms_ = !v.enable_cms_;
-	if (!v.url_.isEmpty()) {
-		v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_, v.orientation_,
-			v.angle_, v.view_locked_};
-		reload_open(v);
-	}
+	if (!v.url_.isEmpty())
+		reload_open(v, true);
 	request_render(v);
 }
 
@@ -1861,7 +1858,7 @@ apply_action(Viewer &v, Action action)
 		save_as(v, action == Action::SaveFrameAs);
 		return true;
 	case Action::Reload:
-		reload_open(v);
+		reload_open(v, false);
 		return true;
 	case Action::Trash:
 		if (!v.url_.isEmpty() && v.page_ && v.page_->host &&
@@ -2091,11 +2088,8 @@ Viewer::screen_changed(
 	const bool reload = !this->url_.isEmpty() &&
 		(force_reload || (this->enable_cms_ && changed));
 	this->screen_ = state;
-	if (reload) {
-		this->restore_view_ = {true, this->scale_, this->pan_x_, this->pan_y_,
-			this->orientation_, this->angle_, this->view_locked_};
-		reload_open(*this);
-	}
+	if (reload)
+		reload_open(*this, true);
 }
 
 void

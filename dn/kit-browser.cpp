@@ -1633,18 +1633,6 @@ same_path(const string &a, const string &b)
 	return a == b;
 }
 
-static filesystem::path
-without_trailing_sep(filesystem::path p)
-{
-	while (p.filename().empty()) {
-		const filesystem::path parent = p.parent_path();
-		if (parent.empty() || parent == p)
-			break;
-		p = parent;
-	}
-	return p;
-}
-
 static string
 dir_basename(const string &dir)
 {
@@ -2545,8 +2533,8 @@ Browser::paint(Kit &kit) const
 	const int th = kit.px(float(this->thumb_size_));
 	const Colour ink = kit.colours_[ColourInk];
 	const float glow_a = kit.ink_alpha();
-	const Colour glow_hot = {ink.r, ink.g, ink.b, ink.a * glow_a};
-	const Colour glow_idle = {ink.r, ink.g, ink.b, ink.a * kGlowAlpha * glow_a};
+	const Colour glow_hot = col(ink, glow_a);
+	const Colour glow_idle = col(ink, kGlowAlpha * glow_a);
 	const Colour frame = kit.colours_[ColourFrame];
 	for (int i = 0; i < int(this->files_.size()); i++) {
 		const File &f = this->files_[size_t(i)];
