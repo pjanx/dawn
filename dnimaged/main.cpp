@@ -26,7 +26,6 @@ namespace proto = dawn::ipc::imaged;
 // --- Jobs --------------------------------------------------------------------
 
 static constexpr char kService[] = "imaged";
-static constexpr uint64_t kMaxBlob = 1024ull * 1024 * 1024;
 
 static vector<byte>
 error_frame(uint64_t id, string message, dawn::ipc::ErrorCode code)
@@ -88,7 +87,7 @@ decode_job(const Job &job)
 			dawn::ipc::ErrorCode::InvalidArgument);
 		return reply;
 	}
-	if (image->data.empty() || image->data.size() > kMaxBlob) {
+	if (image->data.empty() || image->data.size() > proto::kImagedMaxBlobSize) {
 		reply.payload = error_frame(job.request, "decoded pixmap is too large",
 			dawn::ipc::ErrorCode::InvalidArgument);
 		return reply;
@@ -167,8 +166,8 @@ handle_payload(State &state, uint64_t connection, span<const byte> payload,
 	auto job = make_shared<Job>();
 	job->request = request->request.id;
 	span<const byte> data;
-	if (const char *failure = dawn::ipc::take_blob(
-			request_decode.data, owned, kMaxBlob, data, job->shared))
+	if (const char *failure = dawn::ipc::take_blob(request_decode.data, owned,
+			proto::kImagedMaxBlobSize, data, job->shared))
 		return invalid(failure);
 	if (!job->shared.ok())
 		job->data.assign(data.begin(), data.end());

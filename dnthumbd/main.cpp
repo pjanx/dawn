@@ -25,7 +25,6 @@ namespace proto = dawn::ipc::thumbd;
 // --- Jobs --------------------------------------------------------------------
 
 static constexpr char kService[] = "thumbd";
-static constexpr uint64_t kMaxBlob = 1024ull * 1024 * 1024;
 
 static vector<byte>
 error_frame(uint64_t id, string message, dawn::ipc::ErrorCode code)
@@ -154,11 +153,12 @@ handle_payload(State &state, uint64_t connection, span<const byte> payload,
 		job->height > dawn::kMaxDimension || !job->out_width ||
 		!job->out_height || job->out_width > dawn::kMaxDimension ||
 		job->out_height > dawn::kMaxDimension || job->stride < row ||
-		uint64_t(job->out_width) * job->out_height * 4 > kMaxBlob)
+		uint64_t(job->out_width) * job->out_height * 4 >
+			proto::kThumbdMaxBlobSize)
 		return invalid("invalid image geometry");
 	span<const byte> pixels;
-	if (const char *failure = dawn::ipc::take_blob(
-			scale.source.pixels, owned, kMaxBlob, pixels, job->shared))
+	if (const char *failure = dawn::ipc::take_blob(scale.source.pixels, owned,
+			proto::kThumbdMaxBlobSize, pixels, job->shared))
 		return invalid(failure);
 	if (uint64_t(job->stride) * job->height > pixels.size())
 		return invalid("pixel blob is too small");
