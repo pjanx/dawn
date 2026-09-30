@@ -861,17 +861,20 @@ endif()
 # installed next to the application on each platform.
 set(DAWN_HELP_DIR "${PROJECT_BINARY_DIR}/share/doc/dawn")
 file(MAKE_DIRECTORY "${DAWN_HELP_DIR}")
-configure_file(
-	"${PROJECT_SOURCE_DIR}/docs/dn.html.in"
-	"${DAWN_HELP_DIR}/dn.html"
-	@ONLY)
-configure_file(
-	"${PROJECT_SOURCE_DIR}/docs/stylesheet.css"
-	"${DAWN_HELP_DIR}/stylesheet.css"
-	COPYONLY)
-set(dawn_help_files
-	"${DAWN_HELP_DIR}/dn.html"
-	"${DAWN_HELP_DIR}/stylesheet.css")
+foreach (file dn.html dn.cs.html)
+	configure_file(
+		"${PROJECT_SOURCE_DIR}/docs/${file}.in"
+		"${DAWN_HELP_DIR}/${file}"
+		@ONLY)
+	list(APPEND dawn_help_files "${DAWN_HELP_DIR}/${file}")
+endforeach()
+foreach (file stylesheet.css dn.webp p3-srgb-ramps.png)
+	configure_file(
+		"${PROJECT_SOURCE_DIR}/docs/${file}"
+		"${DAWN_HELP_DIR}/${file}"
+		COPYONLY)
+	list(APPEND dawn_help_files "${DAWN_HELP_DIR}/${file}")
+endforeach()
 
 if (APPLE)
 	set_source_files_properties(${dawn_help_files}

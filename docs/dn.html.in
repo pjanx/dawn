@@ -14,92 +14,285 @@ q:lang(en):after { content: "’"; }
 <h1>Dawn: User Guide</h1>
 
 <p class="details">
-<span id="author">Přemysl Eric Janouch</span><br>
-<span id="email"><a href="mailto:p@janouch.name">p@janouch.name</a></span><br>
-<span id="revnumber">version @PROJECT_VERSION@</span>
+<span id="author">The Dawn Authors</span><br>
+<span id="revnumber">version @PROJECT_VERSION@, 2026-10-01</span>
 
 <h2>Introduction</h2>
 
-<p><i>Dawn</i> is a colour-managed image browser and viewer. This document is
-a compact overview of the application as it stands. Press
-<kbd>Ctrl</kbd>&#8239;+&#8239;<kbd>?</kbd> in the program for the current
-keyboard shortcut list.
+<p><i>Dawn</i> is a colour-managed image browser and viewer.
 
-<h2>Controls</h2>
+<p>Its main purpose is to show images in the way they were meant to be shown,
+and to let you easily navigate collections of them.  It does this with
+a friendly interface that works across all major operating systems.
 
-<p>Most commands are on the keyboard. <kbd>F1</kbd> opens this guide in your
-web browser. <kbd>F10</kbd> opens the menu, <kbd>F6</kbd> moves between
-the toolbar, any sidebar, and the main view, and <kbd>F</kbd> shows Vimium-style
-hints for on-screen controls.
+<h2>Overview</h2>
 
-<p>Mice with dedicated back and forward buttons work as in a web browser.
-The pointer wheel zooms in the viewer and scrolls the browser. Left- or
-middle-drag pans an image; <kbd>Ctrl</kbd>&#8239;+&#8239;middle-drag zooms;
-<kbd>Alt</kbd>&#8239;+&#8239;middle-drag or a pinch gesture rotates.
+<p>The application has two main views: the browser and the viewer, pictured here
+in the background and foreground respectively:
 
-<p>On a touchscreen, one finger drags: the image pans, the title bar moves the
-window, and anywhere else it scrolls. Two fingers pinch to zoom and twist to
-rotate.
+<p><img src=dn.webp width=1113 height=983 alt="Screenshot of Dawn" />
 
-<h2>Browser</h2>
+<h2>Basic Operation</h2>
 
-<p><i>Dawn</i> starts in a directory browser unless you open a file. The left
-sidebar lists Computer, Home, Pictures when that folder exists, then
-breadcrumbs to the current directory and its children. The toolbar changes
-thumbnail size, tiled or grid layout, filename captions, whether unsupported
-files are hidden, and the sort order.
+<p>To quickly orient yourself, browse the application menu, or follow toolbar
+tooltips.  The macOS build uses the standard menu bar.  On other systems,
+the menu is shown by clicking the leftmost toolbar button (so-called hamburger),
+or by pressing either the <kbd>Alt</kbd> or the <kbd>F10</kbd> key.
+(Context menus are shown on right click, or by pressing either <kbd>Menu</kbd>
+or <kbd>Shift</kbd>+<kbd>F10</kbd>.)
 
-<p><kbd>Enter</kbd> opens the selected file in the viewer. Middle-click, or
-<kbd>Shift</kbd>&#8239;+&#8239;<kbd>Enter</kbd>, opens a path in a new window.
-Right-click a file or the directory for a context menu, including other
-applications registered for that type.
+<p>For keyboard-only use, either use <kbd>Tab</kbd>/<kbd>F6</kbd>-based
+navigation, or the Vimperator/Vimium-inspired hints invokable by
+the <kbd>F</kbd> key: type the name of the chip you want to activate.
 
-<p>Dragging a thumbnail, or a sidebar entry, takes the file or the directory
-to another application. Hold <kbd>Ctrl</kbd> to copy, <kbd>Shift</kbd> to move,
-or both to link, as far as the receiving application allows.
+<p>Mouse is not fully documented within the application itself, and therefore
+described below.
 
-<h2>Viewer</h2>
+<h3>Browser</h3>
 
-<p><kbd>Enter</kbd> returns to the browser. Files are visited in the same order
-and with the same filtering as the directory you came from. Double-click the
-image to toggle fullscreen.
+<ul>
+<li><i>Middle click:</i> open items in new windows.
+</ul>
 
-<p>Zoom, fit, colour management, smooth scaling, and the transparency
-checkerboard are on the toolbar and the View menu. Rotate and mirror are on
-the Image menu, together with pages of a multi-page file and frames of an
-animation.
+<h3>Viewer</h3>
 
-<h2>Information</h2>
+<ul>
+<li><i>Left or middle button drag:</i> pan the view.
+<li><i>Scroll wheel:</i> zoom in or out.
+<li><i><kbd>Control</kbd>/<kbd>Command</kbd>+middle button drag:</i>
+smooth zoom change.
+<li><i><kbd>Alt</kbd>/<kbd>Option</kbd>+middle button drag:</i>
+with an unlocked view, rotate the image arbitrarily.
+</ul>
 
-<p>Show Information opens a sidebar with the file name, pixel size, a CIE
-chromaticity diagram for the current colour space, and any text tags the
-decoder exposed.
+<h2>Browser Mode</h2>
 
-<p><i>Launch ExifTool</i> runs ExifTool on the open file and opens the report
-through your default handler for <code>.txt</code> files. The Windows package
-ships ExifTool; elsewhere it must be on the search path.
+<p>The browser is specialised for images.  The path to the current directory,
+and all direct subdirectories are shown in the left sidebar.  The upper part
+of it additionally shows recognised drives, your home directory,
+your <q>pictures</q> directory, and any bookmarks you add using context menus.
+
+<p>The main view only shows image files, as recognised by their file extension.
+Turn off <i>Hide Unsupported Files</i> if this file filtering is too strict.
+
+<h2>Viewer Mode</h2>
+
+<p>The viewer has a few unusual features that deserve commentary:</p>
+
+<dl>
+<dt><i>Colour management</i> toggle
+<dd><p>When disabled, <i>Dawn</i> will try to get pixel data on your screen
+directly, bypassing colour management.  This is not always possible,
+for example in HDR.
+<dt><i>Process in Encoded Space</i> toggle
+<dd><p>This toggles gamma-correct processing, which is normally off for
+transparent images, where the rendering difference is more pronounced.
+Images do not typically assume the correct rendition.
+<dt><i>Browser-like Animation Delays</i> toggle
+<dd><p>Web browsers typically push all frames shorter than 11 milliseconds
+to 100 milliseconds.  Some animated images play way too fast when this option
+is disabled.  Some may play too slow if enabled.
+<dt>Information sidebar: <i>Enable JPEG Quant Smooth</i>
+<dd><p>This enables a computation-intensive plugin that smooths out JPEG files
+on load, greatly reducing DCT artefacts.
+</dl>
+
+<h2>System Configuration</h2>
+
+<p>This section addresses three features of modern monitors that you can
+exploit: non-sRGB gamuts, 10-bit colour depth, and high dynamic range (HDR).
+
+<p>Your system generally does not know the effective gamut of your monitor,
+so you must assign it manually, such as by associating the monitor with an ICC
+profile.  Popular colour profile targets (Adobe RGB, Display P3) are either
+already stored somewhere on your system (varies), or they can be downloaded off
+the Internet.  For sub-sRGB laptop screens, check your manufacturer's download
+page.  Windows may also pull these in automatically.
+
+<p>10-bit colour and HDR need support from your monitor, your display cable,
+your GPU, and your operating system.
+
+<p>For HDR, your monitor may need to be put in a specific mode, typically PQ
+over BT.2020.  The gamut situation is reversed here: processing is typically
+done by the monitor.  Therefore, if you only plan to run HDR, you may ignore
+a lot of the notes here.
+
+<h3>macOS</h3>
+<p>You're probably all set already.  Make sure your <i>Displays</i> in <i>System
+Settings</i> have the right <i>Colour profile</i> assigned.  Apple uses
+<i>Display P3</i> for its own devices.
+
+<p>As a side note, you may want to use the <i>Better Display</i> application to
+prevent macOS from using temporal dithering, so that it actually sends 10 bits
+to the display.
+
+<h3>Windows</h3>
+<p>You're probably all set already.  Make sure your displays in
+<i>colorcpl.exe</i> have the right colour profile assigned.  HDR needs to be
+turned on in <i>Settings</i> manually.
+
+<h3>Linux/BSD</h3>
+<p>If you use KDE/Plasma/KWin on Wayland, assign the colour profile in its
+<i>Display Configuration</i>.
+
+<p>Otherwise set up your displays in <i>colord</i>, either through GUIs,
+or through <i>colormgr</i>.  This step is crucial for GNOME (Mutter):
+
+<pre>
+$ colormgr get-profiles --filter 'title,profile-id'
+title:Compatible with Adobe RGB (1998)
+profile-id:icc-530ed29434cce1d2894fa84f54f47056
+...
+$ colormgr get-devices-by-kind display
+$ colormgr device-add-profile xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+$ colormgr device-make-profile-default xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+</pre>
+
+<p>As a last resort, you can enforce an ICC profile in <i>Dawn</i>'s
+own settings.
+
+<h3>Linux/BSD + X11</h3>
+<p>The default on X11 is <q>everything undershoots/overshoots sRGB, unless it
+does its own colour management</q>.  Be mindful of this limitation when
+selecting a different gamut on your monitor.  Web browsers should be okay,
+though <i>Firefox</i> may need to have <i>gfx.color_management.mode</i>
+set to 1.
+
+<p>If <code>colormgr get-devices-by-kind display</code> returns nothing within
+your session, you may need to set up <i>colord-kde</i> or <i>xiccd</i> to
+integrate <i>colord</i> into it.  If your setup is based on something other than
+<i>colord</i>&mdash;notably AgryllCMS/dispwin&mdash;<i>Dawn</i> also tries to
+look up <i>_ICC_PROFILE</i>.
+
+<p>While you may get 10-bit colour depth, many applications, such as <i>peek</i>
+or modern Firefox versions, will choke on it in wild ways.  Nonetheless,
+all you need to do is to put the following snippet in
+<i>/etc/X11/xorg.conf.d/30-defaultdepth.conf</i> and restart your session:
+
+<pre>
+Section "Screen"
+    Identifier    "Default Screen"
+    Monitor       "Configured Monitor"
+    Device        "Configured Video Device"
+    DefaultDepth   30
+EndSection
+</pre>
+
+<p>X11 additionally does not support HDR at all.
+
+<h3>Linux/BSD + Wayland</h3>
+<p>Wayland is still largely experimental and at the edge of usefulness,
+though at least bit depth and HDR shouldn't pose a problem.
+
+<p><b>KDE/Plasma:</b> This is the recommended compositor, as you can set up
+everything directly through its quirky <i>Display Configuration</i>.
+Colour depth appears to favour the deep end automatically.
+
+<p><b>GNOME Shell:</b> For HDR, simply enable it in <i>Displays</i>.
+For SDR to work, put the following snippet within <code>&lt;monitor&gt;</code>
+sections in <i>~/.config/monitors.xml</i>:
+
+<pre>
+&lt;colormode&gt;sdr-native&lt;/colormode&gt;
+&lt;maxbpc&gt;10&lt;/maxbpc&gt;
+</pre>
+
+<p>Temporary setting for just the colour mode; the <code>-P</code> option should
+retain it as well:
+
+<pre>
+gdctl set -L -M DP-1 --color-mode sdr-native
+</pre>
+
+<p>The compositor&mdash;Mutter&mdash;will ignore anything you've configured
+in <i>Colour Management</i>, and it will instead read the monitor's native
+profile over the cable from its EDID.  Hopefully, it will be close enough for
+sRGB content.  <i>Dawn</i> will read the actual profile from <i>colord</i>.
+This is a compromise.
+
+<p><b>Sway/wlroots:</b> For SDR to work, put a snippet similar to the following
+in <i>~/.config/sway/config</i>:
+
+<pre>
+output DP-1 {
+	render_bit_depth 10
+	color_profile icc '/usr/share/color/icc/colord/AdobeRGB1998.icc'
+}
+</pre>
+
+<p>Everything will be limited to sRGB now, but at least nothing will overshoot
+it.  Beware that Sway's ICC profile-based colour management is done through
+a 33<sup>3</sup> look up table, making it strictly better to keep your monitor
+in sRGB if possible.
+
+<h2>Verification</h2>
+
+<p>Open the following test image.  It will exercise your display's true gamut,
+and you should also be able to see the finer steps.  The bottom row should look
+more like <q>linear 188</q>, not <q>sRGB 128</q> (which indicates scaling in
+encoded space).
+
+<p><a href=p3-srgb-ramps.png><img src=p3-srgb-ramps.png
+alt="Test image: 10-bit RGB ramps, scaling test" /></a>
+
+<p>Note that <i>Dawn</i> currently implements Bayer dithering for 8-bit
+swapchains, which you may need to turn off in settings in order to observe
+any difference in those finer steps (i.e. to see the bit depth at all).
 
 <h2>Thumbnails</h2>
 
-<!-- TODO(p): The path is slightly different on macOS and Windows. -->
+<p><i>Dawn</i> produces and stores its own wide-format, colour-managed
+thumbnails under:
 
-<p><i>Dawn</i> stores wide, colour-managed thumbnails under the XDG thumbnail
-cache, typically <i>~/.cache/thumbnails</i>. To drop entries that no longer
-match a file, run:
+<ul>
+<li><p><b>Linux/BSD:</b> the XDG thumbnail cache:
+<i>~/.cache/thumbnails/wide-*</i>
+<li><p><b>macOS:</b> <i>~/Library/Caches/thumbnails/wide-*</i>
+<li><p><b>Windows:</b> <i>%LOCALAPPDATA%\cache\thumbnails\wide-*</i>
+</ul>
 
+<p>These thumbnails will be replaced entirely in a later release.
+
+<h3>Cache Invalidation</h3>
+
+<p>The program slowly accumulates thumbnails of all pictures you see.
+Currently, to remove thumbnails for files that can no longer be found,
+you need to invoke thumbnail invalidation from the command line:
+
+<ul>
+<li>
+<p><b>Linux/BSD:</b> you should have Dawn in your system path:
 <pre>
 dn --invalidate-cache
 </pre>
+<li>
+<p><b>macOS:</b> for the usual location:
+<pre>
+/Applications/Dawn.app/Contents/MacOS/Dawn --invalidate-cache
+</pre>
+<li>
+<p><b>Windows:</b> for the usual location:
+<pre>
+"C:\Program Files\@PROJECT_NAME@ @PROJECT_VERSION@\dn.exe" --invalidate-cache
+</pre>
+</ul>
 
-<h2>Configuration</h2>
+<p>You may also simply delete the directories, which are used by nothing else.
 
-<p><i>Dawn</i> uses the display colour profile provided by the operating system:
-colord on Linux, the profile assigned in Windows Colour Management, or the
-profile on the display in macOS System Settings. Assign the profile that
-matches the monitor if colours look wrong.
+<h2>Lossless JPEG Cropper</h2>
 
-<p>Per-window View toggles such as Dark Mode and Colour Management apply for
-the session. Command-line options are listed by <code>dn --help</code>.
+<p>Dawn offers a mode with lossless JPEG cropping and rotating functionality.
+It only offers operations which won't cause the image to be reencoded at a loss.
+Beware that JPEGs may contain HDR or depth map metadata, which will be stripped.
+
+<p>To control the crop region, use your left and right mouse buttons.
+On macOS, the right mouse button can be simulated by holding <kbd>Control</kbd>
+while clicking the left mouse button.
+
+<h2>Resources</h2>
+
+<p>The project homepage is at
+<a href=@PROJECT_HOMEPAGE_URL@>@PROJECT_HOMEPAGE_URL@</a>.
 
 <script>
 var toc = '', all = document.querySelectorAll('h2')

@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Dawn: Uživatelská příručka</title>
+<link rel="stylesheet" href="stylesheet.css">
+<style>
+q:lang(cs):before { content: "„"; }
+q:lang(cs):after { content: "“"; }
+</style>
+</head>
+<body>
+
+<h1>Dawn: Uživatelská příručka</h1>
+
+<p class="details">
+<span id="author">Autoři Dawn</span><br>
+<span id="revnumber">verze @PROJECT_VERSION@, 2026-10-01</span>
+
+<h2>Úvod</h2>
+
+<p><i>Dawn</i> je prohlížeč obrázků se správou barev.
+
+<p>Jeho hlavním účelem je zobrazovat obrázky tak, jak mají být zobrazeny,
+a umožnit vám snadno procházet jejich sbírky.  Toho dosahuje s přívětivým
+rozhraním, které funguje napříč všemi hlavními operačními systémy.
+
+<h2>Přehled</h2>
+
+<p>Aplikace má dva hlavní pohledy: procházení a prohlížení, zde zachycené
+v pozadí, respektive v popředí:
+
+<p><img src=dn.webp width=1113 height=983 alt="Snímek obrazovky Dawn" />
+
+<h2>Základní ovládání</h2>
+
+<p>Pro rychlé zorientování se si projděte menu aplikace nebo se řiďte popisky
+tlačítek nástrojové lišty.  Verze pro macOS používá standardní řádek nabídek.
+Na ostatních systémech menu zobrazíte kliknutím na nejlevější tlačítko
+nástrojové lišty (takzvaný hamburger) nebo stiskem klávesy <kbd>Alt</kbd>
+či <kbd>F10</kbd>.  (Kontextová menu se zobrazují pravým kliknutím nebo
+stiskem <kbd>Menu</kbd> či <kbd>Shift</kbd>+<kbd>F10</kbd>.)
+
+<p>Při ovládání čistě z klávesnice použijte buď navigaci pomocí
+<kbd>Tab</kbd>/<kbd>F6</kbd> nebo navigaci inspirovanou Vimperatorem/Vimiem,
+vyvolatelnou klávesou <kbd>F</kbd>: pak napište název štítku,
+který chcete aktivovat.
+
+<p>Ovládání myší není v aplikaci samotné plně zdokumentováno, a proto je
+popsáno níže.
+
+<h3>Procházení</h3>
+
+<ul>
+<li><i>Prostřední tlačítko:</i> otevře položky v nových oknech.
+</ul>
+
+<h3>Prohlížení</h3>
+
+<ul>
+<li><i>Tažení levým nebo prostředním tlačítkem:</i> posun pohledu.
+<li><i>Kolečko myši:</i> přiblížení nebo oddálení.
+<li><i>Tažení prostředním tlačítkem s <kbd>Control</kbd>/<kbd>Command</kbd>:</i>
+plynulá změna přiblížení.
+<li><i>Tažení prostředním tlačítkem s <kbd>Alt</kbd>/<kbd>Option</kbd>:</i>
+při odemčeném zobrazení libovolně otáčí obrázek.
+</ul>
+
+<h2>Režim procházení</h2>
+
+<p>Procházení je uzpůsobeno obrázovým souborům.  V levém postranním panelu se
+zobrazuje cesta k aktuálnímu adresáři a všechny jeho přímé podadresáře.  Jeho
+horní část navíc ukazuje rozpoznané jednotky, váš domovský adresář, váš adresář
+<q>obrázky</q> a všechny záložky, které přidáte pomocí kontextového menu.
+
+<p>Hlavní pohled ukazuje jen soubory s obrázky, rozpoznané podle přípony.
+Pokud je toto filtrování příliš přísné, vypněte <i>Skrýt nepodporované
+soubory</i>.
+
+<h2>Režim prohlížení</h2>
+
+<p>Prohlížení má několik neobvyklých funkcí, které si zaslouží komentář:</p>
+
+<dl>
+<dt>Přepínač <i>Správa barev</i>
+<dd><p>Je-li vypnutý, <i>Dawn</i> se pokusí dostat obrazová data na vaši
+obrazovku přímo, za obejití správy barev.  To není vždy možné, například s HDR.
+<dt>Přepínač <i>Zpracovávat v kódovaném prostoru</i>
+<dd><p>Tímto se přepíná gama-korektní zpracování, které je běžně vypnuté
+u průhledných obrázků, kde je rozdíl ve vykreslení výraznější.
+Obrázky obvykle s korektním podáním nepočítají.
+<dt>Přepínač <i>Prodlevy animací jako v prohlížeči</i>
+<dd><p>Webové prohlížeče obvykle prodlužují všechny snímky kratší než
+11 milisekund na 100 milisekund.  Některé animované obrázky se při vypnuté volbě
+přehrávají příliš rychle.  Některé se mohou při zapnuté volbě přehrávat
+příliš pomalu.
+<dt>Informační postranní panel: <i>Zapnout JPEG Quant Smooth</i>
+<dd><p>Zapíná výpočetně náročný modul, který při načítání vyhlazuje JPEG
+soubory, respektive výrazně omezuje DCT artefakty.
+</dl>
+
+<h2>Nastavení systému</h2>
+
+<p>Tato část se věnuje třem vlastnostem moderních monitorů, které můžete
+využít: gamuty jiné než sRGB, 10bitová barevná hloubka a vysoký dynamický
+rozsah (HDR).
+
+<p>Váš systém obecně nezná skutečný gamut vašeho monitoru, takže jej musíte
+přiřadit ručně, například přiřazením ICC profilu.  Oblíbené cílové barevné
+profily (Adobe RGB, Display P3) jsou buď již někde uloženy ve vašem systému
+(liší se), nebo si je můžete stáhnout z Internetu.  U obrazovek notebooků
+nedosahujících ani sRGB se podívejte na stránku se soubory ke stažení od
+vašeho výrobce.  Windows je také mohou stahovat automaticky.
+
+<p>10bitové barvy a HDR potřebují podporu vašeho monitoru, kabelu displeje,
+grafické karty i operačního systému.
+
+<p>Pro HDR může být nutné přepnout monitor do určitého režimu, typicky PQ
+nad BT.2020.  Situace s gamutem je zde obrácená: zpracování typicky provádí
+monitor.  Pokud tedy plánujete používat jen HDR, můžete mnoho zdejších poznámek
+přeskočit.
+
+<h3>macOS</h3>
+<p>Nejspíše už máte vše nastavené.  Ujistěte se, že vaše <i>Monitory</i>
+v <i>Nastavení systému</i> mají přiřazen správný <i>Barevný profil</i>.
+Apple pro svá vlastní zařízení používá <i>Display P3</i>.
+
+<p>Mimochodem, možná budete chtít použít aplikaci <i>Better Display</i>,
+abyste macOS zabránili v používání časového ditheringu a do displeje se tak
+skutečně posílalo 10 bitů.
+
+<h3>Windows</h3>
+<p>Nejspíše už máte vše nastavené.  Ujistěte se, že vaše displeje mají
+v <i>colorcpl.exe</i> přiřazen správný barevný profil.  HDR je potřeba zapnout
+v <i>Nastavení</i> ručně.
+
+<h3>Linux/BSD</h3>
+<p>Používáte-li KDE/Plasma/KWin na Waylandu, přiřaďte barevný profil v jeho
+<i>Nastavení zobrazení</i>.
+
+<p>Jinak nastavte své displeje v <i>colord</i>, buď přes grafická rozhraní,
+nebo přes <i>colormgr</i>.  Tento krok je klíčový zejména pro GNOME (Mutter):
+
+<pre>
+$ colormgr get-profiles --filter 'title,profile-id'
+title:Compatible with Adobe RGB (1998)
+profile-id:icc-530ed29434cce1d2894fa84f54f47056
+...
+$ colormgr get-devices-by-kind display
+$ colormgr device-add-profile xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+$ colormgr device-make-profile-default xrandr-Eizo-CS2731-00000000 icc-530ed29434cce1d2894fa84f54f47056
+</pre>
+
+<p>V krajním případě můžete ICC profil vynutit v nastaveních <i>Dawn</i>.
+
+<h3>Linux/BSD + X11</h3>
+<p>Výchozí stav na X11 je <q>vše podstřeluje/přestřeluje sRGB, pokud si to
+správu barev neřeší samo</q>.  Když na monitoru volíte jiný gamut, mějte toto
+omezení na paměti.  Webové prohlížeče by měly být v pořádku, ačkoliv
+<i>Firefox</i> může potřebovat nastavit <i>gfx.color_management.mode</i> na 1.
+
+<p>Pokud <code>colormgr get-devices-by-kind display</code> ve vašem sezení nic
+nevrací, budete si možná muset nastavit <i>colord-kde</i> nebo <i>xiccd</i>,
+aby do sezení <i>colord</i> začlenily.  Je-li vaše nastavení založeno na něčem
+jiném než <i>colord</i> &ndash; například AgryllCMS/dispwin &ndash; <i>Dawn</i>
+se také pokusí vyhledat <i>_ICC_PROFILE</i>.
+
+<p>Ačkoliv je možné získat 10bitovou barevnou hloubku, mnoho aplikací, například
+<i>peek</i> nebo moderní verze Firefoxu, si s ní divokými způsoby neporadí.
+Každopádně vše, co musíte udělat, je vložit následující úryvek do
+<i>/etc/X11/xorg.conf.d/30-defaultdepth.conf</i> a restartovat sezení:
+
+<pre>
+Section "Screen"
+    Identifier    "Default Screen"
+    Monitor       "Configured Monitor"
+    Device        "Configured Video Device"
+    DefaultDepth   30
+EndSection
+</pre>
+
+<p>X11 vůbec nepodporuje HDR.
+
+<h3>Linux/BSD + Wayland</h3>
+<p>Wayland je stále převážně experimentální a na hranici použitelnosti,
+i když přinejmenším bitová hloubka a HDR by neměly představovat problém.
+
+<p><b>KDE/Plasma:</b> Toto je doporučený kompozitor, neboť vše můžete nastavit
+přímo v jeho poněkud svérázném <i>Nastavení zobrazení</i>.
+Barevná hloubka se zdá automaticky vybírat ty vyšší.
+
+<p><b>GNOME Shell:</b> HDR jednoduše zapnete v <i>Displejích</i>.
+Aby fungovalo SDR, vložte následující úryvek do <code>&lt;monitor&gt;</code>
+sekcí v <i>~/.config/monitors.xml</i>:
+
+<pre>
+&lt;colormode&gt;sdr-native&lt;/colormode&gt;
+&lt;maxbpc&gt;10&lt;/maxbpc&gt;
+</pre>
+
+<p>Dočasné nastavení barevného režimu; volba <code>-P</code> by jej měla
+také zachovat:
+
+<pre>
+gdctl set -L -M DP-1 --color-mode sdr-native
+</pre>
+
+<p>Kompozitor &ndash; Mutter &ndash; bude ignorovat cokoliv, co jste nastavili
+ve <i>Správě barev</i>, a místo toho si přečte nativní profil monitoru
+po kabelu z jeho EDID.  Snad bude dostatečně blízko pro obsah v sRGB.
+<i>Dawn</i> si skutečný profil přečte z <i>colord</i>.  Je to kompromisní.
+
+<p><b>Sway/wlroots:</b> Aby fungovalo SDR, vložte do
+<i>~/.config/sway/config</i> úryvek podobný tomuto:
+
+<pre>
+output DP-1 {
+	render_bit_depth 10
+	color_profile icc '/usr/share/color/icc/colord/AdobeRGB1998.icc'
+}
+</pre>
+
+<p>Vše teď bude omezeno na sRGB, ale přinejmenším ho nic nebude přestřelovat.
+Mějte na paměti, že správa barev ve Sway založená na ICC profilech používá
+vyhledávací tabulku 33<sup>3</sup>, takže pokud je to jen možné, je jednoznačně
+lepší ponechat monitor v sRGB.
+
+<h2>Ověření</h2>
+
+<p>Otevřete následující testovací obrázek.  Prověří skutečný gamut vašeho
+displeje a měli byste na něm také rozeznat jemnější stupně.  Spodní řádek by
+měl vypadat spíše jako <q>linear 188</q>, ne <q>sRGB 128</q> (což by značilo
+škálování v kódovaném prostoru).
+
+<p><a href=p3-srgb-ramps.png><img src=p3-srgb-ramps.png
+alt="Testovací obrázek: 10bitové RGB přechody, test škálování" /></a>
+
+<p>Poznámka: <i>Dawn</i> momentálně u 8bitových swapchainů používá Bayerův
+dithering, který možná budete muset v nastavení vypnout, abyste na jemnějších
+stupních zpozorovali nějaký rozdíl (tedy abyste bitovou hloubku vůbec viděli).
+
+<h2>Náhledy</h2>
+
+<p><i>Dawn</i> vytváří a ukládá vlastní širokoformátové náhledy se správou
+barev do:
+
+<ul>
+<li><p><b>Linux/BSD:</b> mezipaměti náhledů XDG:
+<i>~/.cache/thumbnails/wide-*</i>
+<li><p><b>macOS:</b> <i>~/Library/Caches/thumbnails/wide-*</i>
+<li><p><b>Windows:</b> <i>%LOCALAPPDATA%\cache\thumbnails\wide-*</i>
+</ul>
+
+<p>V některé z příštích verzí budou tyto náhledy zcela nahrazeny.
+
+<h3>Zneplatnění mezipaměti</h3>
+
+<p>Program pomalu hromadí náhledy všech obrázků, které uvidíte.
+Abyste odstranili náhledy souborů, které již nelze najít, musíte momentálně
+vyvolat zneplatnění náhledů z příkazové řádky:
+
+<ul>
+<li>
+<p><b>Linux/BSD:</b> Dawn byste měli mít v systémové cestě:
+<pre>
+dn --invalidate-cache
+</pre>
+<li>
+<p><b>macOS:</b> pro obvyklé umístění:
+<pre>
+/Applications/Dawn.app/Contents/MacOS/Dawn --invalidate-cache
+</pre>
+<li>
+<p><b>Windows:</b> pro obvyklé umístění:
+<pre>
+"C:\Program Files\@PROJECT_NAME@ @PROJECT_VERSION@\dn.exe" --invalidate-cache
+</pre>
+</ul>
+
+<p>Adresáře také můžete jednoduše smazat, nic jiného je nepoužívá.
+
+<h2>Bezztrátový ořezávač JPEG</h2>
+
+<p>Dawn nabízí režim s funkcí bezztrátového ořezávání a otáčení JPEG.
+Nabízí jen operace, které nezpůsobí ztrátové překódování obrázku.
+Mějte na paměti, že JPEGy mohou obsahovat HDR nebo hloubkové mapy,
+které budou odstraněny.
+
+<p>Oblast ořezu ovládáte levým a pravým tlačítkem myši.
+Na macOS lze pravé tlačítko simulovat kliknutím levým tlačítkem za stisknuté
+klávesy <kbd>Control</kbd>.
+
+<h2>Zdroje</h2>
+
+<p>Domovská stránka projektu je na
+<a href=@PROJECT_HOMEPAGE_URL@>@PROJECT_HOMEPAGE_URL@</a>.
+
+<script>
+var toc = '', all = document.querySelectorAll('h2')
+for (var i = 0; i < all.length; i++) {
+	var name = all[i].innerHTML.replace(/[^0-9a-z]/ig, '-')
+	toc += '<li><p><a href="#' + name + '">' + all[i].innerHTML + '</a></li>'
+	all[i].id = name
+	all[i].innerHTML = (i + 1) + '. ' + all[i].innerHTML
+}
+all[0].insertAdjacentHTML('beforebegin',
+	'<h2>Obsah</h2><ol>' + toc + '</ol>')
+</script>

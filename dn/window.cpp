@@ -44,6 +44,7 @@
 #include <QInputMethod>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
+#include <QLocale>
 #include <QMetaObject>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -129,17 +130,24 @@ first_dropped_file(const QMimeData *mime)
 static QString
 help_document_path()
 {
-	const QString app_dir = QCoreApplication::applicationDirPath();
 #ifdef Q_OS_WIN
-	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("share/doc/dawn/dn.html")));
+	const QString relative = QStringLiteral("/share/doc/dawn");
 #elif defined Q_OS_MACOS
-	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("../Resources/share/doc/dawn/dn.html")));
+	const QString relative = QStringLiteral("/../Resources/share/doc/dawn");
 #else
-	return QDir::cleanPath(QDir(app_dir).absoluteFilePath(
-		QStringLiteral("../share/doc/dawn/dn.html")));
+	const QString relative = QStringLiteral("/../share/doc/dawn");
 #endif
+	const QString dir =
+		QDir::cleanPath(QCoreApplication::applicationDirPath() + relative);
+
+	// Only the most preferred language, so that English doesn't fall through.
+	// We should really pick this from gettext so that it matches.
+	const QString language =
+		QLocale().uiLanguages().value(0).section(u'-', 0, 0);
+	const QString localised = dir + QStringLiteral("/dn.%1.html").arg(language);
+	if (QFile::exists(localised))
+		return localised;
+	return dir + QStringLiteral("/dn.html");
 }
 
 Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)

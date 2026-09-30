@@ -184,14 +184,12 @@ create_display_p3_profile(void)
 		{0.2650, 0.6900, 1.0},
 		{0.1500, 0.0600, 1.0},
 	};
-	const double srgb_parameters[7] = {
+	const double srgb_parameters[5] = {
 		2.4,
 		1.0 / 1.055,
 		0.055 / 1.055,
-		0.0,
-		0.04045,
 		1.0 / 12.92,
-		0.0,
+		0.04045,
 	};
 	cmsToneCurve *curves[3] = {NULL, NULL, NULL};
 	cmsHPROFILE profile = NULL;

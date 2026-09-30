@@ -2,8 +2,8 @@ Dawn
 ====
 :compact-option:
 
-'Dawn' is a cross-platform colour-managed image browser, with high standards for
-fidelity and responsiveness.
+'Dawn' is a cross-platform colour-managed image browser, focusing on
+image fidelity.
 
 See link:docs/why.adoc[Why you need a better image viewer] if you feel lost.
 
@@ -13,11 +13,10 @@ Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
 https://git.janouch.name/p/gallery[desires].
 Right now, we're in a cleanup/debug phase on our way to the first milestone
-and release.  Then we'll move on to tackling the next major goals.
+and release.  Also see link:docs/plan.adoc[Plan], and a detailed
+link:docs/rationale.adoc[Rationale].  There is more to come.
 
 The project comes with a maintenance guarantee--it is actively used.
-Also see link:docs/plan.adoc[Plan],
-and a detailed link:docs/rationale.adoc[Rationale].
 
 Features
 --------
@@ -55,7 +54,8 @@ Packages
 
  - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
    *unsigned* macOS Apple Silicon bundle] may need
-   `xattr -r -d com.apple.quarantine ...`.  Notarisation costs $99 a year.
+   `xattr -r -d com.apple.quarantine ...`.
+   Notarisation would cost us $99 a year.
 
 On Windows, if you run the application with a high integrity level and you
 have no true Vulkan backend installed, it may not initialise.  Manually rename
@@ -65,18 +65,17 @@ Building
 --------
 See link:docs/building-from-source.adoc[Building from source].
 
-Configuration
+Documentation
 -------------
-See link:docs/configuring-your-system.adoc[Configuring your system].
-If everything goes beautifully, the following test image will exercise your
-display's true gamut, and you'll also be able to see the finer steps.
-The bottom row should look more like '`linear 188`', not '`128`'
-(a popular bug).
+Open the user guide by pressing F1 (Linux, Windows) or Command-? (macOS)
+in the application.  This includes a necessary section on system configuration.
+
+Test image
+----------
+When zoomed in, you should be able to see the finer steps.  When zoomed out,
+the bottom row should look more like '`linear 188`', not '`sRGB 128`'.
 
 image::docs/p3-srgb-ramps.png[Test image: 10-bit RGB ramps, scaling test]
-
-Note that 'Dawn' currently implements Bayer dithering for 8-bit swapchains,
-which you may need to turn off in settings to observe the difference.
 
 Competition
 -----------

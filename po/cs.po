@@ -418,7 +418,7 @@ msgid "Time"
 msgstr "Čas"
 
 #: dn/kit-chrome.cpp:94
-msgid "Open in New _Window"
+msgid "Open in _New Window"
 msgstr "Otevřít v _novém okně"
 
 #: dn/kit-chrome.cpp:100

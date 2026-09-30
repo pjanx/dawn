@@ -91,7 +91,7 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	add_apps(handlers.recommended);
 	add_apps(handlers.fallback);
 
-	auto *new_win = add_item_with_mnemonic(N_("Open in New _Window"));
+	auto *new_win = add_item_with_mnemonic(N_("Open in _New Window"));
 	new_win->on_click = [this, url](Kit &) {
 		if (this->host && this->host->new_window)
 			this->host->new_window(url);
