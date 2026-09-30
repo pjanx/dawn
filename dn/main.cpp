@@ -139,12 +139,15 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 	return {};
 }
 
-// Qt's own text -- the generic command-line options, the items macOS adds to
-// the application menu -- lives in its catalogues, which it will not load on
-// its own.  Qt reads the environment itself, and does not know about LANGUAGE.
+// Qt has its own i18n system for command-line options, the macOS global menu,
+// etc., and it's not initialised automatically.
 static void
 install_qt_translations(QCoreApplication &app)
 {
+	// Don't let Qt fall through from a missing en-GB to a different language.
+	if (!*dgettext(DAWN_TEXTDOMAIN, ""))
+		return;
+
 	static QTranslator translations;
 	if (translations.isEmpty() &&
 		!translations.load(QLocale(), QStringLiteral("qtbase"),
