@@ -1244,7 +1244,8 @@ Window::render()
 		return;
 
 	// Completing an open below may change the mode after this page is drawn.
-	const bool show_image = this->mode_ == Mode::View;
+	const bool show_image =
+		this->mode_ == Mode::View || this->mode_ == Mode::CropJpeg;
 
 	this->kit_.fullscreen_ = fullscreen;
 	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
