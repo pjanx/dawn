@@ -1023,7 +1023,8 @@ Label::paint(Kit &kit) const
 		ty = this->r.y + this->r.h - pad_y - th;
 	kit.emit_layout(float(tx), float(ty), cached,
 		col(kit.colours_[ColourInk],
-			(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha()),
+			(this->enabled_ ? 1.f : kDisabledAlpha) *
+				(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha()),
 		shown_mnemonic(this->text, this->mnemonic, cached));
 }
 

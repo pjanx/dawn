@@ -216,7 +216,7 @@ constexpr ActionDef kDefs[] = {
 	// Cropper
 	{kMenu, {N_("_Open...")}, {"document-open-symbolic"},
 		{{Qt::Key_O, kCtrl}}, {}},
-	{kMenu, {N_("Reset _Crop")}, {}, {}, {}},
+	{kMenu, {N_("Reset _Crop")}, {"dashed-square-symbolic"}, {}, {}},
 	{0, {N_("Crop _Region")}, {}, {}, N_("Left/Right mouse button")},
 };
 // clang-format on

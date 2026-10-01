@@ -404,6 +404,7 @@ struct Label : Widget {
 	float min_w = 0;
 	float pad_x = 0;
 	float pad_y = 0;
+	bool enabled_ = true;
 	bool bold = false;
 	bool wrap = false;
 	bool dim = false;

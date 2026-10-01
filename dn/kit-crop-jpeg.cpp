@@ -377,6 +377,9 @@ Cropper::enabled(Action action) const
 		return this->grid_.width % this->grid_.mcu_width == 0;
 	}
 	case Action::CropReset:
+		return this->image_ &&
+			(this->left_ || this->top_ || this->right_ != this->grid_.width ||
+				this->bottom_ != this->grid_.height);
 	case Action::CropRegion:
 	case Action::ZoomLevel:
 	case Action::Zoom1:
@@ -514,6 +517,8 @@ Cropper::update(Kit &kit)
 		!this->message_.empty() && !this->message_dismissed_);
 	this->error_label_->set_text(QString::fromStdString(this->message_));
 
+	this->scale_label_->enabled_ = this->region_label_->enabled_ =
+		bool(this->image_);
 	this->scale_label_->set_text(
 		QString::number(this->zoom_ * 100) + QLatin1Char('%'));
 
@@ -578,14 +583,6 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 	setup.content = std::move(content);
 	setup.toolbar = make_toolbar(
 		kItems, [c](const ToolbarSpec &spec) -> unique_ptr<Widget> {
-			if (spec.action == Action::CropReset) {
-				auto button = make_unique<Button>();
-				button->flat = true;
-				button->focus_on_press = false;
-				button->action = spec.action;
-				button->text = action_tip(action_def(spec.action), false);
-				return button;
-			}
 			if (spec.action != Action::CropRegion &&
 				spec.action != Action::ZoomLevel)
 				return {};
