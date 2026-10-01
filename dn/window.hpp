@@ -64,7 +64,6 @@ class Window final : public QWindow
 	void go_forward();
 	void toggle_fullscreen();
 	void toggle_dark();
-	void apply_window(Action a);
 	void open_viewer(const QUrl &url);
 	void sync_viewer_preloads();
 	void cancel_viewer_loads();
@@ -159,6 +158,8 @@ public:
 	void set_headroom(float headroom);
 	void open_any(const QUrl &url);
 	void reveal_file(const QUrl &url);
+	// Applies an action from outside the widget tree, and draws its result.
+	void apply_window(Action a);
 	Mode application() const { return application_mode(mode_); }
 	[[nodiscard]] QUrl current_url() const;
 	[[nodiscard]] HostActions &host() { return this->host_; }

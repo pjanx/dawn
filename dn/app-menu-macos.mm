@@ -139,6 +139,30 @@ skip_action(dn::Action a)
 		a == dn::Action::Settings;
 }
 
+// Similar to the way Qt's Cocoa plugin does it for its own menus.
+static bool
+matches_equiv(const dn::MenuNode &n, NSEvent *event)
+{
+	if (n.action == dn::Action::None || skip_action(n.action))
+		return false;
+
+	NSEventModifierFlags mods = 0;
+	NSString *key = ns_equiv(dn::action_def(n.action).keys[0], &mods);
+	if (!key.length)
+		return false;
+
+	// A printable character carries Shift in itself, as ns_equiv() has it.
+	NSEventModifierFlags mask = NSEventModifierFlagCommand |
+		NSEventModifierFlagOption | NSEventModifierFlagControl;
+	const unichar c = [key characterAtIndex:0];
+	if (c < 0x20 || c == 0x7f || (c >= 0xf700 && c <= 0xf8ff))
+		mask |= NSEventModifierFlagShift;
+	if ((event.modifierFlags & mask) != (mods & mask))
+		return false;
+	return [key isEqualToString:event.charactersIgnoringModifiers] ||
+		[key isEqualToString:event.characters];
+}
+
 static void
 sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 {
@@ -162,21 +186,6 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 @property(nonatomic, assign) dn::App *app;
 @end
 
-// Keep native key equivalents for their standard menu presentation, but let
-// Qt deliver the actual key event through Dawn's normal shortcut path.
-@interface DnMenu : NSMenu
-@end
-
-@implementation DnMenu
-
-- (BOOL)performKeyEquivalent:(NSEvent *)event
-{
-	(void) event;
-	return NO;
-}
-
-@end
-
 @implementation DnMenuDelegate
 
 - (dn::Window *)window
@@ -194,15 +203,36 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 - (void)invoke:(NSMenuItem *)sender
 {
 	const dn::Action a = dn::Action(sender.tag);
-	const dn::Actor *actor = [self actor];
-	if (actor && actor->apply)
-		actor->apply(a);
-	else if (dn::Window *w = [self window]) {
-		if (w->host().apply)
-			w->host().apply(a);
-	} else if (a == dn::Action::NewWindow && _app)
+	if (dn::Window *w = [self window])
+		w->apply_window(a);
+	else if (a == dn::Action::NewWindow && _app)
 		_app->open(
 			dn::path_to_url(QDir::currentPath()), {}, {}, dn::Mode::View);
+}
+
+- (BOOL)menuHasKeyEquivalent:(NSMenu *)menu
+					forEvent:(NSEvent *)event
+					  target:(id *)target
+					  action:(SEL *)action
+{
+	dn::Window *w = [self window];
+	const dn::MenuNode *node =
+		w ? find_section(w->active_menu(), menu.title) : nullptr;
+	if (!node)
+		return NO;
+
+	for (const dn::MenuNode &n : node->items) {
+		if (!matches_equiv(n, event))
+			continue;
+
+		// Process the key normally, rather than invoke the action directly.
+		// This lets the menu flash as usual.
+		[NSApp.keyWindow sendEvent:event];
+		*target = nil;
+		*action = nil;
+		return YES;
+	}
+	return NO;
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem *)item
@@ -357,8 +387,14 @@ sync_macos_app_menu(App *app)
 		return;
 	g_menu_delegate.app = app;
 
-	if (Window *w = app->key_window())
-		sync_hidden(main, g_menu_delegate, w->active_menu());
+	// Rebuild the items now, so that AppKit can match their key equivalents.
+	if (!app->key_window())
+		return;
+
+	for (NSMenuItem *top in main.itemArray) {
+		if (top.submenu.delegate == g_menu_delegate)
+			[g_menu_delegate menuNeedsUpdate:top.submenu];
+	}
 }
 
 void
@@ -394,7 +430,7 @@ install_macos_app_menu(App *app)
 
 		NSString *title = t.toNSString();
 		if (!has_menu(main, title)) {
-			NSMenu *sub = [[[DnMenu alloc] initWithTitle:title] autorelease];
+			NSMenu *sub = [[[NSMenu alloc] initWithTitle:title] autorelease];
 			sub.delegate = delegate;
 			add_top_menu(main, title, sub);
 		}

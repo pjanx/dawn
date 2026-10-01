@@ -691,6 +691,7 @@ Window::set_mode(Mode m)
 		return;
 	if (this->mode_ == m)
 		return;
+
 	this->mode_ = m;
 	sync_macos_app_menu(this->app_);
 	sync_title();
@@ -1624,12 +1625,11 @@ Window::apply_window(Action a)
 	if (a == Action::Menu) {
 		if (Page *ui = active_page())
 			ui->open_app_menu(this->kit_, true);
-		return;
-	}
-	if (Page *ui = active_page(); ui && ui->actor.apply)
+	} else if (Page *ui = active_page(); ui && ui->actor.apply)
 		ui->actor.apply(a);
 	else if (this->host_.apply)
 		this->host_.apply(a);
+	request_render();
 }
 
 QUrl
@@ -1755,7 +1755,6 @@ Window::keyPressEvent(QKeyEvent *event)
 	const Action a = match_key(window_keys(), key, mods);
 	if (a != Action::None) {
 		apply_window(a);
-		request_render();
 		return;
 	}
 	if (key == Qt::Key_Escape && mods == 0) {
@@ -1782,7 +1781,6 @@ Window::keyReleaseEvent(QKeyEvent *event)
 	if (!event->isAutoRepeat() && this->alt_armed_) {
 		this->alt_armed_ = false;
 		apply_window(Action::Menu);
-		request_render();
 	}
 	event->accept();
 }
@@ -1907,13 +1905,11 @@ Window::mousePressEvent(QMouseEvent *event)
 	}
 	if (event->button() == Qt::BackButton) {
 		apply_window(Action::Back);
-		request_render();
 		event->accept();
 		return;
 	}
 	if (event->button() == Qt::ForwardButton) {
 		apply_window(Action::Forward);
-		request_render();
 		event->accept();
 		return;
 	}
