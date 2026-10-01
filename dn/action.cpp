@@ -214,7 +214,8 @@ constexpr ActionDef kDefs[] = {
 		{{Qt::Key_F5}, {Qt::Key_R}, {Qt::Key_R, kCtrl}}, {}},
 
 	// Cropper
-	{kMenu, {N_("_Open...")}, {}, {{Qt::Key_O, kCtrl}}, {}},
+	{kMenu, {N_("_Open...")}, {"document-open-symbolic"},
+		{{Qt::Key_O, kCtrl}}, {}},
 	{kMenu, {N_("Reset _Crop")}, {}, {}, {}},
 	{0, {N_("Crop _Region")}, {}, {}, N_("Left/Right mouse button")},
 };

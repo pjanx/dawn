@@ -543,6 +543,7 @@ Cropper::update(Kit &kit)
 }
 
 constexpr ToolbarSpec kItems[] = {
+	{Slot::Left, Action::Open},
 	{Slot::Left, Action::Reload},
 	{Slot::Left, Action::SaveAs},
 	{Slot::Left, Action::None},
