@@ -44,14 +44,7 @@ constexpr const char *kImageWidth = "Thumb::Image::Width";
 constexpr const char *kImageHeight = "Thumb::Image::Height";
 constexpr const char *kColorSpace = "Thumb::ColorSpace";
 
-namespace
-{
-
-struct Metadata {
-	unordered_map<string, string> values;
-};
-
-}  // namespace
+using Metadata = unordered_map<string, string>;
 
 static bool
 parse_metadata(const uint8_t *data, size_t size, Metadata *out)
@@ -59,7 +52,7 @@ parse_metadata(const uint8_t *data, size_t size, Metadata *out)
 	if (!out || !data || !size || data[size - 1] != 0)
 		return false;
 
-	out->values.clear();
+	out->clear();
 	vector<string> fields;
 	const char *p = reinterpret_cast<const char *>(data);
 	const char *end = p + size;
@@ -76,7 +69,7 @@ parse_metadata(const uint8_t *data, size_t size, Metadata *out)
 	for (size_t i = 0; i < fields.size(); i += 2) {
 		if (fields[i].empty())
 			return false;
-		out->values.emplace(std::move(fields[i]), std::move(fields[i + 1]));
+		out->emplace(std::move(fields[i]), std::move(fields[i + 1]));
 	}
 	return true;
 }
@@ -99,8 +92,8 @@ number(const string &text, uint64_t *out)
 static const string *
 value(const Metadata &meta, const char *key)
 {
-	auto it = meta.values.find(key);
-	return it == meta.values.end() ? nullptr : &it->second;
+	auto it = meta.find(key);
+	return it == meta.end() ? nullptr : &it->second;
 }
 
 static bool
@@ -237,9 +230,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 	if (!image)
 		return {};
 
-	Metadata meta;
-	meta.values = image->text;
-	if (!valid_metadata(meta, source))
+	if (!valid_metadata(image->text, source))
 		return {};
 
 	shared_ptr<dawn::Profile> srgb = cmm->get_profile_sRGB();
@@ -247,7 +238,7 @@ read_png(const QString &path, const ThumbnailSource &source, int tier,
 			srgb.get(), screen, true, true))
 		return {};
 
-	return thumbnail_hit(*image, meta, tier, true);
+	return thumbnail_hit(*image, image->text, tier, true);
 }
 
 static QString

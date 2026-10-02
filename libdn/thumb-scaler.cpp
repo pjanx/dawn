@@ -866,6 +866,20 @@ build_batch(ThumbScaler::Impl &e, Batch &b, vector<Pending> jobs,
 	b.items.clear();
 	VkDeviceSize source_bytes = 0, mid_bytes = 0, output_bytes = 0;
 	VkDeviceSize readback_bytes = 0, scratch_bytes = 0;
+	auto place = [&](Item &item) {
+		orientation_display_size(item.req.src_w, item.req.src_h,
+			item.req.orientation, &item.display_w, &item.display_h);
+		item.mid_off = align_up(mid_bytes, e.alignment);
+		mid_bytes = item.mid_off +
+			VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
+		item.output_off = align_up(output_bytes, e.alignment);
+		item.readback_off = align_up(readback_bytes, e.alignment);
+		const VkDeviceSize n =
+			VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
+		output_bytes = item.output_off + n;
+		readback_bytes = item.readback_off + n;
+		b.items.push_back(std::move(item));
+	};
 	for (Pending &job : jobs) {
 		Request request = std::move(job.req);
 		const VkDeviceSize source_off = align_up(source_bytes, e.alignment);
@@ -917,18 +931,7 @@ build_batch(ThumbScaler::Impl &e, Batch &b, vector<Pending> jobs,
 			item.source_off = source_off;
 			owns_slot = false;
 			item.kind = Item::Kind::Full;
-			orientation_display_size(item.req.src_w, item.req.src_h,
-				item.req.orientation, &item.display_w, &item.display_h);
-			item.mid_off = align_up(mid_bytes, e.alignment);
-			mid_bytes = item.mid_off +
-				VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-			item.output_off = align_up(output_bytes, e.alignment);
-			item.readback_off = align_up(readback_bytes, e.alignment);
-			const VkDeviceSize n =
-				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
-			output_bytes = item.output_off + n;
-			readback_bytes = item.readback_off + n;
-			b.items.push_back(std::move(item));
+			place(item);
 		}
 	}
 	for (uint32_t id : fits) {
@@ -957,18 +960,7 @@ build_batch(ThumbScaler::Impl &e, Batch &b, vector<Pending> jobs,
 			item.req.orientation = s->info.orientation;
 			item.req.transfer = s->info.transfer;
 			item.req.opaque = s->info.opaque;
-			orientation_display_size(item.req.src_w, item.req.src_h,
-				item.req.orientation, &item.display_w, &item.display_h);
-			item.mid_off = align_up(mid_bytes, e.alignment);
-			mid_bytes = item.mid_off +
-				VkDeviceSize(item.req.out_w) * item.display_h * kBytesPerPixel;
-			item.output_off = align_up(output_bytes, e.alignment);
-			item.readback_off = align_up(readback_bytes, e.alignment);
-			const VkDeviceSize n =
-				VkDeviceSize(item.req.out_w) * item.req.out_h * kBytesPerPixel;
-			output_bytes = item.output_off + n;
-			readback_bytes = item.readback_off + n;
-			b.items.push_back(std::move(item));
+			place(item);
 		}
 	}
 	if (b.items.empty())
