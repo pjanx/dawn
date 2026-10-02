@@ -660,11 +660,9 @@ load_libjpeg_turbo(span<const uint8_t> data, const OpenContext &ctx,
 	size_t width = size_t(cinfo.output_width);
 	size_t height = size_t(cinfo.output_height);
 
-	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(uint32_t(width), uint32_t(height), error);
+	if (!image)
 		return nullptr;
-	}
 
 #if defined MAXJ12SAMPLE || defined MAXJ16SAMPLE
 	if (high) {

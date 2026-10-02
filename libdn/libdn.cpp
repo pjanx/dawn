@@ -115,18 +115,20 @@ render_dimensions(double width, double height, uint32_t *out_width,
 }
 
 ImagePtr
-image_new(uint32_t width, uint32_t height)
+image_new(uint32_t width, uint32_t height, Error *error)
 {
-	if (width == 0 || height == 0)
+	if (width == 0 || height == 0) {
+		set_error(error, _("invalid image dimensions"));
 		return nullptr;
-	if (width > kMaxDimension || height > kMaxDimension)
+	}
+	if (width > kMaxDimension || height > kMaxDimension ||
+		width > UINT32_MAX / kBytesPerPixel ||
+		height > SIZE_MAX / (width * kBytesPerPixel)) {
+		set_error(error, _("image dimensions too large"));
 		return nullptr;
-	if (width > UINT32_MAX / kBytesPerPixel)
-		return nullptr;
+	}
 
 	uint32_t stride = width * kBytesPerPixel;
-	if (height > SIZE_MAX / stride)
-		return nullptr;
 
 	ImagePtr image;
 	try {
@@ -134,6 +136,7 @@ image_new(uint32_t width, uint32_t height)
 		StageClock clk(&OpenTiming::alloc_ms);
 		image->data.assign(size_t(stride) * height, 0);
 	} catch (const bad_alloc &) {
+		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 	image->width = width;

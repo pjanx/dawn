@@ -1257,7 +1257,7 @@ test_thumb_tiles()
 		return;
 	}
 
-	auto image = dawn::image_new(512, 512);
+	auto image = dawn::image_new(512, 512, nullptr);
 	for (uint32_t y = 0; y < image->height; y++)
 		for (uint32_t x = 0; x < image->width; x++)
 			memcpy(dawn::row_u16(*image, y) + x * 4, &kRed, sizeof kRed);

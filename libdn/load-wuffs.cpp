@@ -198,7 +198,7 @@ crop(const Image &src, wuffs_base__rect_ie_u32 r)
 {
 	uint32_t w = r.max_excl_x - r.min_incl_x;
 	uint32_t h = r.max_excl_y - r.min_incl_y;
-	ImagePtr out = image_new(w, h);
+	ImagePtr out = image_new(w, h, nullptr);
 	if (!out)
 		return nullptr;
 	for (uint32_t y = 0; y < h; y++) {
@@ -301,11 +301,9 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 {
 	// Copy the previous frame to a new image.
 	const ImagePtr &prev = ctx.result_tail;
-	ImagePtr canvas = image_new(prev->width, prev->height);
-	if (!canvas) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr canvas = image_new(prev->width, prev->height, error);
+	if (!canvas)
 		return false;
-	}
 
 	const Image &base = ctx.restore_previous ? *ctx.restore_previous : *prev;
 	memcpy(canvas->data.data(), base.data.data(), base.data.size());
@@ -334,11 +332,9 @@ load_wuffs_frame_compose(WuffsLoadContext &ctx, ImagePtr &image,
 
 	if (wuffs_base__frame_config__disposal(&fc) ==
 		WUFFS_BASE__ANIMATION_DISPOSAL__RESTORE_PREVIOUS) {
-		ctx.restore_previous = image_new(canvas->width, canvas->height);
-		if (!ctx.restore_previous) {
-			set_error(error, _("image allocation failure"));
+		ctx.restore_previous = image_new(canvas->width, canvas->height, error);
+		if (!ctx.restore_previous)
 			return false;
-		}
 		memcpy(ctx.restore_previous->data.data(), canvas->data.data(),
 			canvas->data.size());
 	}
@@ -389,9 +385,8 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 		break;
 	}
 
-	ImagePtr image = image_new(ctx.width, ctx.height);
+	ImagePtr image = image_new(ctx.width, ctx.height, error);
 	if (!image) {
-		set_error(error, _("image allocation failure"));
 		ctx.result.reset();
 		ctx.result_tail.reset();
 		return false;

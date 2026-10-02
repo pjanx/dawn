@@ -110,11 +110,9 @@ load_float_frame(const dnrs_frame &frame, const OpenContext &ctx, Error *error)
 		set_error(error, _("invalid or truncated frame"));
 		return nullptr;
 	}
-	ImagePtr image = image_new(frame.width, frame.height);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(frame.width, frame.height, error);
+	if (!image)
 		return nullptr;
-	}
 
 	vector<float> rgba(size_t(frame.width) * frame.height * 4, 1);
 	for (uint32_t y = 0; y < frame.height; y++) {
@@ -168,11 +166,9 @@ load_frame(const dnrs_frame &frame, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(frame.width, frame.height);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(frame.width, frame.height, error);
+	if (!image)
 		return nullptr;
-	}
 	switch (frame.format) {
 	case DNRS_PIXEL_GRAY8:
 		pack_gray(*image, frame, false, false);

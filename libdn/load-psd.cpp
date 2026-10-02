@@ -444,11 +444,9 @@ load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(h.width, h.height);
-	if (!image) {
-		set_error(error, _("unsupported PSD image dimensions"));
+	ImagePtr image = image_new(h.width, h.height, error);
+	if (!image)
 		return nullptr;
-	}
 
 	vector<uint8_t> planes;
 	if (!read_composite(r, h, &planes, error))

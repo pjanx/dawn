@@ -365,11 +365,9 @@ decode_image(JxrLoadContext &ctx, const OpenContext &octx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(uint32_t(width), uint32_t(height), error);
+	if (!image)
 		return nullptr;
-	}
 
 	U32 icc = 0;
 	if (!ctx.decoder->GetColorContext(ctx.decoder, nullptr, &icc) && icc) {

@@ -144,7 +144,7 @@ imageio_gain_map_pixels(CFDictionaryRef info, const GainMap &metadata)
 		double(CFDataGetLength(data)) < stride * (height - 1) + width)
 		return nullptr;
 
-	ImagePtr pixels = image_new(uint32_t(width), uint32_t(height));
+	ImagePtr pixels = image_new(uint32_t(width), uint32_t(height), nullptr);
 	if (!pixels)
 		return nullptr;
 
@@ -253,11 +253,9 @@ load_imageio_hdr(CGImageRef cg, const OpenContext &ctx, Error *error)
 		context, CGRectMake(0, 0, double(width), double(height)), cg);
 	CGContextRelease(context);
 
-	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(uint32_t(width), uint32_t(height), error);
+	if (!image)
 		return nullptr;
-	}
 	if (!split_hdr(*image, ctx, rgba, true, kRec2020Primaries, error))
 		return nullptr;
 	return image;
@@ -306,11 +304,10 @@ load_imageio_image(CGImageRef cg, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(uint32_t(width), uint32_t(height));
+	ImagePtr image = image_new(uint32_t(width), uint32_t(height), error);
 	if (!image) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 

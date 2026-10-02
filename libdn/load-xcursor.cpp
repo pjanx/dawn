@@ -108,7 +108,7 @@ load_xcursor_image(const XcursorImage *src)
 	if (!src->width || !src->height)
 		return nullptr;
 
-	ImagePtr image = image_new(src->width, src->height);
+	ImagePtr image = image_new(src->width, src->height, nullptr);
 	if (!image)
 		return nullptr;
 

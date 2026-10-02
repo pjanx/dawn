@@ -388,11 +388,9 @@ build_image(OpenJpegLoadContext &ctx, Error *error)
 			make_sampler(c, first.dx ? first.dx : 1, first.dy ? first.dy : 1);
 	}
 
-	ImagePtr out = image_new(first.w, first.h);
-	if (!out) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr out = image_new(first.w, first.h, error);
+	if (!out)
 		return nullptr;
-	}
 
 	write_pixels(layout, samplers, *out);
 	if (image.icc_profile_buf && image.icc_profile_len) {

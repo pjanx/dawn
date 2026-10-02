@@ -281,17 +281,11 @@ split_signal_frame(
 static bool
 append_decoded_frame(JxlLoadContext &ctx, Error *error)
 {
-	// This also catches a frame arriving before the header we subscribed to.
-	if (!ctx.info.xsize || !ctx.info.ysize) {
-		set_error(error, _("invalid image dimensions"));
+	// Zero dimensions also catch a frame arriving before the header we
+	// subscribed to.
+	ImagePtr image = image_new(ctx.info.xsize, ctx.info.ysize, error);
+	if (!image)
 		return false;
-	}
-
-	ImagePtr image = image_new(ctx.info.xsize, ctx.info.ysize);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
-		return false;
-	}
 
 	// Coalescing stays on, so every frame covers the whole canvas.
 	if (ctx.transfer != 8)

@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include "gettext.hpp"
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
@@ -85,11 +84,9 @@ ResvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	transform.d = float(scale);
 	resvg_render(tree_, transform, uw, uh, (char *) pixmap.data());
 
-	ImagePtr image = image_new(uw, uh);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(uw, uh, error);
+	if (!image)
 		return nullptr;
-	}
 
 	// resvg_render() always produces premultiplied RGBA8888; pack it
 	// into working-format BGRA16, leaving the association untouched.

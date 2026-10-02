@@ -53,7 +53,8 @@ split(uint32_t width, const vector<float> &rgb, const vector<float> &alpha,
 	shared_ptr<dawn::Profile> screen = nullptr)
 {
 	Split result;
-	result.image = dawn::image_new(width, uint32_t(rgb.size() / 3 / width));
+	result.image =
+		dawn::image_new(width, uint32_t(rgb.size() / 3 / width), nullptr);
 	dawn::OpenContext ctx;
 	ctx.gain_maps = gain_maps;
 	ctx.warnings = &result.warnings;
@@ -314,7 +315,7 @@ static dawn::ImagePtr
 split_signal(
 	uint8_t transfer, const vector<double> &signal, double peak, double alpha)
 {
-	auto image = dawn::image_new(uint32_t(signal.size()), 1);
+	auto image = dawn::image_new(uint32_t(signal.size()), 1, nullptr);
 	uint16_t *p = dawn::row_u16(*image, 0);
 	for (size_t i = 0; i < signal.size(); i++, p += 4) {
 		p[0] = p[1] = p[2] = uint16_t(lround(signal[i] * alpha * 65535));

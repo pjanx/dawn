@@ -163,7 +163,8 @@ decode_webp(const QByteArray &bytes, dawn::Cmm &cmm, dawn::Profile *source,
 		WebPFree(bgra);
 		return {};
 	}
-	dawn::ImagePtr image = dawn::image_new(uint32_t(width), uint32_t(height));
+	dawn::ImagePtr image =
+		dawn::image_new(uint32_t(width), uint32_t(height), nullptr);
 	if (image &&
 		!cmm.transform_bgra8_to_bgra16(bgra, image->data.data(), image->width,
 			image->height, source, target, true))

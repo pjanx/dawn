@@ -280,11 +280,9 @@ decode_low_depth(const Entry &entry, const IconInfo &info,
 		mask = mask_data(entries, info, &one_bit_mask);
 	}
 
-	ImagePtr image = image_new(info.width, info.height);
-	if (!image) {
-		set_error(error, _("failed to allocate indexed icon image"));
+	ImagePtr image = image_new(info.width, info.height, error);
+	if (!image)
 		return nullptr;
-	}
 	for (uint32_t y = 0; y < info.height; y++) {
 		for (uint32_t x = 0; x < info.width; x++) {
 			size_t pixel = size_t(y) * info.width + x;
@@ -360,11 +358,9 @@ decode_argb_rle(span<const uint8_t> data, const IconInfo &info, Error *error)
 				error))
 			return nullptr;
 
-	ImagePtr image = image_new(info.width, info.height);
-	if (!image) {
-		set_error(error, _("failed to allocate ARGB icon image"));
+	ImagePtr image = image_new(info.width, info.height, error);
+	if (!image)
 		return nullptr;
-	}
 	for (uint32_t y = 0; y < info.height; y++)
 		for (uint32_t x = 0; x < info.width; x++) {
 			size_t p = size_t(y) * info.width + x;
@@ -402,11 +398,9 @@ decode_rgb24(const Entry &entry, const IconInfo &info,
 
 	bool one_bit_mask = false;
 	span<const uint8_t> mask = mask_data(entries, info, &one_bit_mask);
-	ImagePtr image = image_new(info.width, info.height);
-	if (!image) {
-		set_error(error, _("failed to allocate RGB icon image"));
+	ImagePtr image = image_new(info.width, info.height, error);
+	if (!image)
 		return nullptr;
-	}
 	for (uint32_t y = 0; y < info.height; y++)
 		for (uint32_t x = 0; x < info.width; x++) {
 			size_t p = size_t(y) * info.width + x;
@@ -431,11 +425,9 @@ decode_argb_raw(span<const uint8_t> data, const IconInfo &info, Error *error)
 		set_error(error, _("unsupported ARGB icon encoding"));
 		return nullptr;
 	}
-	ImagePtr image = image_new(info.width, info.height);
-	if (!image) {
-		set_error(error, _("failed to allocate ARGB icon image"));
+	ImagePtr image = image_new(info.width, info.height, error);
+	if (!image)
 		return nullptr;
-	}
 	for (uint32_t y = 0; y < info.height; y++)
 		for (uint32_t x = 0; x < info.width; x++) {
 			size_t p = size_t(y) * info.width + x;

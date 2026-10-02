@@ -93,7 +93,7 @@ load_fixture(const string &name)
 static void
 test_pack_helpers()
 {
-	dawn::ImagePtr img = dawn::image_new(1, 1);
+	dawn::ImagePtr img = dawn::image_new(1, 1, nullptr);
 	CHECK(img != nullptr);
 
 	// RGBA8 red → B=0 G=0 R=65535 A=65535
@@ -186,7 +186,7 @@ test_unpremultiply_alpha_last8()
 static dawn::ImagePtr
 image_1x1(uint16_t b, uint16_t g, uint16_t r, uint16_t a)
 {
-	dawn::ImagePtr img = dawn::image_new(1, 1);
+	dawn::ImagePtr img = dawn::image_new(1, 1, nullptr);
 	if (!img) {
 		test::fail("image_new failed");
 		exit(1);
@@ -448,7 +448,7 @@ test_cmyk_cms_opaque()
 	auto src = cmm->get_profile(bytes);
 	CHECK(src != nullptr);
 
-	dawn::ImagePtr img = dawn::image_new(1, 1);
+	dawn::ImagePtr img = dawn::image_new(1, 1, nullptr);
 	CHECK(img != nullptr);
 	const uint8_t cmyk[4] = {0, 255, 255, 0};
 	cmm->convert_cmyk8(

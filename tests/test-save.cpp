@@ -21,7 +21,7 @@ using namespace std;
 static dawn::ImagePtr
 gradient(uint32_t w, uint32_t h)
 {
-	auto image = dawn::image_new(w, h);
+	auto image = dawn::image_new(w, h, nullptr);
 	CHECK(image);
 	if (!image)
 		return image;

@@ -386,7 +386,7 @@ test_apple()
 	CHECK(!dawn::gain_map_applies(dawn::apple_gain_map(none), {}));
 
 	// Texels become normalized log2 gain.
-	auto pixels = dawn::image_new(3, 1);
+	auto pixels = dawn::image_new(3, 1, nullptr);
 	uint16_t *p = dawn::row_u16(*pixels, 0);
 	const uint16_t texels[3] = {0, 32768, 65535};
 	for (int i = 0; i < 3; i++)

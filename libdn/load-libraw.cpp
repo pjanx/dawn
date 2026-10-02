@@ -133,11 +133,9 @@ load_libraw_page(libraw_data_t *iprc, const OpenContext &ctx,
 		return nullptr;
 	}
 
-	ImagePtr result = image_new(iprc->sizes.width, iprc->sizes.height);
-	if (!result) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr result = image_new(iprc->sizes.width, iprc->sizes.height, error);
+	if (!result)
 		return nullptr;
-	}
 
 	develop(iprc, *result);
 	result->orientation = orientation;

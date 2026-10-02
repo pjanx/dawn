@@ -385,8 +385,9 @@ row_u16(const Image &img, uint32_t y)
 	return assume_aligned<const uint16_t>(row_bytes(img, y));
 }
 
-/// Allocate a zeroed working-format image. Returns null on OOM / overflow.
-ImagePtr image_new(uint32_t width, uint32_t height);
+/// Allocate a zeroed working-format image. Returns null, saying why, when the
+/// dimensions are unusable or memory runs out.
+ImagePtr image_new(uint32_t width, uint32_t height, Error *error);
 
 // --- Opening -----------------------------------------------------------------
 

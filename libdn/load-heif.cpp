@@ -172,9 +172,8 @@ decode_heif_pixels(
 		return nullptr;
 	}
 
-	ImagePtr result = image_new(uint32_t(w), uint32_t(h));
+	ImagePtr result = image_new(uint32_t(w), uint32_t(h), error);
 	if (!result) {
-		set_error(error, _("image allocation failure"));
 		heif_image_release(image);
 		return nullptr;
 	}
@@ -691,9 +690,10 @@ load_heif_sample(const heif_image *img, bool has_alpha, uint64_t *retained,
 		return nullptr;
 	}
 
-	ImagePtr frame = image_new(uint32_t(w), uint32_t(h));
+	Error error;
+	ImagePtr frame = image_new(uint32_t(w), uint32_t(h), &error);
 	if (!frame) {
-		add_warning(ctx, _("image allocation failure"));
+		add_warning(ctx, error.message);
 		return nullptr;
 	}
 

@@ -62,11 +62,9 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 {
 	auto width = uint32_t(config->input.width);
 	auto height = uint32_t(config->input.height);
-	ImagePtr image = image_new(width, height);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(width, height, error);
+	if (!image)
 		return nullptr;
-	}
 
 	config->options.use_threads = 1;
 	config->output.width = config->input.width;
@@ -117,11 +115,9 @@ load_webp_frame(WebPAnimDecoder *dec, const WebPAnimInfo &info,
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(info.canvas_width, info.canvas_height);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(info.canvas_width, info.canvas_height, error);
+	if (!image)
 		return nullptr;
-	}
 
 	size_t stride = size_t(info.canvas_width) * 4;
 	widen_bgra8_to_bgra16(*image, buf, stride);

@@ -119,11 +119,10 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	CGContextDrawPDFPage(context, page);
 	CGContextRelease(context);
 
-	ImagePtr image = image_new(uw, uh);
+	ImagePtr image = image_new(uw, uh, error);
 	if (!image) {
 		if (icc)
 			CFRelease(icc);
-		set_error(error, _("image allocation failure"));
 		return nullptr;
 	}
 

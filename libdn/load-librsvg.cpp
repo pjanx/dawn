@@ -99,9 +99,8 @@ LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	}
 
 	cairo_surface_flush(surface);
-	ImagePtr image = image_new(uw, uh);
+	ImagePtr image = image_new(uw, uh, error);
 	if (!image) {
-		set_error(error, _("image allocation failure"));
 		cairo_surface_destroy(surface);
 		return nullptr;
 	}

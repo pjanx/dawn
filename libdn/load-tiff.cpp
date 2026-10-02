@@ -328,22 +328,15 @@ load_tiff_directory_u16(TIFF *tiff, const OpenContext &ctx,
 	if (!grey && !rgb)
 		return nullptr;
 
-	if (width > kMaxDimension || height > kMaxDimension) {
-		set_error(error, _("image dimensions too large"));
-		return nullptr;
-	}
-
 	tmsize_t scan_bytes = TIFFScanlineSize(tiff);
 	if (scan_bytes <= 0) {
 		set_error(error, _("invalid TIFF scanline size"));
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(width, height);
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(width, height, error);
+	if (!image)
 		return nullptr;
-	}
 
 	vector<uint8_t> scan;
 	scan.resize(size_t(scan_bytes));
@@ -447,15 +440,8 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
-	if (img.width > kMaxDimension || img.height > kMaxDimension) {
-		set_error(error, _("image dimensions too large"));
-		TIFFRGBAImageEnd(&img);
-		return nullptr;
-	}
-
-	ImagePtr image = image_new(img.width, img.height);
+	ImagePtr image = image_new(img.width, img.height, error);
 	if (!image) {
-		set_error(error, _("image allocation failure"));
 		TIFFRGBAImageEnd(&img);
 		return nullptr;
 	}

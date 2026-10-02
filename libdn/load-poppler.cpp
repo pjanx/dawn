@@ -112,11 +112,9 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(uint32_t(rw), uint32_t(rh));
-	if (!image) {
-		set_error(error, _("image allocation failure"));
+	ImagePtr image = image_new(uint32_t(rw), uint32_t(rh), error);
+	if (!image)
 		return nullptr;
-	}
 
 	pack_rgb8_to_bgra16(*image, (const uint8_t *) raster.const_data(),
 		size_t(raster.bytes_per_row()));
