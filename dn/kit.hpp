@@ -781,14 +781,10 @@ struct MenuItem : Button {
 	Menu *sub = nullptr;
 	bool checked = false;
 	bool checkable = false;
-	int label_col = 0;
-	int accel_col = 0;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	bool activate(Kit &kit) override;
-	int label_width(const Kit &kit) const;
-	int accel_width(const Kit &kit) const;
 };
 
 struct Combo;

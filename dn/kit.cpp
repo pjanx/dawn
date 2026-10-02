@@ -2889,7 +2889,8 @@ constexpr float kItemGap = 2.f;
 constexpr float kMenuPad = 4.f;
 constexpr float kMenuHoldMs = 500.f;  // GTK MENU_SHELL_TIMEOUT
 
-// Where an item's columns land, relative to its own left edge.
+// The accelerator is aligned to the right, so a label has only its own row's
+// to keep clear of.
 namespace
 {
 
@@ -2907,12 +2908,21 @@ static MenuCols
 menu_cols(const Kit &kit, const MenuItem &m)
 {
 	MenuCols c;
-	c.accel_w = m.accel_col > 0 ? m.accel_col : m.accel_width(kit);
+	c.accel_w = m.text_cache_.text_width(kit, m.accel, false);
 	c.chevron = m.sub ? kit.icon_px() : 0;
 	c.label_x = kit.px(kFramePadX * 2.f + kIconPts);
 	c.accel_x = m.r.w - kit.px(kFramePadX) - c.chevron - c.accel_w;
 	c.avail = max(1, c.accel_x - kit.px(kFramePadX) - c.label_x);
 	return c;
+}
+
+static int
+menu_item_width(const Kit &kit, int label_w, int accel_w, bool sub)
+{
+	// One conversion for the whole run of padding, rather than rounding
+	// each term and accumulating the error.
+	return kit.px(kIconPts + kFramePadX * 5.f) + label_w + accel_w +
+		(sub ? kit.icon_px() : 0);
 }
 
 static void
@@ -3258,8 +3268,7 @@ Menu::add_item(const QString &text)
 	auto item = make_unique<MenuItem>();
 	item->text = text;
 	MenuItem *ref = item.get();
-	if (this->col)
-		this->col->add_child(std::move(item), size_t(-1));
+	this->col->add_child(std::move(item), size_t(-1));
 	return ref;
 }
 
@@ -3274,8 +3283,7 @@ Menu::add_item_with_mnemonic(const char *label)
 void
 Menu::add_sep()
 {
-	if (this->col)
-		this->col->add_child(make_unique<Sep>(), size_t(-1));
+	this->col->add_child(make_unique<Sep>(), size_t(-1));
 }
 
 void
@@ -3292,21 +3300,19 @@ Menu::clear(Kit &kit)
 	for (auto &sub : this->subs_) {
 		if (!sub)
 			continue;
+
 		sub->close(kit);
 		sub->clear(kit);
 		kit.forget_tree(sub.get());
 	}
 	this->subs_.clear();
-	if (this->col)
-		this->col->erase_children(kit, 0);
+	this->col->erase_children(kit, 0);
 }
 
 void
 Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 {
 	clear(kit);
-	if (!this->col)
-		return;
 	this->col->grow = false;
 	this->min_w = 200.f;
 	for (const MenuNode &node : nodes) {
@@ -3334,24 +3340,22 @@ Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 void
 Menu::sync()
 {
-	if (this->col) {
-		for (auto &k : this->col->kids) {
-			auto *item = dynamic_cast<MenuItem *>(k.get());
-			if (!item || item->sub || item->action == Action::None)
-				continue;
+	for (auto &k : this->col->kids) {
+		auto *item = dynamic_cast<MenuItem *>(k.get());
+		if (!item || item->sub || item->action == Action::None)
+			continue;
 
-			const Action action = item->action;
-			item->checked = item->sync_action();
-			const ActionDef &def = action_def(action);
-			item->set_text(
-				menu_label(action_label(def, item->checked), &item->mnemonic));
-			const QString accel = accel_label(def);
-			if (item->accel != accel) {
-				item->accel = accel;
-				item->invalidate_measure();
-			}
-			item->checkable = (def.flags & ActionToggle) && !def.label[1];
+		const Action action = item->action;
+		item->checked = item->sync_action();
+		const ActionDef &def = action_def(action);
+		item->set_text(
+			menu_label(action_label(def, item->checked), &item->mnemonic));
+		const QString accel = accel_label(def);
+		if (item->accel != accel) {
+			item->accel = accel;
+			item->invalidate_measure();
 		}
+		item->checkable = (def.flags & ActionToggle) && !def.label[1];
 	}
 }
 
@@ -3385,29 +3389,20 @@ Menu::place(Kit &kit)
 Size
 Menu::measure_content(Kit &kit, int max_w, int max_h)
 {
-	// Shared columns are retained measurement output. When they change,
-	// discard the item sizes that were computed against the old columns.
-	if (this->col) {
-		int lw = 0;
-		int aw = 0;
-		for (const auto &k : this->col->kids) {
-			auto *item = dynamic_cast<MenuItem *>(k.get());
-			if (!item)
-				continue;
-			lw = max(lw, item->label_width(kit));
-			aw = max(aw, item->accel_width(kit));
-		}
-		for (auto &k : this->col->kids) {
-			if (auto *item = dynamic_cast<MenuItem *>(k.get())) {
-				if (item->label_col == lw && item->accel_col == aw)
-					continue;
-				item->label_col = lw;
-				item->accel_col = aw;
-				item->invalidate_measure();
-			}
+	int lw = 0, aw = 0;
+	bool sub = false;
+	for (const auto &k : this->col->kids) {
+		if (auto *item = dynamic_cast<const MenuItem *>(k.get())) {
+			lw = max(lw, item->text_cache_.text_width(kit, item->text, false));
+			aw = max(aw, item->text_cache_.text_width(kit, item->accel, false));
+			sub |= bool(item->sub);
 		}
 	}
-	return Panel::measure_content(kit, max_w, max_h);
+	Size size = Panel::measure_content(kit, max_w, max_h);
+	const int want =
+		kit.px(this->pad_x) * 2 + menu_item_width(kit, lw, aw, sub);
+	size.w = min(max(size.w, want), max_w);
+	return size;
 }
 
 bool
@@ -3426,14 +3421,10 @@ Menu::key(Kit &kit, const Key &ev)
 Size
 MenuItem::measure_content(Kit &kit, int, int)
 {
-	const int lw = this->label_col > 0 ? this->label_col : label_width(kit);
-	const int aw = this->accel_col > 0 ? this->accel_col : accel_width(kit);
 	const int icon = kit.icon_px();
-	// One conversion for the whole run of padding, rather than rounding
-	// each term and accumulating the error.
-	int width = kit.px(kIconPts + kFramePadX * 5.f) + lw + aw;
-	if (this->sub)
-		width += icon;
+	const int width = menu_item_width(kit,
+		this->text_cache_.text_width(kit, this->text, false),
+		this->text_cache_.text_width(kit, this->accel, false), this->sub);
 	int ch = max(kit.line_height(false), icon);
 	if (!this->text.isEmpty())
 		ch = max(ch, this->text_cache_.text_height(kit, this->text, 0, false));
@@ -3473,10 +3464,9 @@ MenuItem::paint(Kit &kit) const
 			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (!this->accel.isEmpty()) {
-		const int tw = this->text_cache_.text_width(kit, this->accel, false);
 		const int ath =
 			this->text_cache_.text_height(kit, this->accel, 0, false);
-		emit_text(kit, this->text_cache_, float(accel_x + cols.accel_w - tw),
+		emit_text(kit, this->text_cache_, float(accel_x),
 			float(this->r.y + (this->r.h - ath) / 2), this->accel,
 			col(kit.colours_[ColourInk], kDimAlpha), false, -1);
 	}
@@ -3498,18 +3488,6 @@ MenuItem::activate(Kit &kit)
 	this->sub->open(kit, this);
 	kit.focus_first(this->sub);
 	return true;
-}
-
-int
-MenuItem::label_width(const Kit &kit) const
-{
-	return this->text_cache_.text_width(kit, this->text, false);
-}
-
-int
-MenuItem::accel_width(const Kit &kit) const
-{
-	return this->text_cache_.text_width(kit, this->accel, false);
 }
 
 // --- Combo -------------------------------------------------------------------
