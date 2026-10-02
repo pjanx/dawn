@@ -2977,7 +2977,6 @@ Dialog::place(Kit &kit)
 		return;
 	}
 	this->frame->set_visible(true);
-	this->r = {0, 0, kit.host_w_, kit.host_h_};
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
 	const int margin = kit.px(kGlowPts * 2.f);
@@ -2990,6 +2989,8 @@ Dialog::place(Kit &kit)
 	const int x = max(0, (kit.host_w_ - size.w) / 2);
 	const int y = margin + max(0, (avail_h - h) / 2);
 	this->frame->arrange(kit, {x, y, size.w, h});
+	// Just the frame: whatever misses it lands on the scrim.
+	this->r = this->frame->r;
 
 	// Button::focusable() wants a laid-out rect, so this cannot happen any
 	// earlier; without it Return and Space reach nothing and are eaten.
@@ -3030,28 +3031,9 @@ Dialog::paint(Kit &kit) const
 	if (!this->visible)
 		return;
 
-	// The same wash Hint lays over the window behind it.
-	kit.draw_fill(this->r, col(kit.colours_[ColourInk], kWashAlpha));
 	if (this->frame && this->frame->visible)
 		kit.draw_shadow(this->frame->r);
 	Panel::paint(kit);
-}
-
-// Only Escape and the Close button dismiss: a press that misses the frame is
-// swallowed, and a release is left to whoever claimed the press, so finishing
-// a scrollbar drag outside the frame cannot close it.
-bool
-Dialog::press(Kit &, float, float, Qt::MouseButton)
-{
-	return true;
-}
-
-// Hovering must not reach what the dialog covers, nor drag the keyboard focus
-// around and drop its ring, which is what MenuPopup::motion does for items.
-bool
-Dialog::motion(Kit &, float, float)
-{
-	return true;
 }
 
 // --- Menus -------------------------------------------------------------------
@@ -5481,7 +5463,7 @@ Kit::wake_ms() const
 	// has to be told when to hide itself.
 	for (const Popup *p : this->popups_)
 		ms = sooner(ms, wake_tree(p));
-	return sooner(ms, wake_tree(this->scrim_.get()));
+	return ms;
 }
 
 static void
@@ -5490,7 +5472,6 @@ sync_scrim(Kit &kit)
 	if (!kit.scrim_ && !kit.popups_.empty()) {
 		auto s = make_unique<Scrim>();
 		s->hittable = true;
-		s->fill = Fill::None;
 		kit.scrim_ = std::move(s);
 	}
 	if (kit.scrim_) {
@@ -5760,8 +5741,6 @@ Kit::relayout_popups()
 void
 Kit::prepare_popups()
 {
-	if (this->scrim_ && this->scrim_->visible)
-		this->scrim_->prepare(*this);
 	for (size_t i = 0; i < this->popups_.size();) {
 		Popup *p = this->popups_[i];
 		p->prepare(*this);
@@ -5835,10 +5814,12 @@ Kit::paint()
 	}
 	if (this->root_)
 		this->root_->paint(*this);
-	if (this->scrim_ && this->scrim_->visible)
-		this->scrim_->paint(*this);
-	for (Popup *p : this->popups_)
+	for (Popup *p : this->popups_) {
+		if (p->dims())
+			draw_fill(
+				this->scrim_->r, col(this->colours_[ColourInk], kWashAlpha));
 		p->paint(*this);
+	}
 	paint_tooltip(*this);
 	this->list_.end();
 	if (this->renderer_ && !this->atlas_.dirty.empty() &&

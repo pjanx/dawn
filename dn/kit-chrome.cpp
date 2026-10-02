@@ -777,7 +777,6 @@ Hint::paint(Kit &kit) const
 	if (!shown())
 		return;
 
-	kit.draw_fill(this->r, col(kit.colours_[ColourInk], kWashAlpha));
 	const float th = float(kit.line_height(true));
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())

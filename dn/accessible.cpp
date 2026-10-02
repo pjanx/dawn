@@ -89,7 +89,7 @@ namespace dn
 // --- Semantic traversal ------------------------------------------------------
 
 // What clipping everything here is measured against: the frame, not the whole
-// surface.  Under client-side decorations a Dialog spans the surface, shadow
+// surface.  Under client-side decorations the page spans the surface, shadow
 // and all, and reporting that as its extents would put its origin outside the
 // window a client has just been told it is in.
 static Rect
