@@ -39,6 +39,56 @@ using namespace std;
 namespace dn
 {
 
+// --- Unicode -----------------------------------------------------------------
+
+// UTF-16 offsets that sit on a grapheme cluster: a surrogate pair or a
+// combining mark is never split.  before/after walk to the neighbouring
+// cluster; at_or_* stay put when already on a boundary.
+static int
+grapheme_before(const QString &text, int at)
+{
+	if (at <= 0)
+		return 0;
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(min(at, int(text.size())));
+	const auto prev = finder.toPreviousBoundary();
+	return prev < 0 ? 0 : int(prev);
+}
+
+static int
+grapheme_after(const QString &text, int at)
+{
+	const int end = int(text.size());
+	if (at >= end)
+		return end;
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(max(at, 0));
+	const auto next = finder.toNextBoundary();
+	return next < 0 ? end : int(next);
+}
+
+static int
+grapheme_at_or_before(const QString &text, int at)
+{
+	at = clamp(at, 0, int(text.size()));
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(at);
+	if (finder.isAtBoundary())
+		return at;
+	return grapheme_before(text, at);
+}
+
+static int
+grapheme_at_or_after(const QString &text, int at)
+{
+	at = clamp(at, 0, int(text.size()));
+	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
+	finder.setPosition(at);
+	if (finder.isAtBoundary())
+		return at;
+	return grapheme_after(text, at);
+}
+
 // --- Atlas -------------------------------------------------------------------
 
 constexpr int kAtlasStart = 512;
@@ -145,8 +195,6 @@ resize_cursor(Qt::Edges edges)
 		return Qt::SizeVerCursor;
 	return Qt::ArrowCursor;
 }
-
-constexpr float kDialogPad = 16.f;
 
 static Kit::Packed
 pack_or_grow(Kit &kit, int width, int height)
@@ -982,53 +1030,6 @@ Label::mnemonic_key() const
 
 constexpr float kCaretBlinkMs = 530.f;
 constexpr float kEntryPadY = 3.f;
-
-// Both walk whole grapheme clusters, so that combining marks and surrogate
-// pairs never get split down the middle.
-int
-grapheme_before(const QString &text, int at)
-{
-	if (at <= 0)
-		return 0;
-	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
-	finder.setPosition(min(at, int(text.size())));
-	const auto prev = finder.toPreviousBoundary();
-	return prev < 0 ? 0 : int(prev);
-}
-
-int
-grapheme_after(const QString &text, int at)
-{
-	const int end = int(text.size());
-	if (at >= end)
-		return end;
-	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
-	finder.setPosition(max(at, 0));
-	const auto next = finder.toNextBoundary();
-	return next < 0 ? end : int(next);
-}
-
-int
-grapheme_at_or_before(const QString &text, int at)
-{
-	at = clamp(at, 0, int(text.size()));
-	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
-	finder.setPosition(at);
-	if (finder.isAtBoundary())
-		return at;
-	return grapheme_before(text, at);
-}
-
-int
-grapheme_at_or_after(const QString &text, int at)
-{
-	at = clamp(at, 0, int(text.size()));
-	QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, text);
-	finder.setPosition(at);
-	if (finder.isAtBoundary())
-		return at;
-	return grapheme_after(text, at);
-}
 
 // Word motion walks over the run of word characters to its far side.  Which
 // side that is differs: AppKit text fields stop at the end of the word going
@@ -2776,6 +2777,8 @@ Popup::key(Kit &kit, const Key &ev)
 }
 
 // --- Dialog ------------------------------------------------------------------
+
+constexpr float kDialogPad = 16.f;
 
 Dialog::Dialog()
 {

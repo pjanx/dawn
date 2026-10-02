@@ -7,8 +7,6 @@
 
 // Deliberately not advertising support elsewhere, as with Core Graphics PDF.
 
-#include <dawn-config.h>
-
 #include "gettext.hpp"
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"

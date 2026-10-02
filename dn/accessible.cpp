@@ -2601,7 +2601,7 @@ listed(const vector<Widget *> &list, Widget *w)
 	return find(list.begin(), list.end(), w) != list.end();
 }
 
-bool
+static bool
 listed_id(const vector<QAccessible::Id> &list, QAccessible::Id id)
 {
 	return find(list.begin(), list.end(), id) != list.end();

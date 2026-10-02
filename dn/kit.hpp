@@ -419,14 +419,6 @@ struct Label : Widget {
 	QString tip_key() const override { return this->tip_accel; }
 };
 
-// UTF-16 offsets that sit on a grapheme cluster: a surrogate pair or a
-// combining mark is never split.  before/after walk to the neighbouring
-// cluster; at_or_* stay put when already on a boundary.
-int grapheme_before(const QString &text, int at);
-int grapheme_after(const QString &text, int at);
-int grapheme_at_or_before(const QString &text, int at);
-int grapheme_at_or_after(const QString &text, int at);
-
 // A single-line text field.  The selection runs from the anchor to the caret,
 // and is empty when they meet; every committed edit collapses it.  It never
 // coexists with a preedit: composition starts by replacing it.

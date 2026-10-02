@@ -35,7 +35,6 @@ namespace dn
 
 Sidebar::Sidebar(unique_ptr<Widget> child)
 {
-	this->content = child.get();
 	this->fill = Fill::Panel;
 	this->hittable = true;
 	if (child)

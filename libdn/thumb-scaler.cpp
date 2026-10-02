@@ -11,7 +11,6 @@
 #include "thumb-reduce-spv.h"
 #include "thumb-scale-h-spv.h"
 #include "thumb-scale-v-spv.h"
-#include "vk-device.hpp"
 
 #include <vulkan/vulkan.h>
 
@@ -175,7 +174,6 @@ struct Waiter {
 	uint64_t user = 0;
 	ThumbScaler::Priority priority = ThumbScaler::Priority::Maintenance;
 	uint64_t sequence = 0;
-	size_t bytes = 0;
 };
 
 struct Session {
@@ -234,7 +232,7 @@ struct ThumbScaler::Impl {
 	VkPhysicalDevice phys = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue queue = VK_NULL_HANDLE;
-	uint32_t queue_family = 0, max_image_dim = 0;
+	uint32_t max_image_dim = 0;
 	uint64_t max_storage_range = 0, alignment = 256;
 	VkCommandPool command_pool = VK_NULL_HANDLE;
 	VkDescriptorSetLayout descriptor_layout = VK_NULL_HANDLE;
@@ -501,7 +499,7 @@ claim(
 	if (canceled(job))
 		return false;
 
-	Waiter waiter{job.user, current_priority(job), e.next_waiter++, bytes};
+	Waiter waiter{job.user, current_priority(job), e.next_waiter++};
 	if (!e.next_waiter)
 		e.next_waiter = 1;
 	e.waiters.push_back(&waiter);
@@ -1166,7 +1164,6 @@ ThumbScaler::init(VkPhysicalDevice phys, VkDevice device, VkQueue queue,
 	e.phys = phys;
 	e.device = device;
 	e.queue = queue;
-	e.queue_family = family;
 	VkPhysicalDeviceProperties props{};
 	vkGetPhysicalDeviceProperties(phys, &props);
 	e.max_image_dim = props.limits.maxImageDimension2D;

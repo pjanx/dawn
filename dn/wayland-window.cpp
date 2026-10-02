@@ -36,8 +36,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <cmath>
-
 using namespace std;
 
 namespace dn

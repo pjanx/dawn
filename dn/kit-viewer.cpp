@@ -1518,7 +1518,7 @@ pan_by(Viewer &v, double dx, double dy)
 	request_render(v);
 }
 
-void
+static void
 snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 {
 	if (!pan || scale <= 0.f || disp <= 0.f || vp <= 0.f)

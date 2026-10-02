@@ -70,7 +70,6 @@ struct Browser : Widget {
 		// What this file still owes the current generation.  All of it is
 		// scheduling state, so a new generation resets the lot.
 		struct Progress {
-			Thumbnailer::Reservation reservation = 0;
 			bool pending = false;
 			bool interim = false;
 			bool persistent_checked = false;
@@ -105,7 +104,6 @@ struct Browser : Widget {
 		uint64_t size = 0;
 		int tier = 0;
 		Thumbnailer::Priority priority = Thumbnailer::Priority::Dimensions;
-		bool regeneration = false;
 	};
 
 	Kit &kit_;

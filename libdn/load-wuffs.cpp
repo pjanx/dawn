@@ -33,8 +33,6 @@
 #pragma GCC diagnostic pop
 #endif
 
-#include <dawn-config.h>
-
 #include "gettext.hpp"
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"
@@ -184,7 +182,6 @@ struct WuffsLoadContext {
 
 	const OpenContext *octx = nullptr;  ///< Caller-supplied context
 	shared_ptr<Cmm> cmm;                ///< CMM context, never null
-	Profile *target = nullptr;          ///< Target device profile, if any
 	shared_ptr<Profile> source;         ///< Source colour profile, if any
 
 	ImagePtr result;            ///< The resulting image
@@ -514,7 +511,6 @@ open_wuffs(wuffs_base__image_decoder *dec, span<const uint8_t> data,
 	ctx.src = &src;
 	ctx.octx = &octx;
 	ctx.cmm = cmm_or_default(octx);
-	ctx.target = octx.screen_profile.get();
 
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__EXIF, true);

@@ -111,8 +111,6 @@ void dialog_settings(Kit &kit, SettingsDraft draft,
 	std::function<void(const SettingsDraft &)> on_save);
 
 struct Sidebar : Panel {
-	Widget *content = nullptr;
-
 	explicit Sidebar(std::unique_ptr<Widget> child);
 	bool key(Kit &kit, const Key &ev) override;
 };

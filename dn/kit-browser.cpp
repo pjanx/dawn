@@ -991,7 +991,6 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 		if (res.failed || res.outputs.empty()) {
 			if (finish.reservation)
 				b.thumbnailer_.cancel_bundle(finish.reservation);
-			f.progress.reservation = 0;
 			f.progress.pending = false;
 			f.progress.regen_failed =
 				!f.pixels.ram.empty() && f.progress.interim;
@@ -1026,13 +1025,11 @@ apply_thumb_gpu(Browser &b, GpuFinish finish, dawn::ThumbScaler::Result res)
 			}
 			if (!b.thumbnailer_.publish_bundle(finish.reservation, bundle)) {
 				b.thumbnailer_.cancel_bundle(finish.reservation);
-				f.progress.reservation = 0;
 				f.progress.pending = false;
 				f.progress.failed = f.pixels.ram.empty();
 				b.thumb_inflight_.erase(f.path);
 				break;
 			}
-			f.progress.reservation = 0;
 			f.progress.persistent_checked = true;
 			f.progress.generation_needed = false;
 			f.progress.regen_failed = false;
@@ -1265,12 +1262,10 @@ enqueue_thumbs(Browser &b)
 					bundle_reservation_bytes(target_tier));
 				if (!job.reservation)
 					continue;
-				f.progress.reservation = job.reservation;
 			}
 			Thumbnailer *thumbnailer = &b.thumbnailer_;
 			const auto client = b.thumbnail_client_;
 			Browser *browser = &b;
-			const bool regeneration = job.skip_cache;
 			const auto reservation = job.reservation;
 			if (thumbnailer->submit(
 					client, job.gen, priority,
@@ -1280,11 +1275,10 @@ enqueue_thumbs(Browser &b)
 							*thumbnailer, client, browser, std::move(job));
 					},
 					f.path)) {
-				b.thumb_inflight_[f.path] = {b.thumb_gen_, f.mtime, f.size,
-					target_tier, priority, regeneration};
+				b.thumb_inflight_[f.path] = {
+					b.thumb_gen_, f.mtime, f.size, target_tier, priority};
 			} else if (reservation) {
 				b.thumbnailer_.cancel_bundle(reservation);
-				f.progress.reservation = 0;
 			}
 		}
 	};

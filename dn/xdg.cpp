@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-#include <dawn-config.h>
-
 #include "xdg.hpp"
 
 #include <QCoreApplication>
@@ -15,7 +13,6 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 
-#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
