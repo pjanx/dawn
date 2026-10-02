@@ -4018,31 +4018,36 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	}
 }
 
+// What a toolbar or title bar button shows is its action's state.
+static void
+sync_action_button(Widget *w)
+{
+	auto *btn = dynamic_cast<Button *>(w);
+	if (!btn)
+		return;
+	if (btn->action == Action::None)
+		return;
+
+	const ActionDef &d = action_def(btn->action);
+	const bool on = btn->sync_action();
+	btn->active = on && btn->action != Action::SortDir;
+	const char *icon = action_icon(d, on);
+	if (bool(btn->icon) != bool(icon))
+		btn->invalidate_measure();
+	btn->icon = icon;
+	btn->tip_text = action_tip(d, on);
+	btn->tip_accel = accel_label(d);
+}
+
 void
 Toolbar::sync_buttons()
 {
-	auto apply = [](Widget *w) {
-		auto *btn = dynamic_cast<Button *>(w);
-		if (!btn)
-			return;
-		if (btn->action == Action::None)
-			return;
-		const ActionDef &d = action_def(btn->action);
-		const bool on = btn->sync_action();
-		btn->active = on && btn->action != Action::SortDir;
-		const char *icon = action_icon(d, on);
-		if (bool(btn->icon) != bool(icon))
-			btn->invalidate_measure();
-		btn->icon = icon;
-		btn->tip_text = action_tip(d, on);
-		btn->tip_accel = accel_label(d);
-	};
 	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
 		if (!slot)
 			continue;
 		// items_, not kids: what the overflow is holding is still ours to sync.
 		for (Widget *k : slot->items_)
-			apply(k);
+			sync_action_button(k);
 	}
 }
 
@@ -4150,16 +4155,12 @@ Toolbar::place_slots(Kit &kit)
 // --- Titlebar --------------------------------------------------------------
 
 static unique_ptr<Button>
-make_title_button(Action action, const char *icon)
+make_title_button(Action action)
 {
 	auto btn = make_unique<Button>();
 	btn->flat = true;
 	btn->focus_on_press = false;
 	btn->action = action;
-	btn->icon = icon;
-	const ActionDef &d = action_def(action);
-	btn->tip_text = action_tip(d, false);
-	btn->tip_accel = accel_label(d);
 	return btn;
 }
 
@@ -4177,13 +4178,13 @@ Titlebar::Titlebar()
 	this->title = label.get();
 	add_child(std::move(label), size_t(-1));
 
-	auto min = make_title_button(Action::Minimize, "window-minimize");
+	auto min = make_title_button(Action::Minimize);
 	this->minimize = min.get();
 	add_child(std::move(min), size_t(-1));
-	auto max = make_title_button(Action::Maximize, "window-maximize");
+	auto max = make_title_button(Action::Maximize);
 	this->maximize = max.get();
 	add_child(std::move(max), size_t(-1));
-	auto cls = make_title_button(Action::CloseWindow, "window-close");
+	auto cls = make_title_button(Action::CloseWindow);
 	this->close = cls.get();
 	add_child(std::move(cls), size_t(-1));
 }
@@ -4192,17 +4193,8 @@ void
 Titlebar::sync(Kit &kit)
 {
 	set_visible(kit.csd_ && !kit.fullscreen_);
-	if (this->maximize) {
-		const ActionDef &d = action_def(Action::Maximize);
-		const bool on = kit.maximized_;
-		this->maximize->icon = on ? "window-restore" : "window-maximize";
-		this->maximize->tip_text = action_tip(d, on);
-		this->maximize->active = on;
-	}
-	for (Button *btn : {this->minimize, this->maximize, this->close}) {
-		if (btn)
-			btn->sync_action();
-	}
+	for (Button *btn : {this->minimize, this->maximize, this->close})
+		sync_action_button(btn);
 }
 
 // Only the client draws its own decorations, and never over a fullscreen

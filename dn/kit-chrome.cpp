@@ -1307,6 +1307,8 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 			return kit.dark_;
 		if (action == Action::Fullscreen)
 			return kit.fullscreen_;
+		if (action == Action::Maximize)
+			return kit.maximized_;
 		return checked && checked(action);
 	};
 	page->content->page_ = page.get();

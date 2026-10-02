@@ -42,9 +42,13 @@ constexpr ActionDef kDefs[] = {
 	// that follows it.  Every label in this file works that way; keep one,
 	// on a letter that no other entry of the same menu has taken.
 	{kMenu, {N_("_New Window")}, {}, {{Qt::Key_N, kCtrl}}, {}},
-	{kMenu, {N_("_Close Window")}, {}, {{Qt::Key_W, kCtrl}, {Qt::Key_Q}}, {}},
-	{0, {N_("_Minimise")}, {}, {}, {}},
-	{kToggle, {N_("_Maximise"), N_("Res_tore")}, {}, {}, {}},
+	// It's a bit strange that the CSD buttons get actions and custom icons,
+	// though so far it makes things simpler.
+	{kMenu, {N_("_Close Window")}, {"window-close"},
+		{{Qt::Key_W, kCtrl}, {Qt::Key_Q}}, {}},
+	{0, {N_("_Minimise")}, {"window-minimize"}, {}, {}},
+	{kToggle, {N_("_Maximise"), N_("Res_tore")},
+		{"window-maximize", "window-restore"}, {}, {}},
 	{kMenu, {N_("_Quit")}, {}, {{Qt::Key_Q, kCtrl}}, {}},
 	{kToggle, {N_("Enter _Full Screen"), N_("Exit _Full Screen")},
 		{"view-fullscreen-symbolic", "view-restore-symbolic"}, {
