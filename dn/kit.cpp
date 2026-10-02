@@ -19,8 +19,6 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QMimeData>
-#include <QPainter>
-#include <QPen>
 #include <QTextBoundaryFinder>
 
 #include <qnamespace.h>
@@ -31,7 +29,6 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
@@ -128,61 +125,6 @@ raster_symbolic(const char *name, int px)
 
 	// The atlas takes only alpha for symbolic icons; keep resvg's pixels
 	// as they are until then.
-	return image;
-}
-
-static QImage
-raster_window_button(const char *name, int px)
-{
-	enum class Kind : uint8_t { None, Min, Max, Rest, Close };
-	Kind kind = Kind::None;
-	if (name && strcmp(name, "window-minimize") == 0)
-		kind = Kind::Min;
-	else if (name && strcmp(name, "window-maximize") == 0)
-		kind = Kind::Max;
-	else if (name && strcmp(name, "window-restore") == 0)
-		kind = Kind::Rest;
-	else if (name && strcmp(name, "window-close") == 0)
-		kind = Kind::Close;
-	if (kind == Kind::None || px < 1)
-		return {};
-
-	QImage image(px, px, QImage::Format_ARGB32_Premultiplied);
-	image.fill(Qt::transparent);
-	QPainter painter(&image);
-	painter.setRenderHint(QPainter::Antialiasing, true);
-	const qreal sw = max(1.25, qreal(px) / 12.0);
-	painter.setPen(
-		QPen(Qt::white, sw, Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
-	painter.setBrush(Qt::NoBrush);
-	const qreal m = qreal(px) * 0.22;
-	const QRectF box(m, m, qreal(px) - 2.0 * m, qreal(px) - 2.0 * m);
-	switch (kind) {
-	case Kind::Min:
-		painter.drawLine(QPointF(m, qreal(px) * 0.55),
-			QPointF(qreal(px) - m, qreal(px) * 0.55));
-		break;
-	case Kind::Max:
-		painter.drawRect(box);
-		break;
-	case Kind::Rest: {
-		const qreal s = box.width() * 0.68;
-		const QRectF back(box.right() - s, box.top(), s, s);
-		const QRectF front(box.left(), box.bottom() - s, s, s);
-		painter.drawRect(back);
-		painter.setCompositionMode(QPainter::CompositionMode_Source);
-		painter.fillRect(front.adjusted(-sw, -sw, sw, sw), Qt::transparent);
-		painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-		painter.drawRect(front);
-		break;
-	}
-	case Kind::Close:
-		painter.drawLine(box.topLeft(), box.bottomRight());
-		painter.drawLine(box.topRight(), box.bottomLeft());
-		break;
-	case Kind::None:
-		break;
-	}
 	return image;
 }
 
@@ -4347,9 +4289,7 @@ Kit::draw_icon(int x, int y, int size, const char *name, Colour colour)
 	const auto key = make_pair(string(name), size);
 	auto it = this->icons_.find(key);
 	if (it == this->icons_.end()) {
-		QImage image = raster_symbolic(name, size);
-		if (image.isNull())
-			image = raster_window_button(name, size);
+		const QImage image = raster_symbolic(name, size);
 		if (image.isNull())
 			return;
 		const Packed packed = pack_bitmap(image, true);

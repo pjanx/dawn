@@ -61,5 +61,9 @@
 		<file alias="view-sort-descending-symbolic.svg">view-sort-descending-symbolic.svg</file>
 		<file alias="x-symbolic.svg">x-symbolic.svg</file>
 		<file alias="zoom-fit-symbolic.svg">zoom-fit-symbolic.svg</file>
+		<file alias="dn-window-close-symbolic.svg">dn-window-close-symbolic.svg</file>
+		<file alias="dn-window-maximize-symbolic.svg">dn-window-maximize-symbolic.svg</file>
+		<file alias="dn-window-minimize-symbolic.svg">dn-window-minimize-symbolic.svg</file>
+		<file alias="dn-window-restore-symbolic.svg">dn-window-restore-symbolic.svg</file>
 	</qresource>
 </RCC>
