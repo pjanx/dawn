@@ -4757,7 +4757,15 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 		if (w->press(*this, x, y, button))
 			return true;
 	}
-	return false;
+	if (this->hot_ || this->popups_.empty())
+		return false;
+
+	// A press beside the popups dismisses them down to the first one that
+	// stays put, not all the way: a list dropped from within a dialog goes,
+	// the dialog holding it does not.
+	close_transient_popups();
+	this->pressed_ = nullptr;
+	return true;
 }
 
 bool
@@ -4994,7 +5002,6 @@ Kit::destroy()
 	for (auto &dialog : this->dialogs_)
 		forget_tree(dialog.get());
 	this->dialogs_.clear();
-	this->scrim_.reset();
 	this->tooltip_panel_.reset();
 	this->text_cache_.texts.clear();
 	this->atlas_epoch_++;
@@ -5239,26 +5246,6 @@ paint_tooltip(Kit &kit)
 	kit.tooltip_panel_->paint(kit);
 }
 
-namespace
-{
-
-struct Scrim : Panel {
-	bool press(Kit &kit, float, float, Qt::MouseButton) override;
-};
-
-// Down to the first popup that stays put, not all the way: a list dropped
-// from within a dialog is dismissed by a press beside it, the dialog holding
-// it is not.
-bool
-Scrim::press(Kit &kit, float, float, Qt::MouseButton)
-{
-	kit.close_transient_popups();
-	kit.pressed_ = nullptr;
-	return true;
-}
-
-}  // namespace
-
 static int
 wake_tree(const Kit &kit, const Widget *w)
 {
@@ -5287,20 +5274,6 @@ Kit::wake_ms() const
 	for (const Popup *p : this->popups_)
 		ms = sooner(ms, wake_tree(*this, p));
 	return ms;
-}
-
-static void
-sync_scrim(Kit &kit)
-{
-	if (!kit.scrim_ && !kit.popups_.empty()) {
-		auto s = make_unique<Scrim>();
-		s->hittable = true;
-		kit.scrim_ = std::move(s);
-	}
-	if (kit.scrim_) {
-		kit.scrim_->set_visible(!kit.popups_.empty());
-		kit.scrim_->arrange(kit, {0, 0, kit.host_w_, kit.host_h_});
-	}
 }
 
 Dialog &
@@ -5350,7 +5323,6 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 		this->popup_at_ = chrono::steady_clock::now();
 
 	this->popups_.push_back(&p);
-	sync_scrim(*this);
 	sync_focus();
 	hide_tooltip();
 }
@@ -5373,7 +5345,6 @@ close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 		Widget *covered = p->covered;
 		p->covered = nullptr;
 		p->after_close(kit);
-		sync_scrim(kit);
 		if (kit.popups_.size() != keep)
 			continue;
 
@@ -5481,8 +5452,9 @@ Kit::hit(float x, float y)
 		if (opener && opener->shown() && opener->r.contains(x, y))
 			return opener;
 	}
-	if (this->scrim_ && this->scrim_->visible)
-		return this->scrim_.get();
+	// Nothing below them takes the pointer while any is open.
+	if (!popups.empty())
+		return nullptr;
 	return this->root_ ? this->root_->hit_at(x, y) : nullptr;
 }
 
@@ -5561,7 +5533,6 @@ Kit::sync_cursor()
 void
 Kit::relayout_popups()
 {
-	sync_scrim(*this);
 	for (size_t i = 0; i < this->popups_.size();) {
 		Popup *p = this->popups_[i];
 		if (p->opener && !p->opener->shown()) {
@@ -5627,8 +5598,8 @@ Kit::paint()
 		this->root_->paint(*this);
 	for (Popup *p : this->popups_) {
 		if (p->dims())
-			draw_fill(
-				this->scrim_->r, col(this->colours_[ColourInk], kWashAlpha));
+			draw_fill({0, 0, this->host_w_, this->host_h_},
+				col(this->colours_[ColourInk], kWashAlpha));
 		p->paint(*this);
 	}
 	paint_tooltip(*this);

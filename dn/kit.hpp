@@ -100,8 +100,8 @@ enum class Stroke : uint8_t { None, All, Bottom };
 // any sum it takes part in.
 constexpr int kUnlim = 1 << 24;
 
-// Ink alphas: disabled widgets, de-emphasized ink, and the wash that the scrim
-// lays over the window behind a Dialog or Hint.
+// Ink alphas: disabled widgets, de-emphasized ink, and the wash laid over
+// the window behind a Dialog or Hint.
 constexpr float kDisabledAlpha = 0.375f;
 constexpr float kDimAlpha = 0.625f;
 constexpr float kWashAlpha = 0.1f;
@@ -691,7 +691,7 @@ struct Popup : Panel {
 	// Focus loss dismisses transient popups; a dialog waits for Escape
 	// or its Close button.
 	virtual bool transient() const { return true; }
-	// Whether the scrim washes over everything below this popup.
+	// Whether a wash goes over everything below this popup.
 	virtual bool dims() const { return false; }
 	void paint(Kit &kit) const override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -984,9 +984,6 @@ struct Kit {
 	// Dialogs are opened, not owned by whoever opens them: one stacks over
 	// another, and the one underneath has to outlive the click that did it.
 	std::vector<std::unique_ptr<Dialog>> dialogs_;
-	// Under the popups while any is open: it takes the presses that miss
-	// them, and washes over the window below each that dims.
-	std::unique_ptr<Widget> scrim_;
 	int host_w_ = 0;
 	int host_h_ = 0;
 	Renderer *renderer_ = nullptr;

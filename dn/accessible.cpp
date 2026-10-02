@@ -100,7 +100,7 @@ host_rect(const Kit &kit)
 
 // The hint overlay is a keyboard shortcut drawn over the page, not a control:
 // every chip it puts up stands for something that is exposed already.
-// The tooltip and the scrim are nobody's children, and need no such rule.
+// The tooltip is nobody's child, and needs no such rule.
 static bool
 suppressed(const Widget *w)
 {
