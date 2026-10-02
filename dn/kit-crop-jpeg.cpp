@@ -469,10 +469,8 @@ Cropper::apply(Action action)
 void
 Cropper::paint(Kit &kit) const
 {
-	kit.clip_to(this->r);
 	if (!this->image_) {
 		this->hint_.paint(kit);
-		kit.clip_pop();
 		return;
 	}
 
@@ -514,7 +512,6 @@ Cropper::paint(Kit &kit) const
 	kit.list_.add_rect_stroke(
 		{box.x0 - 1, box.y0 - 1, box.x1 + 1, box.y1 + 1}, {0, 0, 0, 1}, 1);
 	kit.list_.add_rect_stroke(box, {1, 1, 1, 1}, 1);
-	kit.clip_pop();
 }
 
 void

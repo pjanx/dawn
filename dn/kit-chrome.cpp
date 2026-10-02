@@ -38,7 +38,6 @@ Sidebar::Sidebar(unique_ptr<Widget> child)
 	this->content = child.get();
 	this->fill = Fill::Panel;
 	this->hittable = true;
-	this->clip = true;
 	if (child)
 		add_child(std::move(child), size_t(-1));
 }
@@ -274,7 +273,6 @@ make_banner(Label **out)
 	err->stroke = Stroke::Bottom;
 	err->grow = true;
 	err->hittable = true;
-	err->clip = true;
 	err->visible = false;
 
 	auto row = make_unique<Row>();

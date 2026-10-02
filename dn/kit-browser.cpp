@@ -2519,7 +2519,6 @@ Browser::file_gone(const QUrl &url)
 void
 Browser::paint(Kit &kit) const
 {
-	kit.clip_to(this->r);
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
 	const int th = kit.px(float(this->thumb_size_));
 	const Colour ink = kit.colours_[ColourInk];
@@ -2581,7 +2580,6 @@ Browser::paint(Kit &kit) const
 		}
 	}
 	this->scroll_.paint(kit, this->r);
-	kit.clip_pop();
 }
 
 bool

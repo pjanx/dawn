@@ -590,8 +590,11 @@ Widget::child(size_t i) const
 void
 Widget::paint_children(Kit &kit) const
 {
-	for (const auto &k : children())
+	for (const auto &k : children()) {
+		kit.clip_to(k->r);
 		k->paint(kit);
+		kit.clip_pop();
+	}
 }
 
 void
@@ -625,8 +628,7 @@ visible_rect(const Widget *w, Rect host)
 	for (const Widget *p = w->parent_; p; p = p->parent_) {
 		if (!p->shown())
 			return {};
-		if (p->clips_children())
-			visible = visible.intersect(p->r);
+		visible = visible.intersect(p->r);
 	}
 	return visible;
 }
@@ -2522,10 +2524,8 @@ ScrollColumn::paint(Kit &kit) const
 	if (!shown())
 		return;
 
-	kit.clip_to(this->r);
 	paint_children(kit);
 	this->scroll_.paint(kit, this->r);
-	kit.clip_pop();
 }
 
 Widget *
@@ -2653,8 +2653,6 @@ Panel::paint(Kit &kit) const
 	if (!shown())
 		return;
 
-	if (this->clip)
-		kit.clip_to(this->r);
 	switch (this->fill) {
 	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.box(),
@@ -2684,8 +2682,6 @@ Panel::paint(Kit &kit) const
 	case Stroke::None:
 		break;
 	}
-	if (this->clip)
-		kit.clip_pop();
 }
 
 // --- Popup -------------------------------------------------------------------

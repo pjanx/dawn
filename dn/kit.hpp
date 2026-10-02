@@ -249,7 +249,6 @@ struct Widget {
 	{
 		return this->visible && this->layout_visible;
 	}
-	virtual bool clips_children() const { return false; }
 	virtual bool focusable() const { return false; }
 	// This widget's default action, as a menu item or a hint would trigger
 	// it.  Most widgets have none and say so; what to do instead is then the
@@ -329,9 +328,9 @@ struct Widget {
 };
 
 // The part of w that is really on screen: clipped by host and by every
-// clipping ancestor, and empty when anything in the chain is hidden.  The
-// hint overlay and the accessibility adapters both ask this, and the two
-// must not disagree about what a user can see.
+// ancestor, and empty when anything in the chain is hidden.  The hint overlay
+// and the accessibility adapters both ask this, and the two must not disagree
+// about what a user can see.
 [[nodiscard]] Rect visible_rect(const Widget *w, Rect host);
 
 struct Composite : Widget {
@@ -634,7 +633,6 @@ struct ScrollColumn : Column {
 
 	ScrollColumn() { this->hittable = true; }
 	Scroll *scrollbar() override { return &this->scroll_; }
-	bool clips_children() const override { return true; }
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 	Widget *hit_at(float x, float y) override;
@@ -657,11 +655,9 @@ struct Panel : Composite {
 	Fill fill = Fill::None;
 	Stroke stroke = Stroke::None;
 	bool busy = false;
-	bool clip = false;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	bool clips_children() const override { return this->clip; }
 };
 
 // A panel that floats above the widget tree, on Kit's popup stack.
