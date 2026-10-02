@@ -2918,7 +2918,7 @@ menu_cols(const Kit &kit, const MenuItem &m)
 static void
 collect_focusable(Widget *w, vector<Widget *> &out)
 {
-	if (!w || !w->shown())
+	if (!w || !w->shown() || dynamic_cast<Titlebar *>(w))
 		return;
 	if (w->focusable())
 		out.push_back(w);
