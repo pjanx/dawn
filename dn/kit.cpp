@@ -4079,9 +4079,6 @@ Toolbar::sync_buttons()
 		// items_, not kids: what the overflow is holding is still ours to sync.
 		for (Widget *k : slot->items_)
 			apply(k);
-		if (slot->more)
-			slot->more->active = this->overflow && this->overflow->visible &&
-				this->overflow->opener == slot->more;
 	}
 }
 
@@ -5726,7 +5723,6 @@ Kit::frame_ui(Page &ui)
 	ui.content->update(*this);
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
-	ui.sync_app_menu();
 
 	this->text_frame_++;
 	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});

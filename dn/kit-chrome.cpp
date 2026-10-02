@@ -1118,13 +1118,6 @@ Page::open_app_menu(Kit &kit, bool kbd)
 }
 
 void
-Page::sync_app_menu()
-{
-	if (this->app_menu_button)
-		this->app_menu_button->active = app_menu_open();
-}
-
-void
 Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 {
 	const size_t at = 1 + bool(this->toolbar);

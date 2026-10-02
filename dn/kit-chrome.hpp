@@ -181,12 +181,7 @@ struct Page : Composite {
 		std::unique_ptr<Widget> body);
 	void set_banner(Kit &kit, std::unique_ptr<Widget> w);
 	void open_app_menu(Kit &kit, bool kbd);
-	void sync_app_menu();
 	void bind_actions(Kit &kit);
-	[[nodiscard]] bool app_menu_open() const
-	{
-		return this->app_menu && this->app_menu->visible;
-	}
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
