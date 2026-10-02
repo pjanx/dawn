@@ -2081,31 +2081,10 @@ share_slack(int slack, int growers, int i)
 	return slack / growers + (i < slack % growers ? 1 : 0);
 }
 
-void
-Container::invalidate_measure()
-{
-	this->packed_w_ = -1;
-	Widget::invalidate_measure();
-}
-
-bool
-Container::packing_valid(const Kit &kit, int max_w, int max_h)
-{
-	if (this->packed_w_ == max_w && this->packed_h_ == max_h &&
-		this->packed_epoch_ == kit.font_epoch_)
-		return true;
-	this->packed_w_ = max_w;
-	this->packed_h_ = max_h;
-	this->packed_epoch_ = kit.font_epoch_;
-	return false;
-}
-
 Size
 Container::measure_content(Kit &kit, int max_w, int max_h)
 {
 	const bool hz = this->horizontal;
-	if (packing_valid(kit, max_w, max_h))
-		return this->packed_;
 	this->sizes_.assign(this->kids.size(), {});
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
@@ -2150,10 +2129,9 @@ Container::measure_content(Kit &kit, int max_w, int max_h)
 		}
 	}
 	used += gaps;
-	return this->packed_ = {this->grow && max_w < kUnlim
-				   ? max_w
-				   : pad_x * 2 + (hz ? used : cross),
-			   pad_y * 2 + (hz ? cross : used)};
+	return {
+		this->grow && max_w < kUnlim ? max_w : pad_x * 2 + (hz ? used : cross),
+		pad_y * 2 + (hz ? cross : used)};
 }
 
 void
@@ -2298,8 +2276,6 @@ GutterRow::arrange_content(Kit &kit, Rect alloc)
 Size
 Flow::wrap(Kit &kit, int inner_w)
 {
-	if (packing_valid(kit, inner_w, kUnlim))
-		return this->packed_;
 	const int gap = kit.px(this->gap);
 	this->cells_.assign(this->kids.size(), {});
 
@@ -2359,7 +2335,7 @@ Flow::wrap(Kit &kit, int inner_w)
 	flush(n);
 	if (y)
 		y -= gap;
-	return this->packed_ = {widest, max(0, y)};
+	return {widest, max(0, y)};
 }
 
 Size
@@ -2688,14 +2664,16 @@ ScrollColumn::pan(Kit &, float, float, float, float dy)
 bool
 ScrollColumn::key(Kit &, const Key &ev)
 {
-	invalidate_arrange();
-	if (ev.mods)
-		return false;
+	int direction = 0;
 	if (ev.key == Qt::Key_PageUp)
-		return this->scroll_.page(-1);
+		direction = -1;
 	if (ev.key == Qt::Key_PageDown)
-		return this->scroll_.page(1);
-	return false;
+		direction = +1;
+	if (ev.mods || !direction)
+		return false;
+
+	invalidate_arrange();
+	return this->scroll_.page(direction);
 }
 
 int
@@ -2890,15 +2868,10 @@ Popup::key(Kit &kit, const Key &ev)
 
 Dialog::Dialog()
 {
-	this->fill = Fill::None;
-	auto f = make_unique<Panel>();
-	f->pad_x = kDialogPad;
-	f->pad_y = kDialogPad;
-	f->fill = Fill::Panel;
-	f->stroke = Stroke::All;
-	f->hittable = false;
-	f->visible = false;
-	this->frame = f.get();
+	this->pad_x = kDialogPad;
+	this->pad_y = kDialogPad;
+	this->fill = Fill::Panel;
+	this->stroke = Stroke::All;
 
 	// The body absorbs whatever height place() clamps away; the footer
 	// keeps its own and stays put while the body scrolls under it.
@@ -2920,8 +2893,7 @@ Dialog::Dialog()
 	this->footer = footer.get();
 	stack->add_child(std::move(footer), size_t(-1));
 
-	f->add_child(std::move(stack), size_t(-1));
-	add_child(std::move(f), size_t(-1));
+	add_child(std::move(stack), size_t(-1));
 }
 
 // Cancelling is never more than closing, which Popup::key already does for
@@ -2930,58 +2902,47 @@ void
 Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	unique_ptr<Button> default_button, unique_ptr<Button> cancel)
 {
-	if (!this->body || !this->footer || !this->frame)
-		return;
-
-	this->body->erase_children(kit, 0);
 	this->body->add_child(std::move(content), size_t(-1));
 	this->default_button = default_button.get();
-	this->footer->erase_children(kit, 0);
 	if (default_button) {
 		default_button->bold = true;
 		this->footer->add_child(std::move(default_button), size_t(-1));
 	}
 	if (cancel)
 		this->footer->add_child(std::move(cancel), size_t(-1));
-	this->frame->min_w = min_w;
+	this->min_w = min_w;
 
 	// Over whatever dialog is already up, which open_popup() sees to.  The
 	// window disables the verbs that would open a second top-level one, so
 	// what it finds there is always a genuine parent.
 	Popup::open(kit, nullptr);
-	this->frame->set_visible(true);
 }
 
 void
 Dialog::after_close(Kit &)
 {
-	if (this->frame)
-		this->frame->set_visible(false);
 	this->retired_ = true;
 }
 
 void
 Dialog::place(Kit &kit)
 {
-	if (!this->frame || !shown()) {
+	if (!shown()) {
 		this->r = {};
 		return;
 	}
-	this->frame->set_visible(true);
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
 	const int margin = kit.px(kGlowPts * 2.f);
 	const int max_w =
 		max(1, min(kit.px(this->max_w), kit.host_w_ - margin * 2));
 	const int avail_h = max(1, kit.host_h_ - margin * 2);
-	const Size size = this->frame->measure(kit, max_w, avail_h);
+	const Size size = measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
 	const int h = min(size.h, avail_h);
 	const int x = max(0, (kit.host_w_ - size.w) / 2);
 	const int y = margin + max(0, (avail_h - h) / 2);
-	this->frame->arrange(kit, {x, y, size.w, h});
-	// Just the frame: whatever misses it lands on the scrim.
-	this->r = this->frame->r;
+	arrange(kit, {x, y, size.w, h});
 
 	// Button::focusable() wants a laid-out rect, so this cannot happen any
 	// earlier; without it Return and Space reach nothing and are eaten.
@@ -3014,17 +2975,6 @@ Dialog::key(Kit &kit, const Key &ev)
 	if (this->on_key && this->on_key(kit, ev))
 		return true;
 	return Popup::key(kit, ev);
-}
-
-void
-Dialog::paint(Kit &kit) const
-{
-	if (!this->visible)
-		return;
-
-	if (this->frame && this->frame->visible)
-		kit.draw_shadow(this->frame->r);
-	Panel::paint(kit);
 }
 
 // --- Menus -------------------------------------------------------------------
@@ -3474,6 +3424,7 @@ Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 	sync();
 }
 
+// Just this level: a submenu syncs itself once it is placed in turn.
 void
 Menu::sync()
 {
@@ -3496,15 +3447,12 @@ Menu::sync()
 			item->checkable = (def.flags & ActionToggle) && !def.label[1];
 		}
 	}
-	for (auto &sub : this->subs_) {
-		if (sub)
-			sub->sync();
-	}
 }
 
 void
 Menu::place(Kit &kit)
 {
+	sync();
 	const auto *item = dynamic_cast<MenuItem *>(this->opener);
 	if (!item || item->sub != this || !this->parent_popup) {
 		Popup::place(kit);
@@ -4232,13 +4180,8 @@ Toolbar::place_slots(Kit &kit)
 	const int mid_w = x0 + avail - right_w - mid_x;
 	if (this->left)
 		this->left->arrange(kit, {x0, y0, left_w, h});
-	if (this->mid) {
-		if (this->mid->align != Align::Start) {
-			this->mid->align = Align::Start;
-			this->mid->invalidate_arrange();
-		}
+	if (this->mid)
 		this->mid->arrange(kit, {mid_x, y0, mid_w, h});
-	}
 	if (this->right)
 		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
 }
@@ -4345,7 +4288,6 @@ Titlebar::arrange_content(Kit &kit, Rect alloc)
 		const int left = bar.x;
 		const int right = x;
 		const int avail = max(0, right - left);
-		this->title->set_text(this->text);
 		const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
 		int tx = this->r.x + (this->r.w - tw) / 2;
 		if (tx < left)

@@ -1122,8 +1122,6 @@ Page::sync_app_menu()
 {
 	if (this->app_menu_button)
 		this->app_menu_button->active = app_menu_open();
-	if (this->app_menu)
-		this->app_menu->sync();
 }
 
 void

@@ -226,7 +226,7 @@ struct Widget {
 
 	// After changing public sizing fields, invalidate the widget. Construction
 	// needs no invalidation; adding/removing children does it automatically.
-	virtual void invalidate_measure();
+	void invalidate_measure();
 	// For placement alone, such as scrolling or changing alignment.
 	void invalidate_arrange();
 	void arrange(Kit &kit, Rect alloc);
@@ -543,12 +543,7 @@ struct Container : Composite {
 
 	// Retain the packing result independently of the parent's position.
 	std::vector<Size> sizes_;
-	Size packed_;
-	int packed_w_ = -1, packed_h_ = -1;
-	uint64_t packed_epoch_ = 0;
 
-	void invalidate_measure() override;
-	bool packing_valid(const Kit &kit, int max_w, int max_h);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
@@ -713,7 +708,6 @@ struct Popup : Panel {
 // Dismissed by Escape or a footer button; the caller fills the body and may
 // replace the default Close action.
 struct Dialog : Popup {
-	Panel *frame = nullptr;
 	ScrollColumn *body = nullptr;
 	Row *footer = nullptr;
 	// Drawn bold, and what Return means where nothing else wanted it.
@@ -733,7 +727,6 @@ struct Dialog : Popup {
 	void after_close(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
 	void place(Kit &kit) override;
-	void paint(Kit &kit) const override;
 	bool transient() const override { return false; }
 	bool dims() const override { return true; }
 };
@@ -913,7 +906,6 @@ struct Titlebar : Panel {
 	Button *minimize = nullptr;
 	Button *maximize = nullptr;
 	Button *close = nullptr;
-	QString text;
 	float drag_x_ = 0.f;
 	float drag_y_ = 0.f;
 	bool drag_armed_ = false;

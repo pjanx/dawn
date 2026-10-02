@@ -720,14 +720,9 @@ Window::sync_title()
 	}
 	if (this != w && this->title() != title)
 		setTitle(title);
-	auto set_bar = [&](Page *ui) {
-		if (ui && ui->titlebar && ui->titlebar->text != title) {
-			ui->titlebar->text = title;
-			ui->titlebar->invalidate_arrange();
-		}
-	};
 	for (auto &page : this->pages_)
-		set_bar(page.get());
+		if (page && page->titlebar)
+			page->titlebar->title->set_text(title);
 }
 
 Page *
