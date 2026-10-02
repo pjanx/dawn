@@ -252,11 +252,7 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 			if (p[3])
 				rgb = {
 					float(p[2]) / p[3], float(p[1]) / p[3], float(p[0]) / p[3]};
-			if (state.colour)
-				rgb = dawn::sample_curves(state.colour->encoding.decode, rgb);
-			else
-				for (float &c : rgb)
-					c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
+			rgb = screen_decode(state.colour.get(), rgb);
 			for (size_t c = 0; c < 3; c++)
 				dst[c] = uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * p[3]));
 			dst[3] = p[3];
@@ -5069,12 +5065,8 @@ Kit::bake_colours(const ScreenState &state)
 	// Convert straight palette RGB before vertex premultiplication and
 	// interpolation. Atlas coverage is independent of these transforms.
 	for (Colour &colour : this->colours_) {
-		array<float, 3> rgb{colour.r, colour.g, colour.b};
-		if (state.colour)
-			rgb = dawn::sample_curves(state.colour->encoding.decode, rgb);
-		else
-			for (float &c : rgb)
-				c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
+		const array<float, 3> rgb =
+			screen_decode(state.colour.get(), {colour.r, colour.g, colour.b});
 		colour.r = rgb[0];
 		colour.g = rgb[1];
 		colour.b = rgb[2];

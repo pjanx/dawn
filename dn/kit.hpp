@@ -18,6 +18,7 @@
 #include <QString>
 #include <Qt>
 
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -43,6 +44,26 @@ struct ScreenColour {
 	std::vector<uint8_t> icc;
 	dawn::ProfileEncoding encoding;
 };
+
+inline std::array<float, 3>
+screen_decode(const ScreenColour *colour, std::array<float, 3> rgb)
+{
+	if (colour)
+		return dawn::sample_curves(colour->encoding.decode, rgb);
+	for (float &c : rgb)
+		c = dawn::transfer_decode(c, dawn::Transfer::Srgb);
+	return rgb;
+}
+
+inline std::array<float, 3>
+screen_encode(const ScreenColour *colour, std::array<float, 3> rgb)
+{
+	if (colour)
+		return dawn::sample_curves(colour->encoding.encode, rgb);
+	for (float &c : rgb)
+		c = dawn::transfer_encode(c, dawn::Transfer::Srgb);
+	return rgb;
+}
 
 struct ScreenState {
 	std::shared_ptr<dawn::Cmm> cmm;

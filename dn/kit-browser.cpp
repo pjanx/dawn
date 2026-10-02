@@ -674,7 +674,8 @@ queue_gpu(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 // Non-cache thumbnails are already in display RGB. Linearize them before
 // the shared GPU scaler, which otherwise only knows three analytic curves.
 static void
-thumb_curves(span<uint16_t> pixels, const ScreenColour *colour, bool decode)
+thumb_curves(span<uint16_t> pixels, const ScreenColour *colour,
+	array<float, 3> (*curves)(const ScreenColour *, array<float, 3>))
 {
 	for (size_t i = 0; i < pixels.size(); i += 4) {
 		const uint16_t a = pixels[i + 3];
@@ -682,14 +683,7 @@ thumb_curves(span<uint16_t> pixels, const ScreenColour *colour, bool decode)
 		if (a)
 			rgb = {float(pixels[i + 2]) / a, float(pixels[i + 1]) / a,
 				float(pixels[i]) / a};
-		if (colour)
-			rgb = dawn::sample_curves(
-				decode ? colour->encoding.decode : colour->encoding.encode,
-				rgb);
-		else
-			for (float &c : rgb)
-				c = decode ? dawn::transfer_decode(c, dawn::Transfer::Srgb)
-						   : dawn::transfer_encode(c, dawn::Transfer::Srgb);
+		rgb = curves(colour, rgb);
 		for (size_t c = 0; c < 3; c++)
 			pixels[i + 2 - c] = uint16_t(lround(clamp(rgb[c], 0.f, 1.f) * a));
 	}
@@ -709,7 +703,7 @@ display_thumb(Browser *browser, FinishJob job)
 	vector<uint16_t> display = job.pixels ? *job.pixels : vector<uint16_t>{};
 	bool converted = !display.empty();
 	if (job.linear) {
-		thumb_curves(display, job.screen_colour.get(), false);
+		thumb_curves(display, job.screen_colour.get(), screen_encode);
 	} else {
 		auto cmm = worker_cmm();
 		auto p3 = cmm->get_profile_display_p3();
@@ -758,7 +752,7 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			if (!job.cacheable)
 				thumb_curves({dawn::row_u16(*update.image, 0),
 								 size_t(src.width) * src.height * 4},
-					job.screen_colour.get(), true);
+					job.screen_colour.get(), screen_decode);
 			dawn::ThumbScaler::Job gpu;
 			gpu.image = update.image;
 			gpu.outputs = job.cacheable
