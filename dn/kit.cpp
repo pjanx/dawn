@@ -635,6 +635,8 @@ void
 Widget::paint_children(Kit &kit) const
 {
 	for (const auto &k : children()) {
+		if (!k->shown())
+			continue;
 		kit.clip_to(k->r);
 		k->paint(kit);
 		kit.clip_pop();
@@ -644,8 +646,7 @@ Widget::paint_children(Kit &kit) const
 void
 Widget::paint(Kit &kit) const
 {
-	if (shown())
-		paint_children(kit);
+	paint_children(kit);
 }
 
 Widget *
@@ -743,8 +744,6 @@ Button::measure_content(Kit &kit, int, int)
 void
 Button::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if ((this->enabled_ && pressed) || this->active)
@@ -888,9 +887,6 @@ Checkbox::measure_content(Kit &kit, int max_w, int)
 void
 Checkbox::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	if (this->enabled_ && pressed)
@@ -969,9 +965,6 @@ Label::measure_content(Kit &kit, int max_w, int)
 void
 Label::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	TextAlign align = TextAlign::Start;
 	if (this->wrap && this->align == Align::Center)
 		align = TextAlign::Center;
@@ -1499,7 +1492,7 @@ Entry::arrange_content(Kit &kit, Rect alloc)
 void
 Entry::paint(Kit &kit) const
 {
-	if (!shown() || this->r.empty())
+	if (this->r.empty())
 		return;
 
 	// A flat idle field lets the toolbar show through.  Text in it is a filter
@@ -1856,7 +1849,7 @@ Sep::measure_content(Kit &kit, int max_w, int max_h)
 void
 Sep::paint(Kit &kit) const
 {
-	if (!shown() || this->r.w <= 0 || this->r.h <= 0)
+	if (this->r.w <= 0 || this->r.h <= 0)
 		return;
 	const Colour c = kit.colours_[ColourDivider];
 	const int inset = kit.px(2.f), gap = kit.px(4.f);
@@ -1895,8 +1888,6 @@ Splitter::arrange_content(Kit &kit, Rect alloc)
 void
 Splitter::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
 	const Colour &c = (kit.hot_ == this || kit.pressed_ == this)
 		? kit.colours_[ColourInk]
 		: kit.colours_[ColourDivider];
@@ -2518,9 +2509,6 @@ ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 void
 ScrollColumn::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	paint_children(kit);
 	this->scroll_.paint(kit, this->r);
 }
@@ -2647,9 +2635,6 @@ Panel::arrange_content(Kit &kit, Rect alloc)
 void
 Panel::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	switch (this->fill) {
 	case Fill::Toolbar:
 		kit.list_.add_rect_filled_vgradient(this->r.box(),
@@ -3430,9 +3415,6 @@ MenuItem::measure_content(Kit &kit, int, int)
 void
 MenuItem::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	// The selection is kit.focus_ alone: kit.pressed_ is just the capture,
 	// and it would stay lit behind the pointer when press-dragging through.
 	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
@@ -3520,9 +3502,6 @@ ComboItem::measure_content(Kit &kit, int, int)
 void
 ComboItem::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	// The same rule as MenuItem: the selection is kit.focus_ alone, never
 	// kit.pressed_, which would stay lit behind a press-drag through the list.
 	if (this->enabled_ && (this->active || kit.focus_ == this))
@@ -3614,9 +3593,6 @@ Combo::measure_content(Kit &kit, int, int)
 void
 Combo::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	// Unlike Win32 comboboxes, we don't want this to look editable.
 	// TODO(p): Combos and non-flat Buttons shouldn't be transparent...
 

@@ -148,8 +148,7 @@ FileRow::measure_content(Kit &kit, int max_w, int)
 static bool
 offscreen(const Widget *w, const Kit &kit)
 {
-	return !w->shown() ||
-		visible_rect(w, {0, 0, kit.host_w_, kit.host_h_}).empty();
+	return visible_rect(w, {0, 0, kit.host_w_, kit.host_h_}).empty();
 }
 
 static TextCache::Text &
@@ -475,9 +474,6 @@ FileList::arrange_content(Kit &kit, Rect alloc)
 void
 FileList::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	kit.draw_fill(this->rows->r, kit.colours_[ColourWell]);
 	paint_children(kit);
 	kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
