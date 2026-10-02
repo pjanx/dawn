@@ -338,8 +338,9 @@ thumb_in_band(const Browser &b, const Browser::File &f, float pad)
 {
 	if (f.cell.empty())
 		return false;
-	return float(f.cell.bottom()) >= float(b.r.y) - pad &&
-		float(f.cell.y) <= float(b.r.bottom()) + pad;
+	const Rect cell = b.on_screen(f.cell);
+	return float(cell.bottom()) >= float(b.r.y) - pad &&
+		float(cell.y) <= float(b.r.bottom()) + pad;
 }
 
 static void
@@ -381,8 +382,8 @@ static bool
 show_cursor_context(Browser &b, Kit &kit)
 {
 	if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
-		show_file_context(b, kit, b.files_[size_t(b.cursor_)].path,
-			b.files_[size_t(b.cursor_)].tile, true);
+		const Browser::File &f = b.files_[size_t(b.cursor_)];
+		show_file_context(b, kit, f.path, b.on_screen(f.tile), true);
 		return true;
 	}
 	if (b.dir_url_.isEmpty())
@@ -849,8 +850,8 @@ trim_ram(Browser &b)
 		idx.push_back(i);
 	}
 	sort(idx.begin(), idx.end(), [&](int a, int bidx) {
-		const Rect &ca = b.files_[size_t(a)].cell;
-		const Rect &cb = b.files_[size_t(bidx)].cell;
+		const Rect ca = b.on_screen(b.files_[size_t(a)].cell);
+		const Rect cb = b.on_screen(b.files_[size_t(bidx)].cell);
 		const float da = abs(float(ca.y) + float(ca.h) * 0.5f - mid);
 		const float db = abs(float(cb.y) + float(cb.h) * 0.5f - mid);
 		return da > db;
@@ -1384,7 +1385,7 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	else if (float(row.y + row.h) > b.scroll_.offset + vis)
 		b.scroll_.offset = max(0.f, float(row.y + row.h) - vis);
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
-	b.invalidate_arrange();
+	b.thumbs_dirty_ = true;
 }
 
 static void
@@ -1395,7 +1396,7 @@ page_scroll(Browser &b, int dir)
 	const float step = vis > rh ? vis - rh : vis;
 	b.scroll_.offset = clamp(
 		b.scroll_.offset + float(dir) * step, 0.f, b.scroll_.max_offset());
-	b.invalidate_arrange();
+	b.thumbs_dirty_ = true;
 	request_render(b);
 }
 
@@ -1515,15 +1516,14 @@ layout_grid(Browser &b, Rect area)
 		}
 		const int rh = band + 2 * ch + cap_band;
 		const int extra = max(0, avail - row_w) / 2;
-		const int off = int(lround(b.scroll_.offset));
 		int x = inner.x + extra;
 		for (const Item &it : row) {
 			Browser::File &f = b.files_[size_t(it.i)];
 			const int reserved_w = grid ? th : it.w;
 			const int ow = reserved_w + 2 * ch;
 			f.tile = {x + ch + (reserved_w - it.w) / 2,
-				inner.y + y - off + ch + (band - it.h) / 2, it.w, it.h};
-			f.cell = {x, inner.y + y - off, ow, rh};
+				inner.y + y + ch + (band - it.h) / 2, it.w, it.h};
+			f.cell = {x, inner.y + y, ow, rh};
 			f.cap.x = f.cell.x;
 			f.cap.y = f.cell.y + band + 2 * ch;
 			x = f.cell.right() + gap;
@@ -1589,27 +1589,14 @@ layout_grid(Browser &b, Rect area)
 		b.layout_cell_x_ = cx;
 		b.layout_w_ = area.w;
 	}
-	const int prev = int(lround(b.scroll_.offset));
 	b.scroll_.set_metrics(b.kit_, float(y + pad * 2), float(area.h));
-	b.scroll_.clamp();
-	// Clamping may have moved the offset after the rects were placed
-	// against the old one; shift them rather than laying out again.
-	const int now = int(lround(b.scroll_.offset));
-	if (now != prev) {
-		const int dy = prev - now;
-		for (Browser::File &f : b.files_) {
-			f.tile.y += dy;
-			f.cell.y += dy;
-			f.cap.y += dy;
-		}
-	}
 }
 
 static int
 hit_cell(const Browser &b, float x, float y)
 {
 	for (int i = 0; i < int(b.files_.size()); i++) {
-		if (b.files_[size_t(i)].cell.contains(x, y))
+		if (b.on_screen(b.files_[size_t(i)].cell).contains(x, y))
 			return i;
 	}
 	return -1;
@@ -1621,7 +1608,9 @@ static int
 hit_file(const Browser &b, float x, float y)
 {
 	const int i = hit_cell(b, x, y);
-	return i >= 0 && b.files_[size_t(i)].tile.contains(x, y) ? i : -1;
+	if (i < 0 || !b.on_screen(b.files_[size_t(i)].tile).contains(x, y))
+		return -1;
+	return i;
 }
 
 static bool
@@ -2542,10 +2531,11 @@ Browser::paint(Kit &kit) const
 		const File &f = this->files_[size_t(i)];
 		if (!thumb_in_band(*this, f, 0.f))
 			continue;
-		const int tw = f.tile.w > 0 ? f.tile.w : th;
-		const int thp = f.tile.h > 0 ? f.tile.h : th;
-		const int tx = f.tile.x;
-		const int ty = f.tile.y;
+		const Rect tile = on_screen(f.tile);
+		const int tw = tile.w > 0 ? tile.w : th;
+		const int thp = tile.h > 0 ? tile.h : th;
+		const int tx = tile.x;
+		const int ty = tile.y;
 		const bool focused =
 			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
 		if (!f.gpu.empty()) {
@@ -2579,13 +2569,14 @@ Browser::paint(Kit &kit) const
 				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
 		}
 		if (this->show_names_ && f.cap.h > 0) {
+			const Rect cap = on_screen(f.cap);
 			const auto &cached =
-				this->text_cache_.get(kit, caption_name(f.name), f.cap.w,
+				this->text_cache_.get(kit, caption_name(f.name), cap.w,
 					kCapLines, false, TextAlign::Center);
-			kit.clip_to(f.cap);
-			kit.emit_layout(float(f.cap.x),
-				float(f.cap.y + (f.cap.h - cached.height) / 2), cached,
-				glow_hot, -1);
+			kit.clip_to(cap);
+			kit.emit_layout(float(cap.x),
+				float(cap.y + (cap.h - cached.height) / 2), cached, glow_hot,
+				-1);
 			kit.clip_pop();
 		}
 	}
@@ -2643,6 +2634,14 @@ Browser::file_url(int index) const
 	if (index < 0 || index >= int(this->files_.size()))
 		return {};
 	return url_of(this->files_[size_t(index)].path);
+}
+
+// Rounded once, here, where the continuous offset turns into geometry.
+Rect
+Browser::on_screen(Rect laid_out) const
+{
+	return {laid_out.x, laid_out.y - int(lround(this->scroll_.offset)),
+		laid_out.w, laid_out.h};
 }
 
 bool
@@ -2761,12 +2760,12 @@ Browser::key(Kit &kit, const Key &ev)
 		switch (ev.key) {
 		case Qt::Key_Up:
 			this->scroll_.offset = 0;
-			invalidate_arrange();
+			this->thumbs_dirty_ = true;
 			request_render(*this);
 			return true;
 		case Qt::Key_Down:
 			this->scroll_.offset = this->scroll_.max_offset();
-			invalidate_arrange();
+			this->thumbs_dirty_ = true;
 			request_render(*this);
 			return true;
 		}
@@ -2807,7 +2806,7 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button != Qt::LeftButton)
 		return false;
 	if (this->scroll_.press(x, y, button, this->r)) {
-		invalidate_arrange();
+		this->thumbs_dirty_ = true;
 		kit.set_focus(this, false);
 		kit.pressed_ = this;
 		return true;
@@ -2902,8 +2901,7 @@ Browser::motion(Kit &kit, float x, float y)
 {
 	if (this->scroll_.dragging) {
 		const bool moved = this->scroll_.motion(y, this->r);
-		if (moved)
-			invalidate_arrange();
+		this->thumbs_dirty_ |= moved;
 		return moved;
 	}
 
@@ -2938,8 +2936,7 @@ bool
 Browser::scroll(Kit &, float, float, int delta)
 {
 	this->scroll_.wheel(delta, row_h(*this));
-	this->scroll_.clamp();
-	invalidate_arrange();
+	this->thumbs_dirty_ = true;
 	return true;
 }
 
@@ -2947,8 +2944,7 @@ bool
 Browser::pan(Kit &, float, float, float, float dy)
 {
 	this->scroll_.pan(dy);
-	this->scroll_.clamp();
-	invalidate_arrange();
+	this->thumbs_dirty_ = true;
 	return true;
 }
 

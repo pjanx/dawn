@@ -2533,21 +2533,26 @@ Scroll::paint(Kit &kit, Rect viewport) const
 void
 ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 {
-	Column::arrange_content(kit, alloc);
-	int bottom = alloc.y;
+	const int by = int(lround(this->scroll_.offset));
+	const int top = alloc.y - by;
+	Column::arrange_content(kit, {alloc.x, top, alloc.w, alloc.h});
+	if (!shown())
+		return;
+
+	this->r = alloc;
+	int bottom = top;
 	for (const auto &k : this->kids) {
 		if (k && k->shown())
 			bottom = max(bottom, k->r.y + k->r.h);
 	}
-	this->scroll_.set_metrics(
-		kit, float(max(0, bottom - alloc.y)), float(alloc.h));
+	this->scroll_.set_metrics(kit, float(bottom - top), float(alloc.h));
 	if (this->follow_focus && kit.focus_ != this->followed_) {
 		this->followed_ = kit.focus_;
 		if (Widget *f = this->followed_) {
 			for (Widget *p = f; p; p = p->parent_) {
 				if (p != this)
 					continue;
-				const float y0 = float(f->r.y - alloc.y);
+				const float y0 = float(f->r.y - top);
 				if (y0 < this->scroll_.offset)
 					this->scroll_.offset = y0;
 				else if (y0 + float(f->r.h) >
@@ -2558,14 +2563,14 @@ ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 			}
 		}
 	}
-	// The offset is continuous, but shifting children by a fraction would
-	// smear them: round once, here, where it turns into geometry.
-	const int by = int(lround(this->scroll_.offset));
-	if (by <= 0)
+
+	// Only clamping, or revealing the focus, moves them a second time.
+	const int now = int(lround(this->scroll_.offset));
+	if (now == by)
 		return;
 	for (auto &k : this->kids) {
-		if (k)
-			k->arrange(kit, {k->r.x, k->r.y - by, k->r.w, k->r.h});
+		if (k && k->shown())
+			k->arrange(kit, {k->r.x, k->r.y + by - now, k->r.w, k->r.h});
 	}
 }
 

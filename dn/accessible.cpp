@@ -664,7 +664,8 @@ file_visible_rect(
 {
 	if (!window || !browser || !in_exposed_tree(window, browser))
 		return {};
-	return file.tile.intersect(visible_rect(browser, host_rect(window->kit())));
+	return browser->on_screen(file.tile).intersect(
+		visible_rect(browser, host_rect(window->kit())));
 }
 
 static const Browser::File *

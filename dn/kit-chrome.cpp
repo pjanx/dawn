@@ -906,7 +906,7 @@ Hint::collect(Widget *scope)
 		if (f.tile.empty())
 			continue;
 
-		const Rect clipped = f.tile.intersect(well);
+		const Rect clipped = browser->on_screen(f.tile).intersect(well);
 		if (clipped.empty())
 			continue;
 
@@ -945,7 +945,8 @@ Hint::refresh_rects()
 		if (!t.browser || t.file_rev != t.browser->file_rev_)
 			continue;
 		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
-		const Rect clipped = f.tile.intersect(t.browser->r);
+		const Rect clipped =
+			t.browser->on_screen(f.tile).intersect(t.browser->r);
 		if (clipped.empty())
 			continue;
 		t.at = clipped;

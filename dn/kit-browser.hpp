@@ -80,6 +80,8 @@ struct Browser : Widget {
 		};
 		Progress progress;
 
+		// Laid out as if unscrolled, so that scrolling is no relayout;
+		// on_screen() says where one of them is drawn.
 		Rect tile{};
 		Rect cell{};
 		Rect cap{};
@@ -200,6 +202,7 @@ struct Browser : Widget {
 	void file_gone(const QUrl &url);
 	[[nodiscard]] int file_index(const std::string &path) const;
 	[[nodiscard]] QUrl file_url(int index) const;
+	[[nodiscard]] Rect on_screen(Rect laid_out) const;
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
