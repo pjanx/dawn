@@ -2911,6 +2911,10 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	// window disables the verbs that would open a second top-level one, so
 	// what it finds there is always a genuine parent.
 	Popup::open(kit, nullptr);
+
+	// Button::focusable() wants the rect that open() has just laid out;
+	// without focus, Return and Space would reach nothing and be eaten.
+	kit.focus_first(this);
 }
 
 void
@@ -2938,27 +2942,6 @@ Dialog::place(Kit &kit)
 	const int x = max(0, (kit.host_w_ - size.w) / 2);
 	const int y = margin + max(0, (avail_h - h) / 2);
 	arrange(kit, {x, y, size.w, h});
-
-	// Button::focusable() wants a laid-out rect, so this cannot happen any
-	// earlier; without it Return and Space reach nothing and are eaten.
-	//
-	// Only while nothing is open over the dialog, though: a popup dropped
-	// from within it owns the focus for as long as it is up, and its items
-	// are no children of ours.  Re-seating here would take the focus back
-	// out from under it on the very next frame -- leaving its hover dead,
-	// and its arrow keys landing on whatever opened it.
-	if (kit.top_popup() != this)
-		return;
-
-	bool focused = false;
-	for (Widget *w = kit.focus_; w; w = w->parent_) {
-		if (w == this) {
-			focused = true;
-			break;
-		}
-	}
-	if (!focused)
-		kit.focus_first(this);
 }
 
 bool
@@ -4583,7 +4566,11 @@ Kit::sync_focus()
 		if (focus_in_visible_tree(this->focus_, p))
 			return;
 
-		set_focus(nullptr, false);
+		// A dialog keeps the keyboard for as long as it is on top.
+		if (p->transient())
+			set_focus(nullptr, false);
+		else
+			focus_first(p);
 		done();
 		return;
 	}
