@@ -573,8 +573,7 @@ Window::show_viewer_error(const QString &message)
 {
 	if (!this->viewer_)
 		return;
-	this->viewer_->message_ = message.toStdString();
-	this->viewer_->message_dismissed_ = false;
+	this->viewer_->set_message(message.toStdString());
 	request_render();
 }
 

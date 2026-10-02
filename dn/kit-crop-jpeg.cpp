@@ -29,6 +29,17 @@ namespace dn
 Cropper::Cropper(Kit &kit) : kit_(kit)
 {
 	this->hittable = true;
+	this->hint_.text = QString::fromUtf8(_("Open a JPEG file")) +
+		QStringLiteral(" — ") + accel_label(action_def(Action::Open));
+	this->hint_.dim = true;
+	this->hint_.align = Align::Center;
+}
+
+void
+Cropper::set_message(const string &message)
+{
+	this->error_label_->set_text(QString::fromStdString(message));
+	this->error_->set_visible(!message.empty());
 }
 
 bool
@@ -45,18 +56,17 @@ Cropper::load_working(const vector<uint8_t> &data)
 		ctx.first_frame_only = true;
 		image = dawn::open_from_data(data, ctx, &error);
 	}
-	this->message_ = error.message;
-	this->message_dismissed_ = false;
+	set_message(error.message);
 	if (!image)
 		return false;
 
 	// libjpeg-turbo transforms keep nothing past the primary image's EOI,
 	// such as gain maps or depth maps.
 	if (grid.mpf_images)
-		this->message_ = dawn::format_message(
+		set_message(dawn::format_message(
 			P_("Saving drops %u embedded image",
 				"Saving drops %u embedded images", grid.mpf_images),
-			grid.mpf_images);
+			grid.mpf_images));
 
 	this->image_ = std::move(image);
 	this->grid_ = grid;
@@ -76,8 +86,7 @@ Cropper::open(const QUrl &url)
 	this->file_.clear();
 	this->image_.reset();
 	this->grid_ = {};
-	this->message_.clear();
-	this->message_dismissed_ = false;
+	set_message({});
 	this->drag_ = Drag::None;
 	this->zoom_ = 1;
 	this->pan_x_ = this->pan_y_ = 0;
@@ -87,7 +96,7 @@ Cropper::open(const QUrl &url)
 		dawn::Error error;
 		if (!dawn::read_file(
 				url_to_path(url).toStdString(), &this->file_, &error))
-			this->message_ = error.message;
+			set_message(error.message);
 		else if (!load_working(this->file_))
 			this->file_.clear();
 	}
@@ -113,9 +122,10 @@ Cropper::measure_content(Kit &, int max_w, int max_h)
 }
 
 void
-Cropper::arrange_content(Kit &, Rect alloc)
+Cropper::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
+	this->hint_.arrange(kit, alloc);
 }
 
 void
@@ -138,6 +148,7 @@ Cropper::zoom_at(int zoom, float x, float y)
 	this->pan_x_ += (x - float(this->r.x) - float(this->r.w) * .5f) * delta;
 	this->pan_y_ += (y - float(this->r.y) - float(this->r.h) * .5f) * delta;
 	this->zoom_ = zoom;
+	sync_labels();
 }
 
 void
@@ -146,6 +157,7 @@ Cropper::reset_region()
 	this->left_ = this->top_ = 0;
 	this->right_ = this->grid_.width;
 	this->bottom_ = this->grid_.height;
+	sync_labels();
 }
 
 Qt::CursorShape
@@ -225,6 +237,7 @@ Cropper::motion(Kit &kit, float x, float y)
 			this->right_ = clamp(px + 1, this->left_ + 1, this->grid_.width);
 			this->bottom_ = clamp(py + 1, this->top_ + 1, this->grid_.height);
 		}
+		sync_labels();
 	}
 	this->drag_x_ = x;
 	this->drag_y_ = y;
@@ -291,8 +304,7 @@ Cropper::turn(Action action)
 	dawn::Error error;
 	auto data = dawn::jpeg_transform(this->file_, op, 0, 0, 0, 0, &error);
 	if (data.empty()) {
-		this->message_ = error.message;
-		this->message_dismissed_ = false;
+		set_message(error.message);
 		return;
 	}
 	if (!load_working(data))
@@ -318,6 +330,7 @@ Cropper::turn(Action action)
 	this->top_ = uint32_t(clamp(min(y0, y1), 0., double(this->bottom_ - 1))) /
 		this->grid_.mcu_height * this->grid_.mcu_height;
 	this->pan_x_ = this->pan_y_ = 0;
+	sync_labels();
 }
 
 // --- Saving and actions ------------------------------------------------------
@@ -458,13 +471,7 @@ Cropper::paint(Kit &kit) const
 {
 	kit.clip_to(this->r);
 	if (!this->image_) {
-		Label hint;
-		hint.text = QString::fromUtf8(_("Open a JPEG file")) +
-			QStringLiteral(" — ") + accel_label(action_def(Action::Open));
-		hint.dim = true;
-		hint.align = Align::Center;
-		hint.r = this->r;
-		hint.paint(kit);
+		this->hint_.paint(kit);
 		kit.clip_pop();
 		return;
 	}
@@ -511,12 +518,9 @@ Cropper::paint(Kit &kit) const
 }
 
 void
-Cropper::update(Kit &kit)
+Cropper::sync_labels()
 {
-	this->error_->set_visible(
-		!this->message_.empty() && !this->message_dismissed_);
-	this->error_label_->set_text(QString::fromStdString(this->message_));
-
+	const Kit &kit = this->kit_;
 	this->scale_label_->enabled_ = this->region_label_->enabled_ =
 		bool(this->image_);
 	this->scale_label_->set_text(
@@ -543,8 +547,12 @@ Cropper::update(Kit &kit)
 		this->region_label_->min_w = width;
 		this->region_label_->invalidate_measure();
 	}
-	this->scale_label_->min_w =
+	const float scale_w =
 		kit.pts(kit.text_width(QStringLiteral("1600%"), false));
+	if (this->scale_label_->min_w != scale_w) {
+		this->scale_label_->min_w = scale_w;
+		this->scale_label_->invalidate_measure();
+	}
 }
 
 constexpr ToolbarSpec kItems[] = {
@@ -603,10 +611,10 @@ make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 		[c](Action a) { return c->enabled(a); }, {});
 
 	auto page = make_page(kit, host, std::move(setup));
-	auto banner = make_banner(
-		&c->error_label_, [c](Kit &) { c->message_dismissed_ = true; });
+	auto banner = make_banner(&c->error_label_);
 	c->error_ = banner.get();
 	page->set_banner(kit, std::move(banner));
+	c->sync_labels();
 	return page;
 }
 

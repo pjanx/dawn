@@ -239,19 +239,12 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 	return img;
 }
 
-static bool
-same_chroma(const dawn::Chromaticities &a, const dawn::Chromaticities &b)
+void
+CieDiagram::redraw(Kit &kit)
 {
-	if (a.model != b.model || a.have_white != b.have_white ||
-		a.have_primaries != b.have_primaries || a.n != b.n)
-		return false;
-	if (a.have_white && (a.wx != b.wx || a.wy != b.wy))
-		return false;
-	for (int i = 0; i < a.n; i++) {
-		if (a.x[i] != b.x[i] || a.y[i] != b.y[i])
-			return false;
-	}
-	return true;
+	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
+		kit.atlas_.release(this->slot_);
+	this->slot_ = {};
 }
 
 Size
@@ -274,38 +267,20 @@ CieDiagram::arrange_content(Kit &kit, Rect alloc)
 void
 CieDiagram::prepare(Kit &kit)
 {
+	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
+		return;
+
 	const int cap = caption_h(kit);
 	const Rect plot =
 		plot_rect({this->r.x, this->r.y, this->r.w, max(0, this->r.h - cap)});
 	if (plot.w < 8 || plot.h < 8)
 		return;
 
-	const bool epoch_ok =
-		this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty();
-	const bool chroma_ok = this->packed_show_screen_ == this->show_screen &&
-		this->packed_screen_dashed_ == this->screen_dashed &&
-		this->packed_image_dashed_ == this->image_dashed &&
-		same_chroma(this->packed_image_, this->image) &&
-		same_chroma(this->packed_screen_, this->screen);
-	if (epoch_ok && chroma_ok &&
-		this->packed_colour_ == kit.screen_state_.colour)
-		return;
-
-	if (epoch_ok)
-		kit.atlas_.release(this->slot_);
 	this->slot_ = kit.pack_bitmap(
 		raster_diagram(kRasterW, kRasterH, this->image, this->screen,
 			this->show_screen, this->screen_dashed, this->image_dashed),
 		false);
-	if (this->slot_.empty())
-		return;
 	this->epoch_ = kit.atlas_epoch_;
-	this->packed_colour_ = kit.screen_state_.colour;
-	this->packed_image_ = this->image;
-	this->packed_screen_ = this->screen;
-	this->packed_show_screen_ = this->show_screen;
-	this->packed_screen_dashed_ = this->screen_dashed;
-	this->packed_image_dashed_ = this->image_dashed;
 }
 
 void

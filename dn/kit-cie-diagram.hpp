@@ -15,11 +15,15 @@ namespace dn
 {
 
 struct CieDiagram : Widget {
+	// After changing any of these, or the screen's colour, call redraw().
 	dawn::Chromaticities image{};
 	dawn::Chromaticities screen{};
 	bool show_screen = false;
 	bool screen_dashed = false;
 	bool image_dashed = false;
+
+	// Drops the raster, to be made anew once the diagram is next shown.
+	void redraw(Kit &kit);
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
@@ -27,14 +31,9 @@ struct CieDiagram : Widget {
 	void paint(Kit &kit) const override;
 
 private:
-	std::shared_ptr<const ScreenColour> packed_colour_;
 	Kit::Packed slot_{};
+	// The atlas that slot_ is in; a rebuilt one has forgotten it.
 	uint32_t epoch_ = 0;
-	dawn::Chromaticities packed_image_{};
-	dawn::Chromaticities packed_screen_{};
-	bool packed_show_screen_ = false;
-	bool packed_screen_dashed_ = false;
-	bool packed_image_dashed_ = false;
 };
 
 }  // namespace dn

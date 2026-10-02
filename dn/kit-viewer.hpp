@@ -71,9 +71,6 @@ struct Viewer : Widget {
 	Button *exiftool_button_ = nullptr;
 	CieDiagram *cie_ = nullptr;
 	Column *tags_ = nullptr;
-	const dawn::Image *info_text_src_ = nullptr;
-	std::string message_;
-	bool message_dismissed_ = false;
 	bool opening_ = false;
 	bool open_done_ = false;
 	bool detached_ = false;
@@ -143,6 +140,8 @@ struct Viewer : Widget {
 	void open(const QUrl &url);
 	void set_preload_urls(const QUrl &previous, const QUrl &next);
 	void cancel_loads();
+	// Shown over the image until dismissed; an empty one takes it down.
+	void set_message(const std::string &message);
 	[[nodiscard]] bool has_view() const;
 	[[nodiscard]] bool consume_open_done();
 	void screen_changed(

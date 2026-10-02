@@ -661,7 +661,6 @@ struct Panel : Composite {
 	float pad_y = 0;
 	float min_w = 0;
 	float min_h = 0;
-	float max_h = 0;
 	Fill fill = Fill::None;
 	Stroke stroke = Stroke::None;
 	bool busy = false;

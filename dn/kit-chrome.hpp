@@ -72,8 +72,8 @@ struct SettingsDraft {
 	std::vector<Loader> loaders;
 };
 
-std::unique_ptr<Panel> make_banner(
-	Label **out, std::function<void(Kit &)> on_dismiss);
+/// Hidden until shown, and hidden again by its own dismiss button.
+std::unique_ptr<Panel> make_banner(Label **out);
 
 /// A translated label, which may carry a mnemonic.
 std::unique_ptr<Label> dialog_label(const char *text, bool bold, bool wrap);

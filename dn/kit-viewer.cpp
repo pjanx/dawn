@@ -267,13 +267,19 @@ dim_text(uint32_t v)
 	return QString::fromUtf8(buf);
 }
 
+// Apart from the rest of the sidebar, as animation frames may differ in size.
 static void
-fill_info_texts(Viewer &v, const dawn::Image *im)
+sync_dims(Viewer &v)
 {
-	if (!v.info_ || !v.tags_ || v.info_text_src_ == im)
-		return;
+	v.width_label_->set_text(dim_text(v.image_width_));
+	v.height_label_->set_text(dim_text(v.image_height_));
+}
 
-	v.info_text_src_ = im;
+// Only when the page changes: refilling scrolls the sidebar back to the top.
+static void
+fill_info_texts(Viewer &v)
+{
+	const dawn::Image *im = v.current_.get();
 	v.info_->scroll_.offset = 0;
 	v.info_->invalidate_arrange();
 
@@ -377,13 +383,6 @@ struct Viewer::Worker {
 };
 
 static void
-set_message(Viewer &v, string text)
-{
-	v.message_ = std::move(text);
-	v.message_dismissed_ = false;
-}
-
-static void
 request_render(Viewer &v)
 {
 	if (v.kit_.request_render)
@@ -437,6 +436,7 @@ set_frame(Viewer &v, dawn::ImagePtr frame)
 	v.frame_ = std::move(frame);
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
+	sync_dims(v);
 	if (v.kit_.renderer_)
 		upload_frame(v, *v.frame_);
 }
@@ -667,22 +667,12 @@ make_sidebar(Viewer &v, const HostActions &host)
 	return side;
 }
 
+// What the sidebar and the controls in it say about the open image.  Run
+// wherever the image, its page, its URL, or the screen changes.
 static void
-sync_ui(Viewer &v, Page &ui)
+sync_info(Viewer &v)
 {
-	if (v.error_) {
-		v.error_->set_visible(!v.message_.empty() && !v.message_dismissed_);
-		const float max_h = float(v.kit_.host_h_) * 0.4f;
-		if (v.error_->max_h != max_h) {
-			v.error_->max_h = max_h;
-			v.error_->invalidate_measure();
-		}
-		if (v.error_->visible && v.error_label_)
-			v.error_label_->set_text(QString::fromUtf8(_("Error: %1"))
-					.arg(QString::fromStdString(v.message_)));
-	}
-	if (v.info_)
-		fill_info_texts(v, v.current_ ? v.current_.get() : v.image_.get());
+	const dawn::Image *im = v.current_.get();
 	if (v.exiftool_button_)
 		v.exiftool_button_->enabled_ = !v.url_.isEmpty();
 	if (v.jpeg_quant_smooth_) {
@@ -690,41 +680,32 @@ sync_ui(Viewer &v, Page &ui)
 		v.jpeg_quant_smooth_->enabled_ = v.image_ && v.image_->loader &&
 			string_view(v.image_->loader) == "libjpeg-turbo";
 	}
-	if (ui.sidebar_open && v.info_) {
-		const char *basename = v.basename_.c_str();
-		const QString name = (basename && basename[0])
-			? QString::fromUtf8(basename)
-			: QStringLiteral("-");
-		v.name_label_->set_text(name);
-		v.loader_label_->set_text(v.image_ && v.image_->loader
-				? QString::fromUtf8(v.image_->loader)
-				: QStringLiteral("-"));
-		v.width_label_->set_text(dim_text(v.image_width_));
-		v.height_label_->set_text(dim_text(v.image_height_));
-		if (v.cie_) {
-			const dawn::Image *im =
-				v.current_ ? v.current_.get() : v.image_.get();
-			const dawn::Profile *src = im && im->effective_profile
-				? im->effective_profile.get()
-				: nullptr;
-			const bool assumed = im && im->profile_assumed;
-			dawn::Chromaticities img = profile_chromaticities(src);
-			bool image_dashed = assumed || !src || !img.have_primaries;
-			shared_ptr<dawn::Profile> srgb;
-			if (!img.have_primaries) {
-				auto cmm =
-					v.screen_.cmm ? v.screen_.cmm : dawn::Cmm::get_default();
-				srgb = cmm->get_profile_sRGB();
-				img = profile_chromaticities(srgb.get());
-				image_dashed = true;
-			}
-			v.cie_->image = img;
-			v.cie_->image_dashed = image_dashed;
-			v.cie_->screen = profile_chromaticities(v.screen_.profile.get());
-			v.cie_->show_screen = v.cie_->screen.have_primaries;
-			v.cie_->screen_dashed = v.screen_.fallback;
-		}
+	v.name_label_->set_text(v.basename_.empty()
+			? QStringLiteral("-")
+			: QString::fromStdString(v.basename_));
+	v.loader_label_->set_text(v.image_ && v.image_->loader
+			? QString::fromUtf8(v.image_->loader)
+			: QStringLiteral("-"));
+	sync_dims(v);
+
+	const dawn::Profile *src =
+		im && im->effective_profile ? im->effective_profile.get() : nullptr;
+	dawn::Chromaticities img = profile_chromaticities(src);
+	bool image_dashed =
+		(im && im->profile_assumed) || !src || !img.have_primaries;
+	shared_ptr<dawn::Profile> srgb;
+	if (!img.have_primaries) {
+		auto cmm = v.screen_.cmm ? v.screen_.cmm : dawn::Cmm::get_default();
+		srgb = cmm->get_profile_sRGB();
+		img = profile_chromaticities(srgb.get());
+		image_dashed = true;
 	}
+	v.cie_->image = img;
+	v.cie_->image_dashed = image_dashed;
+	v.cie_->screen = profile_chromaticities(v.screen_.profile.get());
+	v.cie_->show_screen = v.cie_->screen.have_primaries;
+	v.cie_->screen_dashed = v.screen_.fallback;
+	v.cie_->redraw(v.kit_);
 }
 
 static void
@@ -769,7 +750,6 @@ clear_image(Viewer &v)
 	v.current_.reset();
 	v.frame_.reset();
 	v.page_scaled_.reset();
-	v.info_text_src_ = nullptr;
 	v.image_width_ = 0;
 	v.image_height_ = 0;
 	v.vector_scale_ = 0;
@@ -789,12 +769,14 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	v.cms_icc_ = cached.cms_icc;
 	v.opening_ = false;
 	v.open_done_ = true;
-	set_message(v, message);
+	v.set_message(message);
 	if (!message.empty())
 		qWarning("%s: %s", qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
 			message.c_str());
 	if (!image || !image->width || !image->height) {
 		clear_image(v);
+		fill_info_texts(v);
+		sync_info(v);
 		request_render(v);
 		return;
 	}
@@ -828,6 +810,8 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
 	v.remaining_loops_ = 0;
 	start_playback(v);
+	fill_info_texts(v);
+	sync_info(v);
 	request_render(v);
 }
 
@@ -1601,6 +1585,8 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
 	v.remaining_loops_ = 0;
 	start_playback(v);
+	fill_info_texts(v);
+	sync_info(v);
 	request_render(v);
 }
 
@@ -1980,8 +1966,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	auto content = make_unique<Viewer>(kit);
 	Viewer *v = content.get();
 	v->init();
-	auto error = make_banner(
-		&v->error_label_, [v](Kit &) { v->message_dismissed_ = true; });
+	auto error = make_banner(&v->error_label_);
 	v->error_ = error.get();
 
 	PageSetup setup;
@@ -2016,6 +2001,7 @@ Viewer::open(const QUrl &url)
 	this->enhance_jpeg_ = false;
 	this->url_ = url;
 	this->basename_ = url_basename(url).toStdString();
+	sync_info(*this);
 	start_open(*this, false);
 }
 
@@ -2060,9 +2046,18 @@ Viewer::cancel_loads()
 	clear_image(*this);
 	this->url_.clear();
 	this->basename_.clear();
-	this->message_.clear();
-	this->message_dismissed_ = false;
+	set_message({});
+	fill_info_texts(*this);
+	sync_info(*this);
 	request_render(*this);
+}
+
+void
+Viewer::set_message(const string &message)
+{
+	this->error_label_->set_text(
+		QString::fromUtf8(_("Error: %1")).arg(QString::fromStdString(message)));
+	this->error_->set_visible(!message.empty());
 }
 
 bool
@@ -2088,6 +2083,7 @@ Viewer::screen_changed(
 	const bool reload = !this->url_.isEmpty() &&
 		(force_reload || (this->enable_cms_ && changed));
 	this->screen_ = state;
+	sync_info(*this);
 	if (reload)
 		reload_open(*this, true);
 }
@@ -2096,7 +2092,6 @@ void
 Viewer::update(Kit &)
 {
 	animate(*this);
-	sync_ui(*this, *this->page_);
 	// Reserve the scale label's width before layout.
 	sync_scale_label(*this);
 }

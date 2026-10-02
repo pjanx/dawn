@@ -32,13 +32,17 @@ struct Cropper : Widget {
 	Label *scale_label_ = nullptr;
 	Panel *error_ = nullptr;
 	Label *error_label_ = nullptr;
-	std::string message_;
-	bool message_dismissed_ = false;
+	// What stands in for the image while there is none.
+	Label hint_;
 
 	explicit Cropper(Kit &kit);
 	void open(const QUrl &url);
 	bool load_working(const std::vector<uint8_t> &data);
 	void reset_region();
+	// Shown over the image until dismissed; an empty one takes it down.
+	void set_message(const std::string &message);
+	// The toolbar's zoom and region labels, after either has changed.
+	void sync_labels();
 	void zoom_at(int zoom, float x, float y);
 	// The displayed image's top-left, snapped exactly as the renderer is.
 	void origin(double *x, double *y) const;
@@ -50,7 +54,7 @@ struct Cropper : Widget {
 	Size measure_content(Kit &, int max_w, int max_h) override;
 	void arrange_content(Kit &, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void update(Kit &kit) override;
+	void rescale(Kit &) override { sync_labels(); }
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	bool focusable() const override { return shown(); }

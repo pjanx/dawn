@@ -2690,7 +2690,6 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 	Size size;
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
 	const int min_w = kit.px(this->min_w), min_h = kit.px(this->min_h);
-	const int max_h = kit.px(this->max_h);
 	const int iw = avail_w < kUnlim ? max(0, avail_w - pad_x * 2) : kUnlim;
 	const int ih = avail_h < kUnlim ? max(0, avail_h - pad_y * 2) : kUnlim;
 	Q_ASSERT(this->kids.size() <= 1);
@@ -2702,8 +2701,6 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 	size.h = pad_y * 2 + wanted.h;
 	if (min_h > 0)
 		size.h = max(size.h, min_h);
-	if (max_h > 0)
-		size.h = min(size.h, max_h);
 	if (min_w > 0)
 		size.w = max(size.w, min_w);
 	size.h = min(size.h, avail_h);
@@ -2719,9 +2716,7 @@ Panel::arrange_content(Kit &kit, Rect alloc)
 		return;
 	}
 	this->r = alloc;
-	const int min_h = kit.px(this->min_h), max_h = kit.px(this->max_h);
-	if (max_h > 0 && this->r.h > max_h)
-		this->r.h = max_h;
+	const int min_h = kit.px(this->min_h);
 	if (min_h > 0 && this->r.h < min_h)
 		this->r.h = min_h;
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));

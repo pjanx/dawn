@@ -267,8 +267,16 @@ dialog_about(Kit &kit, span<const pair<const char *, QString>> details)
 }
 
 unique_ptr<Panel>
-make_banner(Label **out, function<void(Kit &)> on_dismiss)
+make_banner(Label **out)
 {
+	auto err = make_unique<Panel>();
+	err->fill = Fill::Panel;
+	err->stroke = Stroke::Bottom;
+	err->grow = true;
+	err->hittable = true;
+	err->clip = true;
+	err->visible = false;
+
 	auto row = make_unique<Row>();
 	row->gap = 2.f;
 	row->pad_x = 4.f;
@@ -285,18 +293,12 @@ make_banner(Label **out, function<void(Kit &)> on_dismiss)
 	dismiss->flat = true;
 	dismiss->tip_text = QString::fromUtf8(_("Dismiss"));
 	dismiss->icon = "x-symbolic";
-	dismiss->on_click = std::move(on_dismiss);
+	dismiss->on_click = [banner = err.get()](Kit &) {
+		banner->set_visible(false);
+	};
 
 	row->add_child(std::move(lab), size_t(-1));
 	row->add_child(std::move(dismiss), size_t(-1));
-
-	auto err = make_unique<Panel>();
-	err->fill = Fill::Panel;
-	err->stroke = Stroke::Bottom;
-	err->grow = true;
-	err->hittable = true;
-	err->clip = true;
-	err->visible = false;
 	err->add_child(std::move(row), size_t(-1));
 	return err;
 }
@@ -1159,7 +1161,8 @@ Page::arrange_content(Kit &kit, Rect alloc)
 		y += this->toolbar->r.h;
 	}
 	if (this->banner && this->banner->visible) {
-		const int rest = max(0, frame.bottom() - y);
+		// However long the message, most of the window stays the content's.
+		const int rest = max(0, min(frame.bottom() - y, frame.h * 2 / 5));
 		const Size size = this->banner->measure(kit, frame.w, rest);
 		this->banner->arrange(kit, {frame.x, y, frame.w, size.h});
 		y += this->banner->r.h;
