@@ -186,7 +186,10 @@ decode_heif_pixels(
 		image, heif_channel_interleaved, &src_stride);
 
 	if (use16) {
-		int bits = min(bit_depth, 16);
+		// The handle's depth comes from the codec configuration box,
+		// which need not match what the bitstream decodes to.
+		int bits = min(16,
+			heif_image_get_bits_per_pixel_range(image, heif_channel_interleaved));
 		if (has_alpha) {
 			pack_rgba16le_to_bgra16(*result,
 				assume_aligned<const uint16_t>(src), size_t(src_stride), bits);
