@@ -82,7 +82,7 @@ test_background_reserve()
 			return false;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				lock_guard lock(gate.mu);
 				visible_started = true;
@@ -136,7 +136,7 @@ test_visible_reserve()
 			return false;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				lock_guard lock(gate.mu);
 				visible_started = true;
@@ -168,7 +168,7 @@ test_reprioritization_order()
 	WorkGate gate;
 	bool blocker_started = false;
 	vector<int> order;
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				unique_lock lock(gate.mu);
 				blocker_started = true;
@@ -187,7 +187,7 @@ test_reprioritization_order()
 	for (int id : {1, 2}) {
 		if (!thumbnailer.submit(
 				client, 0,
-				id == 1 ? dn::Thumbnailer::Priority::Visible
+				id == 1 ? dn::Thumbnailer::Priority::Interactive
 						: dn::Thumbnailer::Priority::Dimensions,
 				[&, id] {
 					lock_guard lock(gate.mu);
@@ -203,7 +203,7 @@ test_reprioritization_order()
 	if (!thumbnailer.reprioritize(
 			client, 0, dn::Thumbnailer::Priority::Dimensions, "1") ||
 		!thumbnailer.reprioritize(
-			client, 0, dn::Thumbnailer::Priority::Visible, "2")) {
+			client, 0, dn::Thumbnailer::Priority::Interactive, "2")) {
 		gate.unblock();
 		return false;
 	}
@@ -232,7 +232,7 @@ test_cancel_frees_the_key()
 	WorkGate gate;
 	bool blocker_started = false;
 	int ran = 0;
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				unique_lock lock(gate.mu);
 				blocker_started = true;
@@ -255,13 +255,13 @@ test_cancel_frees_the_key()
 		return dn::Thumbnailer::Completion{};
 	};
 	if (!thumbnailer.submit(
-			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
 		gate.unblock();
 		return false;
 	}
 	// Same key, and the first one is still queued behind the blocker.
 	if (thumbnailer.submit(
-			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
 		gate.unblock();
 		test::fail("a duplicate key was accepted");
 		return false;
@@ -272,7 +272,7 @@ test_cancel_frees_the_key()
 		return false;
 	}
 	if (!thumbnailer.submit(
-			client, 0, dn::Thumbnailer::Priority::Visible, work, "a")) {
+			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
 		gate.unblock();
 		test::fail("the replacement was still refused after cancelling");
 		return false;
@@ -390,7 +390,7 @@ test_activity_transitions(QCoreApplication &app)
 			app.quit();
 		}
 	});
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Visible,
+	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				unique_lock lock(gate.mu);
 				gate.changed.wait(lock, [&] { return gate.released; });

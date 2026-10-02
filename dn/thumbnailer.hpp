@@ -73,12 +73,7 @@ public:
 	using Work = std::function<Completion()>;
 	using GpuCompletion = std::function<void(dawn::ThumbScaler::Result)>;
 
-	enum class Priority : uint8_t {
-		Visible,
-		Prefetch,
-		Dimensions,
-		Maintenance,
-	};
+	using Priority = dawn::ThumbScaler::Priority;
 
 	explicit Thumbnailer(QObject *parent, unsigned workers);
 	~Thumbnailer() override;

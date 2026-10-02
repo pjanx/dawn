@@ -51,22 +51,6 @@ priority_index(Thumbnailer::Priority priority)
 	return size_t(priority);
 }
 
-static dawn::ThumbScaler::Priority
-scaler_priority(Thumbnailer::Priority priority)
-{
-	switch (priority) {
-	case Thumbnailer::Priority::Visible:
-		return dawn::ThumbScaler::Priority::Interactive;
-	case Thumbnailer::Priority::Prefetch:
-		return dawn::ThumbScaler::Priority::Prefetch;
-	case Thumbnailer::Priority::Dimensions:
-		return dawn::ThumbScaler::Priority::Dimensions;
-	case Thumbnailer::Priority::Maintenance:
-		return dawn::ThumbScaler::Priority::Maintenance;
-	}
-	return dawn::ThumbScaler::Priority::Maintenance;
-}
-
 namespace
 {
 
@@ -584,7 +568,7 @@ Thumbnailer::reprioritize(
 		found_any = true;
 		if (priority != task.priority) {
 			task.priority = priority;
-			task.control->priority = scaler_priority(priority);
+			task.control->priority = priority;
 			if (!task.result)
 				gpu.push_back(gpu_id);
 		}
@@ -592,7 +576,7 @@ Thumbnailer::reprioritize(
 	lock.unlock();
 	for (uint64_t gpu_id : gpu)
 		if (impl_->scaler)
-			impl_->scaler->reprioritize(gpu_id, scaler_priority(priority));
+			impl_->scaler->reprioritize(gpu_id, priority);
 	if (found_any)
 		impl_->cv.notify_all();
 	return found_any;
@@ -663,7 +647,7 @@ Thumbnailer::submit_gpu(Client id, uint64_t epoch, Priority priority,
 		if (!gpu_id)
 			gpu_id = impl_->next_gpu++;
 		auto control = make_shared<dawn::ThumbScaler::Control>();
-		control->priority = scaler_priority(priority);
+		control->priority = priority;
 		job.control = control;
 		impl_->gpu_tasks.emplace(gpu_id,
 			GpuTask{

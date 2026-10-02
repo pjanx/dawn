@@ -1211,7 +1211,7 @@ enqueue_thumbs(Browser &b)
 				b.thumb_inflight_.erase(active);
 			} else {
 				const Thumbnailer::Priority desired = visible
-					? Thumbnailer::Priority::Visible
+					? Thumbnailer::Priority::Interactive
 					: prefetched ? Thumbnailer::Priority::Prefetch
 								 : Thumbnailer::Priority::Dimensions;
 				if (desired != active->second.priority &&
@@ -1288,7 +1288,7 @@ enqueue_thumbs(Browser &b)
 			}
 		}
 	};
-	push(vis, Thumbnailer::Priority::Visible);
+	push(vis, Thumbnailer::Priority::Interactive);
 	push(pre, Thumbnailer::Priority::Prefetch);
 	size_t dimensions = 0;
 	for (const auto &[path, active] : b.thumb_inflight_) {
