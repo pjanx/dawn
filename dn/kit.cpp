@@ -2652,6 +2652,7 @@ Panel::paint(Kit &kit) const
 {
 	if (!shown())
 		return;
+
 	if (this->clip)
 		kit.clip_to(this->r);
 	switch (this->fill) {
@@ -3778,6 +3779,7 @@ ToolbarSlot::lend_to(Overflow &overflow)
 {
 	if (overflow.lender && overflow.lender != this)
 		overflow.lender->reclaim();
+
 	// Separators are what a run happens to start or end with, never worth a
 	// line of their own: the popup shows what they divide, not the dividers.
 	const size_t end = this->items_.size();
@@ -3789,6 +3791,7 @@ ToolbarSlot::lend_to(Overflow &overflow)
 	if (this->borrower_ == &overflow && this->lent_first_ == a &&
 		this->lent_last_ == b)
 		return;
+
 	reclaim();
 	for (size_t i = a; i < b; i++)
 		overflow.col->add_child(take_child(a), size_t(-1));
@@ -3979,9 +3982,8 @@ Toolbar::measure_content(Kit &kit, int avail_w, int avail_h)
 	const int ih = max(0, avail_h - pad_y * 2);
 	int h = 0;
 	auto slot = [&](Widget *w) {
-		if (!w)
-			return;
-		h = max(h, w->measure(kit, kUnlim, ih).h);
+		if (w)
+			h = max(h, w->measure(kit, kUnlim, ih).h);
 	};
 	slot(this->left);
 	slot(this->mid);
@@ -4009,9 +4011,11 @@ Toolbar::place_slots(Kit &kit)
 {
 	if (this->r.w <= 0)
 		return;
+
 	const Rect bar = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	if (bar.w <= 0)
 		return;
+
 	const int avail = bar.w;
 	const int h = bar.h;
 	const int x0 = bar.x;
@@ -4186,6 +4190,7 @@ Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		return true;
 	if (!kit.start_move)
 		return false;
+
 	// Asking for the move on the press would leave a compositor grab open
 	// across the whole double click, and Mutter anchors an unmaximize to the
 	// pointer whenever one is: the window would land under the cursor rather
@@ -4285,6 +4290,7 @@ Kit::draw_glow(Rect w, Colour col)
 {
 	if (this->glow_.empty() || w.empty())
 		return;
+
 	const Uv uv = this->glow_.texels();
 	const float u_in = float(this->glow_.x + this->glow_.w) - 0.5f;
 	const float v_in = float(this->glow_.y + this->glow_.h) - 0.5f;
@@ -4350,6 +4356,7 @@ Kit::set_dpr(float dpr)
 	const float next = dpr > 0.f ? dpr : 1.f;
 	if (abs(next - this->dpr_) < 0.01f)
 		return false;
+
 	this->dpr_ = next;
 	if (this->inited_)
 		reset_fonts();
@@ -5454,14 +5461,17 @@ Kit::resize_edges(float x, float y) const
 {
 	if (!this->csd_ || this->fullscreen_ || this->maximized_)
 		return {};
+
 	// Already in pixels: the Kit input entry points converted them.
 	const int ix = int(x), iy = int(y);
 	if (ix < 0 || iy < 0 || ix >= this->host_w_ || iy >= this->host_h_)
 		return {};
+
 	const Rect f = frame();
 	const bool inside = f.contains(float(ix), float(iy));
 	if (this->csd_shadow_ ? inside : !inside)
 		return {};
+
 	const int band = px(kResizeBorderPts);
 	Qt::Edges e;
 	if (ix < f.x + band)
@@ -5481,9 +5491,11 @@ Kit::start_resize_at(float x, float y)
 	const Qt::Edges edges = resize_edges(x, y);
 	if (!edges || !this->start_resize)
 		return false;
+
 	// A button that reaches into the band keeps its click.
 	if (dynamic_cast<Button *>(hit(x, y)))
 		return false;
+
 	this->start_resize(edges);
 	return true;
 }
