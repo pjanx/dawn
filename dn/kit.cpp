@@ -592,14 +592,13 @@ void
 Widget::arrange(Kit &kit, Rect alloc)
 {
 	if (!this->arrange_dirty_ && this->arrange_epoch_ == kit.font_epoch_ &&
-		this->allocation_ == alloc && this->arranged_ == this->r)
+		this->allocation_ == alloc)
 		return;
 
 	this->arrange_dirty_ = false;
 	this->arrange_epoch_ = kit.font_epoch_;
 	this->allocation_ = alloc;
 	arrange_content(kit, alloc);
-	this->arranged_ = this->r;
 }
 
 void
@@ -672,16 +671,6 @@ Widget::hit_at(float x, float y)
 			return h;
 	}
 	return this->hittable ? this : nullptr;
-}
-
-void
-Widget::prepare(Kit &kit)
-{
-	if (!shown())
-		return;
-
-	for (const auto &k : children())
-		k->prepare(kit);
 }
 
 Rect
@@ -1325,11 +1314,12 @@ apply_edit(Kit &kit, Entry &e, Edit edit, bool extend)
 	return true;
 }
 
-// How far through the on-off cycle a caret last touched then is: [0, 1),
-// with the first half lit.
+// How far through the on-off cycle the caret is: [0, 1), with the first half
+// lit.  The cycle restarts whenever the caret is touched, or the focus moves.
 static double
-blink_phase(chrono::steady_clock::time_point since)
+blink_phase(const Kit &kit, const Entry &e)
 {
+	const auto since = max(e.caret_at_, kit.focus_at_);
 	const double elapsed =
 		chrono::duration<double, milli>(chrono::steady_clock::now() - since)
 			.count();
@@ -1561,8 +1551,7 @@ void
 Entry::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = this->Widget::shown() ? alloc : Rect{};
-	// Only the scroll: resetting the blink here would restart it every
-	// frame, and the caret would never reach the dark half.
+	// Only the scroll: a relayout is no reason to restart the blink.
 	rescroll(kit);
 }
 
@@ -1576,7 +1565,8 @@ Entry::paint(Kit &kit) const
 	// the listing is already obeying, so that restores the background even
 	// unfocused, as the only thing on screen explaining why files are missing.
 	const int hair = kit.hairline();
-	if (!this->flat || this->focused_ || !this->text.isEmpty())
+	const bool focused = kit.focus_ == this;
+	if (!this->flat || focused || !this->text.isEmpty())
 		kit.list_.add_rect_filled_vgradient(this->r.box(),
 			kit.colours_[ColourEntryTop], kit.colours_[ColourEntryBottom]);
 	kit.draw_border(this->r, kit.colours_[ColourDivider], hair);
@@ -1652,7 +1642,8 @@ Entry::paint(Kit &kit) const
 		}
 	}
 
-	if (this->caret_on_) {
+	if (focused && this->anchor == this->caret &&
+		(!this->preedit.isEmpty() || blink_phase(kit, *this) < 0.5)) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
 		const TextAffinity affinity = this->preedit.isEmpty()
@@ -1670,25 +1661,6 @@ Entry::paint(Kit &kit) const
 	kit.clip_pop();
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
-}
-
-void
-Entry::prepare(Kit &kit)
-{
-	if (!this->Widget::shown()) {
-		this->focused_ = false;
-		this->caret_on_ = false;
-		return;
-	}
-
-	// Whether this frame draws a caret is decided once, here: paint and
-	// wake_ms both just read the answer, so they cannot disagree.
-	const bool focused = kit.focus_ == this;
-	if (focused && !this->focused_)
-		this->caret_at_ = chrono::steady_clock::now();
-	this->focused_ = focused;
-	this->caret_on_ = focused && this->anchor == this->caret &&
-		(!this->preedit.isEmpty() || blink_phase(this->caret_at_) < 0.5);
 }
 
 bool
@@ -1917,15 +1889,15 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 }
 
 int
-Entry::wake_ms() const
+Entry::wake_ms(const Kit &kit) const
 {
 	// An unfocused field has no caret, a composing one holds it steady, and
 	// a selection hides it: none needs waking.  Otherwise, sleep until the
 	// caret next flips.
-	if (!this->focused_ || !this->preedit.isEmpty() ||
+	if (kit.focus_ != this || !this->preedit.isEmpty() ||
 		this->anchor != this->caret)
 		return -1;
-	const double phase = blink_phase(this->caret_at_);
+	const double phase = blink_phase(kit, *this);
 	const double until = (phase < 0.5 ? 0.5 : 1.0) - phase;
 	return max(1, int(ceil(until * kCaretBlinkMs * 2.0)));
 }
@@ -2677,7 +2649,7 @@ ScrollColumn::key(Kit &, const Key &ev)
 }
 
 int
-ScrollColumn::wake_ms() const
+ScrollColumn::wake_ms(const Kit &) const
 {
 	return this->scroll_.wake_ms();
 }
@@ -2917,19 +2889,28 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	kit.focus_first(this);
 }
 
+// Not dropped here: the footer button that closed it is still running inside
+// this very tree.  The event loop is the first place nothing stands on it.
 void
-Dialog::after_close(Kit &)
+Dialog::after_close(Kit &kit)
 {
-	this->retired_ = true;
+	if (!kit.post)
+		return;
+
+	kit.post([&kit, dialog = this] {
+		auto &dialogs = kit.dialogs_;
+		const auto it = find_if(dialogs.begin(), dialogs.end(),
+			[dialog](const auto &d) { return d.get() == dialog; });
+		if (it == dialogs.end())
+			return;
+		kit.forget_tree(dialog);
+		dialogs.erase(it);
+	});
 }
 
 void
 Dialog::place(Kit &kit)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
 	// Centred on the window, not on whatever the toolbar left over. The
 	// margin is only there to keep the shadow off the edges.
 	const int margin = kit.px(kGlowPts * 2.f);
@@ -4121,8 +4102,8 @@ Toolbar::place_slots(Kit &kit)
 		if (!slot)
 			return false;
 		for (const Widget *item : slot->items_) {
-			// layout_visible is a frame behind here -- the slot only settles
-			// its split once it arranges, below.  It costs nothing: this is
+			// layout_visible may be stale here -- the slot only settles its
+			// split once it arranges, below.  It costs nothing: this is
 			// asked on the branch where all three slots fit at their natural
 			// width, so nothing of the slot will overflow anyway.
 			if (item->visible && item->grow)
@@ -4472,15 +4453,16 @@ Kit::reset_fonts()
 	// Mask keys contain generation-local font IDs and must be gone before the
 	// backend releases that generation's font table. Retained layouts keep
 	// their native run fonts and become unreachable when their cache epoch is
-	// next observed.
+	// next observed.  Whatever was arranged against the old atlas is stale
+	// even if the reset then fails.
 	rebuild_atlas(*this);
 	this->text_cache_.texts.clear();
+	this->font_epoch_++;
 	string error;
 	if (!this->text_backend_.reset(font, this->dpr_, &error)) {
 		qWarning("font backend reset failed: %s", error.c_str());
 		return false;
 	}
-	this->font_epoch_ = this->text_backend_.generation();
 	return true;
 }
 
@@ -4583,28 +4565,26 @@ Kit::sync_focus()
 	done();
 }
 
-Kit::Input::Input(Kit &kit) : kit(kit)
+static void
+deliver_focus_lost(Kit &kit)
 {
-	kit.input_depth_++;
-}
-
-Kit::Input::~Input()
-{
-	if (--this->kit.input_depth_)
-		return;
-
-	while (!this->kit.lost_focus_.empty()) {
-		Widget *lost = this->kit.lost_focus_.front();
-		this->kit.lost_focus_.erase(this->kit.lost_focus_.begin());
-		if (!lost || lost == this->kit.focus_)
+	bool delivered = false;
+	while (!kit.lost_focus_.empty()) {
+		Widget *lost = kit.lost_focus_.front();
+		kit.lost_focus_.erase(kit.lost_focus_.begin());
+		if (!lost || lost == kit.focus_)
 			continue;
 
 		bool visible = true;
 		for (Widget *w = lost; w; w = w->parent_)
 			visible &= w->shown();
-		if (visible)
-			lost->focus_lost(this->kit);
+		if (visible) {
+			lost->focus_lost(kit);
+			delivered = true;
+		}
 	}
+	if (delivered && kit.request_render)
+		kit.request_render();
 }
 
 void
@@ -4612,15 +4592,17 @@ Kit::set_focus(Widget *w, bool ring)
 {
 	const bool moved = this->focus_ != w;
 	if (moved) {
+		this->focus_at_ = chrono::steady_clock::now();
 		if (this->focus_ &&
 			find(this->lost_focus_.begin(), this->lost_focus_.end(),
-				this->focus_) == this->lost_focus_.end())
+				this->focus_) == this->lost_focus_.end()) {
+			if (this->lost_focus_.empty() && this->post)
+				this->post([this] { deliver_focus_lost(*this); });
 			this->lost_focus_.push_back(this->focus_);
-		for (Widget *p = w; p; p = p->parent_) {
-			if (auto *column = dynamic_cast<ScrollColumn *>(p);
-				column && column->follow_focus)
-				column->invalidate_arrange();
 		}
+		// Layout may follow focus, as a ScrollColumn scrolls to reveal it.
+		if (w)
+			w->invalidate_arrange();
 	}
 	this->focus_ = w;
 	this->focus_visible_ = ring;
@@ -4650,7 +4632,6 @@ Kit::reseat_focus(Widget *w)
 bool
 Kit::activate(Widget *w)
 {
-	Input input(*this);
 	if (!w || !w->shown())
 		return false;
 	if (w->activate(*this))
@@ -4667,7 +4648,6 @@ Kit::activate(Widget *w)
 bool
 Kit::activate_mnemonic(Widget *scope, int key)
 {
-	Input input(*this);
 	if (key < Qt::Key_A || key > Qt::Key_Z)
 		return false;
 
@@ -4751,7 +4731,6 @@ Kit::focus_first(Widget *scope)
 bool
 Kit::key(const Key &ev)
 {
-	Input input(*this);
 	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
 		return p->key(*this, ev);
 
@@ -4814,7 +4793,6 @@ Kit::input_method(const QString &commit, const QString &preedit, int caret)
 bool
 Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 {
-	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -4848,7 +4826,6 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
-	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -4895,7 +4872,6 @@ Kit::cancel_press()
 bool
 Kit::mouse_motion(float x, float y)
 {
-	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -4971,7 +4947,6 @@ Kit::track_popups(float x, float y)
 bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
-	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5042,7 +5017,6 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
-	Input input(*this);
 	// Platform events arrive in logical points; the widget tree is
 	// device pixels.  Convert once, here.
 	x = float(px(x));
@@ -5234,15 +5208,16 @@ Kit::tooltip(const Widget *hot)
 	if (is_popup_opener(*this, hot))
 		hot = nullptr;
 	if (this->focus_visible_ && this->focus_ &&
-		!this->focus_->tip().isEmpty() && this->focus_->tip_anchor().w > 0) {
-		this->tooltip_text_ = this->focus_->tip();
+		!this->focus_->tip(*this).isEmpty() &&
+		this->focus_->tip_anchor().w > 0) {
+		this->tooltip_text_ = this->focus_->tip(*this);
 		this->tooltip_accel_ = this->focus_->tip_key();
 		this->tooltip_anchor_ = this->focus_;
 		this->tooltip_visible_ = true;
 		return;
 	}
 	this->tooltip_anchor_ = nullptr;
-	const QString tip = hot ? hot->tip() : QString();
+	const QString tip = hot ? hot->tip(*this) : QString();
 	const QString accel = hot ? hot->tip_key() : QString();
 	const float dx = this->mouse_x_ - this->hover_x_;
 	const float dy = this->mouse_y_ - this->hover_y_;
@@ -5348,14 +5323,14 @@ Scrim::press(Kit &kit, float, float, Qt::MouseButton)
 }  // namespace
 
 static int
-wake_tree(const Widget *w)
+wake_tree(const Kit &kit, const Widget *w)
 {
 	if (!w || !w->shown())
 		return -1;
 
-	int ms = w->wake_ms();
+	int ms = w->wake_ms(kit);
 	for (const auto &k : w->children())
-		ms = sooner(ms, wake_tree(k.get()));
+		ms = sooner(ms, wake_tree(kit, k.get()));
 	return ms;
 }
 
@@ -5369,11 +5344,11 @@ Kit::wake_ms() const
 								  .count();
 		ms = max(0, int(ceil(double(kTooltipDelayMs - elapsed))));
 	}
-	ms = sooner(ms, wake_tree(this->root_));
+	ms = sooner(ms, wake_tree(*this, this->root_));
 	// Popups are not in the root tree, and a scrollbar inside one still
 	// has to be told when to hide itself.
 	for (const Popup *p : this->popups_)
-		ms = sooner(ms, wake_tree(p));
+		ms = sooner(ms, wake_tree(*this, p));
 	return ms;
 }
 
@@ -5386,8 +5361,8 @@ sync_scrim(Kit &kit)
 		kit.scrim_ = std::move(s);
 	}
 	if (kit.scrim_) {
-		kit.scrim_->visible = !kit.popups_.empty();
-		kit.scrim_->r = {0, 0, kit.host_w_, kit.host_h_};
+		kit.scrim_->set_visible(!kit.popups_.empty());
+		kit.scrim_->arrange(kit, {0, 0, kit.host_w_, kit.host_h_});
 	}
 }
 
@@ -5662,17 +5637,6 @@ Kit::relayout_popups()
 	}
 }
 
-void
-Kit::prepare_popups()
-{
-	for (size_t i = 0; i < this->popups_.size();) {
-		Popup *p = this->popups_[i];
-		p->prepare(*this);
-		if (i < this->popups_.size() && this->popups_[i] == p)
-			i++;
-	}
-}
-
 bool
 Kit::set_host(float width_pts, float height_pts, float dpr)
 {
@@ -5688,16 +5652,6 @@ Kit::frame_ui(Page &ui)
 	if (!this->inited_)
 		return;
 
-	// Not when they close: a footer button's on_click is still running
-	// inside the tree it has just taken down.  The frame boundary is the
-	// first moment at which nothing is standing on any of this.
-	erase_if(this->dialogs_, [this](const unique_ptr<Dialog> &dialog) {
-		if (!dialog || !dialog->retired_)
-			return false;
-		forget_tree(dialog.get());
-		return true;
-	});
-
 	// An inactive page may have missed a change to the window chrome.
 	if (this->root_ != &ui)
 		ui.invalidate_arrange();
@@ -5711,8 +5665,6 @@ Kit::frame_ui(Page &ui)
 	ui.content->placed(*this);
 	relayout_popups();
 	sync_focus();
-	ui.prepare(*this);
-	prepare_popups();
 	if (this->notify)
 		this->notify(Change::State, nullptr);
 	this->hot_ = hit(this->mouse_x_, this->mouse_y_);

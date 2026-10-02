@@ -182,7 +182,7 @@ struct Browser : Widget {
 	void paint(Kit &kit) const override;
 	[[nodiscard]] bool focusable() const override;
 	[[nodiscard]] Qt::CursorShape cursor() const override;
-	[[nodiscard]] QString tip() const override;
+	[[nodiscard]] QString tip(const Kit &) const override;
 	[[nodiscard]] Rect tip_anchor() const override { return {}; }
 
 	void init();
@@ -215,7 +215,7 @@ struct Browser : Widget {
 	bool key(Kit &kit, const Key &ev) override;
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
-	[[nodiscard]] int wake_ms() const override;
+	[[nodiscard]] int wake_ms(const Kit &) const override;
 };
 
 std::unique_ptr<Page> make_browser_page(

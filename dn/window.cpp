@@ -346,6 +346,8 @@ Window::drop_frames()
 	this->kit_.pressed_ = nullptr;
 	this->kit_.hot_ = nullptr;
 	this->kit_.set_focus(nullptr, false);
+	// The pages go below, before the event loop could deliver any of this.
+	this->kit_.lost_focus_.clear();
 	this->alt_armed_ = false;
 	this->browser_ = nullptr;
 	this->viewer_ = nullptr;

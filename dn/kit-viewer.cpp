@@ -2117,7 +2117,7 @@ Viewer::arrange_content(Kit &, Rect alloc)
 }
 
 int
-Viewer::wake_ms() const
+Viewer::wake_ms(const Kit &) const
 {
 	if (!this->playing_ || !this->frame_)
 		return -1;

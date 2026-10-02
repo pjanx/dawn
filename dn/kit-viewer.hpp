@@ -149,7 +149,7 @@ struct Viewer : Widget {
 	void update(Kit &kit) override;
 	void rescale(Kit &kit) override;
 	bool busy() const override { return opening_; }
-	[[nodiscard]] int wake_ms() const override;
+	[[nodiscard]] int wake_ms(const Kit &) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;

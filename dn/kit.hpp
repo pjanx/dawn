@@ -222,7 +222,6 @@ struct Widget {
 	bool arrange_dirty_ = true;
 	uint64_t arrange_epoch_ = 0;
 	Rect allocation_{};
-	Rect arranged_{};
 
 	// After changing public sizing fields, invalidate the widget. Construction
 	// needs no invalidation; adding/removing children does it automatically.
@@ -272,11 +271,10 @@ struct Widget {
 	// depend on who ends up consuming the motion.  Neither must the cursor.
 	virtual Scroll *scrollbar() { return nullptr; }
 	virtual Qt::CursorShape cursor() const { return Qt::ArrowCursor; }
-	virtual QString tip() const { return {}; }
+	virtual QString tip(const Kit &) const { return {}; }
 	virtual QString tip_key() const { return {}; }
 	// Below this->r. Empty (w <= 0) means follow the pointer.
 	[[nodiscard]] virtual Rect tip_anchor() const { return this->r; }
-	virtual void prepare(Kit &kit);
 
 	virtual bool press(Kit &, float x, float y, Qt::MouseButton)
 	{
@@ -318,9 +316,9 @@ struct Widget {
 		return false;
 	}
 
-	// Delivered after input dispatch, while the widget tree is idle.
+	// Delivered from the event loop, while the widget tree is idle.
 	virtual void focus_lost(Kit &) {}
-	[[nodiscard]] virtual int wake_ms() const { return -1; }
+	[[nodiscard]] virtual int wake_ms(const Kit &) const { return -1; }
 
 	virtual std::span<const std::unique_ptr<Widget>> children() const
 	{
@@ -377,7 +375,7 @@ struct Button : Widget {
 	void set_text(const QString &value);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	QString tip() const override { return this->tip_text; }
+	QString tip(const Kit &) const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 	bool focusable() const override;
 	[[nodiscard]] QChar mnemonic_key() const override;
@@ -418,7 +416,7 @@ struct Label : Widget {
 	void paint(Kit &kit) const override;
 	bool activate(Kit &kit) override;
 	[[nodiscard]] QChar mnemonic_key() const override;
-	QString tip() const override { return this->tip_text; }
+	QString tip(const Kit &) const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 };
 
@@ -447,17 +445,13 @@ struct Entry : Widget {
 	bool flat = false;
 	std::function<void(Kit &)> on_change;
 	std::function<void(Kit &)> on_cancel;
-	// Return commits immediately. Focus loss commits after input dispatch,
-	// when the callback can safely replace the newly focused widget tree.
+	// Return commits immediately. Focus loss commits from the event loop,
+	// where the callback can safely replace the newly focused widget tree.
 	std::function<void(Kit &)> on_commit;
 
 	// Horizontal scroll, in points, kept so that the caret stays visible.
 	float scroll_ = 0;
 	std::chrono::steady_clock::time_point caret_at_{};
-	// Both decided in prepare, which is the only place with a Kit to ask
-	// about focus; paint and wake_ms are const and just read them.
-	bool focused_ = false;
-	bool caret_on_ = false;
 	// Built when first asked for, and owned here because a popup outlives
 	// the click that opened it.
 	std::unique_ptr<Menu> menu_;
@@ -467,7 +461,6 @@ struct Entry : Widget {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	void prepare(Kit &kit) override;
 	bool focusable() const override;
 	void focus_lost(Kit &kit) override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
@@ -481,7 +474,7 @@ struct Entry : Widget {
 	bool input_method(Kit &kit, const QString &commit, const QString &pre,
 		int pre_caret) override;
 	bool text_target(const Kit &kit, TextTarget &out) const override;
-	[[nodiscard]] int wake_ms() const override;
+	[[nodiscard]] int wake_ms(const Kit &kit) const override;
 
 	// Every committed edit ends up in splice(): it clamps the span to whole
 	// grapheme clusters, leaves the caret after what went in, tells the host
@@ -651,7 +644,7 @@ struct ScrollColumn : Column {
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
 	bool key(Kit &kit, const Key &ev) override;
-	[[nodiscard]] int wake_ms() const override;
+	[[nodiscard]] int wake_ms(const Kit &) const override;
 };
 
 // Decorated single-child wrapper. Use a Column to stack children.
@@ -716,9 +709,6 @@ struct Dialog : Popup {
 	// Accelerators of its own, wherever the focus is within it: under a
 	// modal the window's are all off, and a chooser still wants Alt+Up.
 	std::function<bool(Kit &kit, const Key &ev)> on_key;
-	// Closed, and waiting for Kit to drop it at the frame boundary: the
-	// footer button that did it is still running inside this very tree.
-	bool retired_ = false;
 
 	Dialog();
 	void show(Kit &kit, std::unique_ptr<Widget> content, float min_w,
@@ -939,15 +929,9 @@ enum class Change : uint8_t {
 };
 
 struct Kit {
-	// Nested dispatch shares one boundary for focus-loss events.
-	// XXX: This invention feels extremely wrong.
-	struct Input {
-		Kit &kit;
-		explicit Input(Kit &kit);
-		~Input();
-	};
-
-	int input_depth_ = 0;
+	// Widgets owed focus_lost(), delivered from the event loop once whatever
+	// moved the focus has returned: the callback may replace the very tree
+	// that is still dispatching.
 	std::vector<Widget *> lost_focus_;
 	using Packed = Sheet::Packed;
 	struct Glyph {
@@ -976,6 +960,8 @@ struct Kit {
 	Page *root_ = nullptr;
 	Widget *focus_ = nullptr;
 	bool focus_visible_ = false;
+	// When focus_ last moved, so that a caret starts its blink lit.
+	std::chrono::steady_clock::time_point focus_at_{};
 	Widget *hot_ = nullptr;
 	float mouse_x_ = -1.f;
 	float mouse_y_ = -1.f;
@@ -1059,7 +1045,6 @@ struct Kit {
 	void close_transient_popups();
 	void close_above(const Popup *p);
 	void relayout_popups();
-	void prepare_popups();
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
 	// Popups accepting input: the transient tail, or the topmost dialog.

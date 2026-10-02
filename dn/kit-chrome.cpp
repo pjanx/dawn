@@ -490,7 +490,6 @@ namespace
 // The rows are built once and then only ever re-read from the draft:
 // Button::activate will not return into a button that its own click had freed.
 struct LoaderRows {
-	Column *col = nullptr;
 	vector<Button *> ups;
 	vector<Button *> downs;
 	vector<Checkbox *> checks;
@@ -634,7 +633,6 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 	rows->draft = state;
 	auto loaders = make_unique<Column>();
 	loaders->gap = 2.f;
-	rows->col = loaders.get();
 	for (int i = 0; i < int(state->loaders.size()); i++) {
 		auto up =
 			loader_arrow("go-up-symbolic", QString::fromUtf8(_("Move up")));
@@ -768,7 +766,7 @@ Hint::after_close(Kit &)
 void
 Hint::place(Kit &kit)
 {
-	this->r = {0, 0, kit.host_w_, kit.host_h_};
+	arrange(kit, {0, 0, kit.host_w_, kit.host_h_});
 	refresh_rects();
 	layout_chips(kit);
 }
@@ -1197,8 +1195,8 @@ Page::arrange_content(Kit &kit, Rect alloc)
 				{this->sidebar_side == Side::Left ? sr.right() : sr.x - lw,
 					body_y, lw, body_h});
 		} else {
-			this->sidebar->r = {};
-			this->splitter->r = {};
+			this->sidebar->arrange(kit, {});
+			this->splitter->arrange(kit, {});
 		}
 	}
 	Rect well = {frame.x, body_y, frame.w, body_h};

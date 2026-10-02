@@ -2439,7 +2439,7 @@ Browser::cursor() const
 }
 
 QString
-Browser::tip() const
+Browser::tip(const Kit &) const
 {
 	if (this->show_names_)
 		return {};
@@ -2953,7 +2953,7 @@ Browser::pan(Kit &, float, float, float, float dy)
 }
 
 int
-Browser::wake_ms() const
+Browser::wake_ms(const Kit &) const
 {
 	return this->scroll_.wake_ms();
 }

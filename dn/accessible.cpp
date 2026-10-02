@@ -1487,7 +1487,7 @@ WidgetAdapter::text(QAccessible::Text t) const
 
 		// The tooltip of a labelled control just repeats its label; only an
 		// icon-only one has anything left to add, and that became its name.
-		const QString tip = this->widget_->tip();
+		const QString tip = this->widget_->tip(this->window_->kit());
 		return tip == name_of(this->widget_) ? QString() : tip;
 	}
 	default:
@@ -1770,7 +1770,6 @@ FileRowsAdapter::select(QAccessibleInterface *item)
 		return false;
 
 	Kit &kit = this->window_->kit();
-	Kit::Input input(kit);
 	((FileRows *) this->widget_)->select(kit, row);
 	schedule_render(kit);
 	return true;
@@ -1792,7 +1791,6 @@ FileRowsAdapter::clear()
 	if (!this->actionable())
 		return false;
 	Kit &kit = this->window_->kit();
-	Kit::Input input(kit);
 	((FileRows *) this->widget_)->select(kit, nullptr);
 	schedule_render(kit);
 	return true;
@@ -1845,7 +1843,6 @@ WidgetAdapter::doAction(const QString &name)
 		return;
 
 	Kit &kit = this->window_->kit();
-	Kit::Input input(kit);
 	if (name == QAccessibleActionInterface::setFocusAction())
 		kit.set_focus(this->widget_, true);
 	else

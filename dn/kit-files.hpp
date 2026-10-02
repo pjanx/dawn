@@ -37,13 +37,11 @@ struct FileRows : ScrollColumn {
 struct FileRow : Button {
 	FileList *list = nullptr;
 	FileEntry entry;
-	bool elided_ = false;
 
 	FileRow();
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void prepare(Kit &kit) override;
 	void paint(Kit &kit) const override;
-	[[nodiscard]] QString tip() const override;
+	[[nodiscard]] QString tip(const Kit &kit) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool activate(Kit &kit) override;

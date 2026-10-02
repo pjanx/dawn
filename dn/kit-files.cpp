@@ -161,20 +161,13 @@ file_name_layout(const Kit &kit, const FileRow &row)
 		max(1, row.list->col_w[ColName] - pad), 1, false, TextAlign::Start);
 }
 
-void
-FileRow::prepare(Kit &kit)
-{
-	if (offscreen(this, kit))
-		return;
-
-	const auto &cached = file_name_layout(kit, *this);
-	this->elided_ = cached.layout && cached.layout->text() != this->text;
-}
-
+// Only an elided name has anything to add.
 QString
-FileRow::tip() const
+FileRow::tip(const Kit &kit) const
 {
-	return this->elided_ ? this->text : QString();
+	const auto &cached = file_name_layout(kit, *this);
+	return cached.layout && cached.layout->text() != this->text ? this->text
+																: QString();
 }
 
 void

@@ -245,6 +245,7 @@ CieDiagram::redraw(Kit &kit)
 	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
 		kit.atlas_.release(this->slot_);
 	this->slot_ = {};
+	invalidate_arrange();
 }
 
 Size
@@ -258,15 +259,12 @@ CieDiagram::measure_content(Kit &kit, int max_w, int max_h)
 	return {max(fit.w, labs), fit.h + cap};
 }
 
+// Rasterised here rather than when painted: arrangement re-runs whenever
+// the atlas could have been rebuilt, which is on a font reset.
 void
 CieDiagram::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
-}
-
-void
-CieDiagram::prepare(Kit &kit)
-{
 	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
 		return;
 
