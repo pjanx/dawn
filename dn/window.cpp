@@ -346,7 +346,6 @@ Window::drop_frames()
 	this->kit_.pressed_ = nullptr;
 	this->kit_.hot_ = nullptr;
 	this->kit_.set_focus(nullptr, false);
-	this->kit_.default_focus_ = nullptr;
 	this->alt_armed_ = false;
 	this->browser_ = nullptr;
 	this->viewer_ = nullptr;

@@ -1707,21 +1707,15 @@ Entry::focus_lost(Kit &kit)
 bool
 Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
-	// As every other text field does, the menu leaves the caret and the
-	// selection where they were: the click is about what to do there, not
-	// about going elsewhere.
+	// Leave the caret where it is.
 	if (button == Qt::RightButton) {
-		kit.set_focus(this, false);
+		kit.set_focus(this, true);
 		context(kit, {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton)
 		return false;
 
-	// Unlike a button, which does not take focus at all, clicking a text
-	// field is a deliberate grab of the keyboard, and is shown as one: the
-	// ring says which field the next keystroke goes to, however focus got
-	// here.  The caret marks the spot within it, which is a different job.
 	kit.set_focus(this, true);
 	kit.pressed_ = this;
 
@@ -1786,9 +1780,6 @@ Entry::context(Kit &kit, Rect at, bool kbd)
 		item->enabled_ = enabled;
 		item->on_click = [this, edit](Kit &k) {
 			apply_edit(k, *this, edit, false);
-			// The menu took the focus off the field to show itself; picking
-			// from it is no reason to leave it anywhere else.
-			k.set_focus(this, false);
 		};
 	};
 	const bool selection = this->anchor != this->caret;
@@ -3207,13 +3198,14 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 	const float elapsed = chrono::duration<float, milli>(
 		chrono::steady_clock::now() - kit.popup_at_)
 							  .count();
-	const bool gesture = elapsed >= kMenuHoldMs;
+	const bool autoclose = elapsed >= kMenuHoldMs;
 
 	if (auto *b = dynamic_cast<Button *>(hit); b && hit != this) {
-		// Pressed and released on the same item is a click on that item,
-		// however briefly, and picks whether anything moved or not.
-		if (!gesture && kit.pressed_ != b)
+		const bool dragged = this->opener && kit.pressed_ == this->opener &&
+			!this->opener->r.contains(x, y);
+		if (!autoclose && kit.pressed_ != b && !dragged)
 			return true;
+
 		b->activate(kit);
 		if (auto *item = dynamic_cast<MenuItem *>(b);
 			item && item->sub && item->sub->visible)
@@ -3222,7 +3214,7 @@ MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
 			close(kit);
 		return true;
 	}
-	if (gesture)
+	if (autoclose)
 		kit.close_transient_popups();
 	return true;
 }
@@ -4653,23 +4645,20 @@ Kit::sync_focus()
 			this->input_method_changed();
 	};
 
-	if (!this->popups_.empty()) {
-		for (Popup *p : this->popups_) {
-			if (focus_in_visible_tree(this->focus_, p))
-				return;
-		}
+	if (Popup *p = top_popup()) {
+		if (focus_in_visible_tree(this->focus_, p))
+			return;
+
 		set_focus(nullptr, false);
 		done();
 		return;
 	}
 	if (focus_in_visible_tree(this->focus_, this->root_))
 		return;
-	if (focus_in_visible_tree(this->default_focus_, this->root_)) {
-		set_focus(this->default_focus_, false);
-		done();
-		return;
-	}
-	set_focus(nullptr, false);
+
+	Widget *content = this->root_ ? this->root_->content : nullptr;
+	set_focus(
+		focus_in_visible_tree(content, this->root_) ? content : nullptr, false);
 	done();
 }
 
@@ -5183,7 +5172,6 @@ Kit::destroy()
 	this->glow_ = {};
 	this->root_ = nullptr;
 	set_focus(nullptr, false);
-	this->default_focus_ = nullptr;
 	this->hot_ = nullptr;
 	this->pressed_ = nullptr;
 	hide_tooltip();
@@ -5211,7 +5199,10 @@ Kit::forget_tree(Widget *tree)
 	// A popup outlives the frame it was opened from, but not the widget it
 	// hangs off: left on the stack, it would be placed and painted through
 	// freed memory every frame.  Closing is safe here, as callers forget a
-	// subtree before dropping it, not after.
+	// subtree before dropping it, not after.  What they covered goes first,
+	// so that closing gives no focus back into the tree.
+	for (Popup *p : this->popups_)
+		forget(p->covered);
 	for (Popup *p : this->popups_) {
 		bool doomed = p == tree;
 		for (const Widget *w = p->opener; w; w = w->parent_)
@@ -5225,7 +5216,6 @@ Kit::forget_tree(Widget *tree)
 	for (Widget *&w : this->lost_focus_)
 		forget(w);
 	forget(this->focus_);
-	forget(this->default_focus_);
 	forget(this->pressed_);
 	forget(this->touch_target_);
 	const bool forgot_hot = forget(this->hot_);
@@ -5518,6 +5508,8 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 	p.at = opener ? opener->r : anchor;
 	if (opener)
 		opener->active = true;
+	p.covered = this->focus_;
+	p.covered_ring = this->focus_visible_;
 	p.set_visible(true);
 
 	// A submenu continues the gesture; a list over a dialog starts one.
@@ -5526,31 +5518,42 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 
 	this->popups_.push_back(&p);
 	sync_scrim(*this);
+	sync_focus();
 	hide_tooltip();
 }
 
 static void
 close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 {
+	// The focus settles once, under the last popup to go: anything above
+	// it would only bounce it through layers that are about to vanish.
+	const bool ring = kit.focus_visible_;
 	while (kit.popups_.size() > keep) {
 		Popup *p = kit.popups_.back();
 		Button *opener = p->opener;
-		const bool ring = kit.focus_visible_;
 		kit.popups_.pop_back();
-		const bool keyboard_close = keyboard && kit.popups_.size() == keep;
 		p->set_visible(false);
 		p->parent_popup = nullptr;
 		p->opener = nullptr;
 		if (opener)
 			opener->active = false;
+		Widget *covered = p->covered;
+		p->covered = nullptr;
 		p->after_close(kit);
 		sync_scrim(kit);
+		if (kit.popups_.size() != keep)
+			continue;
+
+		// Popup dismissal returns keyboard focus.
+		Widget *scope = kit.root_;
+		if (Popup *top = kit.top_popup())
+			scope = top;
+		if (opener && opener->focusable() && (keyboard || p->restores_focus()))
+			kit.set_focus(opener,
+				keyboard || ring || (opener == covered && p->covered_ring));
+		else if (!focus_in_visible_tree(kit.focus_, scope))
+			kit.set_focus(covered, p->covered_ring);
 		kit.sync_focus();
-		// Escape/Left return keyboard focus. A combo also returns it after
-		// picking or dismissing, preserving how the user was navigating.
-		if (opener && opener->focusable() &&
-			(keyboard_close || p->restores_focus()))
-			kit.set_focus(opener, keyboard_close || ring);
 	}
 }
 
@@ -5778,7 +5781,6 @@ Kit::frame_ui(Page &ui)
 	if (this->root_ != &ui)
 		ui.invalidate_arrange();
 	this->root_ = &ui;
-	this->default_focus_ = ui.content;
 	ui.content->update(*this);
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();

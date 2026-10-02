@@ -2076,6 +2076,7 @@ Viewer::consume_open_done()
 {
 	if (!this->open_done_)
 		return false;
+
 	this->open_done_ = false;
 	return true;
 }
@@ -2190,8 +2191,10 @@ bool
 Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
+		kit.set_focus(this, false);
 		if (this->url_.isEmpty() || !this->image_)
 			return false;
+
 		const Rect dest = image_dest_rect(*this);
 		if (!dest.contains(x, y))
 			return false;
@@ -2202,6 +2205,8 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
 		return false;
+
+	kit.set_focus(this, false);
 	kit.pressed_ = this;
 	if (button == Qt::MiddleButton) {
 		if (kit.mods_ == unsigned(Qt::ControlModifier))
@@ -2212,6 +2217,7 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 			this->drag_ = Drag::Pan;
 	} else
 		this->drag_ = Drag::Pan;
+
 	// Hold one screen point for the whole gesture, so the image point under
 	// it cannot walk with the cursor.
 	this->drag_pivot_x_ = x;
@@ -2231,6 +2237,7 @@ Viewer::release(Kit &, float, float, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
 		return false;
+
 	this->drag_ = Drag::None;
 	return true;
 }
@@ -2240,6 +2247,7 @@ Viewer::motion(Kit &, float x, float y)
 {
 	if (this->drag_ == Drag::None)
 		return false;
+
 	const float x0 = float(this->drag_x_);
 	const float y0 = float(this->drag_y_);
 	if (this->drag_ == Drag::Pan)
@@ -2272,6 +2280,7 @@ Viewer::double_click(Kit &, float, float, Qt::MouseButton button, unsigned mods)
 {
 	if (button != Qt::LeftButton || mods)
 		return false;
+
 	this->drag_ = Drag::None;
 	if (this->page_ && this->page_->actor.apply)
 		this->page_->actor.apply(Action::Fullscreen);

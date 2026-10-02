@@ -683,6 +683,9 @@ struct Popup : Panel {
 	Button *opener = nullptr;
 	Popup *parent_popup = nullptr;
 	Rect at{};
+	// The focus of the layer underneath, given back when this closes.
+	Widget *covered = nullptr;
+	bool covered_ring = false;
 
 	Popup();
 	void open(Kit &kit, Button *anchor);
@@ -979,9 +982,8 @@ struct Kit {
 
 	Colour colours_[ColourCount]{};
 
-	Widget *root_ = nullptr;
+	Page *root_ = nullptr;
 	Widget *focus_ = nullptr;
-	Widget *default_focus_ = nullptr;
 	bool focus_visible_ = false;
 	Widget *hot_ = nullptr;
 	float mouse_x_ = -1.f;
