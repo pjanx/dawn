@@ -1491,7 +1491,7 @@ Entry::measure_content(Kit &kit, int, int)
 void
 Entry::arrange_content(Kit &kit, Rect alloc)
 {
-	this->r = this->Widget::shown() ? alloc : Rect{};
+	this->r = shown() ? alloc : Rect{};
 	// Only the scroll: a relayout is no reason to restart the blink.
 	rescroll(kit);
 }
@@ -1499,7 +1499,7 @@ Entry::arrange_content(Kit &kit, Rect alloc)
 void
 Entry::paint(Kit &kit) const
 {
-	if (!this->Widget::shown() || this->r.empty())
+	if (!shown() || this->r.empty())
 		return;
 
 	// A flat idle field lets the toolbar show through.  Text in it is a filter
@@ -1607,7 +1607,7 @@ Entry::paint(Kit &kit) const
 bool
 Entry::focusable() const
 {
-	return this->Widget::shown() && this->hittable && this->r.w > 0;
+	return shown() && this->hittable && this->r.w > 0;
 }
 
 void
@@ -1804,7 +1804,7 @@ Entry::input_method(
 bool
 Entry::text_target(const Kit &kit, TextTarget &out) const
 {
-	if (!this->Widget::shown())
+	if (!shown())
 		return false;
 
 	out.text = this->text;
@@ -2716,8 +2716,6 @@ Popup::open_at(Kit &kit, Rect anchor)
 void
 Popup::paint(Kit &kit) const
 {
-	if (!this->visible)
-		return;
 	kit.draw_shadow(this->r);
 	Panel::paint(kit);
 }
@@ -3432,7 +3430,7 @@ MenuItem::measure_content(Kit &kit, int, int)
 void
 MenuItem::paint(Kit &kit) const
 {
-	if (!this->visible)
+	if (!shown())
 		return;
 
 	// The selection is kit.focus_ alone: kit.pressed_ is just the capture,
@@ -3522,7 +3520,7 @@ ComboItem::measure_content(Kit &kit, int, int)
 void
 ComboItem::paint(Kit &kit) const
 {
-	if (!this->visible)
+	if (!shown())
 		return;
 
 	// The same rule as MenuItem: the selection is kit.focus_ alone, never
@@ -3843,7 +3841,7 @@ ToolbarSlot::measure_content(Kit &kit, int max_w, int max_h)
 void
 ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!this->visible) {
+	if (!shown()) {
 		this->r = {};
 		this->split_ = 0;
 		sync_layout_visible();
@@ -3993,7 +3991,7 @@ Toolbar::measure_content(Kit &kit, int avail_w, int avail_h)
 void
 Toolbar::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!this->visible) {
+	if (!shown()) {
 		this->r = {};
 		return;
 	}
@@ -4121,7 +4119,7 @@ Titlebar::sync(Kit &kit)
 Size
 Titlebar::measure_content(Kit &kit, int avail_w, int)
 {
-	if (!this->visible)
+	if (!shown())
 		return {};
 
 	int ih = 0;
@@ -4139,7 +4137,7 @@ Titlebar::measure_content(Kit &kit, int avail_w, int)
 void
 Titlebar::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!this->visible) {
+	if (!shown()) {
 		this->r = {};
 		return;
 	}

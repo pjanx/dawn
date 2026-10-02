@@ -771,9 +771,6 @@ Hint::place(Kit &kit)
 void
 Hint::paint(Kit &kit) const
 {
-	if (!shown())
-		return;
-
 	const float th = float(kit.line_height(true));
 	for (const Target &t : this->targets_) {
 		if (!matches(t) || t.chip.empty())
@@ -1135,7 +1132,7 @@ Page::measure_content(Kit &, int max_w, int max_h)
 void
 Page::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!this->visible) {
+	if (!shown()) {
 		this->r = {};
 		return;
 	}
@@ -1146,17 +1143,17 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	int y = frame.y;
 	if (this->titlebar) {
 		const Size size = this->titlebar->measure(kit, frame.w, frame.h);
-		if (this->titlebar->visible) {
+		if (this->titlebar->shown()) {
 			this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});
 			y += this->titlebar->r.h;
 		}
 	}
-	if (this->toolbar && this->toolbar->visible) {
+	if (this->toolbar && this->toolbar->shown()) {
 		const Size size = this->toolbar->measure(kit, frame.w, frame.h);
 		this->toolbar->arrange(kit, {frame.x, y, frame.w, size.h});
 		y += this->toolbar->r.h;
 	}
-	if (this->banner && this->banner->visible) {
+	if (this->banner && this->banner->shown()) {
 		// However long the message, most of the window stays the content's.
 		const int rest = max(0, min(frame.bottom() - y, frame.h * 2 / 5));
 		const Size size = this->banner->measure(kit, frame.w, rest);
@@ -1198,13 +1195,13 @@ Page::arrange_content(Kit &kit, Rect alloc)
 		}
 	}
 	Rect well = {frame.x, body_y, frame.w, body_h};
-	if (this->sidebar && this->sidebar->visible) {
+	if (this->sidebar && this->sidebar->shown()) {
 		const int taken = side_w + this->splitter->r.w;
 		if (this->sidebar_side == Side::Left)
 			well.x += taken;
 		well.w = max(0, well.w - taken);
 	}
-	if (this->content && this->content->visible)
+	if (this->content && this->content->shown())
 		this->content->arrange(kit, well);
 }
 
@@ -1232,7 +1229,7 @@ Page::key(Kit &kit, const Key &ev)
 	int n = 0, i = 0;
 	for (const auto &child : this->kids) {
 		Widget *k = child.get();
-		if (!k || !k->visible ||
+		if (!k || !k->shown() ||
 			(k != this->toolbar && k != this->sidebar && k != this->content))
 			continue;
 		if (k == here)
