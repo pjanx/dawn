@@ -87,9 +87,9 @@ tiff_ep_subifds_next(const tiffer *T, tiffer_entry *subifds, tiffer *subT)
 	return true;
 }
 
-// SubIFDs may form cycles, or chains and fans that would exhaust
+// IFDs may form cycles, or chains and fans that would exhaust
 // the stack or take exponential time, so each walk visits a bounded number.
-static constexpr int kSubIfdWalkLimit = 64;
+static constexpr int kIfdWalkLimit = 64;
 
 static bool
 tiff_ep_find_main(const tiffer *T, tiffer *outputT, int *budget)
@@ -111,7 +111,7 @@ tiff_ep_find_main(const tiffer *T, tiffer *outputT, int *budget)
 
 	tiffer_entry subifds = tiff_ep_subifds_init(T);
 	tiffer subT = {};
-	while (tiff_ep_subifds_next(T, &subifds, &subT))
+	while (*budget > 0 && tiff_ep_subifds_next(T, &subifds, &subT))
 		if (tiff_ep_find_main(&subT, outputT, budget))
 			return true;
 	return false;
@@ -276,7 +276,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	}
 
 	tiffer fullT = {};
-	int budget = kSubIfdWalkLimit;
+	int budget = kIfdWalkLimit;
 	if (!tiff_ep_find_main(T, &fullT, &budget)) {
 		set_error(error, _("could not find a main image"));
 		return nullptr;
@@ -291,7 +291,7 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	}
 
 	TiffEpJpeg out;
-	budget = kSubIfdWalkLimit;
+	budget = kIfdWalkLimit;
 	if (!tiff_ep_find_jpeg(T, &out, &budget)) {
 		set_error(error, _("error looking for a full-size JPEG preview"));
 		return nullptr;
@@ -350,7 +350,7 @@ load_tiff_ep(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	ImagePtr head, tail;
-	while (tiffer_next_ifd(&T)) {
+	for (int i = 0; i < kIfdWalkLimit && tiffer_next_ifd(&T); i++) {
 		ImagePtr page = load_tiff_ep_page(&T, ctx, error);
 		if (!page)
 			return nullptr;
