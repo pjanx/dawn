@@ -72,10 +72,17 @@ class OverlayVulkan
 	void destroy_thumbs();
 	void destroy_sampled(
 		VkImage *image, VkDeviceMemory *memory, VkImageView *view) const;
-	void destroy_buffer();
+	// A host-visible, coherent buffer that grows by half again.
+	struct HostBuffer {
+		VkBuffer buffer = VK_NULL_HANDLE;
+		VkDeviceMemory memory = VK_NULL_HANDLE;
+		VkDeviceSize size = 0;
+	};
+	void destroy_buffer(HostBuffer &buffer);
 	void destroy_pipeline();
 	void create_pipeline(VkRenderPass render_pass);
-	bool ensure_buffer(VkDeviceSize bytes);
+	void ensure_buffer(
+		HostBuffer &buffer, VkDeviceSize bytes, VkBufferUsageFlags usage);
 	struct UploadBatch {
 		std::vector<uint8_t> pixels;
 		std::vector<VkBufferImageCopy> copies;
@@ -94,8 +101,6 @@ class OverlayVulkan
 	void bind_sampled(VkImage image, VkImageView *view, VkDescriptorSet set,
 		VkComponentMapping swizzle) const;
 	void compute_thumb_atlas_max();
-	bool ensure_staging(VkDeviceSize bytes);
-	void destroy_staging();
 
 	VkPhysicalDevice phys_ = VK_NULL_HANDLE;
 	VkDevice device_ = VK_NULL_HANDLE;
@@ -119,14 +124,10 @@ class OverlayVulkan
 	VkImageView thumb_view_ = VK_NULL_HANDLE;
 	int thumb_side_ = 0;
 
-	VkBuffer quad_buffer_ = VK_NULL_HANDLE;
-	VkDeviceMemory quad_memory_ = VK_NULL_HANDLE;
-	VkDeviceSize quad_size_ = 0;
+	HostBuffer quad_;
 
 	PendingAtlas pending_font_, pending_thumbs_;
-	VkBuffer staging_ = VK_NULL_HANDLE;
-	VkDeviceMemory staging_memory_ = VK_NULL_HANDLE;
-	VkDeviceSize staging_size_ = 0;
+	HostBuffer staging_;
 
 public:
 	/// The largest thumbnail atlas side the device takes, set by init().

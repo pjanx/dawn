@@ -1411,43 +1411,6 @@ OverlayVulkan::bind_sampled(VkImage image, VkImageView *view,
 }
 
 bool
-OverlayVulkan::ensure_staging(VkDeviceSize bytes)
-{
-	if (this->staging_size_ >= bytes)
-		return true;
-
-	destroy_staging();
-	const VkDeviceSize size = bytes + bytes / 2;
-	VkBufferCreateInfo buffer_info{
-		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-		.size = size,
-		.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	};
-	CALL_VK(CreateBuffer, " overlay tex staging", this->device_, &buffer_info,
-		nullptr, &this->staging_);
-
-	if (!dawn::vk_bind_buffer_memory(this->phys_, this->device_, this->staging_,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&this->staging_memory_, nullptr))
-		return false;
-	this->staging_size_ = size;
-	return true;
-}
-
-void
-OverlayVulkan::destroy_staging()
-{
-	if (this->staging_)
-		vkDestroyBuffer(this->device_, this->staging_, nullptr);
-	if (this->staging_memory_)
-		vkFreeMemory(this->device_, this->staging_memory_, nullptr);
-	this->staging_ = VK_NULL_HANDLE;
-	this->staging_memory_ = VK_NULL_HANDLE;
-	this->staging_size_ = 0;
-}
-
-bool
 OverlayVulkan::queue_rgba16(span<const AtlasUpload> uploads, int width,
 	int height, PendingAtlas &pending, bool replace)
 {
@@ -1536,7 +1499,7 @@ OverlayVulkan::record_atlas(VkCommandBuffer cmd, PendingAtlas &pending,
 					VK_PIPELINE_STAGE_TRANSFER_BIT,
 			VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1,
 			&to_dst);
-		vkCmdCopyBufferToImage(cmd, this->staging_, *image,
+		vkCmdCopyBufferToImage(cmd, this->staging_.buffer, *image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, uint32_t(batch.copies.size()),
 			batch.copies.data());
 		VkImageMemoryBarrier to_shader = to_dst;
@@ -1563,11 +1526,10 @@ OverlayVulkan::record_uploads(VkCommandBuffer cmd)
 		for (const UploadBatch &batch : pending->batches)
 			size += batch.pixels.size();
 	if (size) {
-		if (!ensure_staging(size))
-			die("Cannot allocate overlay staging buffer");
+		ensure_buffer(this->staging_, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
 		void *mapped = nullptr;
 		CALL_VK(MapMemory, " overlay tex staging", this->device_,
-			this->staging_memory_, 0, size, 0, &mapped);
+			this->staging_.memory, 0, size, 0, &mapped);
 		size_t offset = 0;
 		for (const PendingAtlas *pending :
 			{&this->pending_font_, &this->pending_thumbs_}) {
@@ -1577,7 +1539,7 @@ OverlayVulkan::record_uploads(VkCommandBuffer cmd)
 				offset += batch.pixels.size();
 			}
 		}
-		vkUnmapMemory(this->device_, this->staging_memory_);
+		vkUnmapMemory(this->device_, this->staging_.memory);
 	}
 	VkDeviceSize offset = 0;
 	record_atlas(cmd, this->pending_font_, this->font_width_,
@@ -1659,29 +1621,28 @@ OverlayVulkan::destroy_thumbs()
 	this->thumb_side_ = 0;
 }
 
-bool
-OverlayVulkan::ensure_buffer(VkDeviceSize bytes)
+void
+OverlayVulkan::ensure_buffer(
+	HostBuffer &buffer, VkDeviceSize bytes, VkBufferUsageFlags usage)
 {
-	if (this->quad_size_ >= bytes)
-		return true;
-	destroy_buffer();
+	if (buffer.size >= bytes)
+		return;
+	destroy_buffer(buffer);
 	const VkDeviceSize capacity = bytes + bytes / 2;
 	VkBufferCreateInfo info{
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = capacity,
-		.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		.usage = usage,
 	};
 	CALL_VK(CreateBuffer, " overlay", this->device_, &info, nullptr,
-		&this->quad_buffer_);
+		&buffer.buffer);
 	string error;
-	if (!dawn::vk_bind_buffer_memory(this->phys_, this->device_,
-			this->quad_buffer_,
+	if (!dawn::vk_bind_buffer_memory(this->phys_, this->device_, buffer.buffer,
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 				VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&this->quad_memory_, &error))
+			&buffer.memory, &error))
 		die(("overlay: " + error).c_str());
-	this->quad_size_ = capacity;
-	return true;
+	buffer.size = capacity;
 }
 
 void
@@ -1696,21 +1657,20 @@ OverlayVulkan::record(
 
 	const VkDeviceSize bytes =
 		VkDeviceSize(mesh.quads.size()) * sizeof(OverlayQuad);
-	if (!ensure_buffer(bytes))
-		return;
+	ensure_buffer(this->quad_, bytes, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 
 	void *mapped = nullptr;
-	CALL_VK(MapMemory, " overlay", this->device_, this->quad_memory_, 0, bytes,
+	CALL_VK(MapMemory, " overlay", this->device_, this->quad_.memory, 0, bytes,
 		0, &mapped);
 	memcpy(mapped, mesh.quads.data(), size_t(bytes));
-	vkUnmapMemory(this->device_, this->quad_memory_);
+	vkUnmapMemory(this->device_, this->quad_.memory);
 
 	const VkViewport viewport{.width = float(extent.width),
 		.height = float(extent.height),
 		.maxDepth = 1.f};
 	vkCmdSetViewport(cmd, 0, 1, &viewport);
 	VkDeviceSize offset = 0;
-	vkCmdBindVertexBuffers(cmd, 0, 1, &this->quad_buffer_, &offset);
+	vkCmdBindVertexBuffers(cmd, 0, 1, &this->quad_.buffer, &offset);
 
 	PushConstant push{};
 	push.scale[0] = 2.f / mesh.display_w;
@@ -1791,17 +1751,13 @@ OverlayVulkan::destroy_font()
 }
 
 void
-OverlayVulkan::destroy_buffer()
+OverlayVulkan::destroy_buffer(HostBuffer &buffer)
 {
-	if (!this->device_)
-		return;
-	if (this->quad_buffer_)
-		vkDestroyBuffer(this->device_, this->quad_buffer_, nullptr);
-	if (this->quad_memory_)
-		vkFreeMemory(this->device_, this->quad_memory_, nullptr);
-	this->quad_buffer_ = VK_NULL_HANDLE;
-	this->quad_memory_ = VK_NULL_HANDLE;
-	this->quad_size_ = 0;
+	if (buffer.buffer)
+		vkDestroyBuffer(this->device_, buffer.buffer, nullptr);
+	if (buffer.memory)
+		vkFreeMemory(this->device_, buffer.memory, nullptr);
+	buffer = {};
 }
 
 void
@@ -1826,8 +1782,8 @@ OverlayVulkan::destroy()
 	if (!this->device_)
 		return;
 	vkDeviceWaitIdle(this->device_);
-	destroy_buffer();
-	destroy_staging();
+	destroy_buffer(this->quad_);
+	destroy_buffer(this->staging_);
 	destroy_font();
 	destroy_thumbs();
 	destroy_pipeline();
