@@ -4708,15 +4708,21 @@ Kit::input_method(const QString &commit, const QString &preedit, int caret)
 	return false;
 }
 
-bool
-Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
+// Platform events arrive in logical points; the widget tree is device pixels.
+// Convert once, here.
+void
+Kit::pointer_at(float &x, float &y)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
 	x = float(px(x));
 	y = float(px(y));
 	this->mouse_x_ = x;
 	this->mouse_y_ = y;
+}
+
+bool
+Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
+{
+	pointer_at(x, y);
 	this->mods_ = mods;
 	this->touch_x_ = x;
 	this->touch_y_ = y;
@@ -4752,12 +4758,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	pointer_at(x, y);
 	if (button == Qt::LeftButton)
 		this->left_down_ = false;
 
@@ -4798,12 +4799,7 @@ Kit::cancel_press()
 bool
 Kit::mouse_motion(float x, float y)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	pointer_at(x, y);
 	this->hot_ = hit(x, y);
 	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (Scroll *s = w->scrollbar())
@@ -4873,12 +4869,7 @@ Kit::track_popups(float x, float y)
 bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	pointer_at(x, y);
 	if (!delta)
 		return false;
 	Widget *h = hit(x, y);
@@ -4896,14 +4887,10 @@ Kit::mouse_scroll(float x, float y, int delta)
 bool
 Kit::pan(float x, float y, float dx, float dy)
 {
-	// Points in, pixels out: the deltas scale the same way as the
-	// position does.
-	x = float(px(x));
-	y = float(px(y));
+	// The deltas scale the same way as the position does.
+	pointer_at(x, y);
 	dx = float(px(dx));
 	dy = float(px(dy));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
 	return pan_at(hit(x, y), x, y, dx, dy);
 }
 
@@ -4924,12 +4911,7 @@ Kit::pan_at(Widget *from, float x, float y, float dx, float dy)
 bool
 Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	pointer_at(x, y);
 	Widget *h = hit(x, y);
 	if (popup_open() && !owning_popup(h))
 		return true;
@@ -4943,12 +4925,7 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
-	// Platform events arrive in logical points; the widget tree is
-	// device pixels.  Convert once, here.
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	pointer_at(x, y);
 	// A menu must not take the second click of a pair for another pick; a
 	// dialog is an ordinary widget tree, and a list inside one wants it.
 	// hit() already confines this to whatever owns the pointer.

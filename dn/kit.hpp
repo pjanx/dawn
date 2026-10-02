@@ -1073,6 +1073,8 @@ struct Kit {
 	bool key(const Key &ev);
 	bool input_method(const QString &commit, const QString &preedit, int caret);
 	[[nodiscard]] bool text_target(TextTarget &out) const;
+	// Convert an event position to pixels, and remember it as the pointer's.
+	void pointer_at(float &x, float &y);
 	bool mouse_press(float x, float y, Qt::MouseButton button, unsigned mods);
 	bool mouse_release(float x, float y, Qt::MouseButton button);
 	// End the widget interaction without a click when the release is lost.
