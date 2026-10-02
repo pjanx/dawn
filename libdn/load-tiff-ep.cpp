@@ -87,9 +87,16 @@ tiff_ep_subifds_next(const tiffer *T, tiffer_entry *subifds, tiffer *subT)
 	return true;
 }
 
+// SubIFDs may form cycles, or chains and fans that would exhaust
+// the stack or take exponential time, so each walk visits a bounded number.
+static constexpr int kSubIfdWalkLimit = 64;
+
 static bool
-tiff_ep_find_main(const tiffer *T, tiffer *outputT)
+tiff_ep_find_main(const tiffer *T, tiffer *outputT, int *budget)
 {
+	if ((*budget)-- <= 0)
+		return false;
+
 	// This is a mandatory field.
 	int64_t type = 0;
 	if (!tiffer_find_integer(T, TIFF_NewSubfileType, &type))
@@ -105,7 +112,7 @@ tiff_ep_find_main(const tiffer *T, tiffer *outputT)
 	tiffer_entry subifds = tiff_ep_subifds_init(T);
 	tiffer subT = {};
 	while (tiff_ep_subifds_next(T, &subifds, &subT))
-		if (tiff_ep_find_main(&subT, outputT))
+		if (tiff_ep_find_main(&subT, outputT, budget))
 			return true;
 	return false;
 }
@@ -168,8 +175,11 @@ tiff_ep_find_jpeg_evaluate(const tiffer *T, TiffEpJpeg *out)
 }
 
 static bool
-tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out)
+tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out, int *budget)
 {
+	if ((*budget)-- <= 0)
+		return false;
+
 	// This is a mandatory field.
 	int64_t type = 0;
 	if (!tiffer_find_integer(T, TIFF_NewSubfileType, &type))
@@ -183,7 +193,7 @@ tiff_ep_find_jpeg(const tiffer *T, TiffEpJpeg *out)
 	tiffer_entry subifds = tiff_ep_subifds_init(T);
 	tiffer subT = {};
 	while (tiff_ep_subifds_next(T, &subifds, &subT))
-		if (!tiff_ep_find_jpeg(&subT, out))
+		if (!tiff_ep_find_jpeg(&subT, out, budget))
 			return false;
 	return true;
 }
@@ -266,7 +276,8 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	}
 
 	tiffer fullT = {};
-	if (!tiff_ep_find_main(T, &fullT)) {
+	int budget = kSubIfdWalkLimit;
+	if (!tiff_ep_find_main(T, &fullT, &budget)) {
 		set_error(error, _("could not find a main image"));
 		return nullptr;
 	}
@@ -280,7 +291,8 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	}
 
 	TiffEpJpeg out;
-	if (!tiff_ep_find_jpeg(T, &out)) {
+	budget = kSubIfdWalkLimit;
+	if (!tiff_ep_find_jpeg(T, &out, &budget)) {
 		set_error(error, _("error looking for a full-size JPEG preview"));
 		return nullptr;
 	}

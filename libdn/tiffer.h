@@ -109,7 +109,7 @@ tiffer_init(struct tiffer *self, const uint8_t *tiff, size_t len)
 
 	const uint8_t le[4] = {'I', 'I', 42, 0}, be[4] = {'M', 'M', 0, 42};
 
-	if (tiff + 8 > self->end)
+	if (len < 8)
 		return false;
 	else if (!memcmp(tiff, le, sizeof le))
 		self->un = &tiffer_unle;
