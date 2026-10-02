@@ -123,6 +123,9 @@ struct Browser : Widget {
 	BrowserView view_ = BrowserView::Tile;
 	int thumb_size_ = 256;
 	bool places_dirty_ = true;
+	// The visible band moved, or pixels arrived: atlas residency is settled
+	// once per frame, after layout, rather than once per thumbnail.
+	bool thumbs_dirty_ = false;
 
 	Scroll scroll_;
 

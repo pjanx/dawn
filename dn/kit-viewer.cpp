@@ -382,9 +382,13 @@ struct Viewer::Worker {
 	array<thread, 2> preloads;
 };
 
+// Whatever the viewer redraws for may have moved its view, which is settled
+// once it is next laid out: fitting needs the well.
 static void
 request_render(Viewer &v)
 {
+	v.invalidate_arrange();
+	sync_scale_label(v);
 	if (v.kit_.request_render)
 		v.kit_.request_render();
 }
@@ -434,6 +438,10 @@ set_frame(Viewer &v, dawn::ImagePtr frame)
 		return;
 
 	v.frame_ = std::move(frame);
+	// Frames may hypothetically differ in size, fitting depends on it.
+	if (v.frame_->width != v.image_width_ ||
+		v.frame_->height != v.image_height_)
+		v.invalidate_arrange();
 	v.image_width_ = v.frame_->width;
 	v.image_height_ = v.frame_->height;
 	sync_dims(v);
@@ -1949,12 +1957,6 @@ Viewer::focusable() const
 }
 
 void
-Viewer::prepare(Kit &)
-{
-	ensure_vector_frame(*this);
-}
-
-void
 Viewer::paint(Kit &) const
 {
 	apply_view(*this);
@@ -2092,18 +2094,26 @@ void
 Viewer::update(Kit &)
 {
 	animate(*this);
-	// Reserve the scale label's width before layout.
-	sync_scale_label(*this);
 }
 
 void
-Viewer::placed(Kit &)
+Viewer::rescale(Kit &)
 {
-	// Fitting depends on both the image and the freshly allocated well.
+	// Ahead of layout, which reserves the label's width.
+	sync_scale_label(*this);
+}
+
+// The view is the viewer's layout: fitted to the well, which only now has its
+// size, kept within it, and with a vector page rendered at the final scale.
+void
+Viewer::arrange_content(Kit &, Rect alloc)
+{
+	this->r = alloc;
 	if (this->scale_to_fit_)
 		fit_to_well(*this);
 	clamp_view(*this);
 	sync_scale_label(*this);
+	ensure_vector_frame(*this);
 }
 
 int

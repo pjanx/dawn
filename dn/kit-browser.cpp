@@ -1171,6 +1171,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.interim = update.interim;
 			f.progress.pending = false;
 			f.progress.regen_failed = false;
+			b.thumbs_dirty_ = true;
 			trim_ram(b);
 		}
 		break;
@@ -2420,6 +2421,7 @@ Browser::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
 	layout_grid(*this, this->r);
+	this->thumbs_dirty_ = true;
 }
 
 bool
@@ -2703,7 +2705,9 @@ Browser::update(Kit &)
 void
 Browser::placed(Kit &)
 {
-	sync_thumbs(*this);
+	if (this->thumbs_dirty_)
+		sync_thumbs(*this);
+	this->thumbs_dirty_ = false;
 }
 
 bool
