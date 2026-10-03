@@ -1142,6 +1142,7 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	const Rect frame = kit.frame();
 	int y = frame.y;
 	if (this->titlebar) {
+		this->titlebar->sync(kit);
 		const Size size = this->titlebar->measure(kit, frame.w, frame.h);
 		if (this->titlebar->shown()) {
 			this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});

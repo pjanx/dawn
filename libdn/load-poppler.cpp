@@ -54,6 +54,19 @@ public:
 
 }  // namespace
 
+// Poppler renders the crop box, rotated by the page's /Rotate.
+static void
+poppler_page_size(
+	const poppler::page &page, double dpi, double *width, double *height)
+{
+	poppler::rectf box = page.page_rect(poppler::crop_box);
+	*width = box.width() * dpi / 72;
+	*height = box.height() * dpi / 72;
+	if (page.orientation() == poppler::page::landscape ||
+		page.orientation() == poppler::page::seascape)
+		swap(*width, *height);
+}
+
 ImagePtr
 PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
@@ -74,13 +87,7 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 			return nullptr;
 		}
 
-		// Poppler renders the crop box, turned by the page's /Rotate.
-		poppler::rectf box = page->page_rect(poppler::crop_box);
-		w = box.width() * dpi / 72;
-		h = box.height() * dpi / 72;
-		if (page->orientation() == poppler::page::landscape ||
-			page->orientation() == poppler::page::seascape)
-			swap(w, h);
+		poppler_page_size(*page, dpi, &w, &h);
 
 		// Splash rounds where we would ceil(), so this errs on the safe side
 		// of image_new(), and fails before Poppler allocates gigabytes.
@@ -127,6 +134,24 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	return image;
 }
 
+// Nothing else has the document yet, so it needs no locking.
+static bool
+measure_poppler_page(PopplerDocument &document, int index, double dpi,
+	double *width, double *height, Error *error)
+{
+	unique_ptr<poppler::page> page(document.document->create_page(index));
+	if (!page) {
+		set_error(error, _("no such page"));
+		return false;
+	}
+
+	// Splash rounds to the nearest pixel, see render().
+	poppler_page_size(*page, dpi, width, height);
+	*width = round(*width);
+	*height = round(*height);
+	return true;
+}
+
 ImagePtr
 load_poppler(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
@@ -161,8 +186,15 @@ load_poppler(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	for (int i = 0; i < count; i++) {
 		auto closure = make_unique<PopplerRenderClosure>(document, i, dpi);
 
+		// Only the first page is rendered right away: documents get long.
 		Error suberror;
-		ImagePtr image = closure->render(ctx, 1., &suberror);
+		double w = 0, h = 0;
+		ImagePtr image;
+		if (measure_poppler_page(*document, i, dpi, &w, &h, &suberror))
+			image = head ? deferred_image(w, h,
+							   cmm_or_default(ctx)->get_profile_sRGB(), ctx,
+							   &suberror)
+						 : render_now(*closure, w, h, ctx, &suberror);
 		if (!image) {
 			if (!head) {
 				set_error(error, std::move(suberror.message));

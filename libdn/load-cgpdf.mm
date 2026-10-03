@@ -139,6 +139,23 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	return image;
 }
 
+static bool
+measure_cgpdf_page(CGPDFDocumentRef document, size_t index, double dpi,
+	double *width, double *height, Error *error)
+{
+	CGPDFPageRef page = CGPDFDocumentGetPage(document, index);
+	if (!page) {
+		set_error(error, _("no such page"));
+		return false;
+	}
+
+	double pw = 0, ph = 0;
+	cgpdf_page_size(page, &pw, &ph);
+	*width = pw * (dpi / 72.);
+	*height = ph * (dpi / 72.);
+	return true;
+}
+
 ImagePtr
 load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
@@ -186,8 +203,17 @@ load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	for (size_t i = 1; i <= count; i++) {
 		auto closure = make_unique<CGPDFRenderClosure>(document, i, dpi);
 
+		// Only the first page is rendered right away: documents get long.
+		// The rest are not assumed sRGB: renderings carry Core Graphics'
+		// own sRGB profile, see render().
 		Error suberror;
-		ImagePtr image = closure->render(ctx, 1., &suberror);
+		double w = 0, h = 0;
+		ImagePtr image;
+		if (measure_cgpdf_page(document.get(), i, dpi, &w, &h, &suberror))
+			image = head
+				? deferred_image(w, h, cmm_or_default(ctx)->get_profile_sRGB(),
+					  ctx, &suberror)
+				: render_now(*closure, w, h, ctx, &suberror);
 		if (!image) {
 			if (!head) {
 				set_error(error, std::move(suberror.message));

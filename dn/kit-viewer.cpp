@@ -149,9 +149,7 @@ spec_enabled(const Viewer &v, Action action)
 	case Action::BrowserDelays:
 		return v.current_ && v.current_->frame_next;
 	case Action::Copy:
-		return !v.url_.isEmpty() ||
-			(v.frame_ && !v.frame_->data.empty() && v.frame_->width &&
-				v.frame_->height);
+		return !v.url_.isEmpty() || v.frame_;
 	case Action::Reload:
 		return !v.url_.isEmpty();
 	case Action::Trash:
@@ -314,6 +312,8 @@ struct OpenJob {
 	shared_ptr<const ScreenColour> screen_colour;
 	shared_ptr<const vector<string>> loaders;
 	int dpi = 96;
+	uint32_t target_width = 0;
+	uint32_t target_height = 0;
 	bool enable_cms = true;
 };
 
@@ -377,6 +377,9 @@ struct Viewer::Worker {
 	vector<OpenJob> pending_preloads;
 	optional<ActiveOpen> active_open;
 	vector<ActiveOpen> active_preloads;
+	// Render closures are not to be called from two threads at once,
+	// and copying and exporting render on the GUI thread.
+	mutex render_mu;
 	shared_ptr<bool> post_guard = make_shared<bool>();
 	thread foreground;
 	array<thread, 2> preloads;
@@ -412,6 +415,12 @@ upload_frame(const Viewer &v, const dawn::Image &image)
 {
 	if (!v.kit_.renderer_)
 		return;
+
+	// Pages needn't have pixels until rendered for the view.
+	if (image.data.empty()) {
+		v.kit_.renderer_->clear_image();
+		return;
+	}
 	// Maps are per page, and only still images have them.
 	v.kit_.renderer_->set_image(image.width, image.height, image.data.data(),
 		image.stride,
@@ -439,11 +448,11 @@ set_frame(Viewer &v, dawn::ImagePtr frame)
 
 	v.frame_ = std::move(frame);
 	// Frames may hypothetically differ in size, fitting depends on it.
-	if (v.frame_->width != v.image_width_ ||
-		v.frame_->height != v.image_height_)
+	if (v.frame_->nominal_width != v.image_width_ ||
+		v.frame_->nominal_height != v.image_height_)
 		v.invalidate_arrange();
-	v.image_width_ = v.frame_->width;
-	v.image_height_ = v.frame_->height;
+	v.image_width_ = v.frame_->nominal_width;
+	v.image_height_ = v.frame_->nominal_height;
 	sync_dims(v);
 	if (v.kit_.renderer_)
 		upload_frame(v, *v.frame_);
@@ -729,6 +738,8 @@ fit_to_well(Viewer &v)
 	if (content_w <= 0.f || content_h <= 0.f)
 		return;
 
+	// Vector pages are rendered to fit by the very same arithmetic,
+	// see loaded_scale().
 	const float fit =
 		min({content_w / float(disp_w), content_h / float(disp_h), 1.f});
 	v.scale_ = clamp(fit, kScaleMin, kScaleMax);
@@ -739,14 +750,53 @@ fit_to_well(Viewer &v)
 
 // Transparent pages are processed in encoded values: they get composited that
 // way elsewhere, which is only consistent with encoded filtering.
+// Pages may have no pixels to tell by until apply_scale().
 static bool
 page_opaque(const dawn::Image &page)
 {
 	for (const dawn::Image *f = &page; f; f = f->frame_next.get())
-		if (!dawn::opaque_bgra16(
+		if (!f->data.empty() &&
+			!dawn::opaque_bgra16(
 				f->data.data(), f->width, f->height, f->stride))
 			return false;
 	return true;
+}
+
+static void
+cancel_scale(Viewer &v)
+{
+	v.scale_gen_++;
+	v.scale_job_pending_ = false;
+	v.scale_failed_ = false;
+	v.page_scaled_.reset();
+	if (v.worker_) {
+		lock_guard<mutex> lock(v.worker_->mu);
+		v.worker_->pending_scale.reset();
+	}
+}
+
+// The scale a page's own pixels hold it at, as render_now() chose it,
+// or zero when it has none or cannot be rendered anew.
+static float
+loaded_scale(const Viewer &v, const dawn::Image &page)
+{
+	if (!page.render || page.data.empty())
+		return 0.f;
+	if (!v.target_width_ || !v.target_height_)
+		return 1.f;
+	return min({float(v.target_width_) / float(page.nominal_width),
+		float(v.target_height_) / float(page.nominal_height), 1.f});
+}
+
+// A page that can be rendered anew has its own pixels count as a rendering.
+static void
+upload_page(Viewer &v)
+{
+	cancel_scale(v);
+	upload_frame(v, *v.current_);
+	v.vector_scale_ = loaded_scale(v, *v.current_);
+	if (v.vector_scale_ != 0.f)
+		v.page_scaled_ = v.current_;
 }
 
 static void
@@ -757,7 +807,7 @@ clear_image(Viewer &v)
 	v.image_.reset();
 	v.current_.reset();
 	v.frame_.reset();
-	v.page_scaled_.reset();
+	cancel_scale(v);
 	v.image_width_ = 0;
 	v.image_height_ = 0;
 	v.vector_scale_ = 0;
@@ -775,6 +825,8 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	dawn::ImagePtr image = cached.image;
 	const string &message = cached.message;
 	v.cms_icc_ = cached.cms_icc;
+	v.target_width_ = cached.target_width;
+	v.target_height_ = cached.target_height;
 	v.opening_ = false;
 	if (v.page_ && v.page_->host && v.page_->host->opened)
 		v.page_->host->opened();
@@ -782,7 +834,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	if (!message.empty())
 		qWarning("%s: %s", qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
 			message.c_str());
-	if (!image || !image->width || !image->height) {
+	if (!image || !image->nominal_width || !image->nominal_height) {
 		clear_image(v);
 		fill_info_texts(v);
 		sync_info(v);
@@ -794,9 +846,8 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	v.frame_ = v.current_;
 	v.browser_delays_ = v.image_->browser_animation_bump;
 	v.nonlinear_processing_ = !page_opaque(*v.current_);
-	v.page_scaled_.reset();
-	v.image_width_ = v.frame_->width;
-	v.image_height_ = v.frame_->height;
+	v.image_width_ = v.frame_->nominal_width;
+	v.image_height_ = v.frame_->nominal_height;
 	if (v.restore_view_.valid) {
 		v.scale_ = v.restore_view_.scale;
 		v.pan_x_ = v.restore_view_.pan_x;
@@ -814,9 +865,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 			v.angle_ = 0;
 		}
 	}
-	if (v.kit_.renderer_)
-		upload_frame(v, *v.frame_);
-	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
+	upload_page(v);
 	v.remaining_loops_ = 0;
 	start_playback(v);
 	fill_info_texts(v);
@@ -825,7 +874,8 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 }
 
 static void
-apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale)
+apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale,
+	const string &message)
 {
 	if (!v.kit_.renderer_ || gen != v.scale_gen_)
 		return;
@@ -834,9 +884,14 @@ apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale)
 	if (!image || !image->width || !image->height) {
 		v.scale_failed_ = true;
 		v.scale_failed_target_ = scale;
+		// Otherwise the page stays on screen, as loaded or last rendered.
+		if (v.current_->data.empty() && !v.page_scaled_ && !message.empty())
+			v.set_message(message);
 		request_render(v);
 		return;
 	}
+	if (v.current_->data.empty() && !v.page_scaled_)
+		v.nonlinear_processing_ = !page_opaque(*image);
 	v.page_scaled_ = std::move(image);
 	upload_frame(v, *v.page_scaled_);
 	v.vector_scale_ = scale;
@@ -888,6 +943,8 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 		result.cms_icc = make_shared<const vector<uint8_t>>(
 			ctx.screen_profile->to_bytes());
 	ctx.screen_dpi = open.dpi;
+	ctx.target_width = result.target_width = open.target_width;
+	ctx.target_height = result.target_height = open.target_height;
 	ctx.enhance = open.key.enhance;
 	// Whatever the display, so that headroom and the HDR toggle never
 	// need a reload.
@@ -916,8 +973,8 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 	result.image = open_from_data(
 		span<const uint8_t>(data, size_t(bytes.size())), ctx, &error);
 	const bool no_image = !result.image;
-	const bool empty_image =
-		result.image && (!result.image->width || !result.image->height);
+	const bool empty_image = result.image &&
+		(!result.image->nominal_width || !result.image->nominal_height);
 	if (empty_image)
 		result.image.reset();
 	result.message = join_load_text(warnings, error, no_image, empty_image);
@@ -1009,20 +1066,24 @@ worker_loop(Viewer &v, bool foreground)
 				post_open_result(v, std::move(result));
 		} else if (have_scale) {
 			dawn::ImagePtr image;
+			dawn::Error error;
 			if (scale.page && scale.page->render) {
 				dawn::OpenContext ctx;
 				ctx.cmm = cmm;
 				if (scale.enable_cms)
 					ctx.screen_profile =
 						profile_from_screen(*cmm, scale.screen_colour);
+				lock_guard lock(v.worker_->render_mu);
 				image = scale.page->render->render(
-					ctx, double(scale.scale), nullptr);
+					ctx, double(scale.scale), &error);
 			}
 			const uint64_t gen = scale.gen;
 			const float job_scale = scale.scale;
-			post_gui(v, [&v, gen, image, job_scale]() {
-				apply_scale(v, gen, image, job_scale);
-			});
+			post_gui(v,
+				[&v, gen, image, job_scale,
+					message = std::move(error.message)]() {
+					apply_scale(v, gen, image, job_scale, message);
+				});
 		}
 	}
 }
@@ -1049,6 +1110,11 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 				  .toEncoded()
 				  .toStdString();
 	job.dpi = v.kit_.dpi_;
+	// Fixed zoom does not fit.  We could pass the zoom instead.
+	if (!v.fixate_) {
+		job.target_width = uint32_t(max(0, v.r.w));
+		job.target_height = uint32_t(max(0, v.r.h));
+	}
 	job.enable_cms = v.enable_cms_;
 	job.screen_colour = v.enable_cms_ ? v.screen_.colour : nullptr;
 	job.loaders = v.loaders_;
@@ -1200,32 +1266,20 @@ post_scale(Viewer &v)
 	v.worker_->cv.notify_all();
 }
 
+// Nothing is rendered while another document opens: it would land over it.
 static void
 ensure_vector_frame(Viewer &v)
 {
-	if (!v.current_ || !v.current_->render)
+	if (v.opening_ || !v.current_ || !v.current_->render)
 		return;
-
-	if (v.scale_ == 1.f) {
-		if (v.scale_job_pending_) {
-			v.scale_gen_++;
-			v.scale_job_pending_ = false;
-			if (v.worker_) {
-				lock_guard<mutex> lock(v.worker_->mu);
-				v.worker_->pending_scale.reset();
-			}
-		}
-		v.scale_failed_ = false;
-		v.page_scaled_.reset();
-		if (v.vector_scale_ != 1.f) {
-			upload_frame(v, *v.current_);
-			v.vector_scale_ = 1.f;
-		}
-		return;
-	}
-
 	if (v.page_scaled_ && v.vector_scale_ == v.scale_)
 		return;
+
+	// A page's own pixels serve at the scale they were rendered at.
+	if (loaded_scale(v, *v.current_) == v.scale_) {
+		upload_page(v);
+		return;
+	}
 	if (v.scale_job_pending_ && v.scale_job_target_ == v.scale_)
 		return;
 	if (v.scale_failed_ && v.scale_failed_target_ == v.scale_)
@@ -1529,19 +1583,6 @@ snap_pan_to_pixels(float *pan, float disp, float vp, float scale)
 }
 
 static void
-cancel_scale(Viewer &v)
-{
-	v.scale_gen_++;
-	v.scale_job_pending_ = false;
-	v.scale_failed_ = false;
-	v.page_scaled_.reset();
-	if (v.worker_) {
-		lock_guard<mutex> lock(v.worker_->mu);
-		v.worker_->pending_scale.reset();
-	}
-}
-
-static void
 frame_step(Viewer &v, int step)
 {
 	if (!v.frame_)
@@ -1583,14 +1624,11 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 	v.current_ = std::move(page);
 	v.frame_ = v.current_;
 	v.nonlinear_processing_ = !page_opaque(*v.current_);
-	v.image_width_ = v.frame_->width;
-	v.image_height_ = v.frame_->height;
+	v.image_width_ = v.frame_->nominal_width;
+	v.image_height_ = v.frame_->nominal_height;
 	v.orientation_ = orientation_or_0(v.current_->orientation);
 	v.angle_ = 0;
-	cancel_scale(v);
-	if (v.kit_.renderer_)
-		upload_frame(v, *v.frame_);
-	v.vector_scale_ = v.current_->render ? 1.f : 0.f;
+	upload_page(v);
 	v.remaining_loops_ = 0;
 	start_playback(v);
 	fill_info_texts(v);
@@ -1657,12 +1695,33 @@ copy_image(QMimeData *mime, const dawn::Image &im)
 	mime->setImageData(image);
 }
 
+// Copying and exporting take pages whole, at scale 1, rendered on the spot
+// unless they already are: scale 1 rounds up just as nominal dimensions do.
+// Without `display`, rendered pixels stay in the page's own profile.
+static dawn::ImagePtr
+render_whole(const Viewer &v, const dawn::ImagePtr &page, bool display,
+	dawn::Error *error)
+{
+	if (!page->render ||
+		(page->width == page->nominal_width &&
+			page->height == page->nominal_height))
+		return page;
+
+	dawn::OpenContext ctx;
+	ctx.cmm = v.screen_.cmm ? v.screen_.cmm : dawn::Cmm::get_default();
+	if (display && v.enable_cms_)
+		ctx.screen_profile = profile_from_screen(*ctx.cmm, v.screen_.colour);
+	lock_guard lock(v.worker_->render_mu);
+	return page->render->render(ctx, 1., error);
+}
+
 static void
 copy_frame(const Viewer &v)
 {
 	auto *mime = new QMimeData;
 	if (v.frame_)
-		copy_image(mime, *v.frame_);
+		if (dawn::ImagePtr frame = render_whole(v, v.frame_, true, nullptr))
+			copy_image(mime, *frame);
 	if (!v.url_.isEmpty()) {
 		const QUrl files[] = {v.url_};
 		set_file_mime_data(mime, files, false);
@@ -1710,11 +1769,21 @@ save_as(Viewer &v, bool one_frame)
 	if (!v.current_)
 		return;
 
-	const dawn::ImagePtr page = v.current_;
+	dawn::ImagePtr page = v.current_;
 	const dawn::ImagePtr frame = one_frame ? v.frame_ : dawn::ImagePtr();
-	const shared_ptr<const vector<uint8_t>> icc = v.cms_icc_;
+	shared_ptr<const vector<uint8_t>> icc = v.cms_icc_;
 	if (one_frame && !frame)
 		return;
+	dawn::Error error;
+	dawn::ImagePtr whole = render_whole(v, page, false, &error);
+	if (!whole) {
+		v.set_message(error.message);
+		return;
+	}
+	if (whole != page) {
+		page = std::move(whole);
+		icc.reset();
+	}
 
 	const QFileInfo source(url_to_path(v.url_));
 	QString base = source.completeBaseName();
@@ -1876,10 +1945,11 @@ apply_view(const Viewer &v)
 	const float gpu_scale = have_scaled ? v.scale_ / v.vector_scale_ : v.scale_;
 	float pan_x = v.pan_x_;
 	float pan_y = v.pan_y_;
-	if (have_scaled && v.current_ && v.current_->width && v.current_->height) {
+	if (have_scaled && v.current_ && v.current_->nominal_width &&
+		v.current_->nominal_height) {
 		uint32_t src_dw = 0, src_dh = 0, dst_dw = 0, dst_dh = 0;
-		orientation_display_size(v.current_->width, v.current_->height,
-			v.orientation_, &src_dw, &src_dh);
+		orientation_display_size(v.current_->nominal_width,
+			v.current_->nominal_height, v.orientation_, &src_dw, &src_dh);
 		orientation_display_size(v.page_scaled_->width, v.page_scaled_->height,
 			v.orientation_, &dst_dw, &dst_dh);
 		if (src_dw && src_dh) {
@@ -1993,8 +2063,8 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 void
 Viewer::open(const QUrl &url)
 {
-	if (url == this->url_ && this->image_ && this->image_->width &&
-		this->image_->height) {
+	if (url == this->url_ && this->image_ && this->image_->nominal_width &&
+		this->image_->nominal_height) {
 		this->opening_ = false;
 		if (this->page_ && this->page_->host && this->page_->host->opened)
 			this->page_->host->opened();
@@ -2005,6 +2075,10 @@ Viewer::open(const QUrl &url)
 	this->url_ = url;
 	this->basename_ = url_basename(url).toStdString();
 	sync_info(*this);
+	// Opening fits to the well, which the first layout has yet to make.
+	if (this->r.empty() && this->page_)
+		this->page_->arrange(
+			this->kit_, {0, 0, this->kit_.host_w_, this->kit_.host_h_});
 	start_open(*this, false);
 }
 

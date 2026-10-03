@@ -732,19 +732,43 @@ test_rerender(const char *label, dawn::LoadFn *load, span<const uint8_t> data,
 		else
 			CHECK(!rejected.message.empty());
 	}
+
+	CHECK(image->nominal_width == w && image->nominal_height == h);
+	for (uint32_t divisor : {1u, 2u, 3u}) {
+		dawn::OpenContext fit_ctx = ctx;
+		fit_ctx.target_width = w / divisor;
+		fit_ctx.target_height = h * 2;
+		dawn::ImagePtr fitted = load(data, fit_ctx, &error);
+		if (!fitted) {
+			test::fail("%s: 1/%u: %s", label, divisor, error.message.c_str());
+			continue;
+		}
+		CHECK(fitted->nominal_width == w && fitted->nominal_height == h);
+		const float fit = min({float(fit_ctx.target_width) / float(w),
+			float(fit_ctx.target_height) / float(h), 1.f});
+		dawn::ImagePtr direct = image->render->render(ctx, fit, &error);
+		CHECK(direct && fitted->width == direct->width &&
+			fitted->height == direct->height);
+		if (divisor == 1)
+			CHECK(fitted->width == w && fitted->height == h);
+		else
+			CHECK(fitted->height < h);
+	}
 }
 
-// A one-page PDF, assembled rather than spelled out, so that its
+// A two-page PDF, assembled rather than spelled out, so that its
 // cross-reference offsets cannot drift away from what they point at.
 static string
 minimal_pdf()
 {
 	const string objects[] = {
 		"<< /Type /Catalog /Pages 2 0 R >>",
-		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 64 32]\n"
 		"   /Contents 4 0 R /Resources << >> >>",
 		"<< /Length 24 >>\nstream\n1 0 0 rg 0 0 64 32 re f\nendstream",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 32 64]\n"
+		"   /Contents 4 0 R /Resources << >> >>",
 	};
 
 	string pdf = "%PDF-1.4\n";
@@ -799,6 +823,39 @@ test_vector_rerender()
 	pdf_ctx.first_frame_only = true;
 	test_rerender("Poppler", &dawn::load_poppler,
 		{(const uint8_t *) pdf.data(), pdf.size()}, pdf_ctx);
+#endif
+}
+
+// Later pages of a document only say what they measure, until rendered.
+static void
+test_pdf_later_pages()
+{
+#if DAWN_WITH_POPPLER
+	const string pdf = minimal_pdf();
+	dawn::OpenContext ctx;
+	ctx.screen_dpi = 72;
+	dawn::Error error;
+	dawn::ImagePtr first = dawn::load_poppler(
+		{(const uint8_t *) pdf.data(), pdf.size()}, ctx, &error);
+	if (!first || !first->page_next) {
+		test::fail("Poppler: %s", error.message.c_str());
+		return;
+	}
+	CHECK(!first->data.empty());
+
+	CHECK(first->nominal_width == 64 && first->nominal_height == 32);
+
+	const dawn::Image &later = *first->page_next;
+	CHECK(later.data.empty() && later.render);
+	CHECK(!later.width && !later.height);
+	CHECK(later.nominal_width == 32 && later.nominal_height == 64);
+	CHECK(later.effective_profile && !later.profile_assumed);
+	dawn::ImagePtr rendered = later.render->render(ctx, 1., &error);
+	if (!rendered)
+		test::fail("Poppler: page 2: %s", error.message.c_str());
+	else
+		CHECK(rendered->width == 32 && rendered->height == 64 &&
+			!rendered->data.empty());
 #endif
 }
 
@@ -1298,6 +1355,7 @@ main()
 		{"SVG rendering", test_svg},
 		{"render dimensions", test_render_dimensions},
 		{"vector rerendering", test_vector_rerender},
+		{"PDF later pages", test_pdf_later_pages},
 		{"WMF display size", test_wmf_dpi},
 		{"chromaticities", test_chromaticities},
 		{"PNG text", test_png_text_after_idat},

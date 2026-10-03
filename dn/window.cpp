@@ -1110,10 +1110,13 @@ Window::sync_host()
 	QWindow *sh = shell();
 	this->kit_.fullscreen_ = bool(sh->windowState() & Qt::WindowFullScreen);
 	this->kit_.maximized_ = bool(sh->windowState() & Qt::WindowMaximized);
-	this->kit_.csd_ = this->csd_ && !this->kit_.fullscreen_;
 	this->kit_.active_ = this->system_grab_ || sh->isActive() || isActive();
-	const bool shadow = this->kit_.csd_ && !this->kit_.maximized_;
-	if (this->kit_.csd_shadow_ != shadow) {
+
+	// Pages sync their titlebars as they arrange.
+	const bool csd = this->csd_ && !this->kit_.fullscreen_;
+	const bool shadow = csd && !this->kit_.maximized_;
+	if (this->kit_.csd_ != csd || this->kit_.csd_shadow_ != shadow) {
+		this->kit_.csd_ = csd;
 		this->kit_.csd_shadow_ = shadow;
 		for (auto &page : this->pages_)
 			if (page)

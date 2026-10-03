@@ -132,7 +132,7 @@ load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	auto closure =
 		make_unique<ResvgRenderClosure>(tree, size.width, size.height);
 
-	ImagePtr image = closure->render(ctx, 1., error);
+	ImagePtr image = render_now(*closure, size.width, size.height, ctx, error);
 	if (!image)
 		return nullptr;
 

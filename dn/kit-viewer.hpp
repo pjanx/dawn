@@ -46,6 +46,9 @@ struct Viewer : Widget {
 		// it left them alone.  Kept with the image, because the display
 		// profile may change long before anyone asks to export it.
 		std::shared_ptr<const std::vector<uint8_t>> cms_icc;
+		// OpenContext's target, which tells what scale pages were rendered at.
+		uint32_t target_width = 0;
+		uint32_t target_height = 0;
 	};
 	struct Worker;
 	struct RestoreView {
@@ -80,24 +83,41 @@ struct Viewer : Widget {
 	std::string previous_path_;
 	std::string next_path_;
 	std::string basename_;
+
 	ScreenState screen_;
 	// OpenContext::loaders, as the settings have it.
 	std::shared_ptr<const std::vector<std::string>> loaders_;
 	std::shared_ptr<const std::vector<uint8_t>> cms_icc_;
+	uint32_t target_width_ = 0;
+	uint32_t target_height_ = 0;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;
 	dawn::ImagePtr frame_;
 	dawn::ImagePtr page_scaled_;
-	bool playing_ = false;
-	std::chrono::steady_clock::time_point frame_at_{};
-	uint64_t remaining_loops_ = 0;
 	float vector_scale_ = 0;
 	uint32_t image_width_ = 0;
 	uint32_t image_height_ = 0;
+
+	bool playing_ = false;
+	std::chrono::steady_clock::time_point frame_at_{};
+	uint64_t remaining_loops_ = 0;
+
+	// View configuration
+	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
 	float scale_ = 1.f;
 	float pan_x_ = 0.f;
 	float pan_y_ = 0.f;
 	float angle_ = 0.f;
+
+	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
+	Drag drag_ = Drag::None;
+	double drag_x_ = 0;
+	double drag_y_ = 0;
+	float drag_pivot_x_ = 0;
+	float drag_pivot_y_ = 0;
+	float drag_angle_ = 0;
+
+	// View settings
 	bool scale_to_fit_ = true;
 	bool view_locked_ = true;
 	bool fixate_ = false;
@@ -108,14 +128,7 @@ struct Viewer : Widget {
 	bool nonlinear_processing_ = false;
 	bool hdr_ = true;
 	bool browser_delays_ = false;
-	dawn::Orientation orientation_ = dawn::Orientation::Rotate0;
-	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
-	Drag drag_ = Drag::None;
-	double drag_x_ = 0;
-	double drag_y_ = 0;
-	float drag_pivot_x_ = 0;
-	float drag_pivot_y_ = 0;
-	float drag_angle_ = 0;
+
 	std::unique_ptr<Worker> worker_;
 	std::vector<CachedOpen> open_cache_;
 	uint64_t load_epoch_ = 1;

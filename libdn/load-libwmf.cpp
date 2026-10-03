@@ -156,27 +156,25 @@ png_length(const char *data)
 	return size_t(chunk - png);
 }
 
-/// Renders at the given dimensions, or at the metafile's own when they are
-/// zero, in which case they are reported back.
-static ImagePtr
-render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
-	const OpenContext &ctx, Error *error)
+ImagePtr
+WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
+	uint32_t width = 0, height = 0;
+	if (!render_dimensions(
+			width_ * scale, height_ * scale, &width, &height, error))
+		return nullptr;
+
 	WmfApi wmf;
 	wmfD_Rect bbox{};
 	uint32_t base_width = 0, base_height = 0;
 	if (!wmf_open_and_scan(
-			wmf, data, &bbox, &base_width, &base_height, ctx, error))
+			wmf, data_, &bbox, &base_width, &base_height, ctx, error))
 		return nullptr;
-	if (!*width || !*height) {
-		*width = base_width;
-		*height = base_height;
-	}
 
 	wmf_gd_t *device = WMF_GD_GetData(wmf.api);
 	device->bbox = bbox;
-	device->width = *width;
-	device->height = *height;
+	device->width = width;
+	device->height = height;
 
 	wmf_error_t status = wmf_play(wmf.api, 0, &bbox);
 	size_t length =
@@ -191,25 +189,23 @@ render_wmf(vector<uint8_t> &data, uint32_t *width, uint32_t *height,
 }
 
 ImagePtr
-WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
-{
-	uint32_t width = 0, height = 0;
-	if (!render_dimensions(
-			width_ * scale, height_ * scale, &width, &height, error))
-		return nullptr;
-
-	return render_wmf(data_, &width, &height, ctx, error);
-}
-
-ImagePtr
 load_libwmf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	vector<uint8_t> owned(data.begin(), data.end());
 	uint32_t width = 0, height = 0;
-	ImagePtr image = render_wmf(owned, &width, &height, ctx, error);
+	{
+		WmfApi wmf;
+		wmfD_Rect bbox{};
+		if (!wmf_open_and_scan(
+				wmf, owned, &bbox, &width, &height, ctx, error))
+			return nullptr;
+	}
+
+	auto closure =
+		make_unique<WmfRenderClosure>(std::move(owned), width, height);
+	ImagePtr image = render_now(*closure, width, height, ctx, error);
 	if (image)
-		image->render =
-			make_unique<WmfRenderClosure>(std::move(owned), width, height);
+		image->render = std::move(closure);
 	return image;
 }
 

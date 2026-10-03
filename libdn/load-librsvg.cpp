@@ -158,7 +158,7 @@ load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// RsvgHandle itself is retained in the render closure instead.
 	auto closure = make_unique<LibrsvgRenderClosure>(handle, w, h);
 
-	ImagePtr image = closure->render(ctx, 1., error);
+	ImagePtr image = render_now(*closure, w, h, ctx, error);
 	if (!image)
 		return nullptr;
 

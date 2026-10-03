@@ -115,6 +115,43 @@ render_dimensions(double width, double height, uint32_t *out_width,
 }
 
 ImagePtr
+render_now(RenderClosure &render, double width, double height,
+	const OpenContext &ctx, Error *error)
+{
+	uint32_t nominal_width = 0, nominal_height = 0;
+	if (!render_dimensions(
+			width, height, &nominal_width, &nominal_height, error))
+		return nullptr;
+
+	float scale = 1;
+	if (ctx.target_width && ctx.target_height)
+		scale = min({float(ctx.target_width) / float(nominal_width),
+			float(ctx.target_height) / float(nominal_height), 1.f});
+
+	ImagePtr image = render.render(ctx, scale, error);
+	if (image) {
+		image->nominal_width = nominal_width;
+		image->nominal_height = nominal_height;
+	}
+	return image;
+}
+
+ImagePtr
+deferred_image(double width, double height, shared_ptr<Profile> profile,
+	const OpenContext &ctx, Error *error)
+{
+	auto image = make_shared<Image>();
+	if (!render_dimensions(width, height, &image->nominal_width,
+			&image->nominal_height, error))
+		return nullptr;
+
+	image->profile_assumed = !profile;
+	image->effective_profile =
+		profile ? std::move(profile) : cmm_or_default(ctx)->get_profile_sRGB();
+	return image;
+}
+
+ImagePtr
 image_new(uint32_t width, uint32_t height, Error *error)
 {
 	if (width == 0 || height == 0) {
@@ -2232,10 +2269,14 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// itself applied to the pixels, keeps the final say.  JPEG MPF
 	// follow-ups and HEIF auxiliary images may each carry their own Exif.
 	for (Image *page = image.get(); page; page = page->page_next.get()) {
-		if (page->orientation != Orientation::Unknown || page->exif.empty())
-			continue;
-
-		page->orientation = exif_orientation(page->exif);
+		for (Image *frame = page; frame; frame = frame->frame_next.get()) {
+			if (!frame->nominal_width && !frame->nominal_height) {
+				frame->nominal_width = frame->width;
+				frame->nominal_height = frame->height;
+			}
+		}
+		if (page->orientation == Orientation::Unknown && !page->exif.empty())
+			page->orientation = exif_orientation(page->exif);
 	}
 	return image;
 }

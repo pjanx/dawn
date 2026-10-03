@@ -5483,8 +5483,6 @@ Kit::frame_ui(Page &ui)
 	ui.content->update(*this);
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
-	if (ui.titlebar)
-		ui.titlebar->sync(*this);
 
 	this->text_frame_++;
 	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});

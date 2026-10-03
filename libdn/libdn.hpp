@@ -309,12 +309,19 @@ struct GainMap {
 float gain_map_weight(const GainMap &map, float headroom);
 
 struct Image {
-	/// Working pixels (see kBytesPerPixel). After successful open/finish:
-	/// BGRA_PREMUL_4X16LE.
+	/// Working pixels (see kBytesPerPixel).  After successful open/finish:
+	/// BGRA_PREMUL_4X16LE.  Empty for pages that wait for `render`.
 	std::vector<uint8_t> data;
-	uint32_t width = 0;
+	uint32_t width = 0;   ///< Of `data`, zero when it is empty.
 	uint32_t stride = 0;  ///< Bytes per row (width * kBytesPerPixel).
-	uint32_t height = 0;
+	uint32_t height = 0;  ///< Of `data`, zero when it is empty.
+	/// Dimensions at scale 1 (may reflect OpenContext::screen_dpi),
+	/// disregarding any target_width/height targeting of `data`.
+	uint32_t nominal_width = 0;
+	uint32_t nominal_height = 0;
+
+	/// The HDR rendition of `data`, if any; see OpenContext::gain_maps.
+	std::unique_ptr<GainMap> gain_map;
 
 	Orientation orientation = Orientation::Unknown;
 
@@ -325,16 +332,13 @@ struct Image {
 	std::vector<uint8_t> thum;
 	std::unordered_map<std::string, std::string> text;
 
-	/// Source profile actually used (or assumed sRGB). `icc` stays the file
-	/// blob. Null for CMYK with no profile.
+	/// Source profile; may be assumed or composed from non-ICC profile info.
+	/// Null for CMYK with no profile.
 	std::shared_ptr<Profile> effective_profile;
-	/// True only when `effective_profile` is invented sRGB
-	/// (no ICC / Exif / gAMA).
+	/// Whether `effective_profile` is a wild guess (e.g., an sRGB default).
 	bool profile_assumed = false;
 
 	std::unique_ptr<RenderClosure> render;
-	/// The HDR rendition, in the stored frame; see OpenContext::gain_maps.
-	std::unique_ptr<GainMap> gain_map;
 
 	ImagePtr page_next;
 	std::weak_ptr<Image> page_previous;
@@ -349,7 +353,7 @@ struct Image {
 	bool browser_animation_bump = false;
 };
 
-/// Row accessors — `stride` is always in bytes.
+// Row accessors
 inline uint8_t *
 row_bytes(Image &img, uint32_t y)
 {
@@ -385,8 +389,7 @@ row_u16(const Image &img, uint32_t y)
 	return assume_aligned<const uint16_t>(row_bytes(img, y));
 }
 
-/// Allocate a zeroed working-format image. Returns null, saying why, when the
-/// dimensions are unusable or memory runs out.
+/// Allocate a zeroed working-format image.  Returns null on error.
 ImagePtr image_new(uint32_t width, uint32_t height, Error *error);
 
 // --- Opening -----------------------------------------------------------------
@@ -405,14 +408,23 @@ struct OpenContext {
 	std::string uri;
 	std::shared_ptr<Cmm> cmm;
 	std::shared_ptr<Profile> screen_profile;
+
+	/// Helps define the nominal size of rendered images.
 	int screen_dpi = 96;
+	/// Deprecated feature to enable compute-expensive image enhancements.
 	bool enhance = false;
+	/// Only produce the first frame of the first image (for thumbnails).
 	bool first_frame_only = false;
 	/// Decode or synthesize gain maps.  Recognised gain maps never become
 	/// pages, whether this is set or not.
 	bool gain_maps = false;
+	/// Pixels to fit rendered pages into, scaling down only, at the scale
+	/// min(target / nominal, 1) in single precision, which callers may
+	/// repeat to tell what the pixels hold.  Zero to disable.
+	uint32_t target_width = 0;
+	uint32_t target_height = 0;
 	/// Loaders to try, by name, in this order; empty means all of them,
-	/// in the default order. Names this build lacks are skipped.
+	/// in the default order.  Unrecognised names in this build are skipped.
 	std::span<const std::string> loaders;
 	std::vector<std::string> *warnings = nullptr;
 	OpenTiming *timing = nullptr;
