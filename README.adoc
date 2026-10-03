@@ -29,8 +29,8 @@ We care about
  - *Good scaling*: GIMP's NoHalo is an awesome compromise for upscaling
    both photos and man-made images.
  - *Loading as much as we can* from any file format at the best possible
-   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, HDR, etc.;
-   at least 65535 pixels on one side.
+   quality: multi-page TIFF, 16-bit PNG, 12-bit JPEG, HDR, SVG/PDF, etc.;
+   up to 65535 pixels per side.
  - *Making good use of computing resources*,
    exercising the GPU and all CPU cores.
  - *Superb keyboard accessibility*: we recognise

@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-// Deliberately not advertising support elsewhere, as with Core Graphics PDF.
-
 #include "gettext.hpp"
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"

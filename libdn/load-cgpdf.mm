@@ -5,8 +5,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
-// Deliberately not advertising support elsewhere.  This is not our focus.
-//
 // PostScript would be CGPSConverter, which on arm64 reports success while
 // producing no pages at all.
 

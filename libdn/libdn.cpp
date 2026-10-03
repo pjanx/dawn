@@ -2144,15 +2144,13 @@ constexpr Loader kLoaders[] = {
 		{}, {}, {}, {}},
 #endif
 
-	// Advertises no media type on purpose: it opens PDFs that are handed to
-	// it, while the browser keeps filtering them out, and nothing associates.
 	{"Core Graphics PDF",
 #if DAWN_WITH_CGPDF
 		&load_cgpdf,
 #else
 		{},
 #endif
-		{}, {}, {}},
+		N_("PDF"), {"application/pdf"}, {}},
 
 	{"Poppler",
 #if DAWN_WITH_POPPLER
@@ -2160,7 +2158,7 @@ constexpr Loader kLoaders[] = {
 #else
 		{},
 #endif
-		N_("PDF"), {}, {}},
+		N_("PDF"), {"application/pdf"}, {}},
 };
 
 // A subset of shared-mime-info, chiefly motivated by the suckiness of raw
