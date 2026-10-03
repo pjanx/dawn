@@ -87,7 +87,7 @@ LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	cairo_status_t status = cairo_status(cr);
 	cairo_destroy(cr);
 	if (!success) {
-		set_error(error, gerror ? gerror->message : "librsvg rendering failed");
+		set_error(error, gerror ? gerror->message : _("rendering failed"));
 		g_clear_error(&gerror);
 		cairo_surface_destroy(surface);
 		return nullptr;
@@ -126,7 +126,7 @@ load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	g_object_unref(base_file);
 	g_object_unref(is);
 	if (!handle) {
-		set_error(error, gerror ? gerror->message : "librsvg parsing failed");
+		set_error(error, gerror ? gerror->message : _("parsing failed"));
 		g_clear_error(&gerror);
 		return nullptr;
 	}

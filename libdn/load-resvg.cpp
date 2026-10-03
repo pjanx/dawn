@@ -30,19 +30,19 @@ resvg_error_string(int32_t err)
 {
 	switch (err) {
 	case RESVG_ERROR_NOT_AN_UTF8_STR:
-		return "not a UTF-8 string";
+		return _("not a UTF-8 string");
 	case RESVG_ERROR_FILE_OPEN_FAILED:
-		return "I/O failure";
+		return _("I/O failure");
 	case RESVG_ERROR_MALFORMED_GZIP:
-		return "malformed gzip";
+		return _("malformed gzip");
 	case RESVG_ERROR_ELEMENTS_LIMIT_REACHED:
-		return "element limit reached";
+		return _("element limit reached");
 	case RESVG_ERROR_INVALID_SIZE:
-		return "invalid or unspecified image size";
+		return _("invalid or unspecified image size");
 	case RESVG_ERROR_PARSING_FAILED:
-		return "parsing failed";
+		return _("parsing failed");
 	default:
-		return "general failure";
+		return _("general failure");
 	}
 }
 

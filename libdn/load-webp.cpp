@@ -29,23 +29,23 @@ webp_status_string(VP8StatusCode err)
 {
 	switch (err) {
 	case VP8_STATUS_OK:
-		return "OK";
+		return _("OK");
 	case VP8_STATUS_OUT_OF_MEMORY:
-		return "out of memory";
+		return _("out of memory");
 	case VP8_STATUS_INVALID_PARAM:
-		return "invalid parameter";
+		return _("invalid parameter");
 	case VP8_STATUS_BITSTREAM_ERROR:
-		return "bitstream error";
+		return _("bitstream error");
 	case VP8_STATUS_UNSUPPORTED_FEATURE:
-		return "unsupported feature";
+		return _("unsupported feature");
 	case VP8_STATUS_SUSPENDED:
-		return "suspended";
+		return _("suspended");
 	case VP8_STATUS_USER_ABORT:
-		return "user abort";
+		return _("user abort");
 	case VP8_STATUS_NOT_ENOUGH_DATA:
-		return "not enough data";
+		return _("not enough data");
 	default:
-		return "general failure";
+		return _("general failure");
 	}
 }
 
@@ -89,8 +89,8 @@ load_webp_still(WebPDecoderConfig *config, const WebPData &wd, bool premultiply,
 	if (err != VP8_STATUS_OK) {
 		if (err != VP8_STATUS_SUSPENDED) {
 			set_error(error,
-				format_message(
-					_("WebP decoding error: %s"), webp_status_string(err)));
+				format_message("%s: %s",
+					_("WebP decoding error"), webp_status_string(err)));
 			return nullptr;
 		}
 

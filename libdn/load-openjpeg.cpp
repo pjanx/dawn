@@ -28,6 +28,7 @@ namespace dawn
 
 namespace
 {
+
 // OpenJPEG exposes no memory stream, only callbacks to drive one with.
 struct MemoryStream {
 	span<const uint8_t> data;
@@ -420,10 +421,10 @@ load_openjpeg(span<const uint8_t> data, const OpenContext &octx, Error *error)
 		return nullptr;
 
 	if (!opj_read_header(ctx.stream, ctx.codec, &ctx.image))
-		return fail(ctx, error, "failed to read the JPEG 2000 header");
+		return fail(ctx, error, _("failed to read the JPEG 2000 header"));
 	if (!opj_decode(ctx.codec, ctx.stream, ctx.image) ||
 		!opj_end_decompress(ctx.codec, ctx.stream))
-		return fail(ctx, error, "failed to decode the image");
+		return fail(ctx, error, _("failed to decode the image"));
 
 	return build_image(ctx, error);
 }
