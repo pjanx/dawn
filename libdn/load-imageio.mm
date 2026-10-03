@@ -435,10 +435,10 @@ load_imageio(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	ImagePtr image;
 	if (source) {
-		image = load_imageio_indexes(source, options, ctx, error);
+		// Without a type, ImageIO has not recognised the data at all.
+		if (CGImageSourceGetType(source))
+			image = load_imageio_indexes(source, options, ctx, error);
 		CFRelease(source);
-	} else {
-		set_error(error, _("not an ImageIO-decodable image"));
 	}
 
 	CFRelease(options);

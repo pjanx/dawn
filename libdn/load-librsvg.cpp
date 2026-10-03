@@ -135,8 +135,9 @@ load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		is, base_file, RSVG_HANDLE_FLAG_KEEP_IMAGE_DATA, nullptr, &gerror);
 	g_object_unref(base_file);
 	g_object_unref(is);
+
+	// librsvg fails all data that are not SVG just as it fails broken SVG.
 	if (!handle) {
-		set_error(error, gerror ? gerror->message : _("parsing failed"));
 		g_clear_error(&gerror);
 		return nullptr;
 	}

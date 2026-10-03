@@ -409,10 +409,8 @@ ImagePtr
 load_openjpeg(span<const uint8_t> data, const OpenContext &octx, Error *error)
 {
 	OPJ_CODEC_FORMAT format = detect_codec(data);
-	if (format == OPJ_CODEC_UNKNOWN) {
-		set_error(error, _("not a JPEG 2000 image"));
+	if (format == OPJ_CODEC_UNKNOWN)
 		return nullptr;
-	}
 
 	OpenJpegLoadContext ctx;
 	ctx.octx = &octx;

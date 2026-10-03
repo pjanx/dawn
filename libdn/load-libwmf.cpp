@@ -200,6 +200,11 @@ WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 ImagePtr
 load_libwmf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	// What wmf_header_read() does, matching slightly wide.
+	if (data.size() < 4 ||
+		(le32(data.data()) != 0x9ac6cdd7 && le16(data.data() + 2) != 9))
+		return nullptr;
+
 	vector<uint8_t> owned(data.begin(), data.end());
 	uint32_t width = 0, height = 0;
 	{

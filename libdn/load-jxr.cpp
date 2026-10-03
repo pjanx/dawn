@@ -398,10 +398,8 @@ load_jxr(span<const uint8_t> data, const OpenContext &octx, Error *error)
 	// The rest of the container is jxrlib's business.
 	static const uint8_t signature[] = {'I', 'I', 0xBC};
 	if (data.size() < sizeof signature ||
-		memcmp(data.data(), signature, sizeof signature)) {
-		set_error(error, _("not a JPEG XR image"));
+		memcmp(data.data(), signature, sizeof signature))
 		return nullptr;
-	}
 
 	JxrLoadContext ctx;
 	if (PKCreateFactory(&ctx.factory, PK_SDK_VERSION) ||

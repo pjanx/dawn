@@ -473,6 +473,8 @@ std::vector<uint8_t> jpeg_transform(std::span<const uint8_t> data,
 
 // --- Loaders -----------------------------------------------------------------
 
+/// Unrecognised data results in null and leaves `error` alone:
+/// an error means that the loader failed on a recognised format.
 using LoadFn = ImagePtr(
 	std::span<const uint8_t> data, const OpenContext &ctx, Error *error);
 

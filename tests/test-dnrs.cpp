@@ -120,7 +120,7 @@ main()
 	const uint8_t junk[] = "not an image";
 	error = {};
 	image = dawn::load_dnrs(span(junk, sizeof junk - 1), context, &error);
-	if (image || !error)
+	if (image || error)
 		return 8;
 	return test_linear();
 }

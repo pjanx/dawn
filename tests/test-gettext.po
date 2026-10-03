@@ -33,5 +33,5 @@ msgstr[0] "%d soubor"
 msgstr[1] "%d soubory"
 msgstr[2] "%d souborů"
 
-msgid "not an ICNS image"
-msgstr "toto není obrázek ICNS"
+msgid "invalid ICNS file length"
+msgstr "neplatná délka souboru ICNS"

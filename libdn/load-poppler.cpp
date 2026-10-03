@@ -153,18 +153,15 @@ measure_poppler_page(PopplerDocument &document, int index, double *width,
 ImagePtr
 load_poppler(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	if (!poppler::page_renderer::can_render()) {
-		set_error(error, _("Poppler has been built without Splash"));
-		return nullptr;
-	}
-
 	// Render closures outlive the caller's bytes, see load-cgpdf.mm.
 	// Poppler takes over the array, but only if it succeeds.
 	poppler::byte_array bytes(data.begin(), data.end());
 	auto document = make_shared<PopplerDocument>();
 	document->document.reset(poppler::document::load_from_data(&bytes));
-	if (!document->document) {
-		set_error(error, _("not a PDF document"));
+	if (!document->document)
+		return nullptr;
+	if (!poppler::page_renderer::can_render()) {
+		set_error(error, _("Poppler has been built without Splash"));
 		return nullptr;
 	}
 	if (document->document->is_locked()) {

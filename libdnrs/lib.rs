@@ -749,21 +749,21 @@ fn decode_raw(
 fn decode_image(
 	data: &[u8],
 	first_frame_only: bool,
-) -> Result<dnrs_decoder, String> {
+) -> Result<Option<dnrs_decoder>, String> {
 	image_extras::register();
 
 	if let Ok(format) = image::guess_format(data) {
-		return decode_image_rs(data, format, first_frame_only);
+		return decode_image_rs(data, format, first_frame_only).map(Some);
 	}
 	#[cfg(feature = "jpeg2000")]
 	if data.starts_with(&[0xff, 0x4f, 0xff, 0x51])
 		|| data.starts_with(&[0, 0, 0, 12, b'j', b'P', b' ', b' '])
 	{
-		return decode_jpeg2000(data);
+		return decode_jpeg2000(data).map(Some);
 	}
 	if let Ok(decoder) = image::codecs::tga::TgaDecoder::new(Cursor::new(data))
 	{
-		return decoder_from_still("image-rs/Tga", decoder);
+		return decoder_from_still("image-rs/Tga", decoder).map(Some);
 	}
 	// XPM registers a signature with image, while XBM is C source with no
 	// magic number and has to be tried explicitly.
@@ -776,17 +776,18 @@ fn decode_image(
 				vec![frame],
 				0,
 				metadata,
-			);
+			)
+			.map(Some);
 		}
 	}
 	if let Ok(decoder) = image_extras::xbm::XbmDecoder::new(Cursor::new(data)) {
-		return decoder_from_still("image-extras/XBM", decoder);
+		return decoder_from_still("image-extras/XBM", decoder).map(Some);
 	}
 	#[cfg(feature = "raw")]
 	if let Ok(rawfile) = libopenraw::rawfile_from_memory(data.to_vec(), None) {
-		return decode_raw(&rawfile);
+		return decode_raw(&rawfile).map(Some);
 	}
-	Err("unrecognised image data".into())
+	Ok(None)
 }
 
 fn decoder_from_pages(
@@ -905,8 +906,11 @@ pub unsafe extern "C" fn dnrs_decoder_new(
 		} else {
 			unsafe { std::slice::from_raw_parts(data, length) }
 		};
-		decode_image(input, first_frame_only)
-			.map(|decoder| Box::into_raw(Box::new(decoder)))
+		decode_image(input, first_frame_only).map(|decoder| {
+			decoder.map_or(ptr::null_mut(), |decoder| {
+				Box::into_raw(Box::new(decoder))
+			})
+		})
 	})
 }
 

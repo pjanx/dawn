@@ -155,6 +155,10 @@ on_data_error(void *data, const char *file, INT64 offset)
 ImagePtr
 load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	// That would become LIBRAW_IO_ERROR, which is a bit wide to just ignore.
+	if (data.size() < 64)
+		return nullptr;
+
 	unique_ptr<libraw_data_t, void (*)(libraw_data_t *)> iprc(
 		libraw_init(0), libraw_close);
 	if (!iprc) {
@@ -179,7 +183,8 @@ load_libraw(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	int err = 0;
 	if ((err = libraw_open_buffer(iprc.get(), data.data(), data.size()))) {
-		set_error(error, libraw_strerror(err));
+		if (err != LIBRAW_FILE_UNSUPPORTED)
+			set_error(error, libraw_strerror(err));
 		return nullptr;
 	}
 

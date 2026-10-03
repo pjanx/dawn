@@ -270,10 +270,8 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	bool is_supported_dng = tiffer_find(T, TIFF_DNGBackwardVersion, &entry) &&
 		entry.type == TIFFER_BYTE && entry.remaining_count == 4 &&
 		entry.p[0] == 1 && entry.p[1] <= 6 && !entry.p[2] && !entry.p[3];
-	if (!is_tiffep && !is_supported_dng) {
-		set_error(error, _("not a supported TIFF/EP or DNG image"));
+	if (!is_tiffep && !is_supported_dng)
 		return nullptr;
-	}
 
 	tiffer fullT = {};
 	int budget = kIfdWalkLimit;
@@ -301,10 +299,8 @@ load_tiff_ep_page(const tiffer *T, const OpenContext &ctx, Error *error)
 	// (though some of them may not even reach 50 percent).
 	// Be a bit more generous than that with our crop tolerance.
 	// TODO(p): Also take into account DNG DefaultCropSize, if present.
-	if (double(out.pixels) / (double(width) * double(height)) < 0.95) {
-		set_error(error, _("could not find a large enough JPEG preview"));
+	if (double(out.pixels) / (double(width) * double(height)) < 0.95)
 		return nullptr;
-	}
 
 	// load_jpeg() would convert a bare preview as the sRGB it assumes,
 	// so where the container knows better, the conversion happens here.
@@ -344,10 +340,8 @@ ImagePtr
 load_tiff_ep(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	tiffer T = {};
-	if (!tiffer_init(&T, data.data(), data.size())) {
-		set_error(error, _("not a TIFF file"));
+	if (!tiffer_init(&T, data.data(), data.size()))
 		return nullptr;
-	}
 
 	ImagePtr head, tail;
 	for (int i = 0; i < kIfdWalkLimit && tiffer_next_ifd(&T); i++) {
@@ -365,9 +359,6 @@ load_tiff_ep(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		while (tiffer_next_entry(&T, &dummy))
 			;
 	}
-
-	if (!head)
-		set_error(error, _("not a TIFF/EP or DNG image with a usable preview"));
 	return head;
 }
 

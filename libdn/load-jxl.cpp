@@ -393,6 +393,8 @@ attach_jxl_gain_map(JxlLoadContext &ctx)
 	map_ctx.first_frame_only = true;
 	Error error;
 	ImagePtr pixels = load_jxl(codestream, map_ctx, &error);
+	if (!pixels && !error)
+		set_error(&error, _("invalid or unsupported JPEG XL data"));
 	if (pixels)
 		ctx.result->gain_map = make_gain_map(*pixels, metadata, false);
 	else
@@ -405,6 +407,10 @@ attach_jxl_gain_map(JxlLoadContext &ctx)
 ImagePtr
 load_jxl(span<const uint8_t> data, const OpenContext &octx, Error *error)
 {
+	const JxlSignature signature = JxlSignatureCheck(data.data(), data.size());
+	if (signature != JXL_SIG_CODESTREAM && signature != JXL_SIG_CONTAINER)
+		return nullptr;
+
 	JxlLoadContext ctx;
 	ctx.octx = &octx;
 	ctx.dec = JxlDecoderCreate(nullptr);

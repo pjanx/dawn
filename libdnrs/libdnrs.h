@@ -79,6 +79,8 @@ const char *const *dnrs_mime_types(size_t *length);
 // Decodes everything at once, so the input is only needed during the call.
 // Functions that fail return false or NULL, and set any non-NULL `error`,
 // which must then be freed with dnrs_error_free().  They reset it on success.
+// Data that no decoder recognises makes dnrs_decoder_new() return NULL
+// without an error.
 struct dnrs_decoder *dnrs_decoder_new(const uint8_t *data, size_t length,
 	bool first_frame_only, struct dnrs_error **error);
 bool dnrs_decoder_get_info(const struct dnrs_decoder *decoder,

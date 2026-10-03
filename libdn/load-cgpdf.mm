@@ -186,10 +186,8 @@ load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	DocumentPtr document(
 		CGPDFDocumentCreateWithProvider(provider), CGPDFDocumentRelease);
 	CGDataProviderRelease(provider);
-	if (!document) {
-		set_error(error, _("not a PDF document"));
+	if (!document)
 		return nullptr;
-	}
 
 	// Core Graphics opens encrypted documents, then draws nothing of them.
 	if (CGPDFDocumentIsEncrypted(document.get()) &&

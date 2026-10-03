@@ -93,7 +93,8 @@ test_plural()
 static void
 test_library_error()
 {
-	const uint8_t garbage[] = {0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3};
+	// An ICNS header claiming more data than there is.
+	const uint8_t garbage[] = {'i', 'c', 'n', 's', 0xff, 0xff, 0xff, 0xff};
 	// One loader, so that what is left over is its own diagnostic, and one
 	// this build is certain to have.  Its name comes from the loader table,
 	// which is why only the second half of this is translated.
@@ -102,7 +103,7 @@ test_library_error()
 	ctx.loaders = only;
 	dawn::Error error;
 	CHECK(!dawn::open_from_data(garbage, ctx, &error));
-	CHECK(error.message == "ICNS: toto není obrázek ICNS");
+	CHECK(error.message == "ICNS: neplatná délka souboru ICNS");
 }
 
 int

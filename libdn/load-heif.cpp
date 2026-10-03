@@ -865,6 +865,11 @@ load_heif_sequence(heif_context *, const OpenContext &)
 ImagePtr
 load_heif(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	// As of writing, this checks the first 12 bytes for an ftyp box.
+	if (heif_check_filetype(data.data(), int(min(data.size(), size_t(12)))) ==
+		heif_filetype_no)
+		return nullptr;
+
 	// libheif will throw C++ exceptions on allocation failures.
 	// The library is generally awful through and through.
 	heif_context *hctx = heif_context_alloc();

@@ -477,10 +477,9 @@ decode_entry(const Entry &entry, const vector<Entry> &entries,
 ImagePtr
 load_icns(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	if (data.size() < 8 || memcmp(data.data(), "icns", 4)) {
-		set_error(error, _("not an ICNS image"));
+	if (data.size() < 8 || memcmp(data.data(), "icns", 4))
 		return nullptr;
-	}
+
 	uint32_t declared = be32(data.data() + 4);
 	if (declared < 8 || declared > data.size()) {
 		set_error(error, _("invalid ICNS file length"));

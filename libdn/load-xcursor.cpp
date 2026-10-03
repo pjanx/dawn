@@ -127,6 +127,8 @@ load_xcursor_image(const XcursorImage *src)
 ImagePtr
 load_xcursor(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	if (data.size() < 4 || memcmp(data.data(), "Xcur", 4))
+		return nullptr;
 	if (data.size() > size_t(LONG_MAX)) {
 		set_error(error, _("size overflow"));
 		return nullptr;
@@ -142,7 +144,7 @@ load_xcursor(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	unique_ptr<XcursorImages, void (*)(XcursorImages *)> images(
 		XcursorXcFileLoadAllImages(&file.parent), XcursorImagesDestroy);
 	if (!images) {
-		set_error(error, _("not an Xcursor image"));
+		set_error(error, _("malformed Xcursor image"));
 		return nullptr;
 	}
 

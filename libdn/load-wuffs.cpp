@@ -687,7 +687,6 @@ load_wuffs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 			wuffs_webp__decoder__alloc_as__wuffs_base__image_decoder, data, ctx,
 			error);
 	default:
-		set_error(error, _("unsupported or unrecognized Wuffs format"));
 		return nullptr;
 	}
 }

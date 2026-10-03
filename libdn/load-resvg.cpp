@@ -133,8 +133,11 @@ load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	int32_t err = resvg_parse_tree_from_data(
 		(const char *) data.data(), data.size(), opt, &tree);
 	resvg_options_destroy(opt);
+
 	if (err != RESVG_OK) {
-		set_error(error, resvg_error_string(err));
+		// resvg 0.48.1 has a C header bug with un/shifted constants,
+		// so it's all unreliable.
+		add_warning(ctx, resvg_error_string(err));
 		return nullptr;
 	}
 

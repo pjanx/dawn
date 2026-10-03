@@ -243,10 +243,8 @@ read_entry(
 ImagePtr
 load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
-	if (data.size() < 4 || le32(data.data()) != kSignatureLocal) {
-		set_error(error, _("not a ZIP archive"));
+	if (data.size() < 4 || le32(data.data()) != kSignatureLocal)
 		return nullptr;
-	}
 
 	vector<ZipEntry> entries;
 	if (!read_directory(data, &entries)) {
@@ -262,10 +260,8 @@ load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	string_view id;
 	if (mimetype && read_entry(data, *mimetype, &type))
 		id = string_view((const char *) type.data(), type.size());
-	if (id != "image/openraster" && id != "application/x-krita") {
-		set_error(error, _("not an OpenRaster or Krita image"));
+	if (id != "image/openraster" && id != "application/x-krita")
 		return nullptr;
-	}
 
 	// In descending order of fidelity, the latter two being previews meant
 	// for file managers, which is all that .krz and autosaves ever carry.
@@ -292,7 +288,11 @@ load_ora(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		add_warning(
 			ctx, format_message(_("%s is a reduced-size preview"), found));
 
-	return load_wuffs(png, ctx, error);
+	ImagePtr image = load_wuffs(png, ctx, error);
+	if (!image && error && !*error)
+		set_error(error,
+			format_message(_("%s is in an unrecognised image format"), found));
+	return image;
 }
 
 }  // namespace dawn

@@ -240,7 +240,8 @@ load_dnrs(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		data.data(), data.size(), ctx.first_frame_only, &raw_error));
 	DnrsErrorPtr dnrs_error(raw_error);
 	if (!decoder) {
-		set_error(error, dnrs_message(dnrs_error.get(), nullptr));
+		if (dnrs_error)
+			set_error(error, dnrs_message(dnrs_error.get(), nullptr));
 		return nullptr;
 	}
 

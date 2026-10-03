@@ -491,6 +491,14 @@ load_tiff_directory(TIFF *tiff, const OpenContext &ctx, Error *error)
 ImagePtr
 load_tiff(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
+	// Classic TIFF and BigTIFF, in either byte order.
+	// LibTIFF would rather complain about anything else than decline it.
+	static const char *const signatures[] = {"II*", "MM\0*", "II+", "MM\0+"};
+	if (data.size() < 4 ||
+		none_of(begin(signatures), end(signatures),
+			[&](const char *s) { return !memcmp(data.data(), s, 4); }))
+		return nullptr;
+
 	// libtiff error handlers are process-global; serialize installs.
 	static mutex tiff_handler_mutex;
 	lock_guard lock(tiff_handler_mutex);

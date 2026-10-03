@@ -356,10 +356,8 @@ load_psd(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
 	Reader r{data};
 	const uint8_t *signature = take(r, 4);
-	if (!signature || memcmp(signature, "8BPS", 4)) {
-		set_error(error, _("not a PSD image"));
+	if (!signature || memcmp(signature, "8BPS", 4))
 		return nullptr;
-	}
 
 	Header h;
 	uint16_t version = read16(r);

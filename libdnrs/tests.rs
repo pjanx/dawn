@@ -111,7 +111,7 @@ fn abi_rejects_bad_calls_and_input() {
 		dnrs_decoder_new(junk.as_ptr(), junk.len(), false, &mut error)
 	};
 	assert!(decoder.is_null());
-	assert_eq!(error_message(error), "unrecognised image data");
+	assert!(error.is_null());
 
 	let oversized = br#"#define huge_width 65536
 #define huge_height 1
@@ -583,7 +583,7 @@ fn jpeg2000_is_decodable() {
 }
 
 #[test]
-fn every_png_truncation_is_an_error() {
+fn every_png_truncation_fails() {
 	let data = png(
 		png::ColorType::Rgba,
 		png::BitDepth::Eight,
@@ -597,7 +597,10 @@ fn every_png_truncation_is_an_error() {
 			dnrs_decoder_new(data.as_ptr(), length, false, &mut error)
 		};
 		assert!(decoder.is_null(), "accepted PNG prefix of {length} bytes");
-		assert!(!error.is_null());
-		unsafe { dnrs_error_free(error) };
+		// Anything shorter than the signature is not recognised at all.
+		assert_eq!(error.is_null(), length < 8, "PNG prefix of {length} bytes");
+		if !error.is_null() {
+			unsafe { dnrs_error_free(error) };
+		}
 	}
 }

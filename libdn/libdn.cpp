@@ -2202,21 +2202,6 @@ find_loader(string_view name)
 	return nullptr;
 }
 
-static ImagePtr
-try_loader(ImagePtr (*fn)(span<const uint8_t>, const OpenContext &, Error *),
-	span<const uint8_t> data, const OpenContext &ctx, Error *error)
-{
-	Error local;
-	Error *err = error ? error : &local;
-	*err = {};
-
-	// Might want to collect them per loader, or I don't know.
-	if (ctx.warnings)
-		ctx.warnings->resize(0);
-
-	return fn(data, ctx, err);
-}
-
 ImagePtr
 open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 {
@@ -2226,17 +2211,29 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 		return nullptr;
 	}
 
+	// Hard to say whose error to use.  Right now, the first one wins.
 	ImagePtr image;
+	Error first_failure;
+	vector<string> first_failure_warnings;
 	auto attempt = [&](const Loader &loader) {
-		if ((image = try_loader(loader.load, data, ctx, error))) {
+		// XXX: The loader API doesn't match this helper's needs.
+		if (ctx.warnings)
+			ctx.warnings->clear();
+
+		Error err;
+		if ((image = loader.load(data, ctx, &err))) {
 			image->loader = loader.name;
+			if (error)
+				*error = std::move(err);
 			return true;
 		}
-
-		// Loaders talk about the format they know, never about themselves.
-		if (error && !error->message.empty()) {
-			error->message = format_message(
-				_("%s: %s"), loader.name, error->message.c_str());
+		if (err && !first_failure) {
+			first_failure = std::move(err);
+			if (!first_failure.message.empty())
+				first_failure.message = format_message(
+					_("%s: %s"), loader.name, first_failure.message.c_str());
+			if (ctx.warnings)
+				first_failure_warnings = std::move(*ctx.warnings);
 		}
 		return false;
 	};
@@ -2255,15 +2252,16 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	}
 
 	if (!image) {
-		if (error && error->message.empty())
-			set_error(error, _("unrecognised or unsupported image format"));
+		if (ctx.warnings)
+			*ctx.warnings = std::move(first_failure_warnings);
+		if (first_failure.message.empty())
+			set_error(
+				&first_failure, _("unrecognised or unsupported image format"));
+		if (error)
+			*error = std::move(first_failure);
 		return nullptr;
 	}
 
-	// Exif only fills the gap: a loader that has already established the
-	// orientation, from the codestream or from container properties it has
-	// itself applied to the pixels, keeps the final say.  JPEG MPF
-	// follow-ups and HEIF auxiliary images may each carry their own Exif.
 	for (Image *page = image.get(); page; page = page->page_next.get()) {
 		for (Image *frame = page; frame; frame = frame->frame_next.get()) {
 			if (!frame->nominal_width && !frame->nominal_height) {
@@ -2271,6 +2269,10 @@ open_from_data(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 				frame->nominal_height = frame->height;
 			}
 		}
+
+		// Exif is only a fallback: a loader that has already established the
+		// orientation, from the codestream or from container properties it has
+		// itself applied to the pixels, keeps the final say.
 		if (page->orientation == Orientation::Unknown && !page->exif.empty())
 			page->orientation = exif_orientation(page->exif);
 	}
