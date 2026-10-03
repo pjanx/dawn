@@ -1102,9 +1102,9 @@ struct Kit {
 	bool gesture(float x, float y, float scale_factor, float angle_delta);
 	bool mouse_double_click(
 		float x, float y, Qt::MouseButton button, unsigned mods);
-	bool set_dpr(float dpr);
+	// Whether the ratio changed, to which the host answers with reset_fonts().
 	bool set_host(float width_pts, float height_pts, float dpr);
-	bool reset_fonts();
+	void reset_fonts();
 	void bake_colours(const ScreenState &state);
 	void draw_icon(int x, int y, int size, const char *name, Colour colour);
 	// Coverage copies scalar alpha; other bitmaps are sRGB premultiplied.

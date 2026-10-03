@@ -77,7 +77,8 @@ class Window final : public QWindow
 	void bind_host();
 	void set_mode(Mode m);
 	void sync_title();
-	void sync_csd();
+	void sync_host();
+	void reset_fonts();
 	bool handle_native_gesture(QNativeGestureEvent *event);
 	bool handle_touch(QTouchEvent *event);
 	bool handle_input_method(QInputMethodEvent *event);
@@ -102,8 +103,6 @@ class Window final : public QWindow
 	bool renderer_ready_ = false;
 	bool exposed_ = false;
 	bool resize_pending_ = false;
-	bool settings_apply_pending_ = false;
-	bool font_change_pending_ = false;
 	bool update_pending_ = false;
 	std::string screen_profile_label_;  // Its name and source
 	// What the screen profile last saw of Windows Advanced Color, against

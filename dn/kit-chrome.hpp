@@ -32,6 +32,10 @@ struct HostActions {
 	std::function<std::vector<std::string>()> bookmarks;
 	std::function<bool(const QUrl &url)> bookmarked;
 	std::function<void(QUrl url)> toggle_bookmark;
+	// The viewer has finished an open, with an image or with an error.
+	std::function<void()> opened;
+	// The page now shows another location, which the title has to follow.
+	std::function<void()> retitle;
 };
 
 // The menu that a right click on a file opens: what this application knows

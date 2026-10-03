@@ -776,7 +776,8 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	const string &message = cached.message;
 	v.cms_icc_ = cached.cms_icc;
 	v.opening_ = false;
-	v.open_done_ = true;
+	if (v.page_ && v.page_->host && v.page_->host->opened)
+		v.page_->host->opened();
 	v.set_message(message);
 	if (!message.empty())
 		qWarning("%s: %s", qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
@@ -1087,7 +1088,6 @@ start_open(Viewer &v, bool invalidate)
 	v.open_gen_++;
 	v.scale_gen_++;
 	v.opening_ = true;
-	v.open_done_ = false;
 	v.detached_ = false;
 	v.scale_job_pending_ = false;
 	v.scale_failed_ = false;
@@ -1996,7 +1996,8 @@ Viewer::open(const QUrl &url)
 	if (url == this->url_ && this->image_ && this->image_->width &&
 		this->image_->height) {
 		this->opening_ = false;
-		this->open_done_ = true;
+		if (this->page_ && this->page_->host && this->page_->host->opened)
+			this->page_->host->opened();
 		request_render(*this);
 		return;
 	}
@@ -2027,7 +2028,6 @@ Viewer::cancel_loads()
 	this->open_gen_++;
 	this->scale_gen_++;
 	this->opening_ = false;
-	this->open_done_ = false;
 	this->detached_ = true;
 	this->scale_job_pending_ = false;
 	this->scale_failed_ = false;
@@ -2066,16 +2066,6 @@ bool
 Viewer::has_view() const
 {
 	return !this->opening_ && !this->url_.isEmpty();
-}
-
-bool
-Viewer::consume_open_done()
-{
-	if (!this->open_done_)
-		return false;
-
-	this->open_done_ = false;
-	return true;
 }
 
 void

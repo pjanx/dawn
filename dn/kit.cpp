@@ -4319,20 +4319,7 @@ Kit::clip_pop()
 	this->list_.pop_clip();
 }
 
-bool
-Kit::set_dpr(float dpr)
-{
-	const float next = dpr > 0.f ? dpr : 1.f;
-	if (abs(next - this->dpr_) < 0.01f)
-		return false;
-
-	this->dpr_ = next;
-	if (this->inited_)
-		reset_fonts();
-	return true;
-}
-
-bool
+void
 Kit::reset_fonts()
 {
 	QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
@@ -4350,11 +4337,8 @@ Kit::reset_fonts()
 	this->text_cache_.texts.clear();
 	this->font_epoch_++;
 	string error;
-	if (!this->text_backend_.reset(font, this->dpr_, &error)) {
+	if (!this->text_backend_.reset(font, this->dpr_, &error))
 		qWarning("font backend reset failed: %s", error.c_str());
-		return false;
-	}
-	return true;
 }
 
 int
@@ -5480,7 +5464,10 @@ Kit::relayout_popups()
 bool
 Kit::set_host(float width_pts, float height_pts, float dpr)
 {
-	const bool changed = set_dpr(dpr);
+	const float next = dpr > 0.f ? dpr : 1.f;
+	const bool changed = abs(next - this->dpr_) >= 0.01f;
+	if (changed)
+		this->dpr_ = next;
 	this->host_w_ = px(width_pts);
 	this->host_h_ = px(height_pts);
 	return changed;
@@ -5492,13 +5479,12 @@ Kit::frame_ui(Page &ui)
 	if (!this->inited_)
 		return;
 
-	// An inactive page may have missed a change to the window chrome.
-	if (this->root_ != &ui)
-		ui.invalidate_arrange();
 	this->root_ = &ui;
 	ui.content->update(*this);
 	if (ui.toolbar)
 		ui.toolbar->sync_buttons();
+	if (ui.titlebar)
+		ui.titlebar->sync(*this);
 
 	this->text_frame_++;
 	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});
@@ -5508,6 +5494,7 @@ Kit::frame_ui(Page &ui)
 	if (this->notify)
 		this->notify(Change::State, nullptr);
 	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
+	sync_cursor();
 	tooltip(this->hot_);
 	prepare_tooltip(*this);
 	paint();

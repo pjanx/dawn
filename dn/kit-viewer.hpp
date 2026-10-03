@@ -72,7 +72,6 @@ struct Viewer : Widget {
 	CieDiagram *cie_ = nullptr;
 	Column *tags_ = nullptr;
 	bool opening_ = false;
-	bool open_done_ = false;
 	bool detached_ = false;
 
 	// The URL identifies what is on screen; the loader below works on the
@@ -143,7 +142,6 @@ struct Viewer : Widget {
 	// Shown over the image until dismissed; an empty one takes it down.
 	void set_message(const std::string &message);
 	[[nodiscard]] bool has_view() const;
-	[[nodiscard]] bool consume_open_done();
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void update(Kit &kit) override;

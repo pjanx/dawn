@@ -2022,6 +2022,8 @@ open_directory(Browser &b, const QUrl &url, bool record, float side_scroll)
 		push_hist(b.hist_back_, b);
 	}
 	b.dir_url_ = dir;
+	if (b.page_ && b.page_->host && b.page_->host->retitle)
+		b.page_->host->retitle();
 	b.size_cache_.clear();
 	invalidate_thumbs(b);
 	b.scroll_.offset = 0;

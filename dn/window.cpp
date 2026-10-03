@@ -158,6 +158,12 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	resize(kWindowWidth, kWindowHeight);
 	connect(this, &QWindow::screenChanged, this,
 		[this](QScreen *new_screen) { handle_screen_change(new_screen); });
+	// Not on WindowStateChange: a state we ask for is taken for granted
+	// before the window system confirms it, if it ever does.
+	connect(shell(), &QWindow::windowStateChanged, this, [this] {
+		sync_host();
+		request_render();
+	});
 	this->ui_wake_.setSingleShot(true);
 	connect(
 		&this->ui_wake_, &QTimer::timeout, this, [this] { request_render(); });
@@ -178,10 +184,12 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 	};
 	this->kit_.start_move = [this] {
 		this->system_grab_ = shell()->startSystemMove();
+		sync_host();
 		request_render();
 	};
 	this->kit_.start_resize = [this](Qt::Edges edges) {
 		this->system_grab_ = shell()->startSystemResize(edges);
+		sync_host();
 		request_render();
 	};
 	this->kit_.start_drag = [this](QMimeData *mime, const QImage &icon) {
@@ -298,7 +306,16 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		if (change == SettingsChange::Preferences) {
 			this->renderer_.dither_enabled =
 				!this->app_->settings.disable_dithering;
-			this->settings_apply_pending_ = true;
+			// Not inside the dialog's Save: libcolord's synchronous calls spin
+			// the main loop, which would reap the dialog from under it.
+			this->kit_.post([this] {
+				if (this->viewer_)
+					this->viewer_->loaders_ =
+						this->app_->settings.enabled_loaders;
+				if (this->renderer_ready_)
+					apply_screen_profile(screen(), true);
+				request_render();
+			});
 		}
 		if (this->browser_)
 			this->browser_->rescan();
@@ -329,6 +346,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 		this->browser_->thumb_size_ =
 			this->app_->settings.browser_thumbnail_size;
 	}
+	sync_host();
 	apply_screen_profile(screen(), false);
 
 	if (mode == Mode::Browse)
@@ -521,10 +539,19 @@ Window::bind_host()
 			return;
 		if (this->browser_)
 			this->browser_->hist_forward_.clear();
-		open_viewer(url);
+		// Before the open, which completes right away when it is cached.
 		this->awaiting_view_ = true;
+		open_viewer(url);
 		request_render();
 	};
+	this->host_.opened = [this] {
+		if (!this->awaiting_view_)
+			return;
+		this->awaiting_view_ = false;
+		set_mode(Mode::View);
+		request_render();
+	};
+	this->host_.retitle = [this] { sync_title(); };
 	this->host_.new_window = [this](QUrl url) {
 		if (url.isEmpty())
 			url = current_url();
@@ -716,7 +743,7 @@ Window::sync_title()
 	QWindow *w = shell();
 	if (w->title() != title) {
 		w->setTitle(title);
-		// This runs every frame, and only here has the name really changed.
+		// Callers sync whenever it may have changed, but only here has it.
 		accessible_renamed(this);
 	}
 	if (this != w && this->title() != title)
@@ -1067,21 +1094,37 @@ Window::accessibleRoot() const
 #endif
 }
 
+// Everything the platform tells about the window that the kit draws from.
+// It is cheap, so whatever may change any of it syncs all of it.
 void
-Window::sync_csd()
+Window::sync_host()
 {
-	this->kit_.sync_cursor();
-	if (this->kit_.cursor_ != this->cursor_applied_) {
-		this->cursor_applied_ = this->kit_.cursor_;
-		setCursor(this->cursor_applied_);
+	if (!this->renderer_ready_)
+		return;
+
+	const float dpr = host_dpr(*this);
+	this->kit_.dpi_ = host_dpi(*this);
+	if (this->kit_.set_host(float(width()), float(height()), dpr))
+		reset_fonts();
+
+	QWindow *sh = shell();
+	this->kit_.fullscreen_ = bool(sh->windowState() & Qt::WindowFullScreen);
+	this->kit_.maximized_ = bool(sh->windowState() & Qt::WindowMaximized);
+	this->kit_.csd_ = this->csd_ && !this->kit_.fullscreen_;
+	this->kit_.active_ = this->system_grab_ || sh->isActive() || isActive();
+	const bool shadow = this->kit_.csd_ && !this->kit_.maximized_;
+	if (this->kit_.csd_shadow_ != shadow) {
+		this->kit_.csd_shadow_ = shadow;
+		for (auto &page : this->pages_)
+			if (page)
+				page->invalidate_arrange();
 	}
-	const bool shadow = this->kit_.csd_shadow_;
+
 	QRegion mask;
 	if (shadow) {
 		// Input still has to reach the resize band, which lies in the shadow.
 		// setMask() speaks logical points, while the frame is in pixels:
 		// one conversion back, rather than two roundings that disagree.
-		const float dpr = host_dpr(*this);
 		const auto pt = [dpr](int v) { return int(lround(double(v) / dpr)); };
 		const int band = int(lround(double(kResizeBorderPts)));
 		const Rect f = this->kit_.frame();
@@ -1089,12 +1132,25 @@ Window::sync_csd()
 		mask = QRegion(frame.adjusted(-band, -band, band, band));
 	}
 	setMask(mask);
-	if (QWindow *sh = shell(); sh != this)
+	if (sh != this)
 		sh->setMask(QRegion());
-	const float dpr = host_dpr(*this);
-	const uint32_t inset =
+	this->renderer_.dest_inset =
 		shadow ? uint32_t(max(0L, lround(double(kGlowPts) * double(dpr)))) : 0;
-	this->renderer_.dest_inset = inset;
+}
+
+// Text shaped and measured with the old fonts is stale, and so is whatever
+// the contents sized after them.
+void
+Window::reset_fonts()
+{
+	if (!this->renderer_ready_)
+		return;
+
+	this->kit_.reset_fonts();
+	for (auto &page : this->pages_)
+		if (page && page->content)
+			page->content->rescale(this->kit_);
+	request_render();
 }
 
 void
@@ -1155,6 +1211,7 @@ Window::open_viewer(const QUrl &url)
 		return;
 	this->viewer_->open(url);
 	sync_viewer_preloads();
+	sync_title();
 }
 
 void
@@ -1216,30 +1273,6 @@ Window::render()
 		this->renderer_.resize(pixel_size());
 		this->resize_pending_ = false;
 	}
-	if (this->settings_apply_pending_ && this->renderer_.extent().width &&
-		this->renderer_.extent().height) {
-		if (this->viewer_)
-			this->viewer_->loaders_ = this->app_->settings.enabled_loaders;
-		apply_screen_profile(screen(), true);
-		this->settings_apply_pending_ = false;
-	}
-
-	const float w = float(width());
-	const float h = float(height());
-	const float dpr = host_dpr(*this);
-	this->kit_.dpi_ = host_dpi(*this);
-	const bool fullscreen = bool(shell()->windowState() & Qt::WindowFullScreen);
-	bool rescale = this->kit_.set_host(w, h, dpr);
-	if (this->font_change_pending_) {
-		this->font_change_pending_ = false;
-		if (!rescale)
-			rescale = this->kit_.reset_fonts();
-	} else if (this->kit_.text_backend_.settings_changed())
-		rescale = this->kit_.reset_fonts() || rescale;
-	if (rescale)
-		for (auto &page : this->pages_)
-			if (page && page->content)
-				page->content->rescale(this->kit_);
 
 	// Nothing to do for a resize: relayout_popups() re-places every popup
 	// and drops the ones whose opener stopped being shown.
@@ -1247,34 +1280,16 @@ Window::render()
 	if (!ui)
 		return;
 
-	// Completing an open below may change the mode after this page is drawn.
-	const bool show_image =
-		this->mode_ == Mode::View || this->mode_ == Mode::CropJpeg;
-
-	this->kit_.fullscreen_ = fullscreen;
-	this->kit_.maximized_ = bool(shell()->windowState() & Qt::WindowMaximized);
-	this->kit_.csd_ = this->csd_ && !fullscreen;
-	const bool shadow = this->kit_.csd_ && !this->kit_.maximized_;
-	if (this->kit_.csd_shadow_ != shadow) {
-		this->kit_.csd_shadow_ = shadow;
-		ui->invalidate_arrange();
-	}
-	this->kit_.active_ =
-		this->system_grab_ || shell()->isActive() || isActive();
-	sync_title();
-	if (ui->titlebar)
-		ui->titlebar->sync(this->kit_);
 	if (ui->toolbar)
 		ui->toolbar->busy = this->awaiting_view_ || ui->content->busy();
 	this->kit_.frame_ui(*ui);
-	sync_csd();
-	if (this->viewer_ && this->viewer_->consume_open_done() &&
-		this->awaiting_view_) {
-		this->awaiting_view_ = false;
-		set_mode(Mode::View);
-		request_render();
+	if (this->kit_.cursor_ != this->cursor_applied_) {
+		this->cursor_applied_ = this->kit_.cursor_;
+		setCursor(this->cursor_applied_);
 	}
 
+	const bool show_image =
+		this->mode_ == Mode::View || this->mode_ == Mode::CropJpeg;
 	const bool deferred = this->present_retry_.isActive();
 	const bool presented = !deferred &&
 		this->renderer_.draw_frame(this->kit_.list_.mesh(), show_image);
@@ -1356,6 +1371,7 @@ Window::handle_screen_change(QScreen *target_screen)
 	this->resize_pending_ = true;
 	if (this->renderer_ready_)
 		apply_screen_profile(target_screen, false);
+	sync_host();
 	request_render();
 }
 
@@ -1454,12 +1470,12 @@ Window::event(QEvent *event)
 	}
 	case QEvent::DevicePixelRatioChange:
 		this->resize_pending_ = true;
+		sync_host();
 		request_render();
 		break;
-	case QEvent::ApplicationFontChange:
-	case QEvent::FontChange:
-		this->font_change_pending_ = true;
-		request_render();
+	case QEvent::ThemeChange:
+		// The only word of a new system font, which Qt has already re-read.
+		reset_fonts();
 		break;
 	case QEvent::PlatformSurface: {
 		auto *surface_event = (QPlatformSurfaceEvent *) event;
@@ -1526,6 +1542,10 @@ Window::focus_gained()
 {
 	sync_macos_app_menu(this->app_);
 	accessible_activated(this);
+	sync_host();
+	// Nothing tells of font settings changing while we are in front.
+	if (this->renderer_ready_ && this->kit_.text_backend_.settings_changed())
+		reset_fonts();
 	request_render();
 }
 
@@ -1546,18 +1566,16 @@ Window::focus_lost()
 	// Past the guard above, so that the hand-off it describes stays what it
 	// is: one window, and nothing for a screen reader to read out twice.
 	accessible_activated(this);
+	sync_host();
 	request_render();
 }
 
 bool
 Window::eventFilter(QObject *watched, QEvent *event)
 {
-	if ((watched == qGuiApp || watched == this || watched == shell()) &&
-		(event->type() == QEvent::ApplicationFontChange ||
-			event->type() == QEvent::FontChange)) {
-		this->font_change_pending_ = true;
-		request_render();
-	}
+	// Qt then posts a copy to every top-level window, which says nothing new.
+	if (watched == qGuiApp && event->type() == QEvent::ApplicationFontChange)
+		reset_fonts();
 	if (watched != this && watched != shell())
 		return false;
 
@@ -1568,6 +1586,7 @@ Window::eventFilter(QObject *watched, QEvent *event)
 		(event->type() == QEvent::Enter || event->type() == QEvent::MouseMove ||
 			event->type() == QEvent::MouseButtonPress)) {
 		this->system_grab_ = false;
+		sync_host();
 		request_render();
 	}
 	if (watched != this)
@@ -1619,6 +1638,7 @@ void
 Window::resizeEvent(QResizeEvent *)
 {
 	this->resize_pending_ = true;
+	sync_host();
 	request_render();
 }
 
@@ -1662,7 +1682,6 @@ Window::open_any(const QUrl &input)
 			(url_to_path(url).isEmpty() || QFileInfo(url_to_path(url)).isDir()))
 			return;
 		this->cropper_->open(url);
-		sync_title();
 		request_render();
 		return;
 	}
@@ -1719,7 +1738,6 @@ Window::reveal_file(const QUrl &input)
 	cancel_viewer_loads();
 	set_mode(Mode::Browse);
 	request_render();
-	sync_title();
 }
 
 void

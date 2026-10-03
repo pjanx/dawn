@@ -83,6 +83,8 @@ void
 Cropper::open(const QUrl &url)
 {
 	this->jpeg_url_ = url;
+	if (this->page_ && this->page_->host && this->page_->host->retitle)
+		this->page_->host->retitle();
 	this->file_.clear();
 	this->image_.reset();
 	this->grid_ = {};
