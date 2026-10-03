@@ -66,6 +66,11 @@ test_shared_memory()
 	void *writable =
 		mmap(nullptr, 4096, PROT_WRITE, MAP_SHARED, int(owner.handle()), 0);
 	CHECK(writable == MAP_FAILED);
+
+	const int unsealed = memfd_create("unsealed", MFD_CLOEXEC);
+	CHECK(unsealed >= 0 && ftruncate(unsealed, 4096) == 0);
+	CHECK(!dawn::ipc::SharedMemory::map(unsealed, 4096).ok());
+	CHECK(!handle_is_open(unsealed));
 #endif
 	auto reader =
 		dawn::ipc::SharedMemory::map(duplicate_handle(owner.handle()), 4096);

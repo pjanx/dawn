@@ -100,6 +100,16 @@ SharedMemory::map(Handle handle, size_t size)
 		close_handle(handle);
 		return out;
 	}
+#if defined __linux__
+	// The sender keeps its descriptor: without these seals, it could change
+	// the bytes while they are being read, or shrink them away into SIGBUS.
+	const int required = F_SEAL_SHRINK | F_SEAL_WRITE;
+	const int seals = fcntl(int(handle), F_GET_SEALS);
+	if (seals < 0 || (seals & required) != required) {
+		close_handle(handle);
+		return out;
+	}
+#endif
 	void *p = mmap(nullptr, size, PROT_READ, MAP_SHARED, int(handle), 0);
 	if (p == MAP_FAILED) {
 		close_handle(handle);
