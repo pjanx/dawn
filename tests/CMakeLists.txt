@@ -1,8 +1,5 @@
-pkg_check_modules(ZLIB REQUIRED IMPORTED_TARGET zlib)
-
 add_executable(gen-fixtures gen-fixtures.cpp)
 target_link_libraries(gen-fixtures PRIVATE
-	PkgConfig::ZLIB
 	dawn-lcms2
 )
 

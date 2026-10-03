@@ -18,7 +18,6 @@
 #include <vector>
 
 #include <lcms2.h>
-#include <zlib.h>
 
 using namespace std;
 namespace fs = filesystem;
@@ -81,22 +80,39 @@ png_chunk(vector<uint8_t> &o, const char tag[4], const uint8_t *data, size_t n)
 	o.insert(o.end(), tag, tag + 4);
 	if (n)
 		o.insert(o.end(), data, data + n);
-	uint32_t crc = uint32_t(crc32(0, (const Bytef *) tag, 4));
-	if (n)
-		crc = uint32_t(crc32(crc, data, uInt(n)));
-	append_be32(o, crc);
+
+	uint32_t crc = ~0u;
+	for (auto p = o.end() - 4 - n; p != o.end(); p++) {
+		crc ^= *p;
+		for (int i = 0; i < 8; i++)
+			crc = crc >> 1 ^ (crc & 1 ? 0xEDB88320 : 0);
+	}
+	append_be32(o, ~crc);
 }
 
+// Makes a zlib stream from stored deflate blocks.  The data is small,
+// thus compression is not necessary.
 static vector<uint8_t>
-zlib_compress(const uint8_t *data, size_t n)
+zlib_store(const uint8_t *data, size_t n)
 {
-	uLong bound = compressBound(uLong(n));
-	vector<uint8_t> out(bound);
-	uLong out_len = bound;
-	if (compress2(out.data(), &out_len, data, uLong(n), 9) != Z_OK)
-		die("zlib compress failed");
-	out.resize(out_len);
-	return out;
+	vector<uint8_t> o = {0x78, 0x01};
+	size_t i = 0;
+	do {
+		size_t len = min(n - i, size_t(0xFFFF));
+		o.push_back(i + len == n);  // BFINAL, and BTYPE 00
+		append_le16(o, uint16_t(len));
+		append_le16(o, uint16_t(~len));
+		o.insert(o.end(), data + i, data + i + len);
+		i += len;
+	} while (i < n);
+
+	uint32_t a = 1, b = 0;
+	for (i = 0; i < n; i++) {
+		a = (a + data[i]) % 65521;
+		b = (b + a) % 65521;
+	}
+	append_be32(o, b << 16 | a);
+	return o;
 }
 
 static vector<uint8_t>
@@ -192,12 +208,11 @@ write_display_p3_vs_srgb_red(const fs::path &path)
 
 	const vector<uint8_t> icc = profile_bytes(display_p3);
 	cmsCloseProfile(display_p3);
-	const vector<uint8_t> compressed_icc =
-		zlib_compress(icc.data(), icc.size());
+	const vector<uint8_t> compressed_icc = zlib_store(icc.data(), icc.size());
 	vector<uint8_t> iccp = {
 		'D', 'i', 's', 'p', 'l', 'a', 'y', ' ', 'P', '3', 0, 0};
 	iccp.insert(iccp.end(), compressed_icc.begin(), compressed_icc.end());
-	const vector<uint8_t> idat = zlib_compress(raw.data(), raw.size());
+	const vector<uint8_t> idat = zlib_store(raw.data(), raw.size());
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
 	png_chunk(out, "iCCP", iccp.data(), iccp.size());
@@ -229,7 +244,7 @@ write_png8_rgb(const fs::path &path, uint8_t r, uint8_t g, uint8_t b,
 	if (a)
 		raw.push_back(*a);
 
-	vector<uint8_t> idat = zlib_compress(raw.data(), raw.size());
+	vector<uint8_t> idat = zlib_store(raw.data(), raw.size());
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
 	png_chunk(out, "IDAT", idat.data(), idat.size());
@@ -256,7 +271,7 @@ write_png8_rgb_text_after_idat(const fs::path &path, uint8_t r, uint8_t g,
 	raw.push_back(g);
 	raw.push_back(b);
 
-	vector<uint8_t> idat = zlib_compress(raw.data(), raw.size());
+	vector<uint8_t> idat = zlib_store(raw.data(), raw.size());
 	string text = string(key) + '\0' + val;
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
@@ -300,7 +315,7 @@ write_png8_red_colour(const fs::path &path, const vector<uint8_t> &chunks)
 	ihdr.push_back(0);
 
 	const uint8_t raw[] = {0, 255, 0, 0};
-	vector<uint8_t> idat = zlib_compress(raw, sizeof raw);
+	vector<uint8_t> idat = zlib_store(raw, sizeof raw);
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
 	out.insert(out.end(), chunks.begin(), chunks.end());
@@ -332,7 +347,7 @@ write_png8_rgb_2x2(const fs::path &path, const uint8_t px[4][3])
 		}
 	}
 
-	vector<uint8_t> idat = zlib_compress(raw.data(), raw.size());
+	vector<uint8_t> idat = zlib_store(raw.data(), raw.size());
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
 	png_chunk(out, "IDAT", idat.data(), idat.size());
@@ -361,7 +376,7 @@ write_png16_rgb(const fs::path &path, uint16_t r, uint16_t g, uint16_t b)
 	raw.push_back(uint8_t(b >> 8));
 	raw.push_back(uint8_t(b));
 
-	vector<uint8_t> idat = zlib_compress(raw.data(), raw.size());
+	vector<uint8_t> idat = zlib_store(raw.data(), raw.size());
 	vector<uint8_t> out = {0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a};
 	png_chunk(out, "IHDR", ihdr.data(), ihdr.size());
 	png_chunk(out, "IDAT", idat.data(), idat.size());
