@@ -18,6 +18,8 @@
 #include <vector>
 
 #include <lcms2.h>
+#include <turbojpeg.h>
+#include <webp/encode.h>
 
 using namespace std;
 namespace fs = filesystem;
@@ -82,7 +84,7 @@ png_chunk(vector<uint8_t> &o, const char tag[4], const uint8_t *data, size_t n)
 		o.insert(o.end(), data, data + n);
 
 	uint32_t crc = ~0u;
-	for (auto p = o.end() - 4 - n; p != o.end(); p++) {
+	for (auto p = o.end() - ptrdiff_t(4 + n); p != o.end(); p++) {
 		crc ^= *p;
 		for (int i = 0; i < 8; i++)
 			crc = crc >> 1 ^ (crc & 1 ? 0xEDB88320 : 0);
@@ -774,17 +776,95 @@ run_tool(const char *tool, initializer_list<const char *> args)
 	return rc;
 }
 
-static int
-run_magick(initializer_list<const char *> args)
-{
-	return run_tool("magick", args);
-}
-
 // Tools that only some fixtures need, and whose absence skips their tests.
 static bool
 have_tool(const char *tool)
 {
 	return !system((string("command -v ") + tool + " >/dev/null 2>&1").c_str());
+}
+
+// --- JPEG, WebP, BMP, TGA ----------------------------------------------------
+
+// Encodes 8-bit RGB pixels, or grey pixels for TJSAMP_GRAY.
+static vector<uint8_t>
+encode_jpeg(const vector<uint8_t> &pixels, int width, int height, int subsamp,
+	int quality, bool progressive)
+{
+	tjhandle tj = tj3Init(TJINIT_COMPRESS);
+	if (!tj)
+		die("tj3Init failed");
+	tj3Set(tj, TJPARAM_SUBSAMP, subsamp);
+	tj3Set(tj, TJPARAM_QUALITY, quality);
+	tj3Set(tj, TJPARAM_PROGRESSIVE, progressive);
+
+	unsigned char *jpeg = nullptr;
+	size_t len = 0;
+	int format = subsamp == TJSAMP_GRAY ? TJPF_GRAY : TJPF_RGB;
+	if (tj3Compress8(tj, pixels.data(), width, 0, height, format, &jpeg, &len))
+		die(tj3GetErrorStr(tj));
+	vector<uint8_t> o(jpeg, jpeg + len);
+	tj3Free(jpeg);
+	tj3Destroy(tj);
+	return o;
+}
+
+// A vertical gradient from `top` to `bottom`, with their number of channels.
+static vector<uint8_t>
+gradient(int width, int height, const vector<uint8_t> &top,
+	const vector<uint8_t> &bottom)
+{
+	vector<uint8_t> o;
+	for (int y = 0; y < height; y++)
+		for (int x = 0; x < width; x++)
+			for (size_t i = 0; i < top.size(); i++)
+				o.push_back(uint8_t(lround(
+					top[i] + (bottom[i] - top[i]) * double(y) / (height - 1))));
+	return o;
+}
+
+static void
+write_webp(const fs::path &path, uint8_t r, uint8_t g, uint8_t b)
+{
+	const uint8_t rgb[] = {r, g, b};
+	uint8_t *webp = nullptr;
+	size_t len = WebPEncodeLosslessRGB(rgb, 1, 1, sizeof rgb, &webp);
+	if (!len)
+		die("WebP encoding failed");
+	write_all(path, webp, len);
+	WebPFree(webp);
+}
+
+// A 1x1 BMP with a BITMAPINFOHEADER, and a 24-bit row padded to 4 bytes.
+static void
+write_bmp(const fs::path &path, uint8_t r, uint8_t g, uint8_t b)
+{
+	vector<uint8_t> o = {'B', 'M'};
+	for (uint32_t v : {58u, 0u, 54u, 40u, 1u, 1u})
+		append_le32(o, v);
+	append_le16(o, 1);   // Planes
+	append_le16(o, 24);  // Bits per pixel
+	for (uint32_t v : {0u, 4u, 0u, 0u, 0u, 0u})
+		append_le32(o, v);
+	o.insert(o.end(), {b, g, r, 0});
+	write_all(path, o.data(), o.size());
+}
+
+// A 1x1 uncompressed true colour TGA, with the origin at the top left.
+static void
+write_tga(const fs::path &path, uint8_t r, uint8_t g, uint8_t b)
+{
+	const uint8_t o[] = {
+		0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 24, 0x20, b, g, r};
+	write_all(path, o, sizeof o);
+}
+
+static void
+write_pgm(
+	const fs::path &path, const vector<uint8_t> &pixels, int width, int height)
+{
+	string s = "P5\n" + to_string(width) + " " + to_string(height) + "\n255\n";
+	s.append(pixels.begin(), pixels.end());
+	write_all(path, s);
 }
 
 // --- Gain maps ---------------------------------------------------------------
@@ -905,22 +985,20 @@ write_mpf(const fs::path &path, const vector<uint8_t> &base,
 static void
 write_gain_maps(const fs::path &out)
 {
-	const fs::path base_path = out / "gainmap-base.jpg",
-				   map_path = out / "gainmap-map.jpg",
-				   colour_path = out / "gainmap-colour-map.jpg";
-	run_magick({"-size", "64x48", "gradient:white-gray30", "-strip", "-quality",
-		"95", base_path.string().c_str()});
-	run_magick({"-size", "16x12", "gradient:black-white", "-colorspace", "Gray",
-		"-strip", "-quality", "100", map_path.string().c_str()});
-	run_magick({"-size", "16x12", "gradient:red-blue", "-strip", "-quality",
-		"100", colour_path.string().c_str()});
+	// The base goes from white to 30 % grey, for write_gain_map_jxl() as well.
+	const vector<uint8_t> base_pixels = gradient(64, 48, {255}, {77}),
+						  map_pixels = gradient(16, 12, {0}, {255});
+	write_pgm(out / "gainmap-base.pgm", base_pixels, 64, 48);
+	write_pgm(out / "gainmap-map.pgm", map_pixels, 16, 12);
 
-	const vector<uint8_t> base = read_all(base_path), map = read_all(map_path),
-						  colour = read_all(colour_path);
-	if (base.size() < 4 || map.size() < 4 || colour.size() < 4) {
-		fprintf(stderr, "gen_fixtures: warning: no gain map fixture parts\n");
-		return;
-	}
+	const vector<uint8_t> base = encode_jpeg(
+							  base_pixels, 64, 48, TJSAMP_GRAY, 95, false),
+						  map = encode_jpeg(
+							  map_pixels, 16, 12, TJSAMP_GRAY, 100, false),
+						  colour = encode_jpeg(
+							  gradient(16, 12, {255, 0, 0}, {0, 0, 255}), 16,
+							  12, TJSAMP_444, 100, false);
+	write_all(out / "gainmap-map.jpg", map.data(), map.size());
 
 	vector<uint8_t> base_app;
 	append_jpeg_app(base_app, 0xE1, kXmpNs,
@@ -1026,19 +1104,15 @@ write_gain_map_jxl(const fs::path &out)
 	if (!have_tool("cjxl"))
 		return;
 
-	const fs::path base_png = out / "gainmap-base.png",
-				   map_png = out / "gainmap-map.png",
+	const fs::path base_pgm = out / "gainmap-base.pgm",
+				   map_pgm = out / "gainmap-map.pgm",
 				   base_jxl = out / "gainmap-base.jxl",
 				   map_jxl = out / "gainmap-map.jxl";
-	if (run_magick({(out / "gainmap-base.jpg").string().c_str(),
-			base_png.string().c_str()}) ||
-		run_magick({(out / "gainmap-map.jpg").string().c_str(), "-colorspace",
-			"Gray", map_png.string().c_str()}) ||
-		run_tool("cjxl",
-			{"--quiet", "-d", "0", base_png.string().c_str(),
+	if (run_tool("cjxl",
+			{"--quiet", "-d", "0", base_pgm.string().c_str(),
 				base_jxl.string().c_str()}) ||
 		run_tool("cjxl",
-			{"--quiet", "-d", "0", map_png.string().c_str(),
+			{"--quiet", "-d", "0", map_pgm.string().c_str(),
 				map_jxl.string().c_str()}))
 		return;
 
@@ -1110,14 +1184,8 @@ write_tiff_ep(const fs::path &path, const vector<uint8_t> &jpeg,
 static void
 write_tiff_ep_fixtures(const fs::path &out)
 {
-	const fs::path preview_path = out / "tiff-ep-preview.jpg";
-	run_magick({"-size", "1x1", "xc:rgb(192,128,96)", "-quality", "100",
-		"-sampling-factor", "4:4:4", preview_path.string().c_str()});
-	const vector<uint8_t> preview = read_all(preview_path);
-	if (preview.size() < 4) {
-		fprintf(stderr, "gen_fixtures: warning: no TIFF/EP preview\n");
-		return;
-	}
+	const vector<uint8_t> preview =
+		encode_jpeg({192, 128, 96}, 1, 1, TJSAMP_444, 100, false);
 	write_tiff_ep(out / "nikon-srgb.nef", preview, 0, 1);
 	write_tiff_ep(out / "nikon-adobergb.nef", preview, 0, 2);
 	write_tiff_ep(out / "preview-adobergb.tif", preview, 3, 0);
@@ -1177,27 +1245,29 @@ main(int argc, char **argv)
 	write_tiff_fixtures(out);
 
 	write_svgs(out);
-	string quads = (out / "rgbw_2x2.png").string();
-	string jpeg = (out / "quads420.jpg").string();
-	run_magick({quads.c_str(), "-filter", "point", "-resize", "64x48!",
-		"-sampling-factor", "2x2", "-quality", "100", jpeg.c_str()});
+	// The 2x2 quadrants, enlarged to 64x48.
+	vector<uint8_t> quads;
+	for (int y = 0; y < 48; y++)
+		for (int x = 0; x < 64; x++) {
+			const uint8_t *px = rgbw[y / 24 * 2 + x / 32];
+			quads.insert(quads.end(), px, px + 3);
+		}
+	vector<uint8_t> jpeg = encode_jpeg(quads, 64, 48, TJSAMP_420, 100, false);
+	write_all(out / "quads420.jpg", jpeg.data(), jpeg.size());
+	jpeg = encode_jpeg(quads, 64, 48, TJSAMP_420, 100, true);
+	write_all(out / "quads420-progressive.jpg", jpeg.data(), jpeg.size());
 
-	string progressive = (out / "quads420-progressive.jpg").string();
-	run_magick({jpeg.c_str(), "-interlace", "Plane", progressive.c_str()});
-
-	for (const char *name : {"red", "green", "blue"}) {
-		string src = (out / (string(name) + ".png")).string();
-		string jpg = (out / (string(name) + ".jpg")).string();
-		string webp = (out / (string(name) + ".webp")).string();
-		string bmp = (out / (string(name) + ".bmp")).string();
-		string tga = (out / (string(name) + ".tga")).string();
-		run_magick({src.c_str(), "-quality", "100", "-sampling-factor", "4:4:4",
-			jpg.c_str()});
-		run_magick(
-			{src.c_str(), "-define", "webp:lossless=true", webp.c_str()});
-		string bmp3 = string("BMP3:") + bmp;
-		run_magick({src.c_str(), bmp3.c_str()});
-		run_magick({src.c_str(), tga.c_str()});
+	const struct {
+		string name;
+		uint8_t r, g, b;
+	} solids[] = {
+		{"red", 255, 0, 0}, {"green", 0, 255, 0}, {"blue", 0, 0, 255}};
+	for (const auto &s : solids) {
+		jpeg = encode_jpeg({s.r, s.g, s.b}, 1, 1, TJSAMP_444, 100, false);
+		write_all(out / (s.name + ".jpg"), jpeg.data(), jpeg.size());
+		write_webp(out / (s.name + ".webp"), s.r, s.g, s.b);
+		write_bmp(out / (s.name + ".bmp"), s.r, s.g, s.b);
+		write_tga(out / (s.name + ".tga"), s.r, s.g, s.b);
 	}
 
 	write_gain_maps(out);

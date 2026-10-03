@@ -1,5 +1,7 @@
 add_executable(gen-fixtures gen-fixtures.cpp)
 target_link_libraries(gen-fixtures PRIVATE
+	PkgConfig::TURBOJPEG
+	PkgConfig::WEBP
 	dawn-lcms2
 )
 
