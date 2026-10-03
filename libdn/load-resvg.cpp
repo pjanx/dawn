@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "gettext.hpp"
 #include "libdn-loaders.hpp"
 #include "libdn.hpp"
 
@@ -13,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -77,7 +79,13 @@ ResvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	if (!render_dimensions(width_ * scale, height_ * scale, &uw, &uh, error))
 		return nullptr;
 
-	vector<uint8_t> pixmap(size_t(uw) * uh * 4, 0);
+	vector<uint8_t> pixmap;
+	try {
+		pixmap.resize(size_t(uw) * uh * 4);
+	} catch (const bad_alloc &) {
+		set_error(error, _("image allocation failure"));
+		return nullptr;
+	}
 
 	resvg_transform transform = resvg_transform_identity();
 	transform.a = float(scale);

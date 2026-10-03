@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <new>
 #include <vector>
 
 using namespace std;
@@ -414,9 +415,15 @@ load_jxl(span<const uint8_t> data, const OpenContext &octx, Error *error)
 	if (!setup_decoder(ctx, data, error))
 		return nullptr;
 
-	for (bool done = false; !done;)
-		if (!process_event(ctx, &done, error))
-			return nullptr;
+	// XXX: It might be a better idea to guard even higher.
+	try {
+		for (bool done = false; !done;)
+			if (!process_event(ctx, &done, error))
+				return nullptr;
+	} catch (const bad_alloc &) {
+		set_error(error, _("image allocation failure"));
+		return nullptr;
+	}
 
 	finish_box(ctx);
 	attach_jxl_gain_map(ctx);
