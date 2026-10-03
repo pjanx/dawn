@@ -738,8 +738,8 @@ fit_to_well(Viewer &v)
 	if (content_w <= 0.f || content_h <= 0.f)
 		return;
 
-	// Vector pages are rendered to fit by the very same arithmetic,
-	// see loaded_scale().
+	// Vector pages are pre-rendered to fit the well too, using
+	// OpenContext::target_width, so their own pixels usually serve this scale.
 	const float fit =
 		min({content_w / float(disp_w), content_h / float(disp_h), 1.f});
 	v.scale_ = clamp(fit, kScaleMin, kScaleMax);
@@ -775,28 +775,29 @@ cancel_scale(Viewer &v)
 	}
 }
 
-// The scale a page's own pixels hold it at, as render_now() chose it,
-// or zero when it has none or cannot be rendered anew.
-static float
-loaded_scale(const Viewer &v, const dawn::Image &page)
+// Whether a page's own pixels can be what rendering it at `scale` would make.
+static bool
+loaded_serves(const dawn::Image &page, float scale)
 {
-	if (!page.render || page.data.empty())
-		return 0.f;
-	if (!v.target_width_ || !v.target_height_)
-		return 1.f;
-	return min({float(v.target_width_) / float(page.nominal_width),
-		float(v.target_height_) / float(page.nominal_height), 1.f});
+	uint32_t w = 0, h = 0;
+	return page.render && !page.data.empty() &&
+		page.render->dimensions(scale, &w, &h, nullptr) && w == page.width &&
+		h == page.height;
 }
 
-// A page that can be rendered anew has its own pixels count as a rendering.
+// A page that can be rendered anew has its own pixels count as a rendering,
+// at the scale they approximate, until ensure_vector_frame() settles it.
 static void
 upload_page(Viewer &v)
 {
 	cancel_scale(v);
 	upload_frame(v, *v.current_);
-	v.vector_scale_ = loaded_scale(v, *v.current_);
-	if (v.vector_scale_ != 0.f)
+	v.vector_scale_ = 0;
+	if (v.current_->render && !v.current_->data.empty()) {
 		v.page_scaled_ = v.current_;
+		v.vector_scale_ =
+			float(v.current_->width) / float(v.current_->nominal_width);
+	}
 }
 
 static void
@@ -825,8 +826,6 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	dawn::ImagePtr image = cached.image;
 	const string &message = cached.message;
 	v.cms_icc_ = cached.cms_icc;
-	v.target_width_ = cached.target_width;
-	v.target_height_ = cached.target_height;
 	v.opening_ = false;
 	if (v.page_ && v.page_->host && v.page_->host->opened)
 		v.page_->host->opened();
@@ -943,8 +942,8 @@ decode_open(const OpenJob &open, const shared_ptr<dawn::Cmm> &cmm)
 		result.cms_icc = make_shared<const vector<uint8_t>>(
 			ctx.screen_profile->to_bytes());
 	ctx.screen_dpi = open.dpi;
-	ctx.target_width = result.target_width = open.target_width;
-	ctx.target_height = result.target_height = open.target_height;
+	ctx.target_width = open.target_width;
+	ctx.target_height = open.target_height;
 	ctx.enhance = open.key.enhance;
 	// Whatever the display, so that headroom and the HDR toggle never
 	// need a reload.
@@ -1275,9 +1274,15 @@ ensure_vector_frame(Viewer &v)
 	if (v.page_scaled_ && v.vector_scale_ == v.scale_)
 		return;
 
-	// A page's own pixels serve at the scale they were rendered at.
-	if (loaded_scale(v, *v.current_) == v.scale_) {
-		upload_page(v);
+	// A page's own pixels serve any scale that would render them the same.
+	if (loaded_serves(*v.current_, v.scale_)) {
+		if (v.page_scaled_ != v.current_) {
+			upload_page(v);
+		} else {
+			cancel_scale(v);
+			v.page_scaled_ = v.current_;
+		}
+		v.vector_scale_ = v.scale_;
 		return;
 	}
 	if (v.scale_job_pending_ && v.scale_job_target_ == v.scale_)

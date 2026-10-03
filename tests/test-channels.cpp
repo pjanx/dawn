@@ -702,7 +702,8 @@ static const uint8_t kWmf[] = {0xd7, 0xcd, 0xc6, 0x9a, 0x00, 0x00, 0x00, 0x00,
 #endif
 
 // Loads one vector document with a named backend, then checks that its
-// closure rounds fractional sizes up and refuses impossible scales.
+// closure rounds half pixels up, measures what it renders, and refuses
+// impossible scales.
 static void
 test_rerender(const char *label, dawn::LoadFn *load, span<const uint8_t> data,
 	const dawn::OpenContext &ctx)
@@ -749,6 +750,9 @@ test_rerender(const char *label, dawn::LoadFn *load, span<const uint8_t> data,
 		dawn::ImagePtr direct = image->render->render(ctx, fit, &error);
 		CHECK(direct && fitted->width == direct->width &&
 			fitted->height == direct->height);
+		uint32_t dw = 0, dh = 0;
+		CHECK(image->render->dimensions(fit, &dw, &dh, nullptr) &&
+			fitted->width == dw && fitted->height == dh);
 		if (divisor == 1)
 			CHECK(fitted->width == w && fitted->height == h);
 		else

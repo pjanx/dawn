@@ -291,6 +291,11 @@ struct RenderClosure {
 	/// The context is only borrowed for the call.
 	virtual ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) = 0;
+
+	/// The dimensions that render() makes at `scale`.
+	/// Unlike render(), this may be called from any thread at any time.
+	virtual bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const = 0;
 };
 
 /// ISO 21496-1 gain map: one channel, channel-independent metadata.
@@ -418,9 +423,8 @@ struct OpenContext {
 	/// Decode or synthesize gain maps.  Recognised gain maps never become
 	/// pages, whether this is set or not.
 	bool gain_maps = false;
-	/// Pixels to fit rendered pages into, scaling down only, at the scale
-	/// min(target / nominal, 1) in single precision, which callers may
-	/// repeat to tell what the pixels hold.  Zero to disable.
+	/// Pixels to fit rendered pages into, at the scale
+	/// min(target / nominal, 1).  Zero to disable.
 	uint32_t target_width = 0;
 	uint32_t target_height = 0;
 	/// Loaders to try, by name, in this order; empty means all of them,

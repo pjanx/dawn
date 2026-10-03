@@ -46,9 +46,6 @@ struct Viewer : Widget {
 		// it left them alone.  Kept with the image, because the display
 		// profile may change long before anyone asks to export it.
 		std::shared_ptr<const std::vector<uint8_t>> cms_icc;
-		// OpenContext's target, which tells what scale pages were rendered at.
-		uint32_t target_width = 0;
-		uint32_t target_height = 0;
 	};
 	struct Worker;
 	struct RestoreView {
@@ -88,8 +85,6 @@ struct Viewer : Widget {
 	// OpenContext::loaders, as the settings have it.
 	std::shared_ptr<const std::vector<std::string>> loaders_;
 	std::shared_ptr<const std::vector<uint8_t>> cms_icc_;
-	uint32_t target_width_ = 0;
-	uint32_t target_height_ = 0;
 	dawn::ImagePtr image_;
 	dawn::ImagePtr current_;
 	dawn::ImagePtr frame_;

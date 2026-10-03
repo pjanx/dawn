@@ -57,9 +57,19 @@ public:
 
 	ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) override;
+	bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const override;
 };
 
 }  // namespace
+
+bool
+LibrsvgRenderClosure::dimensions(
+	double scale, uint32_t *width, uint32_t *height, Error *error) const
+{
+	return render_dimensions(
+		width_ * scale, height_ * scale, width, height, error);
+}
 
 ImagePtr
 LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
@@ -69,7 +79,7 @@ LibrsvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	// The viewport stays fractional: librsvg scales the document into it,
 	// and only the surface is whole pixels.
 	uint32_t uw = 0, uh = 0;
-	if (!render_dimensions(viewport.width, viewport.height, &uw, &uh, error))
+	if (!dimensions(scale, &uw, &uh, error))
 		return nullptr;
 
 	cairo_surface_t *surface =
@@ -158,7 +168,7 @@ load_librsvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	// RsvgHandle itself is retained in the render closure instead.
 	auto closure = make_unique<LibrsvgRenderClosure>(handle, w, h);
 
-	ImagePtr image = render_now(*closure, w, h, ctx, error);
+	ImagePtr image = render_now(*closure, ctx, error);
 	if (!image)
 		return nullptr;
 

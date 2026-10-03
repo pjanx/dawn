@@ -39,63 +39,61 @@ using DocumentPtr = shared_ptr<PopplerDocument>;
 class PopplerRenderClosure : public RenderClosure
 {
 	DocumentPtr document_;
-	int page_;    ///< Zero-based
-	double dpi_;  ///< Pixels per inch at scale == 1
+	int page_;       ///< Zero-based
+	double dpi_;     ///< Pixels per inch at scale == 1
+	double width_;   ///< In PDF units, as rendered
+	double height_;  ///< In PDF units, as rendered
 
 public:
-	PopplerRenderClosure(DocumentPtr document, int page, double dpi)
-		: document_(std::move(document)), page_(page), dpi_(dpi)
+	PopplerRenderClosure(
+		DocumentPtr document, int page, double dpi, double width, double height)
+		: document_(std::move(document)), page_(page), dpi_(dpi), width_(width),
+		  height_(height)
 	{
 	}
 
 	ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) override;
+	bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const override;
 };
 
 }  // namespace
 
-// Poppler renders the crop box, rotated by the page's /Rotate.
-static void
-poppler_page_size(
-	const poppler::page &page, double dpi, double *width, double *height)
+// A PDF unit is 1/72 inch, see load-cgpdf.mm.  This rounds as Splash does,
+// to the nearest pixel, though never to nothing, and render() insists on it.
+bool
+PopplerRenderClosure::dimensions(
+	double scale, uint32_t *width, uint32_t *height, Error *error) const
 {
-	poppler::rectf box = page.page_rect(poppler::crop_box);
-	*width = box.width() * dpi / 72;
-	*height = box.height() * dpi / 72;
-	if (page.orientation() == poppler::page::landscape ||
-		page.orientation() == poppler::page::seascape)
-		swap(*width, *height);
+	const double k = dpi_ * scale / 72;
+	if (!(k > 0)) {
+		set_error(error, _("invalid scale"));
+		return false;
+	}
+	return render_dimensions(max(1., round(k * width_)),
+		max(1., round(k * height_)), width, height, error);
 }
 
 ImagePtr
 PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
-	// A PDF unit is 1/72 inch, see load-cgpdf.mm.
-	double dpi = dpi_ * scale;
-	if (!isfinite(dpi) || dpi <= 0) {
-		set_error(error, _("invalid scale"));
+	// This also fails before Poppler allocates gigabytes.
+	uint32_t w = 0, h = 0;
+	if (!dimensions(scale, &w, &h, error))
+		return nullptr;
+	if (uint64_t(w) * kBytesPerPixel * h > UINT32_MAX) {
+		set_error(error, _("image dimensions overflow"));
 		return nullptr;
 	}
 
+	const double dpi = dpi_ * scale;
 	poppler::image raster;
-	double w = 0, h = 0;
 	{
 		lock_guard<mutex> guard(document_->lock);
 		unique_ptr<poppler::page> page(document_->document->create_page(page_));
 		if (!page) {
 			set_error(error, _("no such page"));
-			return nullptr;
-		}
-
-		poppler_page_size(*page, dpi, &w, &h);
-
-		// Splash rounds where we would ceil(), so this errs on the safe side
-		// of image_new(), and fails before Poppler allocates gigabytes.
-		uint32_t cw = 0, ch = 0;
-		if (!render_dimensions(w, h, &cw, &ch, error))
-			return nullptr;
-		if (uint64_t(cw) * kBytesPerPixel * ch > UINT32_MAX) {
-			set_error(error, _("image dimensions overflow"));
 			return nullptr;
 		}
 
@@ -106,20 +104,19 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 		renderer.set_paper_color(0xffffffff);
 		renderer.set_render_hints(poppler::page_renderer::antialiasing |
 			poppler::page_renderer::text_antialiasing);
-		raster = renderer.render_page(page.get(), dpi, dpi);
+		raster =
+			renderer.render_page(page.get(), dpi, dpi, 0, 0, int(w), int(h));
 	}
 
-	// Splash rounds to the nearest pixel, and should it fail to allocate,
-	// it silently draws into a single pixel instead.
-	int rw = raster.width(), rh = raster.height();
+	// Should Splash fail to allocate, it silently draws into a single pixel.
 	if (!raster.is_valid() || raster.format() != poppler::image::format_rgb24 ||
-		rw < 1 || rh < 1 || abs(rw - w) > 1 || abs(rh - h) > 1 ||
-		raster.bytes_per_row() < rw * 3) {
+		raster.width() != int(w) || raster.height() != int(h) ||
+		raster.bytes_per_row() < raster.width() * 3) {
 		set_error(error, _("Poppler rendering failed"));
 		return nullptr;
 	}
 
-	ImagePtr image = image_new(uint32_t(rw), uint32_t(rh), error);
+	ImagePtr image = image_new(w, h, error);
 	if (!image)
 		return nullptr;
 
@@ -134,10 +131,11 @@ PopplerRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	return image;
 }
 
+// Poppler renders the crop box, rotated by the page's /Rotate.
 // Nothing else has the document yet, so it needs no locking.
 static bool
-measure_poppler_page(PopplerDocument &document, int index, double dpi,
-	double *width, double *height, Error *error)
+measure_poppler_page(PopplerDocument &document, int index, double *width,
+	double *height, Error *error)
 {
 	unique_ptr<poppler::page> page(document.document->create_page(index));
 	if (!page) {
@@ -145,10 +143,12 @@ measure_poppler_page(PopplerDocument &document, int index, double dpi,
 		return false;
 	}
 
-	// Splash rounds to the nearest pixel, see render().
-	poppler_page_size(*page, dpi, width, height);
-	*width = round(*width);
-	*height = round(*height);
+	poppler::rectf box = page->page_rect(poppler::crop_box);
+	*width = box.width();
+	*height = box.height();
+	if (page->orientation() == poppler::page::landscape ||
+		page->orientation() == poppler::page::seascape)
+		swap(*width, *height);
 	return true;
 }
 
@@ -184,17 +184,18 @@ load_poppler(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	ImagePtr head, tail;
 	for (int i = 0; i < count; i++) {
-		auto closure = make_unique<PopplerRenderClosure>(document, i, dpi);
-
 		// Only the first page is rendered right away: documents get long.
 		Error suberror;
 		double w = 0, h = 0;
+		unique_ptr<PopplerRenderClosure> closure;
 		ImagePtr image;
-		if (measure_poppler_page(*document, i, dpi, &w, &h, &suberror))
-			image = head ? deferred_image(w, h,
-							   cmm_or_default(ctx)->get_profile_sRGB(), ctx,
-							   &suberror)
-						 : render_now(*closure, w, h, ctx, &suberror);
+		if (measure_poppler_page(*document, i, &w, &h, &suberror)) {
+			closure = make_unique<PopplerRenderClosure>(document, i, dpi, w, h);
+			image = head
+				? deferred_image(*closure,
+					  cmm_or_default(ctx)->get_profile_sRGB(), ctx, &suberror)
+				: render_now(*closure, ctx, &suberror);
+		}
 		if (!image) {
 			if (!head) {
 				set_error(error, std::move(suberror.message));

@@ -65,15 +65,14 @@ LoadFn load_poppler;
 bool render_dimensions(double width, double height, uint32_t *out_width,
 	uint32_t *out_height, Error *error);
 
-/// Rasterize a page now, `width` by `height` at scale 1,
-/// to fit OpenContext's target.
-ImagePtr render_now(RenderClosure &render, double width, double height,
-	const OpenContext &ctx, Error *error);
+/// Rasterize a page now, to fit OpenContext's target.
+ImagePtr render_now(
+	RenderClosure &render, const OpenContext &ctx, Error *error);
 
 /// A page of a document left for its RenderClosure to rasterize,
-/// `width` by `height` at scale 1, and without pixels.  A null `profile` is
-/// assumed sRGB, as finish_image() would assume it of a rendering.
-ImagePtr deferred_image(double width, double height,
+/// without pixels.  A null `profile` is assumed sRGB,
+/// as finish_image() would assume it of a rendering.
+ImagePtr deferred_image(const RenderClosure &render,
 	std::shared_ptr<Profile> profile, const OpenContext &ctx, Error *error);
 
 /// Inflate a raw DEFLATE stream into an exactly sized buffer.  Wuffs is only

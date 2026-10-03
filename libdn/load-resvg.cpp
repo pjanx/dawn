@@ -68,15 +68,25 @@ public:
 
 	ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) override;
+	bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const override;
 };
 
 }  // namespace
+
+bool
+ResvgRenderClosure::dimensions(
+	double scale, uint32_t *width, uint32_t *height, Error *error) const
+{
+	return render_dimensions(
+		width_ * scale, height_ * scale, width, height, error);
+}
 
 ImagePtr
 ResvgRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	uint32_t uw = 0, uh = 0;
-	if (!render_dimensions(width_ * scale, height_ * scale, &uw, &uh, error))
+	if (!dimensions(scale, &uw, &uh, error))
 		return nullptr;
 
 	vector<uint8_t> pixmap;
@@ -132,7 +142,7 @@ load_resvg(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 	auto closure =
 		make_unique<ResvgRenderClosure>(tree, size.width, size.height);
 
-	ImagePtr image = render_now(*closure, size.width, size.height, ctx, error);
+	ImagePtr image = render_now(*closure, ctx, error);
 	if (!image)
 		return nullptr;
 

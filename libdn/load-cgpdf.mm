@@ -51,19 +51,37 @@ class CGPDFRenderClosure : public RenderClosure
 {
 	DocumentPtr document_;
 	size_t page_;
-	double dpi_;  ///< Pixels per inch at scale == 1
+	double dpi_;     ///< Pixels per inch at scale == 1
+	double width_;   ///< In PDF units, see cgpdf_page_size()
+	double height_;  ///< In PDF units, see cgpdf_page_size()
 
 public:
-	CGPDFRenderClosure(DocumentPtr document, size_t page, double dpi)
-		: document_(std::move(document)), page_(page), dpi_(dpi)
+	CGPDFRenderClosure(DocumentPtr document, size_t page, double dpi,
+		double width, double height)
+		: document_(std::move(document)), page_(page), dpi_(dpi), width_(width),
+		  height_(height)
 	{
 	}
 
 	ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) override;
+	bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const override;
 };
 
 }  // namespace
+
+// A PDF unit is 1/72 inch, so the page has a physical size, and showing
+// it at 1:1 means resolving that against the screen, as resvg does for
+// the physical units in an SVG.
+bool
+CGPDFRenderClosure::dimensions(
+	double scale, uint32_t *width, uint32_t *height, Error *error) const
+{
+	double zoom = dpi_ / 72. * scale;
+	return render_dimensions(
+		width_ * zoom, height_ * zoom, width, height, error);
+}
 
 ImagePtr
 CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
@@ -74,15 +92,8 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 		return nullptr;
 	}
 
-	// A PDF unit is 1/72 inch, so the page has a physical size, and showing
-	// it at 1:1 means resolving that against the screen, as resvg does for
-	// the physical units in an SVG.
-	double zoom = dpi_ / 72. * scale;
-
-	double pw = 0, ph = 0;
-	cgpdf_page_size(page, &pw, &ph);
 	uint32_t uw = 0, uh = 0;
-	if (!render_dimensions(pw * zoom, ph * zoom, &uw, &uh, error))
+	if (!dimensions(scale, &uw, &uh, error))
 		return nullptr;
 
 	// Core Graphics composes each operation in its own colour space, so there
@@ -112,10 +123,11 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 	// transparency would be illegible over the viewer's own backdrop.
 	CGContextSetRGBFillColor(context, 1., 1., 1., 1.);
 	CGContextFillRect(context, CGRectMake(0, 0, uw, uh));
+	double zoom = dpi_ / 72. * scale;
 	CGContextScaleCTM(context, zoom, zoom);
 	CGContextConcatCTM(context,
 		CGPDFPageGetDrawingTransform(
-			page, kCGPDFCropBox, CGRectMake(0, 0, pw, ph), 0, true));
+			page, kCGPDFCropBox, CGRectMake(0, 0, width_, height_), 0, true));
 	CGContextDrawPDFPage(context, page);
 	CGContextRelease(context);
 
@@ -140,8 +152,8 @@ CGPDFRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 }
 
 static bool
-measure_cgpdf_page(CGPDFDocumentRef document, size_t index, double dpi,
-	double *width, double *height, Error *error)
+measure_cgpdf_page(CGPDFDocumentRef document, size_t index, double *width,
+	double *height, Error *error)
 {
 	CGPDFPageRef page = CGPDFDocumentGetPage(document, index);
 	if (!page) {
@@ -149,10 +161,7 @@ measure_cgpdf_page(CGPDFDocumentRef document, size_t index, double dpi,
 		return false;
 	}
 
-	double pw = 0, ph = 0;
-	cgpdf_page_size(page, &pw, &ph);
-	*width = pw * (dpi / 72.);
-	*height = ph * (dpi / 72.);
+	cgpdf_page_size(page, width, height);
 	return true;
 }
 
@@ -201,19 +210,20 @@ load_cgpdf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	ImagePtr head, tail;
 	for (size_t i = 1; i <= count; i++) {
-		auto closure = make_unique<CGPDFRenderClosure>(document, i, dpi);
-
 		// Only the first page is rendered right away: documents get long.
 		// The rest are not assumed sRGB: renderings carry Core Graphics'
 		// own sRGB profile, see render().
 		Error suberror;
 		double w = 0, h = 0;
+		unique_ptr<CGPDFRenderClosure> closure;
 		ImagePtr image;
-		if (measure_cgpdf_page(document.get(), i, dpi, &w, &h, &suberror))
+		if (measure_cgpdf_page(document.get(), i, &w, &h, &suberror)) {
+			closure = make_unique<CGPDFRenderClosure>(document, i, dpi, w, h);
 			image = head
-				? deferred_image(w, h, cmm_or_default(ctx)->get_profile_sRGB(),
-					  ctx, &suberror)
-				: render_now(*closure, w, h, ctx, &suberror);
+				? deferred_image(*closure,
+					  cmm_or_default(ctx)->get_profile_sRGB(), ctx, &suberror)
+				: render_now(*closure, ctx, &suberror);
+		}
 		if (!image) {
 			if (!head) {
 				set_error(error, std::move(suberror.message));

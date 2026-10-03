@@ -115,12 +115,10 @@ render_dimensions(double width, double height, uint32_t *out_width,
 }
 
 ImagePtr
-render_now(RenderClosure &render, double width, double height,
-	const OpenContext &ctx, Error *error)
+render_now(RenderClosure &render, const OpenContext &ctx, Error *error)
 {
 	uint32_t nominal_width = 0, nominal_height = 0;
-	if (!render_dimensions(
-			width, height, &nominal_width, &nominal_height, error))
+	if (!render.dimensions(1., &nominal_width, &nominal_height, error))
 		return nullptr;
 
 	float scale = 1;
@@ -137,12 +135,12 @@ render_now(RenderClosure &render, double width, double height,
 }
 
 ImagePtr
-deferred_image(double width, double height, shared_ptr<Profile> profile,
+deferred_image(const RenderClosure &render, shared_ptr<Profile> profile,
 	const OpenContext &ctx, Error *error)
 {
 	auto image = make_shared<Image>();
-	if (!render_dimensions(width, height, &image->nominal_width,
-			&image->nominal_height, error))
+	if (!render.dimensions(
+			1., &image->nominal_width, &image->nominal_height, error))
 		return nullptr;
 
 	image->profile_assumed = !profile;

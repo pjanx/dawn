@@ -36,6 +36,8 @@ public:
 
 	ImagePtr render(
 		const OpenContext &ctx, double scale, Error *error) override;
+	bool dimensions(double scale, uint32_t *width, uint32_t *height,
+		Error *error) const override;
 };
 
 /// Everything libwmf hands out has to go back, on every exit path.
@@ -156,12 +158,19 @@ png_length(const char *data)
 	return size_t(chunk - png);
 }
 
+bool
+WmfRenderClosure::dimensions(
+	double scale, uint32_t *width, uint32_t *height, Error *error) const
+{
+	return render_dimensions(
+		width_ * scale, height_ * scale, width, height, error);
+}
+
 ImagePtr
 WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 {
 	uint32_t width = 0, height = 0;
-	if (!render_dimensions(
-			width_ * scale, height_ * scale, &width, &height, error))
+	if (!dimensions(scale, &width, &height, error))
 		return nullptr;
 
 	WmfApi wmf;
@@ -203,7 +212,7 @@ load_libwmf(span<const uint8_t> data, const OpenContext &ctx, Error *error)
 
 	auto closure =
 		make_unique<WmfRenderClosure>(std::move(owned), width, height);
-	ImagePtr image = render_now(*closure, width, height, ctx, error);
+	ImagePtr image = render_now(*closure, ctx, error);
 	if (image)
 		image->render = std::move(closure);
 	return image;
