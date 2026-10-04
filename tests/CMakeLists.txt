@@ -34,9 +34,6 @@ target_compile_definitions(test-channels PRIVATE
 )
 
 add_test(NAME channels COMMAND test-channels)
-set_tests_properties(channels PROPERTIES
-	WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-)
 
 if (DAWN_WITH_DNRS)
 	add_executable(test-dnrs test-dnrs.cpp)
@@ -123,7 +120,8 @@ target_include_directories(test-overlay PRIVATE
 add_test(NAME overlay COMMAND test-overlay)
 
 add_executable(test-text test-text.cpp)
-target_include_directories(test-text PRIVATE "${PROJECT_SOURCE_DIR}/dn")
+target_include_directories(test-text PRIVATE
+	"${PROJECT_SOURCE_DIR}/dn" "${PROJECT_BINARY_DIR}")
 target_link_libraries(test-text PRIVATE dn-text)
 add_test(NAME text COMMAND test-text)
 

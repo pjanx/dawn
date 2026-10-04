@@ -14,8 +14,6 @@
 
 #include <chrono>
 #include <condition_variable>
-#include <cstdio>
-#include <functional>
 #include <mutex>
 #include <vector>
 
@@ -54,7 +52,7 @@ struct WorkRelease {
 
 }  // namespace
 
-static bool
+static void
 test_background_reserve()
 {
 	WorkGate gate;
@@ -63,9 +61,9 @@ test_background_reserve()
 	dn::Thumbnailer thumbnailer(nullptr, 4);
 	WorkRelease release{gate};
 	if (thumbnailer.background_limit() != 1) {
-		fprintf(stderr, "unexpected four-worker background limit: %zu\n",
+		test::fail("unexpected four-worker background limit: %zu",
 			thumbnailer.background_limit());
-		return false;
+		return;
 	}
 	const auto client = thumbnailer.add_client(0, {});
 	auto background = [&] {
@@ -76,45 +74,37 @@ test_background_reserve()
 		return dn::Thumbnailer::Completion{};
 	};
 	for (int i = 0; i < 2; i++) {
-		if (!thumbnailer.submit(client, 0,
-				dn::Thumbnailer::Priority::Dimensions, background, {})) {
-			gate.unblock();
-			return false;
-		}
+		if (!CHECK(thumbnailer.submit(client, 0,
+				dn::Thumbnailer::Priority::Dimensions, background, {})))
+			return;
 	}
 	{
 		unique_lock lock(gate.mu);
 		if (!gate.wait(lock, [&] { return background_started == 1; })) {
-			fprintf(stderr, "background work did not start\n");
-			return false;
+			test::fail("background work did not start");
+			return;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
-			[&] {
-				lock_guard lock(gate.mu);
-				visible_started = true;
-				gate.changed.notify_all();
-				return dn::Thumbnailer::Completion{};
-			},
-			{}))
-		return false;
+	auto visible = [&] {
+		lock_guard lock(gate.mu);
+		visible_started = true;
+		gate.changed.notify_all();
+		return dn::Thumbnailer::Completion{};
+	};
+	if (!CHECK(thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Interactive, visible, {})))
+		return;
 	{
 		unique_lock lock(gate.mu);
-		if (!gate.wait(lock, [&] { return visible_started; })) {
-			fprintf(stderr, "visible work was starved by background work\n");
-			return false;
-		}
-		if (background_started != 1) {
-			fprintf(stderr, "background admission exceeded its limit\n");
-			return false;
-		}
+		if (!gate.wait(lock, [&] { return visible_started; }))
+			test::fail("visible work was starved by background work");
+		if (background_started != 1)
+			test::fail("background admission exceeded its limit");
 	}
-	gate.unblock();
 	thumbnailer.remove_client(client);
-	return true;
 }
 
-static bool
+static void
 test_visible_reserve()
 {
 	WorkGate gate;
@@ -131,44 +121,36 @@ test_visible_reserve()
 		return dn::Thumbnailer::Completion{};
 	};
 	for (int i = 0; i < 4; i++) {
-		if (!thumbnailer.submit(
-				client, 0, dn::Thumbnailer::Priority::Prefetch, prefetch, {})) {
-			gate.unblock();
-			return false;
-		}
+		if (!CHECK(thumbnailer.submit(
+				client, 0, dn::Thumbnailer::Priority::Prefetch, prefetch, {})))
+			return;
 	}
 	{
 		unique_lock lock(gate.mu);
 		if (!gate.wait(lock, [&] { return prefetch_started == 3; })) {
-			fprintf(stderr, "prefetch did not fill the non-visible workers\n");
-			return false;
+			test::fail("prefetch did not fill the non-visible workers");
+			return;
 		}
 	}
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
-			[&] {
-				lock_guard lock(gate.mu);
-				visible_started = true;
-				gate.changed.notify_all();
-				return dn::Thumbnailer::Completion{};
-			},
-			{})) {
-		gate.unblock();
-		return false;
-	}
+	auto visible = [&] {
+		lock_guard lock(gate.mu);
+		visible_started = true;
+		gate.changed.notify_all();
+		return dn::Thumbnailer::Completion{};
+	};
+	if (!CHECK(thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Interactive, visible, {})))
+		return;
 	{
 		unique_lock lock(gate.mu);
 		if (!gate.wait(lock, [&] { return visible_started; }) ||
-			prefetch_started != 3) {
-			fprintf(stderr, "prefetch consumed the visible worker reserve\n");
-			return false;
-		}
+			prefetch_started != 3)
+			test::fail("prefetch consumed the visible worker reserve");
 	}
-	gate.unblock();
 	thumbnailer.remove_client(client);
-	return true;
 }
 
-static bool
+static void
 test_reprioritization_order()
 {
 	WorkGate gate;
@@ -177,63 +159,54 @@ test_reprioritization_order()
 	dn::Thumbnailer thumbnailer(nullptr, 1);
 	WorkRelease release{gate};
 	const auto client = thumbnailer.add_client(0, {});
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
-			[&] {
-				unique_lock lock(gate.mu);
-				blocker_started = true;
-				gate.changed.notify_all();
-				gate.changed.wait(lock, [&] { return gate.released; });
-				return dn::Thumbnailer::Completion{};
-			},
-			{}))
-		return false;
+	auto blocker = [&] {
+		unique_lock lock(gate.mu);
+		blocker_started = true;
+		gate.changed.notify_all();
+		gate.changed.wait(lock, [&] { return gate.released; });
+		return dn::Thumbnailer::Completion{};
+	};
+	if (!CHECK(thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Interactive, blocker, {})))
+		return;
 	{
 		unique_lock lock(gate.mu);
-		if (!gate.wait(lock, [&] { return blocker_started; })) {
-			return false;
-		}
+		if (!CHECK(gate.wait(lock, [&] { return blocker_started; })))
+			return;
 	}
 	for (int id : {1, 2}) {
-		if (!thumbnailer.submit(
-				client, 0,
+		auto work = [&, id] {
+			lock_guard lock(gate.mu);
+			order.push_back(id);
+			gate.changed.notify_all();
+			return dn::Thumbnailer::Completion{};
+		};
+		if (!CHECK(thumbnailer.submit(client, 0,
 				id == 1 ? dn::Thumbnailer::Priority::Interactive
 						: dn::Thumbnailer::Priority::Dimensions,
-				[&, id] {
-					lock_guard lock(gate.mu);
-					order.push_back(id);
-					gate.changed.notify_all();
-					return dn::Thumbnailer::Completion{};
-				},
-				to_string(id))) {
-			gate.unblock();
-			return false;
-		}
+				work, to_string(id))))
+			return;
 	}
-	if (!thumbnailer.reprioritize(
-			client, 0, dn::Thumbnailer::Priority::Dimensions, "1") ||
-		!thumbnailer.reprioritize(
-			client, 0, dn::Thumbnailer::Priority::Interactive, "2")) {
-		gate.unblock();
-		return false;
-	}
+	if (!CHECK(thumbnailer.reprioritize(
+			client, 0, dn::Thumbnailer::Priority::Dimensions, "1")) ||
+		!CHECK(thumbnailer.reprioritize(
+			client, 0, dn::Thumbnailer::Priority::Interactive, "2")))
+		return;
 	gate.unblock();
 	{
 		unique_lock lock(gate.mu);
-		if (!gate.wait(lock, [&] { return order.size() == 2; }))
-			return false;
+		if (!CHECK(gate.wait(lock, [&] { return order.size() == 2; })))
+			return;
 	}
 	thumbnailer.remove_client(client);
-	if (order != vector<int>{2, 1}) {
-		fprintf(stderr, "reprioritized order was %d,%d\n", order[0], order[1]);
-		return false;
-	}
-	return true;
+	if (order != vector<int>{2, 1})
+		test::fail("reprioritized order was %d,%d", order[0], order[1]);
 }
 
 // The keyed slot is what stops two jobs for one path from running at once.
 // A superseded job has to give it up, or its replacement can never be
 // submitted -- which is what a rescan of a changed file needs.
-static bool
+static void
 test_cancel_frees_the_key()
 {
 	WorkGate gate;
@@ -242,20 +215,20 @@ test_cancel_frees_the_key()
 	dn::Thumbnailer thumbnailer(nullptr, 1);
 	WorkRelease release{gate};
 	const auto client = thumbnailer.add_client(0, {});
-	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
-			[&] {
-				unique_lock lock(gate.mu);
-				blocker_started = true;
-				gate.changed.notify_all();
-				gate.changed.wait(lock, [&] { return gate.released; });
-				return dn::Thumbnailer::Completion{};
-			},
-			{}))
-		return false;
+	auto blocker = [&] {
+		unique_lock lock(gate.mu);
+		blocker_started = true;
+		gate.changed.notify_all();
+		gate.changed.wait(lock, [&] { return gate.released; });
+		return dn::Thumbnailer::Completion{};
+	};
+	if (!CHECK(thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Interactive, blocker, {})))
+		return;
 	{
 		unique_lock lock(gate.mu);
-		if (!gate.wait(lock, [&] { return blocker_started; }))
-			return false;
+		if (!CHECK(gate.wait(lock, [&] { return blocker_started; })))
+			return;
 	}
 
 	auto work = [&] {
@@ -264,47 +237,37 @@ test_cancel_frees_the_key()
 		gate.changed.notify_all();
 		return dn::Thumbnailer::Completion{};
 	};
-	if (!thumbnailer.submit(
-			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
-		gate.unblock();
-		return false;
-	}
+	if (!CHECK(thumbnailer.submit(
+			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")))
+		return;
 	// Same key, and the first one is still queued behind the blocker.
 	if (thumbnailer.submit(
 			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
-		gate.unblock();
 		test::fail("a duplicate key was accepted");
-		return false;
+		return;
 	}
 	if (!thumbnailer.cancel(client, "a")) {
-		gate.unblock();
 		test::fail("cancelling a queued key reported nothing to cancel");
-		return false;
+		return;
 	}
 	if (!thumbnailer.submit(
 			client, 0, dn::Thumbnailer::Priority::Interactive, work, "a")) {
-		gate.unblock();
 		test::fail("the replacement was still refused after cancelling");
-		return false;
+		return;
 	}
 
 	gate.unblock();
 	{
 		unique_lock lock(gate.mu);
-		if (!gate.wait(lock, [&] { return ran > 0; }))
-			return false;
-	}
-	// The cancelled one must not have run as well.
-	if (!thumbnailer.busy(client) && ran != 1) {
-		fprintf(stderr, "keyed work ran %d times\n", ran);
-		return false;
+		if (!CHECK(gate.wait(lock, [&] { return ran > 0; })))
+			return;
 	}
 	thumbnailer.remove_client(client);
+	// The cancelled one must not have run as well.
 	CHECK(ran == 1);
-	return true;
 }
 
-static bool
+static void
 test_bundle_reservations()
 {
 	dn::Thumbnailer thumbnailer(nullptr, 2);
@@ -319,19 +282,16 @@ test_bundle_reservations()
 	c.uri = QByteArrayLiteral("file:///c");
 	const auto first = thumbnailer.reserve_bundle(client, 7, a, 2, 4096);
 	const auto second = thumbnailer.reserve_bundle(client, 7, b, 2, 8192);
-	if (!first || !second || thumbnailer.pending_bundle_limit() != 2 ||
-		thumbnailer.pending_bundle_bytes() != 12288 ||
-		thumbnailer.reserve_bundle(client, 7, c, 2, 4096))
-		return false;
+	CHECK(first && second);
+	CHECK(thumbnailer.pending_bundle_limit() == 2);
+	CHECK(thumbnailer.pending_bundle_bytes() == 12288);
+	CHECK(!thumbnailer.reserve_bundle(client, 7, c, 2, 4096));
 	thumbnailer.cancel_bundle(first);
-	const auto third = thumbnailer.reserve_bundle(client, 7, c, 2, 4096);
-	if (!third || thumbnailer.pending_bundle_bytes() != 12288)
-		return false;
+	CHECK(thumbnailer.reserve_bundle(client, 7, c, 2, 4096));
+	CHECK(thumbnailer.pending_bundle_bytes() == 12288);
 	thumbnailer.set_epoch(client, 8);
-	if (thumbnailer.pending_bundle_bytes() != 0)
-		return false;
+	CHECK(thumbnailer.pending_bundle_bytes() == 0);
 	thumbnailer.remove_client(client);
-	return true;
 }
 
 // Reservations are process-wide: one client holding a source refuses every
@@ -412,10 +372,7 @@ test_activity_transitions(QCoreApplication &app)
 		return;
 	}
 
-	QTimer::singleShot(2000, &app, [&] {
-		gate.unblock();
-		app.quit();
-	});
+	QTimer::singleShot(2000, &app, [&] { app.quit(); });
 	app.exec();
 	thumbnailer.remove_client(client);
 	CHECK(saw_busy);
@@ -427,11 +384,11 @@ main(int argc, char **argv)
 {
 	test::Application application(argc, argv, nullptr);
 	return test::run({
-		{"background worker reserve", [] { CHECK(test_background_reserve()); }},
-		{"visible worker reserve", [] { CHECK(test_visible_reserve()); }},
-		{"reprioritization", [] { CHECK(test_reprioritization_order()); }},
-		{"cancel frees the key", [] { CHECK(test_cancel_frees_the_key()); }},
-		{"bundle reservations", [] { CHECK(test_bundle_reservations()); }},
+		{"background worker reserve", test_background_reserve},
+		{"visible worker reserve", test_visible_reserve},
+		{"reprioritization", test_reprioritization_order},
+		{"cancel frees the key", test_cancel_frees_the_key},
+		{"bundle reservations", test_bundle_reservations},
 		{"reservation handoff",
 			[&] { test_reservation_handoff(application.app()); }},
 		{"activity transitions",

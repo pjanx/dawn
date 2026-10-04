@@ -33,11 +33,12 @@ fail(const char *format, ...)
 	failures++;
 }
 
-inline void
+inline bool
 check(bool passed, const char *expression, const char *file, int line)
 {
 	if (!passed)
 		fail("CHECK failed: %s (%s:%d)", expression, file, line);
+	return passed;
 }
 
 struct Case {
