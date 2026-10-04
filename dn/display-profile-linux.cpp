@@ -253,6 +253,22 @@ profile_bytes(cmsHPROFILE profile)
 	return bytes;
 }
 
+// colord return filenames within the host's namespace.
+// We use Flatpak's --filesystem=host, which remounts these under /run/host.
+static const char *const kFlatpakHostPrefixes[] = {
+	"/usr/", "/bin/", "/sbin/", "/lib/", "/lib32/", "/lib64/", "/etc/"};
+
+static string
+resolve_path(const char *filename)
+{
+	if (!g_file_test("/.flatpak-info", G_FILE_TEST_EXISTS))
+		return filename;
+	for (const char *prefix : kFlatpakHostPrefixes)
+		if (g_str_has_prefix(filename, prefix))
+			return string("/run/host") + filename;
+	return filename;
+}
+
 static bool
 display_device(CdDevice *device)
 {
@@ -315,19 +331,34 @@ load_from_client(CdClient *client, const QScreen *screen)
 			"colord: display profile unavailable for %s", connector.c_str());
 		return result;
 	}
-	CdIcc *icc =
-		cd_profile_load_icc(profile, CD_ICC_LOAD_FLAGS_ALL, nullptr, &error);
-	if (!icc) {
+	const char *filename = cd_profile_get_filename(profile);
+	if (!filename || !*filename) {
+		qWarning("colord: profile for %s has no file", connector.c_str());
+		return result;
+	}
+
+	const string path = resolve_path(filename);
+	g_autoptr(GFile) file = g_file_new_for_path(path.c_str());
+	g_autoptr(CdIcc) icc = cd_icc_new();
+	if (!cd_icc_load_file(icc, file, CD_ICC_LOAD_FLAGS_ALL, nullptr, &error)) {
 		qWarning("colord: load ICC: %s", error ? error->message : "failed");
 		return result;
 	}
+
+	const char *expected = cd_profile_get_metadata_item(
+		profile, CD_PROFILE_METADATA_FILE_CHECKSUM);
+	const char *actual = cd_icc_get_checksum(icc);
+	if (expected && g_strcmp0(expected, actual)) {
+		qWarning("colord: %s does not match profile %s", path.c_str(),
+			cd_profile_get_id(profile));
+		return result;
+	}
+
 	result.icc = profile_bytes(cmsHPROFILE(cd_icc_get_handle(icc)));
-	g_object_unref(icc);
 	if (result.icc.empty())
 		return {};
 
 	result.source = "colord";
-	const char *filename = cd_profile_get_filename(profile);
 	const char *profile_id = cd_profile_get_id(profile);
 	result.label = filename && *filename
 		? filename
