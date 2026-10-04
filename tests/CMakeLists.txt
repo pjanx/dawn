@@ -14,71 +14,17 @@ if (LIBPNG_FOUND)
 endif()
 
 set(DAWN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
-set(DAWN_TEST_FIXTURE_FILES
-	"${DAWN_TEST_FIXTURES_DIR}/quads420.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/quads420-progressive.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/black.png"
-	"${DAWN_TEST_FIXTURES_DIR}/cmyk-lab.icc"
-	"${DAWN_TEST_FIXTURES_DIR}/adobergb8.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/adobergb16.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/exif-pages.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/exif-gamma.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/exif-srgb.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/grey-primaries.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/palette-transfer.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/transfer8.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/transfer16.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.bmp"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.png"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.svg"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.tga"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/blue.webp"
-	"${DAWN_TEST_FIXTURES_DIR}/blue16.png"
-	"${DAWN_TEST_FIXTURES_DIR}/chrm-p3-gama1.png"
-	"${DAWN_TEST_FIXTURES_DIR}/chrm-p3.png"
-	"${DAWN_TEST_FIXTURES_DIR}/display-p3-red_vs_srgb-red.png"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-colour.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-flat.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-iso.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-map.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-offsets.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gainmap-seq.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/gama22.png"
-	"${DAWN_TEST_FIXTURES_DIR}/green.bmp"
-	"${DAWN_TEST_FIXTURES_DIR}/green.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/green.png"
-	"${DAWN_TEST_FIXTURES_DIR}/green.svg"
-	"${DAWN_TEST_FIXTURES_DIR}/green.tga"
-	"${DAWN_TEST_FIXTURES_DIR}/green.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/green.webp"
-	"${DAWN_TEST_FIXTURES_DIR}/green16.png"
-	"${DAWN_TEST_FIXTURES_DIR}/red.bmp"
-	"${DAWN_TEST_FIXTURES_DIR}/red.jpg"
-	"${DAWN_TEST_FIXTURES_DIR}/red.png"
-	"${DAWN_TEST_FIXTURES_DIR}/red.svg"
-	"${DAWN_TEST_FIXTURES_DIR}/red.tga"
-	"${DAWN_TEST_FIXTURES_DIR}/red.tif"
-	"${DAWN_TEST_FIXTURES_DIR}/red.webp"
-	"${DAWN_TEST_FIXTURES_DIR}/red16.png"
-	"${DAWN_TEST_FIXTURES_DIR}/red_a128.png"
-	"${DAWN_TEST_FIXTURES_DIR}/srgb-chunk.png"
-	"${DAWN_TEST_FIXTURES_DIR}/text-after-idat.png"
-	"${DAWN_TEST_FIXTURES_DIR}/red_a128.svg"
-	"${DAWN_TEST_FIXTURES_DIR}/rgbw_2x2.png"
-	"${DAWN_TEST_FIXTURES_DIR}/rgbw_2x2.svg"
-	"${DAWN_TEST_FIXTURES_DIR}/white.png"
-)
+set(DAWN_TEST_FIXTURES_STAMP "${DAWN_TEST_FIXTURES_DIR}/.stamp")
 add_custom_command(
-	OUTPUT ${DAWN_TEST_FIXTURE_FILES}
+	OUTPUT "${DAWN_TEST_FIXTURES_STAMP}"
+	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DAWN_TEST_FIXTURES_DIR}"
 	COMMAND "$<TARGET_FILE:gen-fixtures>" "${DAWN_TEST_FIXTURES_DIR}"
+	COMMAND "${CMAKE_COMMAND}" -E touch "${DAWN_TEST_FIXTURES_STAMP}"
 	DEPENDS gen-fixtures
 	COMMENT "Generating test fixtures in the build tree"
 	VERBATIM
 )
-add_custom_target(test-fixtures DEPENDS ${DAWN_TEST_FIXTURE_FILES})
+add_custom_target(test-fixtures DEPENDS "${DAWN_TEST_FIXTURES_STAMP}")
 
 add_executable(test-channels test-channels.cpp)
 if (NOT CMAKE_CROSSCOMPILING)
