@@ -30,7 +30,6 @@ struct WorkGate {
 	condition_variable changed;
 	bool released = false;
 
-	~WorkGate() { unblock(); }
 	void unblock()
 	{
 		{
@@ -46,21 +45,29 @@ struct WorkGate {
 	}
 };
 
+// Work captures the gate and whatever it reports into, so those have to
+// outlive the thumbnailer's workers: declare them before it, and this after.
+struct WorkRelease {
+	WorkGate &gate;
+	~WorkRelease() { gate.unblock(); }
+};
+
 }  // namespace
 
 static bool
 test_background_reserve()
 {
+	WorkGate gate;
+	int background_started = 0;
+	bool visible_started = false;
 	dn::Thumbnailer thumbnailer(nullptr, 4);
+	WorkRelease release{gate};
 	if (thumbnailer.background_limit() != 1) {
 		fprintf(stderr, "unexpected four-worker background limit: %zu\n",
 			thumbnailer.background_limit());
 		return false;
 	}
 	const auto client = thumbnailer.add_client(0, {});
-	WorkGate gate;
-	int background_started = 0;
-	bool visible_started = false;
 	auto background = [&] {
 		unique_lock lock(gate.mu);
 		background_started++;
@@ -110,11 +117,12 @@ test_background_reserve()
 static bool
 test_visible_reserve()
 {
-	dn::Thumbnailer thumbnailer(nullptr, 4);
-	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	int prefetch_started = 0;
 	bool visible_started = false;
+	dn::Thumbnailer thumbnailer(nullptr, 4);
+	WorkRelease release{gate};
+	const auto client = thumbnailer.add_client(0, {});
 	auto prefetch = [&] {
 		unique_lock lock(gate.mu);
 		prefetch_started++;
@@ -163,11 +171,12 @@ test_visible_reserve()
 static bool
 test_reprioritization_order()
 {
-	dn::Thumbnailer thumbnailer(nullptr, 1);
-	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	bool blocker_started = false;
 	vector<int> order;
+	dn::Thumbnailer thumbnailer(nullptr, 1);
+	WorkRelease release{gate};
+	const auto client = thumbnailer.add_client(0, {});
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				unique_lock lock(gate.mu);
@@ -227,11 +236,12 @@ test_reprioritization_order()
 static bool
 test_cancel_frees_the_key()
 {
-	dn::Thumbnailer thumbnailer(nullptr, 1);
-	const auto client = thumbnailer.add_client(0, {});
 	WorkGate gate;
 	bool blocker_started = false;
 	int ran = 0;
+	dn::Thumbnailer thumbnailer(nullptr, 1);
+	WorkRelease release{gate};
+	const auto client = thumbnailer.add_client(0, {});
 	if (!thumbnailer.submit(client, 0, dn::Thumbnailer::Priority::Interactive,
 			[&] {
 				unique_lock lock(gate.mu);
@@ -376,11 +386,12 @@ test_reservation_handoff(QCoreApplication &app)
 static void
 test_activity_transitions(QCoreApplication &app)
 {
-	dn::Thumbnailer thumbnailer(nullptr, 0);
 	WorkGate gate;
 	bool saw_busy = false;
 	bool saw_idle = false;
 	dn::Thumbnailer::Client client = 0;
+	dn::Thumbnailer thumbnailer(nullptr, 0);
+	WorkRelease release{gate};
 	client = thumbnailer.add_client(0, [&] {
 		if (thumbnailer.busy(client)) {
 			saw_busy = true;

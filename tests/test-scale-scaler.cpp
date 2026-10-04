@@ -1133,12 +1133,13 @@ test_orientation()
 static void
 test_partial_transparency()
 {
-	// Half-transparent red, premultiplied, next to nothing at all.
-	const vector<Pixel> src{{.r = 32768, .a = 32768}, {}};
+	// Quarter-opaque red, premultiplied, next to nothing at all.
+	// A half would land on 127.5, which drivers are free to round either way.
+	const vector<Pixel> src{{.r = 16384, .a = 16384}, {}};
 
 	dawn::ScaleOutput out;
 	if (scale(src, 2, 1, 2, 1, dawn::Orientation::Rotate0, &out)) {
-		pixel_is(out, 0, 0, 255, 0, 0, 127);
+		pixel_is(out, 0, 0, 255, 0, 0, 64);
 		pixel_is(out, 1, 0, 0, 0, 0, 0);
 	}
 }

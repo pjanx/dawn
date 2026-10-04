@@ -57,7 +57,8 @@ test_shared_memory()
 	CHECK(owner.ok());
 	const dawn::ipc::Handle spare = duplicate_handle(owner.handle());
 	CHECK(handle_is_open(spare));
-	CHECK(!dawn::ipc::SharedMemory::map(spare, 8192).ok());
+	// macOS rounds the object up to whole pages, so overshoot any of those.
+	CHECK(!dawn::ipc::SharedMemory::map(spare, 1 << 20).ok());
 	CHECK(!handle_is_open(spare));
 #ifdef __linux__
 	errno = 0;
