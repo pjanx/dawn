@@ -6,9 +6,9 @@ notes like these in the source code.
 
 Test environments
 -----------------
-At minimum, run the tests pre-release.  UI automation needs more work;
-the most viable way is through accessibility APIs.
-Also see link:configuring-your-system.adoc[about configuring a system].
+At minimum, run the automated tests pre-release, on Linux with the a11y test.
+UI automation through a11y APIs cannot cover everything easily.
+Also see dn.html.in about configuring the system.
 
  - Wayland: headless Weston
     * Use for automated tests.
@@ -24,6 +24,10 @@ Also see link:configuring-your-system.adoc[about configuring a system].
     * CSD: right clicks must invoke the compositor's context menu.
     * CSD: double click to maximise/restore must return
       to the original window positioning.
+
+ - Wayland: Plasma (KWin)
+    * Check if colour management works.
+    * It does not use colord, the screen's profile is delivered through Wayland.
 
  - Wayland: Sway (wlroots)
     * Check if colour management works.
@@ -44,6 +48,12 @@ Also see link:configuring-your-system.adoc[about configuring a system].
     * Check if colour management works.
 
  - Linux + Wine
+    * Fix all trivial issues.  Currently this is known to handle text badly.
+
+ - Generic
+    * Move the window between high and low-DPI screens.
+    * Move the window between HDR and SDR screens.
+    * Move the window between screens with different gamuts.
 
 Setting `QT_SCALE_FACTOR` to 0.5 or 1.5 should not cause any issues.
 
@@ -53,6 +63,11 @@ Input devices
  - Mouse (also back/forward buttons for history)
  - Touchpad/trackpad
  - Touch screen
+
+Output devices
+~~~~~~~~~~~~~~
+ - Wide-gamut display
+ - HDR-capable display
 
 Weston
 ~~~~~~
