@@ -1055,9 +1055,13 @@ struct Kit {
 	Widget *hit(float x, float y);
 	bool track_popups(float x, float y);
 
-	// Client-side decorations. The host window is host_w_ by host_h_;
+	// Client-side decorations.  The host window is host_w_ by host_h_;
 	// under csd_shadow_ the window itself only fills the frame within it.
 	[[nodiscard]] Rect frame() const;
+	// The frame minus any titlebar.
+	[[nodiscard]] Rect client() const;
+	// The titlebar belongs to the window.
+	[[nodiscard]] Titlebar *live_titlebar() const;
 	[[nodiscard]] Qt::Edges resize_edges(float x, float y) const;
 	bool start_resize_at(float x, float y);
 	void sync_cursor();

@@ -1332,6 +1332,12 @@ case_dialog()
 		CHECK(!has_action(dark, "Press"));
 		g_object_unref(dark);
 	}
+	// Except for the decorations, which belong to the window rather than
+	// to the page, and which the compositor's own would leave working.
+	if (AtspiAccessible *quit = find_one(g_window, "Close Window")) {
+		CHECK(has_action(quit, "Press"));
+		g_object_unref(quit);
+	}
 
 	CHECK(do_action(close, "Press"));
 	CHECK(wait_until([] { return !has_named(g_window, "Close"); }));
@@ -2580,6 +2586,15 @@ case_teardown()
 {
 	if (!g_window)
 		return;
+
+	// From under a dialog, which must not be what keeps the window open.
+	if (!open_app_menu() || !act_named(g_window, "Help", "ShowMenu") ||
+		!wait_until([] { return has_named(g_window, "About"); }) ||
+		!act_named(g_window, "About", "Press") ||
+		!wait_until([] { return has_named(g_window, "Close"); })) {
+		test::fail("the About dialog did not open");
+		return;
+	}
 
 	// Client-side decorations, which is what a compositor without server-side
 	// ones leaves Dawn to draw; the window has no other button to close it.

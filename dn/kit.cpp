@@ -2837,17 +2837,17 @@ Dialog::after_close(Kit &kit)
 void
 Dialog::place(Kit &kit)
 {
-	// Centred on the window, not on whatever the toolbar left over. The
-	// margin is only there to keep the shadow off the edges.
+	// Centred on the window's client area, which excludes any titlebar.
+	// The margin is only there to keep the shadow off the edges.
+	const Rect area = kit.client();
 	const int margin = kit.px(kGlowPts * 2.f);
-	const int max_w =
-		max(1, min(kit.px(this->max_w), kit.host_w_ - margin * 2));
-	const int avail_h = max(1, kit.host_h_ - margin * 2);
+	const int max_w = max(1, min(kit.px(this->max_w), area.w - margin * 2));
+	const int avail_h = max(1, area.h - margin * 2);
 	const Size size = measure(kit, max_w, avail_h);
 	// Taller than that means the body scrolls inside it.
 	const int h = min(size.h, avail_h);
-	const int x = max(0, (kit.host_w_ - size.w) / 2);
-	const int y = margin + max(0, (avail_h - h) / 2);
+	const int x = area.x + max(0, (area.w - size.w) / 2);
+	const int y = area.y + margin + max(0, (avail_h - h) / 2);
 	arrange(kit, {x, y, size.w, h});
 }
 
@@ -5346,6 +5346,12 @@ Kit::in_input_scope(const Widget *w) const
 		if (p->opener == w && w && w->shown())
 			return true;
 	}
+	if (const Titlebar *t = live_titlebar()) {
+		for (const Widget *a = w; a; a = a->parent_) {
+			if (a == t)
+				return true;
+		}
+	}
 	return false;
 }
 
@@ -5363,7 +5369,11 @@ Kit::hit(float x, float y)
 		if (opener && opener->shown() && opener->r.contains(x, y))
 			return opener;
 	}
-	// Nothing below them takes the pointer while any is open.
+	if (Titlebar *t = live_titlebar()) {
+		if (Widget *h = t->hit_at(x, y))
+			return h;
+	}
+	// Nothing else below them takes the pointer while any is open.
 	if (!popups.empty())
 		return nullptr;
 	return this->root_ ? this->root_->hit_at(x, y) : nullptr;
@@ -5378,6 +5388,31 @@ Kit::frame() const
 	// TODO(p): Consider if we don't want to add another 1px border.
 	const int glow = px(kGlowPts);
 	return host.inset(glow, glow);
+}
+
+Rect
+Kit::client() const
+{
+	Rect f = frame();
+	if (this->root_ && this->root_->titlebar &&
+		this->root_->titlebar->shown()) {
+		const int top =
+			clamp(this->root_->titlebar->r.bottom(), f.y, f.bottom());
+		f.h = f.bottom() - top;
+		f.y = top;
+	}
+	return f;
+}
+
+Titlebar *
+Kit::live_titlebar() const
+{
+	if (!this->root_ || !this->root_->titlebar ||
+		!this->root_->titlebar->shown())
+		return nullptr;
+	if (const Popup *p = top_popup(); p && p->transient())
+		return nullptr;
+	return this->root_->titlebar;
 }
 
 // The resize band straddles the frame's edge, and reaches outside it into
@@ -5515,8 +5550,7 @@ Kit::paint()
 		this->root_->paint(*this);
 	for (Popup *p : this->popups_) {
 		if (p->dims())
-			draw_fill({0, 0, this->host_w_, this->host_h_},
-				col(this->colours_[ColourInk], kWashAlpha));
+			draw_fill(client(), col(this->colours_[ColourInk], kWashAlpha));
 		p->paint(*this);
 	}
 	paint_tooltip(*this);
