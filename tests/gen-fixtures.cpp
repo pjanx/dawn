@@ -5,6 +5,8 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 
+#include "test.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -23,6 +25,8 @@
 #include <webp/encode.h>
 
 using namespace std;
+using test::append_be16;
+using test::append_be32;
 namespace fs = filesystem;
 
 // --- Utilities ---------------------------------------------------------------
@@ -62,22 +66,6 @@ static vector<uint8_t>
 bytes(const string &s)
 {
 	return vector<uint8_t>(s.begin(), s.end());
-}
-
-static void
-append_be16(vector<uint8_t> &o, uint16_t v)
-{
-	o.push_back(uint8_t(v >> 8));
-	o.push_back(uint8_t(v));
-}
-
-static void
-append_be32(vector<uint8_t> &o, uint32_t v)
-{
-	o.push_back(uint8_t(v >> 24));
-	o.push_back(uint8_t(v >> 16));
-	o.push_back(uint8_t(v >> 8));
-	o.push_back(uint8_t(v));
 }
 
 static void

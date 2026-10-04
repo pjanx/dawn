@@ -88,17 +88,6 @@ load_fixture(const string &name)
 	return img;
 }
 
-static vector<uint8_t>
-read_fixture(const string &name)
-{
-	vector<uint8_t> bytes;
-	dawn::Error error;
-	if (!dawn::read_file(
-			string(DAWN_TEST_FIXTURES_DIR) + "/" + name, &bytes, &error))
-		test::fail("%s: %s", name.c_str(), error.message.c_str());
-	return bytes;
-}
-
 static void
 test_pack_helpers()
 {
@@ -411,7 +400,7 @@ test_jpeg_cms_8_to_16()
 static void
 test_jpeg_fatal_error()
 {
-	vector<uint8_t> bytes = read_fixture("blue.jpg");
+	vector<uint8_t> bytes = test::fixture("blue.jpg");
 	CHECK(bytes.size() >= 2);
 	if (bytes.size() < 2)
 		return;
@@ -443,7 +432,7 @@ test_cmyk_cms_opaque()
 	auto srgb = cmm->get_profile_sRGB();
 	CHECK(srgb != nullptr);
 
-	const vector<uint8_t> bytes = read_fixture("cmyk-lab.icc");
+	const vector<uint8_t> bytes = test::fixture("cmyk-lab.icc");
 	if (bytes.empty())
 		return;
 	auto src = cmm->get_profile(bytes);
@@ -522,7 +511,7 @@ test_large_icc_and_p3_red()
 {
 	const fs::path path =
 		fs::path(DAWN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
-	const vector<uint8_t> bytes = read_fixture(path.filename().string());
+	const vector<uint8_t> bytes = test::fixture(path.filename().string());
 
 	auto cmm = dawn::Cmm::get_default();
 	double whitepoint[2] = {0.3127, 0.3290};
@@ -786,7 +775,7 @@ minimal_pdf()
 static void
 test_vector_rerender()
 {
-	const vector<uint8_t> svg = read_fixture("red.svg");
+	const vector<uint8_t> svg = test::fixture("red.svg");
 	if (svg.empty())
 		return;
 
@@ -930,7 +919,7 @@ test_chromaticities()
 
 	const fs::path p3 =
 		fs::path(DAWN_TEST_FIXTURES_DIR) / "display-p3-red_vs_srgb-red.png";
-	const vector<uint8_t> bytes = read_fixture(p3.filename().string());
+	const vector<uint8_t> bytes = test::fixture(p3.filename().string());
 	if (!bytes.empty()) {
 		dawn::OpenContext ctx;
 		ctx.uri = dawn::path_to_uri(p3.string());
@@ -990,7 +979,7 @@ static dawn::ImagePtr
 load_tiff_fixture(const char *name, const shared_ptr<dawn::Cmm> &cmm,
 	const shared_ptr<dawn::Profile> &screen, vector<string> *warnings)
 {
-	const vector<uint8_t> bytes = read_fixture(name);
+	const vector<uint8_t> bytes = test::fixture(name);
 	if (bytes.empty())
 		return nullptr;
 
@@ -1152,7 +1141,7 @@ test_tiff_ep_colour()
 	for (const auto &fixture : fixtures) {
 		dawn::Error error;
 		dawn::ImagePtr image =
-			dawn::load_tiff_ep(read_fixture(fixture.name), ctx, &error);
+			dawn::load_tiff_ep(test::fixture(fixture.name), ctx, &error);
 		if (!image) {
 			test::fail("%s: %s", fixture.name, error.message.c_str());
 			continue;
@@ -1181,7 +1170,7 @@ static void
 test_png_text_after_idat()
 {
 	fs::path path = fs::path(DAWN_TEST_FIXTURES_DIR) / "text-after-idat.png";
-	const vector<uint8_t> bytes = read_fixture(path.filename().string());
+	const vector<uint8_t> bytes = test::fixture(path.filename().string());
 
 	dawn::OpenContext ctx;
 	ctx.uri = dawn::path_to_uri(path.string());

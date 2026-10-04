@@ -16,21 +16,13 @@
 #include <string_view>
 
 using namespace std;
+using test::append_be16;
+using test::append_be32;
 
 static bool
 near(double a, double b)
 {
 	return fabs(a - b) < 1e-5;
-}
-
-static vector<uint8_t>
-fixture(const char *name)
-{
-	vector<uint8_t> data;
-	dawn::Error error;
-	CHECK(dawn::read_file(
-		string(DAWN_TEST_FIXTURES_DIR) + "/" + name, &data, &error));
-	return data;
 }
 
 static dawn::ImagePtr
@@ -40,23 +32,9 @@ load(const char *name, bool gain_maps, vector<string> *warnings)
 	ctx.gain_maps = gain_maps;
 	ctx.warnings = warnings;
 	dawn::Error error;
-	auto image = dawn::open_from_data(fixture(name), ctx, &error);
+	auto image = dawn::open_from_data(test::fixture(name), ctx, &error);
 	CHECK(image);
 	return image;
-}
-
-static void
-append_be16(vector<uint8_t> &o, uint16_t v)
-{
-	o.push_back(uint8_t(v >> 8));
-	o.push_back(uint8_t(v));
-}
-
-static void
-append_be32(vector<uint8_t> &o, uint32_t v)
-{
-	append_be16(o, uint16_t(v >> 16));
-	append_be16(o, uint16_t(v));
 }
 
 // --- Weight ------------------------------------------------------------------

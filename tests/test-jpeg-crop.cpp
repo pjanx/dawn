@@ -13,16 +13,7 @@
 #include <cstring>
 
 using namespace std;
-
-static vector<uint8_t>
-fixture(const char *name)
-{
-	vector<uint8_t> data;
-	dawn::Error error;
-	CHECK(dawn::read_file(
-		string(DAWN_TEST_FIXTURES_DIR) + "/" + name, &data, &error));
-	return data;
-}
+using test::fixture;
 
 static dawn::ImagePtr
 decode(const vector<uint8_t> &data)

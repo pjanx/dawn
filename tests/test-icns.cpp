@@ -21,6 +21,7 @@
 #include <vector>
 
 using namespace std;
+using test::append_be32;
 
 // Generated once with macOS 15 ImageIO. These are the irreducible encoded
 // payload tests; repetitive legacy formats are assembled below.
@@ -87,13 +88,6 @@ static span<const uint8_t>
 bytes(const char (&data)[N])
 {
 	return {(const uint8_t *) data, N - 1};
-}
-
-static void
-append_be32(vector<uint8_t> &out, uint32_t value)
-{
-	for (int shift = 24; shift >= 0; shift -= 8)
-		out.push_back(uint8_t(value >> shift));
 }
 
 static void

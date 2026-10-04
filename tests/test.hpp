@@ -10,9 +10,17 @@
 #include <dawn-config.h>
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <initializer_list>
+#include <vector>
+
+#ifdef DAWN_TEST_FIXTURES_DIR
+#include <libdn/libdn.hpp>
+
+#include <string>
+#endif
 
 namespace test
 {
@@ -56,6 +64,33 @@ run(std::initializer_list<Case> cases)
 		fprintf(stderr, "%d check(s) failed\n", failures);
 	return failures ? 1 : 0;
 }
+
+inline void
+append_be16(std::vector<uint8_t> &o, uint16_t v)
+{
+	o.push_back(uint8_t(v >> 8));
+	o.push_back(uint8_t(v));
+}
+
+inline void
+append_be32(std::vector<uint8_t> &o, uint32_t v)
+{
+	append_be16(o, uint16_t(v >> 16));
+	append_be16(o, uint16_t(v));
+}
+
+#ifdef DAWN_TEST_FIXTURES_DIR
+inline std::vector<uint8_t>
+fixture(const std::string &name)
+{
+	std::vector<uint8_t> data;
+	dawn::Error error;
+	if (!dawn::read_file(
+			std::string(DAWN_TEST_FIXTURES_DIR) + "/" + name, &data, &error))
+		fail("%s: %s", name.c_str(), error.message.c_str());
+	return data;
+}
+#endif
 
 }  // namespace test
 
