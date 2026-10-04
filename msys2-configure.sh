@@ -8,7 +8,12 @@ pkg=mingw-w64-ucrt-x86_64
 
 # Wine 11 has removed wine64, so this is only backward compatibility.
 if command -v wine64 >/dev/null
-then wine() { command wine64 "$@"; }
+then
+	wine() { command wine64 "$@"; }
+elif [ -n "$MSYSTEM" ]
+then
+	wine() { "$@"; }
+	bsdtar() { MSYS=winsymlinks:native /bin/bsdtar "$@"; }
 fi
 
 status() {
@@ -17,6 +22,12 @@ status() {
 
 dbsync() {
 	status Fetching repository DB
+	if [ -n "$MSYSTEM" ]
+	then
+		pacman -Sy
+		touch db.tsv db.sums
+	fi
+
 	[ -f db.tsv ] || curl -# "$repository/ucrt64.db" | bsdtar -xOf- | awk '
 		function flush() { print f["%NAME%"] f["%FILENAME%"] f["%DEPENDS%"] }
 		NR > 1 && $0 == "%FILENAME%" { flush(); for (i in f) delete f[i] }
@@ -28,6 +39,13 @@ dbsync() {
 
 fetch() {
 	status Resolving "$@"
+
+	# Make local development work but don't set up a new root.
+	# Though that's also a valid way of doing it.
+	if [ -n "$MSYSTEM" ]
+	then pacman -S --needed "$@"
+	fi
+
 	mkdir -p packages
 	awk -F'\t' 'function get(name,    i, a) {
 		if (visited[name]++ || !(name in filenames)) return
@@ -90,6 +108,7 @@ extract() {
 	do bsdtar -xf "packages/$name" --strip-components 1 \
 		--exclude '*/share/man' --exclude '*/share/doc'
 	done < db.want
+	mkdir -p bin
 
 	# SwiftShader
 	bsdtar -C bin -xf swiftshader.zip vk_swiftshader.dll vk_swiftshader_icd.json
@@ -110,8 +129,9 @@ extract() {
 		-s '|^Image-ExifTool-[^/]*/exiftool$|bin/exiftool|' \
 		-s '|^Image-ExifTool-[^/]*/lib/|lib/perl5/site_perl/|' \
 		'Image-ExifTool-*/exiftool' 'Image-ExifTool-*/lib'
-	(cd lib/perl5/core_perl && rm -rf CORE App CPAN CPAN.pm Devel/PPPort.pm \
-		ExtUtils Module Pod TAP Test Test.pm Test2 perl5db.pl \
+	test ! -d lib/perl5/core_perl || (cd lib/perl5/core_perl && \
+		rm -rf CORE App CPAN CPAN.pm Devel/PPPort.pm ExtUtils Module Pod TAP \
+		Test Test.pm Test2 perl5db.pl \
 		Unicode/Collate Unicode/Collate.pm auto/Unicode/Collate Encode/*.e2x &&
 		find unicore -mindepth 1 ! -name 'Name.p[lm]' -delete)
 }
@@ -121,11 +141,25 @@ resvg() {
 	status Building resvg
 	mkdir -p tmp include/resvg bin lib/pkgconfig
 	src=$PWD/tmp
-	bsdtar -C $src -xf resvg.tar.xz --strip-components 1
+	bsdtar -C "$src" -xf resvg.tar.xz --strip-components 1
+
+	if [ -n "$MSYSTEM" ]
+	then
+		(cd "$src/crates/c-api" && \
+			cargo cinstall --prefix="$builddir/resvg" --library-type=cdylib)
+
+		# A static build didn't work out,
+		# a dynamic one needs to be put next to the binary.
+		mkdir -p "$builddir/bin"
+		cp "$builddir/resvg/bin"/* "$builddir/bin"
+
+		rm -rf tmp
+		return
+	fi
 
 	# We must cross-compile Rust std from rust-src.
 	# Vendor config replaces crates-io; -Zbuild-std needs hashbrown etc.
-	rm -f $src/.cargo/config
+	rm -f "$src/.cargo/config"
 
 	unset RUSTC
 	(cd "$src/crates/c-api" &&
@@ -135,9 +169,9 @@ resvg() {
 		AR_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc-ar \
 		RUSTC_BOOTSTRAP=1 \
 		cargo build --release --target x86_64-pc-windows-gnu -Zbuild-std)
-	cp $src/crates/c-api/resvg.h include/resvg/resvg.h
-	mv $src/x86_64-pc-windows-gnu/release/resvg.dll bin/resvg.dll
-	mv $src/x86_64-pc-windows-gnu/release/libresvg.dll.a lib/libresvg.dll.a
+	cp "$src/crates/c-api/resvg.h" include/resvg/resvg.h
+	mv "$src/x86_64-pc-windows-gnu/release/resvg.dll" bin/resvg.dll
+	mv "$src/x86_64-pc-windows-gnu/release/libresvg.dll.a" lib/libresvg.dll.a
 	cat >lib/pkgconfig/resvg.pc <<-'EOF'
 		prefix=/ucrt64
 		exec_prefix=${prefix}
@@ -161,6 +195,10 @@ forward() {
 
 configure() {
 	status Configuring packages
+	if [ -n "$MSYSTEM" ]
+	then return
+	fi
+
 	wine bin/update-mime-database.exe share/mime
 	forward rcc autorcc
 	forward moc automoc
@@ -174,14 +212,9 @@ shift
 mkdir -p "$builddir/ucrt64"
 cd "$builddir/ucrt64"
 
-# Direct MSYS2 for development purposes:
-#   $pkg-cmake $pkg-glslang $pkg-rsvg $pkg-icoutils $pkg-rust $pkg-cargo-c
-#   (cd crates/c-api && cargo cinstall --prefix=... --library-type=cdylib)
-#   # libwmf triggers an MSYS2 CMake bug, it's easiest to simply turn it off:
-#   cmake ... -DDAWN_WITH_LIBWMF=OFF -DCMAKE_PREFIX_PATH=...
-#   cp .../bin/resvg.dll .../{msvcp140,vcruntime140,vcruntime140_1}.dll bin
-#   # $pkg-qt-creator can open CMakeLists.txt, take the build, and run it.
 dbsync
+test -n "$MSYSTEM" && fetch jq $pkg-cabextract $pkg-cmake $pkg-glslang \
+	$pkg-librsvg $pkg-icoutils $pkg-rust $pkg-cargo-c
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \
 	$pkg-jxrlib $pkg-libwmf $pkg-shared-mime-info $pkg-gcc-libs \
@@ -189,10 +222,19 @@ fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 verify
 extract
 resvg
-configure "$@"
+configure
 
 cd -
-toolchain=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake
-cmake -B "$builddir" -DCMAKE_TOOLCHAIN_FILE=$toolchain \
-	-DCMAKE_AUTOMOC_EXECUTABLE=$builddir/ucrt64/automoc \
-	-DCMAKE_AUTORCC_EXECUTABLE=$builddir/ucrt64/autorcc "$@"
+
+if [ -n "$MSYSTEM" ]
+then
+	# libwmf triggers an MSYS2 CMake bug, it's easiest to simply turn it off.
+	# $pkg-qt-creator can open CMakeLists.txt, take this build, and run it.
+	cmake -B "$builddir" -DCMAKE_PREFIX_PATH="$builddir/resvg" \
+		-DDAWN_WITH_LIBWMF=OFF "$@"
+else
+	toolchain=submodules/liberty/cmake/toolchains/MinGW-w64-x64.cmake
+	cmake -B "$builddir" -DCMAKE_TOOLCHAIN_FILE=$toolchain \
+		-DCMAKE_AUTOMOC_EXECUTABLE=$builddir/ucrt64/automoc \
+		-DCMAKE_AUTORCC_EXECUTABLE=$builddir/ucrt64/autorcc "$@"
+fi

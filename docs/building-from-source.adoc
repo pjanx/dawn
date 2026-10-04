@@ -55,9 +55,9 @@ for build commands.
 Windows
 -------
 The Windows build is cross-compiled in the CI pipeline.  Development can be done
-from _within_ an MSYS2 environment, but you'll have to go over the configuration
-script, and do the equivalent steps manually.  The native text backend requires
-Windows 8.1 or newer (for greyscale DirectWrite glyph analysis).
+from _within_ an MSYS2 environment, but the build won't be set up for packaging.
+The native text backend requires Windows 8.1 or newer (for greyscale DirectWrite
+glyph analysis).
 
 ```sh
 sh -e msys2-configure.sh build-msys2 -DCMAKE_BUILD_TYPE=Release
