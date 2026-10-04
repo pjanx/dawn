@@ -987,6 +987,7 @@ reap_dn()
 }
 
 // The process we started, not whichever application got to the bus first.
+// Also ignore any other toolkits' bridges.
 static AtspiAccessible *
 find_app()
 {
@@ -1002,13 +1003,48 @@ find_app()
 			atspi_accessible_get_child_at_index(desktop, i, nullptr);
 		if (!child)
 			continue;
-		if (atspi_accessible_get_process_id(child, nullptr) == guint(g_pid))
+
+		gchar *toolkit = atspi_accessible_get_toolkit_name(child, nullptr);
+		if (atspi_accessible_get_process_id(child, nullptr) == guint(g_pid) &&
+			toolkit && !strcmp(toolkit, "Qt"))
 			found = child;
 		else
 			g_object_unref(child);
+		g_free(toolkit);
 	}
 	g_object_unref(desktop);
 	return found;
+}
+
+// Qt's GTK 3 platform theme brings GTK in with it, whose own bridge would
+// register the same process again as an empty application.
+static int
+count_registrations()
+{
+	AtspiAccessible *desktop = atspi_get_desktop(0);
+	if (!desktop)
+		return 0;
+
+	int count = 0;
+	atspi_accessible_clear_cache(desktop);
+	const gint n = atspi_accessible_get_child_count(desktop, nullptr);
+	for (gint i = 0; i < n; i++) {
+		AtspiAccessible *child =
+			atspi_accessible_get_child_at_index(desktop, i, nullptr);
+		if (!child)
+			continue;
+
+		if (atspi_accessible_get_process_id(child, nullptr) == guint(g_pid)) {
+			gchar *toolkit = atspi_accessible_get_toolkit_name(child, nullptr);
+			fprintf(stderr, "registered by toolkit \"%s\"\n",
+				toolkit ? toolkit : "");
+			g_free(toolkit);
+			count++;
+		}
+		g_object_unref(child);
+	}
+	g_object_unref(desktop);
+	return count;
 }
 
 // --- Cases -------------------------------------------------------------------
@@ -1072,6 +1108,7 @@ case_startup()
 		}
 	}
 	CHECK(frames == 1);
+	CHECK(count_registrations() == 1);
 	if (!g_window) {
 		test::fail("the application has no window (children %d)", int(windows));
 		return;

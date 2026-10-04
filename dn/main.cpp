@@ -259,7 +259,21 @@ main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
+#if !defined Q_OS_WIN && !defined Q_OS_MACOS
+	// Qt's GTK 3 platform theme initialises GTK, whose AT-SPI bridge would
+	// register this process a second time, as an empty application that
+	// screen readers list beside Qt's.  Only while the theme loads, though:
+	// whatever dn launches inherits the environment.
+	const bool at_bridge_set = qEnvironmentVariableIsSet("NO_AT_BRIDGE");
+	if (!at_bridge_set)
+		qputenv("NO_AT_BRIDGE", "1");
+#endif
 	dn::App app(argc, argv);
+#if !defined Q_OS_WIN && !defined Q_OS_MACOS
+	if (!at_bridge_set)
+		qunsetenv("NO_AT_BRIDGE");
+#endif
+
 	dn::accessible_init();
 	install_qt_translations(app);
 	QStringList raw = parser.positionalArguments();
