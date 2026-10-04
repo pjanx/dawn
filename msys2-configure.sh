@@ -213,7 +213,7 @@ mkdir -p "$builddir/ucrt64"
 cd "$builddir/ucrt64"
 
 dbsync
-test -n "$MSYSTEM" && fetch jq $pkg-cabextract $pkg-cmake $pkg-glslang \
+test -z "$MSYSTEM" || fetch jq $pkg-cabextract $pkg-cmake $pkg-glslang \
 	$pkg-librsvg $pkg-icoutils $pkg-rust $pkg-cargo-c
 fetch $pkg-qt6-base $pkg-vulkan-loader $pkg-vulkan-headers $pkg-libwebp \
 	$pkg-libjpeg-turbo $pkg-libheif $pkg-libjxl $pkg-openjpeg2 $pkg-libraw \
