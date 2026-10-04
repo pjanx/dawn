@@ -65,8 +65,8 @@ Building
 --------
 See link:docs/building-from-source.adoc[Building from source].
 
-Documentation
--------------
+User documentation
+------------------
 Open the user guide by pressing F1 (Linux, Windows) or Command-? (macOS)
 in the application.  This includes a necessary section on system configuration.
 
@@ -118,4 +118,5 @@ Licence
 This software is released under the terms of the MPL 2.0 licence, the text of
 which is included within the package along with the list of authors.
 
-With Little CMS plugins bundled in, the binary package becomes GPL-licensed.
+Based on what's bundled and linked, the binary package may become restricted
+by variants of GPL.
