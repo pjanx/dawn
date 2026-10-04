@@ -12,6 +12,12 @@ if command -v wine64 >/dev/null
 then wine() { command wine64 "$@"; }
 fi
 
+# Before 0.104, wixl ignores the Indirect attribute that BrowseDlg needs.
+wixl --version | awk -F. '{ exit !($1 > 0 || $2 >= 104) }' || {
+	echo "$0: wixl 0.104 or later is required" >&2
+	exit 1
+}
+
 rm -rf "$destdir"
 cmake --install . --prefix "$destdir"
 
@@ -28,7 +34,7 @@ txt2rtf() {
 	}'
 }
 
-# msitools have this filename hardcoded in UI files, and it's required.
+# LicenseAgreementDlg in wixui-feature-tree.wxs uses this filename.
 txt2rtf "$(dirname "$0")/LICENSE" > License.rtf
 
 heat() {
@@ -51,6 +57,15 @@ cat <<XML > associations.wxs
 	<Fragment>
 		<DirectoryRef Id='INSTALLDIR'>
 			<Component Id='FileAssociations' Guid='*'>
+				<RegistryValue Root='HKLM' Type='string' Name='[ProductName]'
+					Key='Software\\RegisteredApplications'
+					Value='Software\\[Manufacturer]\\[ProductName]\\Capabilities' />
+				<RegistryValue Root='HKLM' Type='string' Name='ApplicationName'
+					Key='Software\\[Manufacturer]\\[ProductName]\\Capabilities'
+					Value='[ProductName]' />
+				<RegistryValue Root='HKLM' Type='string' Name='ApplicationDescription'
+					Key='Software\\[Manufacturer]\\[ProductName]\\Capabilities'
+					Value='$description' />
 				<RegistryKey Root='HKCR' Key='dawn.dn'>
 					<RegistryValue Type='string' Value='$description' />
 					<RegistryValue Type='string' Key='DefaultIcon'
@@ -68,6 +83,8 @@ do cat <<END
 				<RegistryKey Root='HKCR' Key='$ext\\OpenWithProgids'>
 					<RegistryValue Type='string' Name='dawn.dn' Value='' />
 				</RegistryKey>
+				<RegistryValue Root='HKLM' Type='string' Name='$ext' Value='dawn.dn'
+					Key='Software\\[Manufacturer]\\[ProductName]\\Capabilities\\FileAssociations' />
 END
 done)
 $(cat <<'END'
@@ -101,4 +118,5 @@ fi)
 XML
 
 wixl --verbose --arch "$arch" -D SourceDir="$destdir" --ext ui \
-	--output "$msi" "$wxs" package-files.wxs exiftool-files.wxs associations.wxs
+	--output "$msi" "$wxs" "$(dirname "$0")/packaging/wixui-feature-tree.wxs" \
+	package-files.wxs exiftool-files.wxs associations.wxs

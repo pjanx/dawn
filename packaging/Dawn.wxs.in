@@ -1,6 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
-	<?define FullName = "@PROJECT_NAME@ @PROJECT_VERSION@" ?>
 	<?if $(sys.BUILDARCH) = x64 ?>
 		<?define ProgramFilesFolder = "ProgramFiles64Folder" ?>
 	<?else?>
@@ -8,42 +7,56 @@
 	<?endif?>
 
 	<Product Id='*'
-		Name='$(var.FullName)'
+		Name='@PROJECT_NAME@'
 		UpgradeCode='a99226f0-c9a4-4cc8-8065-bb79dc3c3469'
 		Language='1033'
 		Codepage='1252'
 		Version='@PROJECT_VERSION@'
 		Manufacturer='@CPACK_PACKAGE_VENDOR@'>
 
+		<!-- We install per-machine: a package for both scopes needs HKMU,
+			 but wixl 0.106 writes it as 4, not -1. -->
 		<Package Id='*'
 			Keywords='Installer,Image,Browser'
-			Description='$(var.FullName) Installer'
+			Description='@PROJECT_NAME@ @PROJECT_VERSION@ Installer'
 			Manufacturer='@CPACK_PACKAGE_VENDOR@'
 			InstallerVersion='200'
+			InstallScope='perMachine'
 			Compressed='yes'
 			Languages='1033'
 			SummaryCodepage='1252' />
 
+		<MajorUpgrade DowngradeErrorMessage='A newer version of [ProductName] is already installed.' />
 		<Media Id='1' Cabinet='data.cab' EmbedCab='yes' />
 		<Icon Id='dn.ico' SourceFile='@DAWN_ICON_ICO@' />
 		<Property Id='ARPPRODUCTICON' Value='dn.ico' />
 		<Property Id='ARPURLINFOABOUT' Value='@PROJECT_HOMEPAGE_URL@' />
 
-		<UIRef Id='WixUI_Minimal' />
-		<!-- This isn't supported by msitools, but is necessary for WiX.
-		<WixVariable Id='WixUILicenseRtf' Value='License.rtf' />
-		-->
+		<UIRef Id='WixUI_FeatureTree' />
+
+		<!-- WiX launches programs with a custom action DLL, we use type 50. -->
+		<Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT'
+			Value='Launch @PROJECT_NAME@' />
+		<Property Id='WIXUI_EXITDIALOGOPTIONALCHECKBOX' Value='1' />
+		<CustomAction Id='LaunchApplication' Property='LaunchTarget'
+			ExeCommand='"[%USERPROFILE]"' Return='asyncNoWait' />
+		<UIRef Id='LaunchApplication' />
+
+		<!-- An upgrade uses the folder of the installed version. -->
+		<Property Id='INSTALLDIR'>
+			<RegistrySearch Id='InstallDirSearch' Root='HKLM'
+				Key='Software\[Manufacturer]\[ProductName]' Name='InstallDir'
+				Type='raw' />
+		</Property>
 
 		<Directory Id='TARGETDIR' Name='SourceDir'>
 			<Directory Id='$(var.ProgramFilesFolder)'>
-				<Directory Id='INSTALLDIR' Name='$(var.FullName)' />
+				<Directory Id='INSTALLDIR' Name='@PROJECT_NAME@' />
 			</Directory>
 
 			<Directory Id='ProgramMenuFolder'>
-				<Directory Id='ProgramMenuDir' Name='$(var.FullName)' />
+				<Directory Id='ProgramMenuDir' Name='@PROJECT_NAME@' />
 			</Directory>
-
-			<Directory Id='DesktopFolder' />
 		</Directory>
 
 		<DirectoryRef Id='ProgramMenuDir'>
@@ -63,25 +76,40 @@
 					Arguments='--mode=commander "%USERPROFILE%"' Icon='dn.ico' />
 				<?endif?>
 				<RemoveFolder Id='ProgramMenuDir' On='uninstall' />
-				<RegistryValue Root='HKCU'
+				<RegistryValue Root='HKLM'
 					Key='Software\[Manufacturer]\[ProductName]'
+					Name='InstallDir'
 					Type='string'
-					Value=''
+					Value='[INSTALLDIR]'
 					KeyPath='yes' />
 			</Component>
 		</DirectoryRef>
 
 		<!-- FileAssociations is defined in the generated associations.wxs:
 		     it needs dn's actual "list supported media types" output. -->
-		<Feature Id='Complete' Level='1' Absent='disallow'>
+		<Feature Id='Complete' Level='1' Absent='disallow' AllowAdvertise='no'
+			Title='@PROJECT_NAME@' Description='@PROJECT_DESCRIPTION@'
+			Display='expand' ConfigurableDirectory='INSTALLDIR'>
 			<ComponentGroupRef Id='CG.dn' />
 			<ComponentRef Id='ProgramMenuDir' />
 			<ComponentRef Id='FileAssociations' />
 
-			<!-- Though WixUI_Minimal won't let the user choose. -->
-			<Feature Id='ExifTool' Level='1'>
+			<Feature Id='ExifTool' Level='1' AllowAdvertise='no'
+				Title='ExifTool'
+				Description='Decodes more image metadata.'>
 				<ComponentGroupRef Id='CG.exiftool' />
 			</Feature>
 		</Feature>
 	</Product>
+
+	<Fragment>
+		<UI Id='LaunchApplication'>
+			<Publish Dialog='ExitDialog' Control='Finish' Order='1'
+				Property='LaunchTarget' Value='[INSTALLDIR]dn.exe'
+				Condition='WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed' />
+			<Publish Dialog='ExitDialog' Control='Finish' Order='2'
+				Event='DoAction' Value='LaunchApplication'
+				Condition='WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed' />
+		</UI>
+	</Fragment>
 </Wix>

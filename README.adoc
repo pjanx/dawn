@@ -50,7 +50,7 @@ Packages
 
  - Latest https://janouch.name/cd/Dawn-latest-Windows-x86_64.zip[Windows ZIP],
    https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
-   using Wine is not recommended.
+   note that Wine is partly incompatible.
 
  - Latest *unsigned* Apple Silicon
    https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[macOS ZIP],

@@ -1,0 +1,184 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+  wixui-feature-tree.wxs: WixUI_FeatureTree for msitools' wixl
+
+  Copyright (c) .NET Foundation and contributors
+  SPDX-License-Identifier: MS-RL
+
+  This file contains the WiX v4.0.5 UI parts that msitools does not include.
+  The text comes from WixUI_en-us.wxl.  The license page does not make the user
+  accept the license.  The Print button needs a WiX custom action DLL,
+  so we removed it.
+
+  wixl 0.106 starts each dialog at its first control, but it puts only some
+  control types in the tab order.  Thus, each dialog starts with a button.
+  Its Common.wxs has only 5 of the UIText entries from WiX, so we add those
+  that this package can show.
+-->
+<Wix xmlns='http://wixtoolset.org/schemas/v4/wxs'>
+	<Fragment>
+		<UI Id='WixUI_FeatureTree'>
+			<TextStyle Id='WixUI_Font_Normal' FaceName='Tahoma' Size='8' />
+			<TextStyle Id='WixUI_Font_Bigger' FaceName='Tahoma' Size='12' />
+			<TextStyle Id='WixUI_Font_Title' FaceName='Tahoma' Size='9' Bold='yes' />
+
+			<Property Id='DefaultUIFont' Value='WixUI_Font_Normal' />
+
+			<UIText Id='MenuAbsent' Value='Entire feature will be unavailable' />
+			<UIText Id='MenuAllLocal' Value='Entire feature will be installed on local hard drive' />
+			<UIText Id='MenuLocal' Value='Will be installed on local hard drive' />
+			<UIText Id='NewFolder' Value='Folder|New Folder' />
+			<UIText Id='ScriptInProgress' Value='Gathering required information...' />
+			<UIText Id='SelChildCostNeg' Value='This feature frees up [1] on your hard drive.' />
+			<UIText Id='SelChildCostPos' Value='This feature requires [1] on your hard drive.' />
+			<UIText Id='SelCostPending' Value='Compiling cost for this feature...' />
+			<UIText Id='SelParentCostPosNeg' Value='This feature requires [1] on your hard drive. It has [2] of [3] subfeatures selected. The subfeatures free up [4] on your hard drive.' />
+			<UIText Id='SelParentCostPosPos' Value='This feature requires [1] on your hard drive. It has [2] of [3] subfeatures selected. The subfeatures require [4] on your hard drive.' />
+			<UIText Id='VolumeCostAvailable' Value='Available' />
+			<UIText Id='VolumeCostDifference' Value='Difference' />
+			<UIText Id='VolumeCostRequired' Value='Required' />
+			<UIText Id='VolumeCostSize' Value='Disk Size' />
+			<UIText Id='VolumeCostVolume' Value='Volume' />
+
+			<DialogRef Id='ErrorDlg' />
+			<DialogRef Id='FatalError' />
+			<DialogRef Id='FilesInUse' />
+			<DialogRef Id='MsiRMFilesInUse' />
+			<DialogRef Id='PrepareDlg' />
+			<DialogRef Id='ProgressDlg' />
+			<DialogRef Id='ResumeDlg' />
+			<DialogRef Id='UserExit' />
+
+			<Publish Dialog='ExitDialog' Control='Finish' Event='EndDialog' Value='Return' Order='999' />
+
+			<Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='LicenseAgreementDlg' Condition='NOT Installed' />
+			<Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='VerifyReadyDlg' Condition='Installed AND PATCH' />
+
+			<Publish Dialog='LicenseAgreementDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' />
+			<Publish Dialog='LicenseAgreementDlg' Control='Next' Event='NewDialog' Value='CustomizeDlg' />
+
+			<Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='MaintenanceTypeDlg' Order='1' Condition='Installed' />
+			<Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='LicenseAgreementDlg' Order='2' Condition='NOT Installed' />
+			<Publish Dialog='CustomizeDlg' Control='Next' Event='NewDialog' Value='VerifyReadyDlg' />
+
+			<Publish Dialog='VerifyReadyDlg' Control='Back' Event='NewDialog' Value='CustomizeDlg' Order='1' Condition='NOT Installed OR WixUI_InstallMode = &quot;Change&quot;' />
+			<Publish Dialog='VerifyReadyDlg' Control='Back' Event='NewDialog' Value='MaintenanceTypeDlg' Order='2' Condition='Installed AND NOT PATCH' />
+			<Publish Dialog='VerifyReadyDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='3' Condition='Installed AND PATCH' />
+
+			<Publish Dialog='MaintenanceWelcomeDlg' Control='Next' Event='NewDialog' Value='MaintenanceTypeDlg' />
+
+			<Publish Dialog='MaintenanceTypeDlg' Control='ChangeButton' Event='NewDialog' Value='CustomizeDlg' />
+			<Publish Dialog='MaintenanceTypeDlg' Control='RepairButton' Event='NewDialog' Value='VerifyReadyDlg' />
+			<Publish Dialog='MaintenanceTypeDlg' Control='RemoveButton' Event='NewDialog' Value='VerifyReadyDlg' />
+			<Publish Dialog='MaintenanceTypeDlg' Control='Back' Event='NewDialog' Value='MaintenanceWelcomeDlg' />
+		</UI>
+
+		<UIRef Id='WixUI_Common' />
+
+		<UI>
+			<Dialog Id='LicenseAgreementDlg' Width='370' Height='270' Title='[ProductName] Setup'>
+				<Control Id='BannerBitmap' Type='Bitmap' X='0' Y='0' Width='370' Height='44' TabSkip='no' Text='WixUI_Bmp_Banner' />
+				<Control Id='BannerLine' Type='Line' X='0' Y='44' Width='370' Height='0' />
+				<Control Id='BottomLine' Type='Line' X='0' Y='234' Width='370' Height='0' />
+				<Control Id='Description' Type='Text' X='25' Y='23' Width='340' Height='15' Transparent='yes' NoPrefix='yes' Text='Please read the following license agreement carefully' />
+				<Control Id='Title' Type='Text' X='15' Y='6' Width='200' Height='15' Transparent='yes' NoPrefix='yes' Text='{\WixUI_Font_Title}End-User License Agreement' />
+				<Control Id='Back' Type='PushButton' X='180' Y='243' Width='56' Height='17' Text='&amp;Back' />
+				<Control Id='Next' Type='PushButton' X='236' Y='243' Width='56' Height='17' Default='yes' Text='&amp;Next'>
+					<Publish Event='SpawnWaitDialog' Value='WaitForCostingDlg' Condition='1 OR CostingComplete = 1' />
+				</Control>
+				<Control Id='Cancel' Type='PushButton' X='304' Y='243' Width='56' Height='17' Cancel='yes' Text='Cancel'>
+					<Publish Event='SpawnDialog' Value='CancelDlg' />
+				</Control>
+				<Control Id='LicenseText' Type='ScrollableText' X='20' Y='60' Width='330' Height='164' Sunken='yes' TabSkip='no'>
+					<Text SourceFile='License.rtf' />
+				</Control>
+			</Dialog>
+
+			<Dialog Id='CustomizeDlg' Width='370' Height='270' Title='[ProductName] Setup' TrackDiskSpace='yes'>
+				<!-- See header: Id='Tree' belongs here. -->
+				<Control Id='Browse' Type='PushButton' X='294' Y='210' Width='66' Height='17' Text='B&amp;rowse...' HideCondition='Installed' DisableCondition='Installed'>
+					<Publish Event='SelectionBrowse' Value='BrowseDlg' />
+				</Control>
+				<Control Id='Reset' Type='PushButton' X='10' Y='243' Width='81' Height='17' Text='Re&amp;set'>
+					<Publish Event='Reset' Value='0' />
+					<Subscribe Event='SelectionNoItems' Attribute='Enabled' />
+				</Control>
+				<Control Id='DiskCost' Type='PushButton' X='91' Y='243' Width='100' Height='17' Text='Disk &amp;Usage'>
+					<Publish Event='SpawnDialog' Value='DiskCostDlg' />
+					<Subscribe Event='SelectionNoItems' Attribute='Enabled' />
+				</Control>
+				<Control Id='Back' Type='PushButton' X='192' Y='243' Width='56' Height='17' Text='&amp;Back' />
+				<Control Id='Next' Type='PushButton' X='248' Y='243' Width='56' Height='17' Default='yes' Text='&amp;Next'>
+					<Subscribe Event='SelectionNoItems' Attribute='Enabled' />
+				</Control>
+				<Control Id='Cancel' Type='PushButton' X='304' Y='243' Width='56' Height='17' Cancel='yes' Text='Cancel'>
+					<Publish Event='SpawnDialog' Value='CancelDlg' />
+				</Control>
+				<Control Id='BannerBitmap' Type='Bitmap' X='0' Y='0' Width='370' Height='44' TabSkip='no' Text='WixUI_Bmp_Banner' />
+				<Control Id='Text' Type='Text' X='25' Y='55' Width='320' Height='20' Text='Click the icons in the tree below to change the way features will be installed.' />
+				<Control Id='BannerLine' Type='Line' X='0' Y='44' Width='370' Height='0' />
+				<Control Id='BottomLine' Type='Line' X='0' Y='234' Width='370' Height='0' />
+				<Control Id='Description' Type='Text' X='25' Y='23' Width='280' Height='15' Transparent='yes' NoPrefix='yes' Text='Select the way you want features to be installed.' />
+				<Control Id='Title' Type='Text' X='15' Y='6' Width='210' Height='15' Transparent='yes' NoPrefix='yes' Text='{\WixUI_Font_Title}Custom Setup' />
+				<Control Id='Box' Type='GroupBox' X='210' Y='81' Width='150' Height='118' />
+				<Control Id='ItemDescription' Type='Text' X='215' Y='90' Width='131' Height='50' Text='CustomizeDlgItemDescription-CustomizeDlgItemDescription'>
+					<Subscribe Event='SelectionDescription' Attribute='Text' />
+				</Control>
+				<Control Id='ItemSize' Type='Text' X='215' Y='140' Width='131' Height='50' Text='CustomizeDlgItemSize-CustomizeDlgItemSize'>
+					<Subscribe Event='SelectionSize' Attribute='Text' />
+				</Control>
+				<Control Id='Location' Type='Text' X='90' Y='210' Width='200' Height='20' Text='CustomizeDlgLocation-CustomizeDlgLocation' HideCondition='Installed'>
+					<Subscribe Event='SelectionPath' Attribute='Text' />
+					<Subscribe Event='SelectionPathOn' Attribute='Visible' />
+				</Control>
+				<Control Id='LocationLabel' Type='Text' X='25' Y='210' Width='65' Height='10' Text='Location:' HideCondition='Installed'>
+					<Subscribe Event='SelectionPathOn' Attribute='Visible' />
+				</Control>
+				<Control Id='Tree' Type='SelectionTree' X='25' Y='85' Width='175' Height='115' Property='_BrowseProperty' Sunken='yes' TabSkip='no' Text='Tree of selections' />
+			</Dialog>
+
+			<Dialog Id='BrowseDlg' Width='370' Height='270' Title='[ProductName] Setup'>
+				<!-- See header: Id='PathEdit' belongs here. -->
+				<Control Id='OK' Type='PushButton' X='240' Y='243' Width='56' Height='17' Default='yes' Text='OK'>
+					<Publish Event='SetTargetPath' Value='[_BrowseProperty]' />
+					<Publish Event='EndDialog' Value='Return' />
+				</Control>
+				<Control Id='Cancel' Type='PushButton' X='304' Y='243' Width='56' Height='17' Cancel='yes' Text='Cancel'>
+					<Publish Event='Reset' Value='0' />
+					<Publish Event='EndDialog' Value='Return' />
+				</Control>
+				<Control Id='ComboLabel' Type='Text' X='25' Y='58' Width='44' Height='10' TabSkip='no' Text='&amp;Look in:' />
+				<Control Id='DirectoryCombo' Type='DirectoryCombo' X='70' Y='55' Width='220' Height='80' Property='_BrowseProperty' Indirect='yes' Fixed='yes' Remote='yes'>
+					<Subscribe Event='IgnoreChange' Attribute='IgnoreChange' />
+				</Control>
+				<Control Id='WixUI_Bmp_Up' Type='PushButton' X='298' Y='55' Width='19' Height='19' ToolTip='Up one level' Icon='yes' FixedSize='yes' IconSize='16' Text='WixUI_Bmp_Up'>
+					<Publish Event='DirectoryListUp' Value='0' />
+				</Control>
+				<Control Id='NewFolder' Type='PushButton' X='325' Y='55' Width='19' Height='19' ToolTip='Create a new folder' Icon='yes' FixedSize='yes' IconSize='16' Text='WixUI_Bmp_New'>
+					<Publish Event='DirectoryListNew' Value='0' />
+				</Control>
+				<Control Id='DirectoryList' Type='DirectoryList' X='25' Y='83' Width='320' Height='98' Property='_BrowseProperty' Sunken='yes' Indirect='yes' TabSkip='no' />
+				<Control Id='PathEdit' Type='PathEdit' X='25' Y='202' Width='320' Height='18' Property='_BrowseProperty' Indirect='yes' />
+				<Control Id='PathLabel' Type='Text' X='25' Y='190' Width='320' Height='10' TabSkip='no' Text='&amp;Folder name:' />
+				<Control Id='BannerBitmap' Type='Bitmap' X='0' Y='0' Width='370' Height='44' TabSkip='no' Text='WixUI_Bmp_Banner' />
+				<Control Id='BannerLine' Type='Line' X='0' Y='44' Width='370' Height='0' />
+				<Control Id='BottomLine' Type='Line' X='0' Y='234' Width='370' Height='0' />
+				<Control Id='Description' Type='Text' X='25' Y='23' Width='280' Height='15' Transparent='yes' NoPrefix='yes' Text='Browse to the destination folder' />
+				<Control Id='Title' Type='Text' X='15' Y='6' Width='200' Height='15' Transparent='yes' NoPrefix='yes' Text='{\WixUI_Font_Title}Change destination folder' />
+			</Dialog>
+
+			<Dialog Id='DiskCostDlg' Width='370' Height='270' Title='[ProductName] Setup'>
+				<Control Id='OK' Type='PushButton' X='304' Y='243' Width='56' Height='17' Default='yes' Cancel='yes' Text='OK'>
+					<Publish Event='EndDialog' Value='Return' />
+				</Control>
+				<Control Id='BannerBitmap' Type='Bitmap' X='0' Y='0' Width='370' Height='44' TabSkip='no' Text='WixUI_Bmp_Banner' />
+				<Control Id='Text' Type='Text' X='20' Y='53' Width='330' Height='50' Text='Highlighted volumes do not have enough disk space available for selected features. You can either remove some files from the highlighted volumes, install fewer features, or select different destination drives.' />
+				<Control Id='BannerLine' Type='Line' X='0' Y='44' Width='370' Height='0' />
+				<Control Id='BottomLine' Type='Line' X='0' Y='234' Width='370' Height='0' />
+				<Control Id='Description' Type='Text' X='20' Y='20' Width='280' Height='20' Transparent='yes' NoPrefix='yes' Text='The disk space required for the installation of the selected features.' />
+				<Control Id='Title' Type='Text' X='15' Y='6' Width='200' Height='15' Transparent='yes' NoPrefix='yes' Text='{\WixUI_Font_Title}Disk Space Requirements' />
+				<Control Id='VolumeList' Type='VolumeCostList' X='20' Y='100' Width='330' Height='120' Sunken='yes' Fixed='yes' Remote='yes' Text='{120}{70}{70}{70}{70}' />
+			</Dialog>
+		</UI>
+	</Fragment>
+</Wix>

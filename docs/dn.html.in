@@ -273,7 +273,7 @@ dn --invalidate-cache
 <li>
 <p><b>Windows:</b> for the usual location:
 <pre>
-"C:\Program Files\@PROJECT_NAME@ @PROJECT_VERSION@\dn.exe" --invalidate-cache
+"C:\Program Files\@PROJECT_NAME@\dn.exe" --invalidate-cache
 </pre>
 </ul>
 
