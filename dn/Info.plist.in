@@ -3,7 +3,7 @@
 <!--
 	This file is configured three times, by three different things:
 
-	  1. dn/CMakeLists.txt fills in the content type list, with @ONLY,
+	  1. dn/CMakeLists.txt fills in some stuff with @ONLY,
 	  2. Qt's qt_add_executable finalizer copies the result through a second
 	     @ONLY pass (_qt_internal_copy_info_plist), by which point nothing
 	     is left for it to substitute,
@@ -19,6 +19,9 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>@DN_MACOS_LOCALIZATIONS@
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
 	<key>CFBundleIdentifier</key>

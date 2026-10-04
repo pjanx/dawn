@@ -85,6 +85,7 @@ foreach (lang IN LISTS linguas)
 	list(APPEND catalogues "${mo}")
 endforeach()
 set(DAWN_CATALOGUES ${catalogues} PARENT_SCOPE)
+set(DAWN_LINGUAS ${linguas} PARENT_SCOPE)
 
 # Desktop entries take their translations from the PO files directly.
 set(translations ${linguas})

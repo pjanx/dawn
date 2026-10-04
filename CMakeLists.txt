@@ -718,6 +718,13 @@ for type in CGImageSourceCopyTypeIdentifiers() as! [String] { print(type) }
 			"\n\t\t\t\t<string>${uti}</string>")
 	endforeach()
 
+	# AppKit only speaks the languages a bundle declares, whatever gettext finds.
+	set(DN_MACOS_LOCALIZATIONS "")
+	foreach (lang IN ITEMS en ${DAWN_LINGUAS})
+		string(APPEND DN_MACOS_LOCALIZATIONS
+			"\n\t\t<string>${lang}</string>")
+	endforeach()
+
 	# Still a template afterwards: CMake fills ${MACOSX_BUNDLE_*} at generate
 	# time, and Qt copies it once more in between.
 	set(plist "${PROJECT_BINARY_DIR}/Info.plist.in")
@@ -887,6 +894,7 @@ foreach (file stylesheet.css dn.webp p3-srgb-ramps.png)
 endforeach()
 
 if (APPLE)
+	list(APPEND dawn_help_files "${PROJECT_SOURCE_DIR}/LICENSE")
 	set_source_files_properties(${dawn_help_files}
 		PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/share/doc/dawn")
 	target_sources(dn PRIVATE ${dawn_help_files})
@@ -920,12 +928,13 @@ if (APPLE AND DAWN_CATALOGUES)
 	target_sources(dn PRIVATE ${DAWN_CATALOGUES})
 endif()
 
-# AppKit-only identities beside Dawn.app.  Compile with swiftc directly so that
-# this also works with Makefile generators, without enabling CMake's
-# Swift language.
+# AppKit-only identities inside Dawn.app, which Launch Services registers
+# along with it.  Compile with swiftc directly so that this also works
+# with Makefile generators, without enabling CMake's Swift language.
 if (APPLE)
 	find_program(DN_SWIFTC_EXECUTABLE swiftc REQUIRED)
 	find_program(DN_LIPO_EXECUTABLE lipo REQUIRED)
+	find_program(DN_CODESIGN_EXECUTABLE codesign REQUIRED)
 
 	set(dn_launcher_arches ${CMAKE_OSX_ARCHITECTURES})
 	if (NOT dn_launcher_arches)
@@ -962,8 +971,8 @@ if (APPLE)
 	if (DAWN_WITH_WIP)
 		list(APPEND dn_launch_ids Commander)
 	endif()
-	foreach (dn_launch_id IN LISTS dn_launch_ids)
-		if (dn_launch_id STREQUAL CropJpeg)
+	foreach (DN_LAUNCH_ID IN LISTS dn_launch_ids)
+		if (DN_LAUNCH_ID STREQUAL CropJpeg)
 			set(DN_LAUNCH_NAME "Dawn Lossless JPEG Cropper")
 			set(DN_LAUNCH_MODE cropjpeg)
 			set(DN_LAUNCH_TYPE_NAME JPEG)
@@ -976,23 +985,26 @@ if (APPLE)
 			set(DN_LAUNCH_UTI public.folder)
 			set(DN_LAUNCH_ROLE Viewer)
 		endif()
-		set(bundle "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${DN_LAUNCH_NAME}.app")
+		set(bundle "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${PROJECT_NAME}.app")
+		set(bundle "${bundle}/Contents/Applications/${DN_LAUNCH_NAME}.app")
 		file(MAKE_DIRECTORY
 			"${bundle}/Contents/MacOS" "${bundle}/Contents/Resources")
 		configure_file("${PROJECT_SOURCE_DIR}/dn/launcher.Info.plist.in"
 			"${bundle}/Contents/Info.plist" @ONLY)
+		# Dawn's own signature can only seal a bundle that has one already.
 		add_custom_command(OUTPUT "${bundle}/Contents/MacOS/dn-launcher"
 				"${bundle}/Contents/Resources/dn.icns"
+				"${bundle}/Contents/_CodeSignature/CodeResources"
 			COMMAND "${CMAKE_COMMAND}" -E copy
 				"${dn_launcher}" "${bundle}/Contents/MacOS/dn-launcher"
 			COMMAND "${CMAKE_COMMAND}" -E copy
 				"${dn_icon_icns}" "${bundle}/Contents/Resources/dn.icns"
-			DEPENDS "${dn_launcher}" "${dn_icon_icns}" VERBATIM)
-		add_custom_target(dn-launcher-${dn_launch_id} ALL
-			DEPENDS "${bundle}/Contents/MacOS/dn-launcher"
-				"${bundle}/Contents/Resources/dn.icns")
-		add_dependencies(dn-launcher-${dn_launch_id} dn)
-		install(DIRECTORY "${bundle}" DESTINATION . USE_SOURCE_PERMISSIONS)
+			COMMAND "${DN_CODESIGN_EXECUTABLE}" --force --sign - "${bundle}"
+			DEPENDS "${dn_launcher}" "${dn_icon_icns}"
+				"${bundle}/Contents/Info.plist" VERBATIM)
+		add_custom_target(dn-launcher-${DN_LAUNCH_ID} ALL
+			DEPENDS "${bundle}/Contents/_CodeSignature/CodeResources")
+		add_dependencies(dn-launcher-${DN_LAUNCH_ID} dn)
 	endforeach()
 endif()
 
@@ -1109,6 +1121,21 @@ elseif (APPLE)
 	]])
 	install(FILES "${PROJECT_BINARY_DIR}/MoltenVK_icd.json"
 		DESTINATION "${dn_bundle}/Contents/Resources/vulkan/icd.d")
+
+	# Qt's own catalogues would stay behind in its prefix.
+	find_program(DN_QTPATHS_EXECUTABLE NAMES qtpaths6 REQUIRED)
+	execute_process(
+		COMMAND "${DN_QTPATHS_EXECUTABLE}" --query QT_INSTALL_TRANSLATIONS
+		OUTPUT_VARIABLE dn_qt_translations OUTPUT_STRIP_TRAILING_WHITESPACE
+		COMMAND_ERROR_IS_FATAL ANY)
+	foreach (lang IN LISTS DAWN_LINGUAS)
+		install(FILES "${dn_qt_translations}/qtbase_${lang}.qm"
+			DESTINATION "${dn_bundle}/Contents/Resources/translations" OPTIONAL)
+	endforeach()
+	file(WRITE "${PROJECT_BINARY_DIR}/qt.conf"
+		"[Paths]\nPlugins = PlugIns\nTranslations = Resources/translations\n")
+	install(FILES "${PROJECT_BINARY_DIR}/qt.conf"
+		DESTINATION "${dn_bundle}/Contents/Resources")
 	unset(dn_bundle)
 
 	qt_generate_deploy_app_script(TARGET dn OUTPUT_SCRIPT dn_deploy NO_PLUGINS)
@@ -1141,8 +1168,10 @@ set(CPACK_PACKAGE_FILE_NAME
 	"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
 if (APPLE)
-	# The disk image gets an /Applications link to drag the bundles onto.
+	# The disk image gets an /Applications link to drag the bundle onto.
 	list(APPEND CPACK_GENERATOR DragNDrop)
+	# Debug maps name the object files of the build tree.
+	set(CPACK_STRIP_FILES ON)
 	set(CPACK_DMG_FORMAT ULMO)
 	set(CPACK_DMG_VOLUME_NAME "${PROJECT_NAME}")
 	# This enables showing hidden files inside, and is of questionable value.

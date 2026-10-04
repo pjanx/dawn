@@ -12,8 +12,10 @@ import AppKit
 final class Launcher: NSObject, NSApplicationDelegate {
 	private var receivedDocuments = false
 	private var submittedEmptyLaunch = false
+
+	// Dawn.app/Contents/Applications/LAUNCHER.app/../../..
 	private let mainApp = Bundle.main.bundleURL.deletingLastPathComponent()
-		.appendingPathComponent("Dawn.app", isDirectory: true)
+		.deletingLastPathComponent().deletingLastPathComponent()
 
 	func application(_ application: NSApplication, open urls: [URL]) {
 		receivedDocuments = true
@@ -59,7 +61,7 @@ final class Launcher: NSObject, NSApplicationDelegate {
 		}
 		guard let dawn = Bundle(url: mainApp),
 			  let executable = dawn.executableURL else {
-			return "Dawn is not installed next to this launcher."
+			return "This launcher is not inside Dawn."
 		}
 
 		let process = Process()
