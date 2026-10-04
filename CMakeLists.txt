@@ -1005,6 +1005,7 @@ if (APPLE)
 		add_custom_target(dn-launcher-${DN_LAUNCH_ID} ALL
 			DEPENDS "${bundle}/Contents/_CodeSignature/CodeResources")
 		add_dependencies(dn-launcher-${DN_LAUNCH_ID} dn)
+		list(APPEND dn_launcher_apps "${DN_LAUNCH_NAME}.app")
 	endforeach()
 endif()
 
@@ -1069,6 +1070,13 @@ elseif (APPLE)
 
 	set(dn_bundle "$<TARGET_BUNDLE_DIR_NAME:dn>")
 	install(TARGETS dn BUNDLE DESTINATION .)
+	# The launchers directly depend on the bundle, but nesting them makes
+	# them undiscoverable.  Symlinks can at least be launched.
+	foreach (link IN LISTS dn_launcher_apps)
+		install(CODE "file(CREATE_LINK
+			\"${dn_bundle}/Contents/Applications/${link}\"
+			\"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${link}\" SYMBOLIC)")
+	endforeach()
 	#install(TARGETS dnimaged dnthumbd
 	#	RUNTIME DESTINATION "${dn_bundle}/Contents/MacOS")
 	install(TARGETS libdn
