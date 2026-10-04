@@ -32,16 +32,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)"
           cmake --build build --target package --parallel
-          archive=$(find build -maxdepth 1 -name 'Dawn-*.zip' -print -quit)
-          test -n "$archive"
-          cp "$archive" Dawn-latest-macOS-arm64.zip
+          for suffix in zip dmg; do
+            archive=$(find build -maxdepth 1 -name "Dawn-*.$suffix" -print -quit)
+            test -n "$archive"
+            cp "$archive" "Dawn-latest-macOS-arm64.$suffix"
+          done
 
       - name: Publish continuous build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag=continuous
-          asset=Dawn-latest-macOS-arm64.zip
+          assets=(Dawn-latest-macOS-arm64.zip Dawn-latest-macOS-arm64.dmg)
           get_ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}"
           update_ref="repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}"
 
@@ -57,11 +59,11 @@ jobs:
           # the release into a draft, so always publish it again, last.
           notes="Unsigned Apple Silicon build of ${GITHUB_SHA}."
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "$asset" --clobber
+            gh release upload "$tag" "${assets[@]}" --clobber
             gh release edit "$tag" --title "Continuous macOS build" \
               --notes "$notes" --target "$GITHUB_SHA" \
               --prerelease --draft=false
           else
-            gh release create "$tag" "$asset" --verify-tag \
+            gh release create "$tag" "${assets[@]}" --verify-tag \
               --title "Continuous macOS build" --notes "$notes" --prerelease
           fi

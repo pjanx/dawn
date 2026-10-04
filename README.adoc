@@ -52,9 +52,10 @@ Packages
    https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
    using Wine is not recommended.
 
- - Latest https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[
-   *unsigned* macOS Apple Silicon bundle] may need
-   `xattr -r -d com.apple.quarantine ...`.
+ - Latest *unsigned* Apple Silicon
+   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[macOS ZIP],
+   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.dmg[macOS disk image]
+   may need `xattr -r -d com.apple.quarantine ...`.
    Notarisation would cost us $99 a year.
 
 On Windows, if you run the application with a high integrity level and you

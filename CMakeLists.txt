@@ -1140,7 +1140,14 @@ set(CPACK_PACKAGE_DIRECTORY "${PROJECT_BINARY_DIR}")
 set(CPACK_PACKAGE_FILE_NAME
 	"${PROJECT_NAME}-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
-if (UNIX AND NOT APPLE)
+if (APPLE)
+	# The disk image gets an /Applications link to drag the bundles onto.
+	list(APPEND CPACK_GENERATOR DragNDrop)
+	set(CPACK_DMG_FORMAT ULMO)
+	set(CPACK_DMG_VOLUME_NAME "${PROJECT_NAME}")
+	# This enables showing hidden files inside, and is of questionable value.
+	#set(CPACK_PACKAGE_ICON "${dn_icon_icns}")
+elseif (UNIX)
 	set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 	set(CPACK_DEBIAN_PACKAGE_SECTION graphics)
 	# Everything else dn needs is a library, and comes out of the ELF files.
