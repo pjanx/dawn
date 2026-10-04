@@ -24,12 +24,11 @@ jobs:
       - name: Install dependencies
         run: |
           brew install cmake pkgconf glslang molten-vk qtbase resvg rust \
-            shared-mime-info vulkan-loader jpeg-turbo webp zlib
+            shared-mime-info vulkan-loader jpeg-turbo webp
 
       - name: Build package
         run: |
-          PKG_CONFIG_PATH="$(brew --prefix zlib)/lib/pkgconfig" \
-            cmake -S . -B build \
+          cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)"
           cmake --build build --target package --parallel
