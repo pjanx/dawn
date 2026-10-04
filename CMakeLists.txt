@@ -34,6 +34,13 @@ if (WIN32 AND CMAKE_CROSSCOMPILING)
 	list(APPEND CMAKE_PREFIX_PATH "${DAWN_MSYS2_PREFIX}")
 	list(APPEND CMAKE_FIND_ROOT_PATH "${DAWN_MSYS2_PREFIX}")
 
+	set(CMAKE_CROSSCOMPILING_EMULATOR
+		"${CMAKE_COMMAND}" -E env "WINEPATH=${DAWN_MSYS2_PREFIX}/bin" wine)
+
+	# The host's libstdc++ may export __cxa_thread_atexit, MSYS2's doesn't.
+	# Take it from the CRT, as dn.exe already does through Qt's entry point.
+	link_libraries(mingw32)
+
 	# Relativize prefixes, and bar pkg-config from looking up host libraries
 	set(ENV{PKG_CONFIG_SYSROOT_DIR} "${PROJECT_BINARY_DIR}")
 	set(DAWN_MSYS2_PCPATH
@@ -999,7 +1006,10 @@ configure_file("${dawn_packaging}/${DAWN_NAMESPACE}.metainfo.xml.in"
 # --- Tests --------------------------------------------------------------------
 
 if (BUILD_TESTING)
-	add_test(NAME dn-help COMMAND $<TARGET_FILE:dn> --help)
+	# This spawns a dialog box on Windows.
+	if (NOT WIN32)
+		add_test(NAME dn-help COMMAND dn --help)
+	endif()
 	add_subdirectory(tests)
 endif()
 

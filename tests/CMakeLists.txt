@@ -18,7 +18,7 @@ set(DAWN_TEST_FIXTURES_STAMP "${DAWN_TEST_FIXTURES_DIR}/.stamp")
 add_custom_command(
 	OUTPUT "${DAWN_TEST_FIXTURES_STAMP}"
 	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DAWN_TEST_FIXTURES_DIR}"
-	COMMAND "$<TARGET_FILE:gen-fixtures>" "${DAWN_TEST_FIXTURES_DIR}"
+	COMMAND gen-fixtures "${DAWN_TEST_FIXTURES_DIR}"
 	COMMAND "${CMAKE_COMMAND}" -E touch "${DAWN_TEST_FIXTURES_STAMP}"
 	DEPENDS gen-fixtures
 	COMMENT "Generating test fixtures in the build tree"
@@ -27,9 +27,7 @@ add_custom_command(
 add_custom_target(test-fixtures DEPENDS "${DAWN_TEST_FIXTURES_STAMP}")
 
 add_executable(test-channels test-channels.cpp)
-if (NOT CMAKE_CROSSCOMPILING)
-	add_dependencies(test-channels test-fixtures)
-endif()
+add_dependencies(test-channels test-fixtures)
 target_link_libraries(test-channels PRIVATE libdn dawn-lcms2)
 target_compile_definitions(test-channels PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
@@ -57,26 +55,22 @@ if (APPLE AND DAWN_WITH_IMAGEIO)
 endif()
 
 add_executable(test-jpeg-crop test-jpeg-crop.cpp)
-if (NOT CMAKE_CROSSCOMPILING)
-	add_dependencies(test-jpeg-crop test-fixtures)
-endif()
+add_dependencies(test-jpeg-crop test-fixtures)
 target_link_libraries(test-jpeg-crop PRIVATE libdn)
 target_compile_definitions(test-jpeg-crop PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
-add_test(NAME jpeg_crop COMMAND test-jpeg-crop)
+add_test(NAME jpeg-crop COMMAND test-jpeg-crop)
 
 add_executable(test-gain-map test-gain-map.cpp)
-if (NOT CMAKE_CROSSCOMPILING)
-	add_dependencies(test-gain-map test-fixtures)
-endif()
+add_dependencies(test-gain-map test-fixtures)
 target_link_libraries(test-gain-map PRIVATE libdn)
 target_compile_definitions(test-gain-map PRIVATE
 	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
-add_test(NAME gain_map COMMAND test-gain-map)
+add_test(NAME gain-map COMMAND test-gain-map)
 
 add_executable(test-split-hdr test-split-hdr.cpp)
 target_link_libraries(test-split-hdr PRIVATE libdn)
-add_test(NAME split_hdr COMMAND test-split-hdr)
+add_test(NAME split-hdr COMMAND test-split-hdr)
 
 add_executable(test-save test-save.cpp)
 target_link_libraries(test-save PRIVATE libdn)
@@ -103,8 +97,8 @@ if (APPLE)
 	target_link_libraries(test-scale-scaler PRIVATE
 		"${DN_APPKIT_FRAMEWORK}" "${DN_COREGRAPHICS_FRAMEWORK}")
 endif()
-add_test(NAME scale_scaler COMMAND test-scale-scaler)
-set_tests_properties(scale_scaler PROPERTIES
+add_test(NAME scale-scaler COMMAND test-scale-scaler)
+set_tests_properties(scale-scaler PROPERTIES
 	SKIP_RETURN_CODE 77
 	ENVIRONMENT "VK_LOADER_LAYERS_ENABLE=VK_LAYER_KHRONOS_validation")
 
@@ -117,7 +111,10 @@ target_include_directories(test-xdg PRIVATE
 	"${PROJECT_BINARY_DIR}"
 )
 target_link_libraries(test-xdg PRIVATE Qt6::Gui)
-add_test(NAME xdg COMMAND test-xdg)
+# That would need a symlink within the runtime output directory.
+if (NOT WIN32)
+	add_test(NAME xdg COMMAND test-xdg)
+endif()
 
 add_executable(test-overlay test-overlay.cpp
 	"${PROJECT_SOURCE_DIR}/dn/overlay.cpp")
@@ -141,7 +138,7 @@ target_link_libraries(test-thumbnail-cache PRIVATE
 	PkgConfig::WEBP
 	PkgConfig::WEBPDEMUX
 	PkgConfig::WEBPMUX)
-add_test(NAME thumbnail_cache COMMAND test-thumbnail-cache)
+add_test(NAME thumbnail-cache COMMAND test-thumbnail-cache)
 
 add_executable(test-thumbnailer
 	test-thumbnailer.cpp
@@ -178,17 +175,17 @@ if (MSGFMT_EXECUTABLE)
 	target_compile_definitions(test-gettext PRIVATE
 		DAWN_TEST_LOCALE_DIR="${gettext_locale_dir}")
 
-	add_test(NAME gettext_fallback COMMAND test-gettext fallback)
-	set_tests_properties(gettext_fallback PROPERTIES ENVIRONMENT "LANGUAGE=")
+	add_test(NAME gettext-fallback COMMAND test-gettext fallback)
+	set_tests_properties(gettext-fallback PROPERTIES ENVIRONMENT "LANGUAGE=")
 	foreach (case translated context plural library)
-		add_test(NAME gettext_${case} COMMAND test-gettext ${case})
-		set_tests_properties(gettext_${case} PROPERTIES ENVIRONMENT
+		add_test(NAME gettext-${case} COMMAND test-gettext ${case})
+		set_tests_properties(gettext-${case} PROPERTIES ENVIRONMENT
 			"LANGUAGE=xx")
 	endforeach()
 
 	# A system with no locale but "C" leaves gettext nothing to select with.
-	set_tests_properties(gettext_fallback gettext_translated gettext_context
-		gettext_plural gettext_library PROPERTIES SKIP_RETURN_CODE 77)
+	set_tests_properties(gettext-fallback gettext-translated gettext-context
+		gettext-plural gettext-library PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 # Accessibility is only ever proven from the outside, over the same bus and
@@ -223,9 +220,7 @@ if (DN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
 			PkgConfig::ATSPI
 			PkgConfig::GOBJECT)
 		add_dependencies(test-accessible dn)
-		if (NOT CMAKE_CROSSCOMPILING)
-			add_dependencies(test-accessible test-fixtures)
-		endif()
+		add_dependencies(test-accessible test-fixtures)
 
 		add_library(weston-a11y-resize MODULE weston-a11y-resize.c)
 		target_link_libraries(weston-a11y-resize PRIVATE

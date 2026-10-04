@@ -698,11 +698,8 @@ test_glyph_contrast()
 	const float light = pixels[7] / 65535.f;
 	const float faded = pixels[11] / 65535.f;
 	const float image = pixels[15] / 65535.f;
-#if !defined _WIN32
+	// Assuming the contrast boost.
 	CHECK(dark > image + .01f && dark < 1.f);
-#else
-	CHECK(abs(dark - image) < .0003f);
-#endif
 	CHECK(abs(faded - dark * .5f) < .0003f);
 	CHECK(abs(light - .5f) < .0003f);
 	CHECK(abs(image - .5f) < .0003f);
