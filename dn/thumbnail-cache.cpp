@@ -289,8 +289,12 @@ remove_thumbnail(const QString &path, const QString &reason)
 QString
 thumbnail_cache_root()
 {
-	const QString base =
-		QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation);
+	// Qt cannot be redirected on macOS or Windows, and the tests rely
+	// on this to stay out of the user's cache.
+	QString base = qEnvironmentVariable("DN_CACHE_HOME");
+	if (!QDir::isAbsolutePath(base))
+		base = QStandardPaths::writableLocation(
+			QStandardPaths::GenericCacheLocation);
 	return base.isEmpty() ? QString() : QDir(base).filePath("thumbnails");
 }
 

@@ -26,8 +26,7 @@ class Application
 	{
 		CHECK(cache.isValid());
 		CHECK(inputs.isValid());
-		// XXX: XDG_CACHE_HOME only redirects on Linux/BSD.
-		qputenv("XDG_CACHE_HOME", cache.path().toUtf8());
+		qputenv("DN_CACHE_HOME", cache.path().toUtf8());
 		return argc;
 	}
 
