@@ -13,24 +13,24 @@ if (LIBPNG_FOUND)
 	)
 endif()
 
-set(DAWN_TEST_FIXTURES_DIR "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
-set(DAWN_TEST_FIXTURES_STAMP "${DAWN_TEST_FIXTURES_DIR}/.stamp")
+set(test_fixtures_dir "${CMAKE_CURRENT_BINARY_DIR}/fixtures")
+set(test_fixtures_stamp "${test_fixtures_dir}/.stamp")
 add_custom_command(
-	OUTPUT "${DAWN_TEST_FIXTURES_STAMP}"
-	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${DAWN_TEST_FIXTURES_DIR}"
-	COMMAND gen-fixtures "${DAWN_TEST_FIXTURES_DIR}"
-	COMMAND "${CMAKE_COMMAND}" -E touch "${DAWN_TEST_FIXTURES_STAMP}"
+	OUTPUT "${test_fixtures_stamp}"
+	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${test_fixtures_dir}"
+	COMMAND gen-fixtures "${test_fixtures_dir}"
+	COMMAND "${CMAKE_COMMAND}" -E touch "${test_fixtures_stamp}"
 	DEPENDS gen-fixtures
 	COMMENT "Generating test fixtures in the build tree"
 	VERBATIM
 )
-add_custom_target(test-fixtures DEPENDS "${DAWN_TEST_FIXTURES_STAMP}")
+add_custom_target(test-fixtures DEPENDS "${test_fixtures_stamp}")
 
 add_executable(test-channels test-channels.cpp)
 add_dependencies(test-channels test-fixtures)
 target_link_libraries(test-channels PRIVATE libdn dawn-lcms2)
 target_compile_definitions(test-channels PRIVATE
-	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
+	DAWN_TEST_FIXTURES_DIR="${test_fixtures_dir}"
 )
 
 add_test(NAME channels COMMAND test-channels)
@@ -46,7 +46,7 @@ if (APPLE AND DAWN_WITH_IMAGEIO)
 	add_dependencies(test-imageio test-fixtures)
 	target_link_libraries(test-imageio PRIVATE libdn)
 	target_compile_definitions(test-imageio PRIVATE
-		DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}"
+		DAWN_TEST_FIXTURES_DIR="${test_fixtures_dir}"
 	)
 	add_test(NAME imageio COMMAND test-imageio)
 endif()
@@ -55,14 +55,14 @@ add_executable(test-jpeg-crop test-jpeg-crop.cpp)
 add_dependencies(test-jpeg-crop test-fixtures)
 target_link_libraries(test-jpeg-crop PRIVATE libdn)
 target_compile_definitions(test-jpeg-crop PRIVATE
-	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
+	DAWN_TEST_FIXTURES_DIR="${test_fixtures_dir}")
 add_test(NAME jpeg-crop COMMAND test-jpeg-crop)
 
 add_executable(test-gain-map test-gain-map.cpp)
 add_dependencies(test-gain-map test-fixtures)
 target_link_libraries(test-gain-map PRIVATE libdn)
 target_compile_definitions(test-gain-map PRIVATE
-	DAWN_TEST_FIXTURES_DIR="${DAWN_TEST_FIXTURES_DIR}")
+	DAWN_TEST_FIXTURES_DIR="${test_fixtures_dir}")
 add_test(NAME gain-map COMMAND test-gain-map)
 
 add_executable(test-split-hdr test-split-hdr.cpp)
@@ -235,7 +235,7 @@ if (DN_WITH_ACCESSIBILITY AND UNIX AND NOT APPLE)
 			COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/run-accessible.sh"
 				"$<TARGET_FILE:test-accessible>"
 				"$<TARGET_FILE:dn>"
-				"${DAWN_TEST_FIXTURES_DIR}")
+				"${test_fixtures_dir}")
 		# The launcher skips when the session it needs cannot be built; once
 		# dn is up, anything going wrong at all is a failure.
 		set_tests_properties(accessible PROPERTIES SKIP_RETURN_CODE 77)

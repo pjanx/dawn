@@ -27,10 +27,12 @@ namespace fs = filesystem;
 
 // --- Utilities ---------------------------------------------------------------
 
+#define PREFIX "gen-fixtures: "
+
 static void
 die(const char *msg)
 {
-	fprintf(stderr, "gen_fixtures: %s\n", msg);
+	fprintf(stderr, PREFIX "%s\n", msg);
 	exit(1);
 }
 
@@ -114,7 +116,7 @@ run_tool(const char *tool, initializer_list<const char *> args)
 	}
 	int rc = system(cmd.c_str());
 	if (rc != 0)
-		fprintf(stderr, "gen_fixtures: warning: %s failed (%d): %s\n", tool, rc,
+		fprintf(stderr, PREFIX "warning: %s failed (%d): %s\n", tool, rc,
 			cmd.c_str());
 	return rc;
 }
@@ -897,7 +899,7 @@ write_gain_map_jxl(const fs::path &out)
 	if (base.size() < 2 || base[0] != 0xFF || base[1] != 0x0A ||
 		map.size() < 2 || map[0] != 0xFF || map[1] != 0x0A) {
 		fprintf(
-			stderr, "gen_fixtures: warning: cjxl made no naked codestreams\n");
+			stderr, PREFIX "warning: cjxl made no naked codestreams\n");
 		return;
 	}
 

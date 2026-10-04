@@ -1329,12 +1329,12 @@ msgid "MPF image %d: %s"
 msgstr "MPF obrázek %d: %s"
 
 #: libdn/load-jpeg.cpp:754
-msgid "Unsupported chroma subsampling"
-msgstr "Nepodporované podvzorkování chrominance"
+msgid "unsupported chroma subsampling"
+msgstr "nepodporované podvzorkování chrominance"
 
 #: libdn/load-jpeg.cpp:790
-msgid "Invalid lossless JPEG crop"
-msgstr "Neplatný bezztrátový JPEG ořez"
+msgid "invalid lossless JPEG crop"
+msgstr "neplatný bezztrátový JPEG ořez"
 
 #: libdn/load-jxl.cpp:81
 msgid "failed to subscribe to libjxl events"

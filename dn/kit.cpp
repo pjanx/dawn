@@ -863,7 +863,7 @@ Button::activate(Kit &kit)
 	return true;
 }
 
-// --- Checkbox ---------------------------------------------------------------
+// --- Checkbox ----------------------------------------------------------------
 
 Size
 Checkbox::measure_content(Kit &kit, int max_w, int)
@@ -3691,7 +3691,7 @@ Combo::key(Kit &kit, const Key &ev)
 	}
 }
 
-// --- ToolbarSlot ------------------------------------------------------------
+// --- ToolbarSlot -------------------------------------------------------------
 
 constexpr float kWinPadX = 4.f;
 constexpr float kWinPadY = 4.f;
@@ -3874,7 +3874,7 @@ ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 	Row::arrange_content(kit, alloc);
 }
 
-// --- Toolbar ---------------------------------------------------------------
+// --- Toolbar -----------------------------------------------------------------
 
 Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	unique_ptr<ToolbarSlot> mid_row, unique_ptr<ToolbarSlot> right_row)
@@ -4045,7 +4045,7 @@ Toolbar::place_slots(Kit &kit)
 		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
 }
 
-// --- Titlebar --------------------------------------------------------------
+// --- Titlebar ----------------------------------------------------------------
 
 static unique_ptr<Button>
 make_title_button(Action action)

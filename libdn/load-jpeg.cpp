@@ -751,7 +751,7 @@ jpeg_grid(span<const uint8_t> data, JpegGrid *out, Error *error)
 			ok = false;
 			if (error)
 				*error = {
-					Error::Code::Open, _("Unsupported chroma subsampling")};
+					Error::Code::Open, _("unsupported chroma subsampling")};
 		} else if (out) {
 			JpegMetadata meta;
 			parse_jpeg_metadata(data, &meta);
@@ -787,7 +787,7 @@ jpeg_transform(span<const uint8_t> data, Orientation op, uint32_t x, uint32_t y,
 		x % grid.mcu_width || y % grid.mcu_height || w > grid.width - x ||
 		h > grid.height - y) {
 		if (error)
-			*error = {Error::Code::Open, _("Invalid lossless JPEG crop")};
+			*error = {Error::Code::Open, _("invalid lossless JPEG crop")};
 		return {};
 	}
 

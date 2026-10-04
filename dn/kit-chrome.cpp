@@ -675,7 +675,7 @@ dialog_settings(Kit &kit, SettingsDraft draft,
 		dialog_dismiss_action(dialog, N_("_Cancel")));
 }
 
-// --- Hint -------------------------------------------------------------------
+// --- Hint --------------------------------------------------------------------
 
 constexpr char kChars[] = "SADFJKLEWCMPGH";
 constexpr int kNChars = size(kChars) - 1;
@@ -989,7 +989,7 @@ Hint::fire(Kit &kit, Target t)
 	browser->activate_file(browser->file_url(file_i));
 }
 
-// --- Page -------------------------------------------------------------------
+// --- Page --------------------------------------------------------------------
 
 constexpr float kMinWell = 80.f;
 constexpr float kMinSide = 120.f;
