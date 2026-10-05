@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Dawn 1.0.0\n"
 "Report-Msgid-Bugs-To: https://git.janouch.name/p/dawn\n"
-"POT-Creation-Date: 2026-10-05 00:00+0200\n"
+"POT-Creation-Date: 2026-10-05 20:11+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -347,38 +347,38 @@ msgstr "Oblast _ořezu"
 msgid "Left/Right mouse button"
 msgstr "Levé/pravé tlačítko myši"
 
-#: dn/action.cpp:351 dn/action.cpp:362 dn/action.cpp:379
+#: dn/action.cpp:346 dn/action.cpp:357 dn/action.cpp:374
 msgid "_File"
 msgstr "_Soubor"
 
-#: dn/action.cpp:393
+#: dn/action.cpp:388
 msgid "_Help"
 msgstr "_Nápověda"
 
-#: dn/action.cpp:401 dn/action.cpp:438
+#: dn/action.cpp:396 dn/action.cpp:433
 msgid "_Go"
 msgstr "_Přejít"
 
-#: dn/action.cpp:411 dn/action.cpp:447 dn/action.cpp:491
+#: dn/action.cpp:406 dn/action.cpp:442 dn/action.cpp:486
 msgid "_View"
 msgstr "_Zobrazit"
 
-#: dn/action.cpp:471 dn/action.cpp:501
+#: dn/action.cpp:466 dn/action.cpp:496
 msgid "_Image"
 msgstr "_Obrázek"
 
 #. TRANSLATORS: The application's name, in window titles.  Transliterate
 #. it if that is what your script does with foreign names; do not
 #. translate the word.
-#: dn/action.cpp:634 dn/action.cpp:635
+#: dn/action.cpp:629 dn/action.cpp:630
 msgid "Dawn"
 msgstr "Dawn"
 
-#: dn/action.cpp:636 packaging/name.janouch.Dawn.CropJpeg.desktop:5
+#: dn/action.cpp:631 packaging/name.janouch.Dawn.CropJpeg.desktop:5
 msgid "Dawn Lossless JPEG Cropper"
 msgstr "Dawn bezztrátový ořezávač JPEG"
 
-#: dn/action.cpp:638 packaging/name.janouch.Dawn.Commander.desktop:5
+#: dn/action.cpp:633 packaging/name.janouch.Dawn.Commander.desktop:5
 msgid "Dawn Commander"
 msgstr "Dawn Commander"
 
@@ -1027,7 +1027,7 @@ msgstr "hodnotu nelze zapsat do konfigurace"
 msgid "image dimensions overflow"
 msgstr "přetečení rozměrů obrázku"
 
-#: libdn/libdn.cpp:156 libdn/load-dnrs.cpp:272 libdn/load-heif.cpp:171
+#: libdn/libdn.cpp:156 libdn/load-dnrs.cpp:272 libdn/load-heif.cpp:170
 #: libdn/load-jxr.cpp:339 libdn/load-libwmf.cpp:134 libdn/load-wuffs.cpp:549
 msgid "invalid image dimensions"
 msgstr "neplatné rozměry obrázku"
@@ -1036,7 +1036,7 @@ msgstr "neplatné rozměry obrázku"
 msgid "image dimensions too large"
 msgstr "rozměry obrázku jsou příliš velké"
 
-#: libdn/libdn.cpp:174 libdn/load-cgpdf.mm:177 libdn/load-cgpdf.mm:184
+#: libdn/libdn.cpp:174 libdn/load-cgpdf.mm:175 libdn/load-cgpdf.mm:182
 #: libdn/load-imageio.mm:422 libdn/load-jxl.cpp:430 libdn/load-librsvg.cpp:88
 #: libdn/load-resvg.cpp:96 libdn/load-webp.cpp:378 libdn/load-wuffs.cpp:348
 #: libdn/load-xcursor.cpp:165
@@ -1075,7 +1075,7 @@ msgstr "mapy zisku nad základním obrázkem v HDR nejsou podporovány"
 msgid "invalid or truncated frame"
 msgstr "neplatný nebo useknutý snímek"
 
-#: libdn/libdn.cpp:1844 libdn/load-imageio.mm:237 libdn/load-libraw.cpp:176
+#: libdn/libdn.cpp:1844 libdn/load-imageio.mm:237 libdn/load-libraw.cpp:180
 msgid "failed to describe the colour space"
 msgstr "barevný prostor se nepodařilo popsat"
 
@@ -1179,24 +1179,24 @@ msgstr "prázdné URI"
 msgid "invalid URI"
 msgstr "neplatné URI"
 
-#: libdn/load-cgpdf.mm:91 libdn/load-cgpdf.mm:160 libdn/load-poppler.cpp:94
+#: libdn/load-cgpdf.mm:89 libdn/load-cgpdf.mm:158 libdn/load-poppler.cpp:94
 #: libdn/load-poppler.cpp:140
 msgid "no such page"
 msgstr "taková stránka neexistuje"
 
-#: libdn/load-cgpdf.mm:104 libdn/load-imageio.mm:221
+#: libdn/load-cgpdf.mm:102 libdn/load-imageio.mm:221
 msgid "cannot create an sRGB colour space"
 msgstr "nelze vytvořit sRGB barevný prostor"
 
-#: libdn/load-cgpdf.mm:118 libdn/load-imageio.mm:248 libdn/load-imageio.mm:303
+#: libdn/load-cgpdf.mm:116 libdn/load-imageio.mm:248 libdn/load-imageio.mm:303
 msgid "cannot create a bitmap context"
 msgstr "nelze vytvořit bitmapový kontext"
 
-#: libdn/load-cgpdf.mm:197 libdn/load-poppler.cpp:168
+#: libdn/load-cgpdf.mm:195 libdn/load-poppler.cpp:168
 msgid "the document is password-protected"
 msgstr "dokument je chráněn heslem"
 
-#: libdn/load-cgpdf.mm:203 libdn/load-poppler.cpp:174
+#: libdn/load-cgpdf.mm:201 libdn/load-poppler.cpp:174
 msgid "the document has no pages"
 msgstr "dokument nemá žádné stránky"
 
@@ -1216,40 +1216,40 @@ msgstr "stránka nemá žádné snímky"
 msgid "image has no pages"
 msgstr "obrázek nemá žádné stránky"
 
-#: libdn/load-heif.cpp:88
+#: libdn/load-heif.cpp:87
 msgid "unrepresentable nclx colour space, assuming sRGB"
 msgstr "barevný prostor nclx nelze vyjádřit, předpokládám sRGB"
 
-#: libdn/load-heif.cpp:144
+#: libdn/load-heif.cpp:143
 msgid "undefined bit depth"
 msgstr "nedefinovaná bitová hloubka"
 
-#: libdn/load-heif.cpp:463 libdn/load-jxl.cpp:402
+#: libdn/load-heif.cpp:462 libdn/load-jxl.cpp:402
 #, c-format
 msgid "gain map: %s"
 msgstr "mapa zisku: %s"
 
-#: libdn/load-heif.cpp:687
+#: libdn/load-heif.cpp:686
 msgid "invalid image sequence sample"
 msgstr "neplatný vzorek sekvence obrázků"
 
-#: libdn/load-heif.cpp:693
+#: libdn/load-heif.cpp:692
 msgid "the image sequence is too long to keep in memory"
 msgstr "sekvence obrázků je příliš dlouhá, než aby se vešla do paměti"
 
-#: libdn/load-heif.cpp:740
+#: libdn/load-heif.cpp:739
 msgid "libheif is too old to decode image sequences"
 msgstr "libheif je příliš stará na dekódování sekvencí obrázků"
 
-#: libdn/load-heif.cpp:827
+#: libdn/load-heif.cpp:826
 msgid "no colour information for the image sequence, assuming sRGB"
 msgstr "sekvence obrázků nemá informace o barvách, předpokládám sRGB"
 
-#: libdn/load-heif.cpp:878
+#: libdn/load-heif.cpp:877
 msgid "failed to obtain a libheif context"
 msgstr "nepodařilo se získat libheif kontext"
 
-#: libdn/load-heif.cpp:975 libdn/load-jxl.cpp:437
+#: libdn/load-heif.cpp:974 libdn/load-jxl.cpp:437
 msgid "empty or unsupported image"
 msgstr "prázdný nebo nepodporovaný obrázek"
 
@@ -1416,11 +1416,11 @@ msgstr "porušená raw data"
 msgid "truncated raw data"
 msgstr "useknutá raw data"
 
-#: libdn/load-libraw.cpp:161
+#: libdn/load-libraw.cpp:165
 msgid "failed to obtain a LibRaw handle"
 msgstr "nepodařilo se získat LibRaw popisovač"
 
-#: libdn/load-libraw.cpp:214
+#: libdn/load-libraw.cpp:217
 msgid "unusable camera white balance"
 msgstr "nepoužitelné vyvážení bílé fotoaparátu"
 
@@ -1493,7 +1493,7 @@ msgstr "archiv neobsahuje žádný složený obrázek"
 msgid "%s is a reduced-size preview"
 msgstr "%s je zmenšený náhled"
 
-#: libdn/load-ora.cpp:295
+#: libdn/load-ora.cpp:294
 #, c-format
 msgid "%s is in an unrecognised image format"
 msgstr "%s je v nerozpoznaném formátu obrázku"
