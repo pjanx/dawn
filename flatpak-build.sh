@@ -10,7 +10,7 @@ baseyml=$src/packaging/$appid.BaseApp.yml
 yml=$src/packaging/$appid.yml
 
 # XXX: Not sure how to version the BaseApp; supposedly newer means better.
-baseapp=$dst/Dawn-BaseApp-latest-$arch.flatpak
+baseapp=$dst/Dawn-BaseApp-master-$arch.flatpak
 bundle=$dst/Dawn-${DAWN_VERSION:-$version}-$arch.flatpak
 
 # Flatpak insists on this, and a disposable machine has no login session.

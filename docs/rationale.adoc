@@ -43,15 +43,15 @@ Few people can say they have enough time, and this project has monstrous scope
 for a single person.  Moreover, 2026 frontier models run circles around me in
 certain areas and aspects.  Sadly not in product design--that is my own burden.
 
-The model evaluation at the time of writing is that Cursor Grok 4.6 High is
-a dumb servant that doesn't question, and Opus 5 or GPT 6 Astra are capable of
-resolving most problems, at a significant cost.  Claude is a superb wordsmith
-if you don't let it run amok.
+I started the project with Cursor Grok 4.5/4.6, which was a dumb servant that
+didn't question, but it brought early results.  GPT 5.6 Sol was a step up,
+though it also soon started to irk me, producing sad code.  GPT 6 Astra was too
+expensive to run.  By Opus 5.5, I almost stopped complaining.  Claude is also
+a superb wordsmith if you don't let it run amok.  Overall, the landscape keeps
+changing.
 
-Over time, I've noticed I'm becoming more and more exasperated.  Perhaps as
-the problems become more complex.  Perhaps as I'm shifting to a belief
-that the models can read my mind--adding context usually helps.  Giving it
-a screenshot may easily trump describing issues in words.
+The models can't read your mind--adding context usually helps.  Giving them
+screenshots may easily trump describing issues in words.
 
 Name
 ----

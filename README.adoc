@@ -12,9 +12,8 @@ image::docs/dn.webp["Screenshot of both the browser and the viewer"]
 Design-wise, the project is an amalgamation of
 https://git.janouch.name/p/fiv[older efforts] and
 https://git.janouch.name/p/gallery[desires].
-Right now, we're in a cleanup/debug phase on our way to the first milestone
-and release.  Also see link:docs/plan.adoc[Plan], and a detailed
-link:docs/rationale.adoc[Rationale].  There is more to come.
+We're at our first milestone.  Also see link:docs/plan.adoc[Plan],
+and a detailed link:docs/rationale.adoc[Rationale].  There is more to come.
 
 The project comes with a maintenance guarantee--it is actively used.
 
@@ -45,16 +44,19 @@ Rejected
 
 Packages
 --------
- - Latest https://janouch.name/cd/Dawn-latest-x86_64.flatpak[Linux Flatpak],
+Stable releases are hosted https://github.com/pjanx/dawn/releases[on GitHub],
+the same selection as below.
+
+ - Development https://janouch.name/cd/Dawn-master-x86_64.flatpak[Linux Flatpak],
    https://aur.archlinux.org/packages/dn-git[Arch Linux AUR].
 
- - Latest https://janouch.name/cd/Dawn-latest-Windows-x86_64.zip[Windows ZIP],
-   https://janouch.name/cd/Dawn-latest-x86_64.msi[Windows installer];
+ - Development https://janouch.name/cd/Dawn-master-Windows-x86_64.zip[Windows ZIP],
+   https://janouch.name/cd/Dawn-master-x86_64.msi[Windows installer];
    note that Wine is partly incompatible.
 
- - Latest *unsigned* Apple Silicon
-   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.zip[macOS ZIP],
-   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-latest-macOS-arm64.dmg[macOS disk image]
+ - Development *unsigned* Apple Silicon
+   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-master-macOS-arm64.zip[macOS ZIP],
+   https://github.com/pjanx/dawn/releases/download/continuous/Dawn-master-macOS-arm64.dmg[macOS disk image]
    may need `xattr -r -d com.apple.quarantine ...`.
    Notarisation would cost us $99 a year.
 

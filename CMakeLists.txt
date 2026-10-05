@@ -1,7 +1,7 @@
 # One big CMakeLists.txt because otherwise clutter spreads too easily.
 cmake_minimum_required(VERSION 3.28)
 project(Dawn
-	VERSION 0.1.0
+	VERSION 1.0.0
 	DESCRIPTION "Colour-managed image browser"
 	HOMEPAGE_URL "https://git.janouch.name/p/dawn"
 	LANGUAGES C CXX

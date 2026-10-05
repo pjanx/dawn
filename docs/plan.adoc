@@ -25,7 +25,7 @@ Milestones
 ----------
  - [x] Flat out replace https://git.janouch.name/p/fiv[fiv]
        (excluding GVfs, printing, reverse search)
-    * [ ] Debug, clean up, branch a stable version
+    * [x] Debug, clean up, branch a stable version
  - [ ] Become capable of browsing
        https://git.janouch.name/p/gallery[gallery] databases
  - [ ] Flat out replace https://git.janouch.name/p/gallery[gallery]

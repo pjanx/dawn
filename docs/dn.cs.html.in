@@ -162,7 +162,7 @@ omezení na paměti.  Webové prohlížeče by měly být v pořádku, ačkoliv
 <p>Pokud <code>colormgr get-devices-by-kind display</code> ve vašem sezení nic
 nevrací, budete si možná muset nastavit <i>colord-kde</i> nebo <i>xiccd</i>,
 aby do sezení <i>colord</i> začlenily.  Je-li vaše nastavení založeno na něčem
-jiném než <i>colord</i> &ndash; například AgryllCMS/dispwin &ndash; <i>Dawn</i>
+jiném než <i>colord</i> &ndash; například ArgyllCMS/dispwin &ndash; <i>Dawn</i>
 se také pokusí vyhledat <i>_ICC_PROFILE</i>.
 
 <p>Ačkoliv je možné získat 10bitovou barevnou hloubku, mnoho aplikací, například

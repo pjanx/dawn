@@ -35,7 +35,7 @@ jobs:
           for suffix in zip dmg; do
             archive=$(find build -maxdepth 1 -name "Dawn-*.$suffix" -print -quit)
             test -n "$archive"
-            cp "$archive" "Dawn-latest-macOS-arm64.$suffix"
+            cp "$archive" "Dawn-master-macOS-arm64.$suffix"
           done
 
       - name: Publish continuous build
@@ -43,7 +43,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag=continuous
-          assets=(Dawn-latest-macOS-arm64.zip Dawn-latest-macOS-arm64.dmg)
+          assets=(Dawn-master-macOS-arm64.zip Dawn-master-macOS-arm64.dmg)
           get_ref="repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}"
           update_ref="repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}"
 

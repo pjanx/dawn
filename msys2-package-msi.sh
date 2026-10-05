@@ -69,7 +69,7 @@ cat <<XML > associations.wxs
 				<RegistryKey Root='HKCR' Key='dawn.dn'>
 					<RegistryValue Type='string' Value='$description' />
 					<RegistryValue Type='string' Key='DefaultIcon'
-						Value='[INSTALLDIR]dn.ico' />
+						Value='"[INSTALLDIR]dn.exe",0' />
 					<RegistryValue Type='string' Key='shell\\open\\command'
 						Value='"[INSTALLDIR]dn.exe" "%1"' />
 				</RegistryKey>
@@ -90,7 +90,7 @@ done)
 $(cat <<'END'
 				<RegistryKey Root='HKCR' Key='dawn.cropjpeg'>
 					<RegistryValue Type='string' Value='Dawn JPEG Cropper' />
-					<RegistryValue Type='string' Key='DefaultIcon' Value='[INSTALLDIR]dn.ico' />
+					<RegistryValue Type='string' Key='DefaultIcon' Value='"[INSTALLDIR]dn.exe",0' />
 					<RegistryValue Type='string' Key='shell\open\command'
 						Value='"[INSTALLDIR]dn.exe" --mode=cropjpeg "%1"' />
 				</RegistryKey>

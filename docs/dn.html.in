@@ -161,7 +161,7 @@ set to 1.
 <p>If <code>colormgr get-devices-by-kind display</code> returns nothing within
 your session, you may need to set up <i>colord-kde</i> or <i>xiccd</i> to
 integrate <i>colord</i> into it.  If your setup is based on something other than
-<i>colord</i>&mdash;notably AgryllCMS/dispwin&mdash;<i>Dawn</i> also tries to
+<i>colord</i>&mdash;notably ArgyllCMS/dispwin&mdash;<i>Dawn</i> also tries to
 look up <i>_ICC_PROFILE</i>.
 
 <p>While you may get 10-bit colour depth, many applications, such as <i>peek</i>
