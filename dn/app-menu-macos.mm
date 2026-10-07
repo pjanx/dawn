@@ -203,9 +203,12 @@ sync_hidden(NSMenu *main, id delegate, span<const dn::MenuNode> tree)
 - (void)invoke:(NSMenuItem *)sender
 {
 	const dn::Action a = dn::Action(sender.tag);
-	if (dn::Window *w = [self window])
+	if (dn::Window *w = [self window]) {
+		// HACK: Actions can rescan the directory, and a rescan frees widgets
+		// that Hint may hold.
+		w->kit().close_transient_popups();
 		w->apply_window(a);
-	else if (a == dn::Action::NewWindow && _app)
+	} else if (a == dn::Action::NewWindow && _app)
 		_app->open(
 			dn::path_to_url(QDir::currentPath()), {}, {}, dn::Mode::View);
 }

@@ -1927,13 +1927,13 @@ Window::mousePressEvent(QMouseEvent *event)
 		event->accept();
 		return;
 	}
-	if (event->button() == Qt::BackButton) {
-		apply_window(Action::Back);
-		event->accept();
-		return;
-	}
-	if (event->button() == Qt::ForwardButton) {
-		apply_window(Action::Forward);
+	if (event->button() == Qt::BackButton ||
+		event->button() == Qt::ForwardButton) {
+		// HACK: Actions can rescan the directory, and a rescan frees widgets
+		// that Hint may hold.
+		this->kit_.close_transient_popups();
+		apply_window(
+			event->button() == Qt::BackButton ? Action::Back : Action::Forward);
 		event->accept();
 		return;
 	}
