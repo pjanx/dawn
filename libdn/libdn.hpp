@@ -30,8 +30,7 @@ namespace dawn
 //   Cmm::get_default() / cmm_or_default). Profiles must stay with their Cmm.
 //   Large cmsDoTransform work is parallelized by lcms2's threaded plugin when
 //   that is built (one transform; the plugin slices). Otherwise libdn splits
-//   full-width row bands across workers, each with its own cmsHTRANSFORM
-//   created on the Cmm thread.
+//   full-width row bands across workers, which share one cmsHTRANSFORM.
 // - Do not share OpenContext::warnings or Error* across concurrent opens.
 // - After load, Image is single-writer: read-only pixel sharing is fine;
 //   do not mutate (finish/blend/render) from multiple threads.
@@ -150,6 +149,7 @@ class Profile
 	friend Chromaticities profile_chromaticities(const Profile *profile);
 	std::shared_ptr<Cmm> cmm_;
 	void *profile_ = nullptr;  ///< cmsHPROFILE
+	uint64_t serial_ = 0;      ///< Unlike the address, never used again
 	Profile(std::shared_ptr<Cmm> cmm, void *cms_profile);
 
 public:
@@ -170,6 +170,11 @@ using ImagePtr = std::shared_ptr<Image>;
 class Cmm : public std::enable_shared_from_this<Cmm>
 {
 	friend class Profile;
+	struct Transform {
+		std::array<uint64_t, 4> key{};  ///< Profile::serial_ and format, twice
+		void *handle = nullptr;         ///< cmsHTRANSFORM
+	};
+
 	void *context_ = nullptr;  ///< cmsContext
 	bool broken_premul_ = false;
 
@@ -177,6 +182,13 @@ class Cmm : public std::enable_shared_from_this<Cmm>
 	// Deduplicating profiles for as long as somebody else wants them.
 	std::weak_ptr<Profile> cached_sRGB;
 	std::weak_ptr<Profile> cached_display_p3;
+
+	// Each new lcms2 transform locks one process-wide mutex many times,
+	// which makes parallel threads wait. Most recently used first.
+	std::array<Transform, 4> transforms_;
+
+	void *transform(Profile *source, uint32_t source_format, Profile *target,
+		uint32_t target_format);
 
 public:
 	Cmm();

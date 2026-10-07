@@ -15,6 +15,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <mutex>
@@ -32,7 +33,9 @@ namespace dn
 constexpr uint64_t kThumbRingBytes = 256ull * 1024 * 1024;
 constexpr size_t kPendingBundleBytes = 1ull << 30;
 constexpr size_t kPriorityCount = 4;
-constexpr size_t kGuiBatch = 32;
+// pump() tries to apply all results in the queue before the next frame.
+// A reminder that 60 FPS is about 16 ms.
+constexpr auto kGuiBudget = 4ms;
 
 // A worker may queue GPU work before returning the GUI completion which
 // records that work in its client. Hold such GPU callbacks until pump() has
@@ -870,13 +873,14 @@ Thumbnailer::pump()
 
 	// CPU completions establish browser state needed by any GPU job they
 	// queued. Always apply them before polling those jobs.
-	size_t gui_count = 0;
-	for (; gui_count < kGuiBatch; gui_count++) {
+	const auto deadline = chrono::steady_clock::now() + kGuiBudget;
+	while (chrono::steady_clock::now() < deadline) {
 		Completion completion;
 		{
 			lock_guard lock(impl_->mu);
 			if (impl_->gui.empty())
 				break;
+
 			GuiTask task = std::move(impl_->gui.front());
 			impl_->gui.pop_front();
 			// Its GPU callbacks are only collected below, after it has run.
@@ -884,6 +888,7 @@ Thumbnailer::pump()
 			auto client = impl_->clients.find(task.client);
 			if (client == impl_->clients.end())
 				continue;
+
 			client->second.gui--;
 			client->second.activity_pending = true;
 			if (client->second.epoch == task.epoch)

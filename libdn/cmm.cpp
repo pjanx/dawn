@@ -19,6 +19,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <exception>
@@ -41,9 +42,9 @@ constexpr cmsUInt32Number kTypeBgra16Premul = TYPE_BGRA_16_PREMUL;
 constexpr cmsUInt32Number kTransformFlags = cmsFLAGS_COPY_ALPHA;
 
 // Packed buffers have no row padding, so a band is one contiguous pixel run.
-// One cmsHTRANSFORM is not thread-safe. The lcms2 threaded plugin (when built)
-// wraps DoTransform and slices internally — do not nest our own pool on top.
-// Without the plugin, create one transform per worker on this thread.
+// The lcms2 threaded plugin (when built) wraps DoTransform and slices
+// internally — do not nest our own pool on top. Without the plugin, the bands
+// share one transform: cmsDoTransform is re-entrant.
 #if !DAWN_WITH_LCMS2_THREADED
 constexpr uint64_t kCmsMinPixels = 256ull * 256ull;
 
@@ -58,81 +59,42 @@ cms_workers(uint32_t height)
 #endif
 
 static bool
-transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
-	cmsHPROFILE dst_h, cmsUInt32Number dst_fmt, const uint8_t *src,
-	uint8_t *dst, uint32_t width, uint32_t height, size_t src_bpp,
-	size_t dst_bpp)
+transform_tiled(cmsHTRANSFORM xform, const uint8_t *src, uint8_t *dst,
+	uint32_t width, uint32_t height, size_t src_bpp, size_t dst_bpp)
 {
-	auto create = [&]() -> cmsHTRANSFORM {
-		return cmsCreateTransformTHR(ctx, src_h, src_fmt, dst_h, dst_fmt,
-			INTENT_PERCEPTUAL, kTransformFlags);
-	};
-
-#if DAWN_WITH_LCMS2_THREADED
-	cmsHTRANSFORM xform = create();
 	if (!xform)
 		return false;
+#if DAWN_WITH_LCMS2_THREADED
 	cmsDoTransformLineStride(xform, src, dst, width, height,
 		cmsUInt32Number(size_t(width) * src_bpp),
 		cmsUInt32Number(size_t(width) * dst_bpp), 0, 0);
-	cmsDeleteTransform(xform);
-	return true;
 #else
-	const uint64_t npx = uint64_t(width) * height;
 	const size_t src_stride = size_t(width) * src_bpp;
 	const size_t dst_stride = size_t(width) * dst_bpp;
-
-	auto run_band = [&](cmsHTRANSFORM xform, uint32_t y0, uint32_t y1) {
-		if (y0 >= y1)
-			return;
+	auto run_band = [&](uint32_t y0, uint32_t y1) {
 		cmsDoTransform(xform, src + size_t(y0) * src_stride,
 			dst + size_t(y0) * dst_stride,
 			cmsUInt32Number(uint64_t(width) * (y1 - y0)));
 	};
 
-	if (npx < kCmsMinPixels || height < 2) {
-		cmsHTRANSFORM xform = create();
-		if (!xform)
-			return false;
-		run_band(xform, 0, height);
-		cmsDeleteTransform(xform);
-		return true;
-	}
-
-	// Allocate everything that can throw before there is anything to release.
-	const unsigned n = cms_workers(height);
-	vector<cmsHTRANSFORM> xforms(n);
+	// cms_workers() never gives more bands than rows, so no band is empty.
+	const unsigned n =
+		uint64_t(width) * height < kCmsMinPixels ? 1 : cms_workers(height);
 	vector<thread> pool;
-	if (n > 1)
-		pool.reserve(n - 1);
-	for (unsigned i = 0; i < n; i++) {
-		xforms[i] = create();
-		if (!xforms[i]) {
-			for (unsigned j = 0; j < i; j++)
-				cmsDeleteTransform(xforms[j]);
-			return false;
-		}
-	}
-
 	for (unsigned i = 1; i < n; i++) {
 		const uint32_t y0 = uint32_t(uint64_t(height) * i / n);
 		const uint32_t y1 = uint32_t(uint64_t(height) * (i + 1) / n);
-		if (y0 >= y1)
-			continue;
-
 		try {
-			pool.emplace_back([&, i, y0, y1] { run_band(xforms[i], y0, y1); });
+			pool.emplace_back(run_band, y0, y1);
 		} catch (const exception &) {
-			run_band(xforms[i], y0, y1);
+			run_band(y0, y1);
 		}
 	}
-	run_band(xforms[0], 0, uint32_t(uint64_t(height) / n));
+	run_band(0, uint32_t(uint64_t(height) / n));
 	for (thread &t : pool)
 		t.join();
-	for (cmsHTRANSFORM xform : xforms)
-		cmsDeleteTransform(xform);
-	return true;
 #endif
+	return true;
 }
 
 // --- Profiles ----------------------------------------------------------------
@@ -140,6 +102,8 @@ transform_tiled(cmsContext ctx, cmsHPROFILE src_h, cmsUInt32Number src_fmt,
 Profile::Profile(shared_ptr<Cmm> cmm, void *cms_profile)
 	: cmm_(std::move(cmm)), profile_(cms_profile)
 {
+	static atomic<uint64_t> serials;
+	serial_ = ++serials;
 }
 
 Profile::~Profile()
@@ -587,8 +551,41 @@ Cmm::Cmm()
 
 Cmm::~Cmm()
 {
+	for (const Transform &t : transforms_)
+		if (t.handle)
+			cmsDeleteTransform(cmsHTRANSFORM(t.handle));
 	if (context_)
 		cmsDeleteContext(cmsContext(context_));
+}
+
+void *
+Cmm::transform(Profile *source, uint32_t source_format, Profile *target,
+	uint32_t target_format)
+{
+	shared_ptr<Profile> fallback;
+	if (!source)
+		source = (fallback = get_profile_sRGB()).get();
+	if (!source || !target)
+		return nullptr;
+
+	const array<uint64_t, 4> key{
+		source->serial_, source_format, target->serial_, target_format};
+	auto it = find_if(transforms_.begin(), transforms_.end(),
+		[&](const Transform &t) { return t.key == key; });
+	if (it == transforms_.end()) {
+		void *handle = cmsCreateTransformTHR(cmsContext(context_),
+			cmsHPROFILE(source->profile_), source_format,
+			cmsHPROFILE(target->profile_), target_format, INTENT_PERCEPTUAL,
+			kTransformFlags);
+		if (!handle)
+			return nullptr;
+		it = prev(transforms_.end());
+		if (it->handle)
+			cmsDeleteTransform(cmsHTRANSFORM(it->handle));
+		*it = {key, handle};
+	}
+	rotate(transforms_.begin(), it, it + 1);
+	return transforms_.front().handle;
 }
 
 shared_ptr<Cmm>
@@ -843,41 +840,26 @@ bool
 Cmm::transform_bgra16(uint8_t *data, uint32_t width, uint32_t height,
 	Profile *source, Profile *target, bool source_premul, bool target_premul)
 {
-	shared_ptr<Profile> src_fallback;
-	if (target && !source) {
-		src_fallback = get_profile_sRGB();
-		source = src_fallback.get();
-	}
-	if (!source || !target)
-		return false;
-
 	StageClock clk(&OpenTiming::cms_ms);
 	cmsUInt32Number src_fmt = source_premul ? kTypeBgra16Premul : kTypeBgra16;
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
-	return transform_tiled(cmsContext(context_), cmsHPROFILE(source->profile_),
-		src_fmt, cmsHPROFILE(target->profile_), dst_fmt, data, data, width,
-		height, kBytesPerPixel, kBytesPerPixel);
+	return transform_tiled(transform(source, src_fmt, target, dst_fmt), data,
+		data, width, height, kBytesPerPixel, kBytesPerPixel);
 }
 
 bool
 Cmm::transform_bgra8_to_bgra16(const uint8_t *src, uint8_t *dst, uint32_t width,
 	uint32_t height, Profile *source, Profile *target, bool target_premul)
 {
-	shared_ptr<Profile> src_fallback;
-	if (target && !source) {
-		src_fallback = get_profile_sRGB();
-		source = src_fallback.get();
-	}
-	if (!src || !dst || !source || !target)
+	if (!src || !dst)
 		return false;
 
 	StageClock clk(&OpenTiming::cms_ms);
 	cmsUInt32Number dst_fmt = target_premul ? kTypeBgra16Premul : kTypeBgra16;
 
-	return transform_tiled(cmsContext(context_), cmsHPROFILE(source->profile_),
-		kTypeBgra8, cmsHPROFILE(target->profile_), dst_fmt, src, dst, width,
-		height, 4, kBytesPerPixel);
+	return transform_tiled(transform(source, kTypeBgra8, target, dst_fmt), src,
+		dst, width, height, 4, kBytesPerPixel);
 }
 
 void

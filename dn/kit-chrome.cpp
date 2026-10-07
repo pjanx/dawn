@@ -1249,10 +1249,20 @@ shared_ptr<dawn::Profile>
 profile_from_screen(
 	dawn::Cmm &cmm, const shared_ptr<const ScreenColour> &colour)
 {
-	if (colour && !colour->icc.empty())
-		if (auto profile = cmm.get_profile(colour->icc))
-			return profile;
-	return cmm.get_profile_sRGB();
+	// A new Profile for the same screen cannot use the transforms that
+	// the Cmm keeps. The Profile holds its Cmm, so the address is unique.
+	thread_local const dawn::Cmm *last_cmm = nullptr;
+	thread_local shared_ptr<const ScreenColour> last_colour;
+	thread_local shared_ptr<dawn::Profile> last;
+	if (&cmm == last_cmm && colour == last_colour)
+		return last;
+
+	last_cmm = &cmm;
+	last_colour = colour;
+	if (!colour || colour->icc.empty() ||
+		!(last = cmm.get_profile(colour->icc)))
+		last = cmm.get_profile_sRGB();
+	return last;
 }
 
 unique_ptr<Toolbar>
