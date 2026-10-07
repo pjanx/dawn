@@ -27,7 +27,7 @@ GpuContext::init(VkInstance instance, VkSurfaceKHR surface,
 	function<bool(VkPhysicalDevice, uint32_t)> supports_present)
 {
 	destroy();
-	if (!instance || !surface)
+	if (!instance)
 		return false;
 
 	string err;

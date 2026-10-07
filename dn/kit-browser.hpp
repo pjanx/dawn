@@ -17,6 +17,7 @@
 #include <QUrl>
 
 #include <cstdint>
+#include <iosfwd>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -221,5 +222,11 @@ struct Browser : Widget {
 
 std::unique_ptr<Page> make_browser_page(
 	Kit &kit, const HostActions &host, Thumbnailer &thumbnailer, Browser **out);
+
+/// Write cache tiers for each path, one per line, that has no thumbnail
+/// of this size, running the event loop until done.
+/// Returns the number of failures.
+size_t cache_thumbnails(
+	Thumbnailer &thumbnailer, std::istream &input, int thumb_size);
 
 }  // namespace dn

@@ -10,6 +10,7 @@
 #include <libdn/gettext.hpp>
 #include <libdn/ipc-instance.hpp>
 #include <libdn/libdn.hpp>
+#include <libdn/vk-device.hpp>
 
 #include "accessible.hpp"
 #include "app.hpp"
@@ -37,6 +38,8 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -139,6 +142,49 @@ try_remote_open(const QString &session, const vector<QUrl> &urls, dn::Mode mode,
 	return {};
 }
 
+// Fill the thumbnail cache for the paths on standard input, one per line.
+// This needs no display: the device is only for the GPU scaler.
+static int
+cache_thumbnails()
+{
+	dawn::vk_add_bundled_driver_files();
+	VkApplicationInfo app{.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+		.apiVersion = VK_API_VERSION_1_1};
+	VkInstanceCreateInfo ici{.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+		.pApplicationInfo = &app};
+	uint32_t count = 0;
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+	vector<VkExtensionProperties> extensions(count);
+	vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+	const char *portability = VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
+	for (const VkExtensionProperties &extension : extensions) {
+		if (!strcmp(extension.extensionName, portability)) {
+			ici.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+			ici.enabledExtensionCount = 1;
+			ici.ppEnabledExtensionNames = &portability;
+		}
+	}
+	VkInstance instance = VK_NULL_HANDLE;
+	if (VkResult result = vkCreateInstance(&ici, nullptr, &instance)) {
+		qWarning("Vulkan instance creation failed: VkResult %d", int(result));
+		return EXIT_FAILURE;
+	}
+
+	dn::Settings settings;
+	settings.load();
+	size_t failed = 1;
+	{
+		dn::GpuContext gpu;
+		dn::Thumbnailer thumbnailer(nullptr, 0);
+		if (gpu.init(instance, VK_NULL_HANDLE, nullptr) &&
+			thumbnailer.init(gpu))
+			failed = dn::cache_thumbnails(
+				thumbnailer, cin, settings.browser_thumbnail_size);
+	}
+	vkDestroyInstance(instance, nullptr);
+	return failed ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
 // Qt has its own i18n system for command-line options, the macOS global menu,
 // etc., and it's not initialised automatically.
 static void
@@ -189,6 +235,10 @@ main(int argc, char **argv)
 		QString::fromUtf8(_("Remove invalid wide thumbnails and exit.")));
 	parser.addOption(invalidate_opt);
 
+	QCommandLineOption cache_opt(QStringLiteral("cache"));
+	cache_opt.setFlags(QCommandLineOption::HiddenFromHelp);
+	parser.addOption(cache_opt);
+
 	// These are stable command-line spellings, so they are never translated.
 	QStringList mode_names;
 	for (const dn::ModeDef &mode : dn::modes())
@@ -228,6 +278,8 @@ main(int argc, char **argv)
 			dn::thumbnail_cache_invalidate();
 			return 0;
 		}
+		if (parser.isSet(cache_opt))
+			return cache_thumbnails();
 		if (parser.isSet(list_supported_opt)) {
 			for (const string &type : dawn::supported_media_types())
 				printf("%s\n", type.c_str());

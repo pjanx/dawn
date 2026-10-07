@@ -20,6 +20,7 @@
 #include "volumes.hpp"
 #include "xdg.hpp"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -35,6 +36,8 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
+#include <istream>
 #include <span>
 #include <string>
 #include <string_view>
@@ -790,6 +793,115 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 			apply_thumb(
 				*browser, gen, std::move(path), mtime, size, std::move(update));
 		};
+}
+
+size_t
+cache_thumbnails(Thumbnailer &thumbnailer, istream &input, int thumb_size)
+{
+	using Priority = Thumbnailer::Priority;
+	const Thumbnailer::Client client = thumbnailer.add_client(0, {});
+	// Decoding runs as background work, which the thumbnailer limits,
+	// because full-size images can use much memory. Only a small window
+	// of the input is in progress at a time.
+	const size_t window = 2 * thumbnailer.background_limit();
+	size_t running = 0, failed = 0;
+	const auto report = [&](const string &path) {
+		qWarning("%s: thumbnailing failed", path.c_str());
+		failed++;
+	};
+	function<void()> feed;
+	const auto finish = [&](const string &path, bool ok) {
+		if (!ok)
+			report(path);
+		running--;
+		feed();
+	};
+	const auto write = [&](string path, ThumbnailSource source, uint32_t w,
+						   uint32_t h, dawn::ThumbScaler::Result result) {
+		bool ok = !result.failed && !result.outputs.empty();
+		for (const dawn::ThumbScaler::Result::Output &output : result.outputs) {
+			QString error;
+			if (ok &&
+				!thumbnail_cache_write(source, output.tag, output.data.data(),
+					output.width, output.height, w, h, &error)) {
+				qWarning("%s: %s", path.c_str(), qUtf8Printable(error));
+				ok = false;
+			}
+		}
+		return Thumbnailer::Completion(
+			[&finish, path, ok] { finish(path, ok); });
+	};
+
+	const auto load = [&](const string &path) -> Thumbnailer::Completion {
+		const QFileInfo info(QString::fromStdString(path));
+		const auto fail = [&finish, path] { finish(path, false); };
+		if (!info.isFile())
+			return fail;
+
+		ThumbJob job;
+		job.path = path;
+		job.mtime = info.lastModified().toMSecsSinceEpoch();
+		job.size = uint64_t(max<qint64>(0, info.size()));
+		job.thumb_size = thumb_size;
+		job.cacheable = true;
+
+		const shared_ptr<dawn::Cmm> cmm = worker_cmm();
+		ThumbUpdate update = make_thumb(cmm, job);
+		if (!update.failed && !update.generation_needed)
+			return [&finish, path] { finish(path, true); };
+
+		job.skip_cache = true;
+		update = make_thumb(cmm, job);
+		if (update.failed || !update.image)
+			return fail;
+
+		dawn::ThumbScaler::Job gpu;
+		gpu.image = std::move(update.image);
+		gpu.outputs =
+			bundle_outputs(update.geometry_w, update.geometry_h, update.tier);
+		gpu.orientation = update.orientation;
+		gpu.path = path;
+		const ThumbnailSource source =
+			thumbnail_source(QString::fromStdString(path), job.mtime, job.size);
+		const auto scaled = [&, path, source, w = update.geometry_w,
+								h = update.geometry_h](
+								dawn::ThumbScaler::Result result) {
+			if (!thumbnailer.submit(client, 0, Priority::Interactive,
+					[&write, path, source, w, h, result] {
+						return write(path, source, w, h, result);
+					},
+					{}))
+				finish(path, false);
+		};
+		if (!thumbnailer.submit_gpu(
+				client, 0, Priority::Maintenance, std::move(gpu), scaled, {}))
+			return fail;
+		return {};
+	};
+
+	feed = [&] {
+		for (string line; running < window && getline(input, line);) {
+			if (line.empty())
+				continue;
+
+			const string path =
+				QDir::current()
+					.absoluteFilePath(QString::fromStdString(line))
+					.toStdString();
+			if (thumbnailer.submit(client, 0, Priority::Maintenance,
+					[&load, path] { return load(path); }, {}))
+				running++;
+			else
+				report(path);
+		}
+		if (!running)
+			QCoreApplication::exit();
+	};
+	feed();
+	if (running)
+		QCoreApplication::exec();
+	thumbnailer.remove_client(client);
+	return failed;
 }
 
 static void
