@@ -36,6 +36,8 @@ struct HostActions {
 	std::function<void()> opened;
 	// The page now shows another location, which the title has to follow.
 	std::function<void()> retitle;
+	// The host waits for something that the toolbar shows as busy.
+	std::function<bool()> busy;
 };
 
 // The menu that a right click on a file opens: what this application knows
@@ -128,6 +130,7 @@ struct Hint : Popup {
 	Hint();
 	void open(Kit &kit);
 	void after_close(Kit &kit) override;
+	bool refers_to(const Widget *tree) const override;
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool captures_keys() const override { return true; }
@@ -177,16 +180,17 @@ struct Page : Composite {
 	enum class Side : uint8_t { None, Left, Right };
 	Side sidebar_side = Side::None;
 	float sidebar_w = 192;
-	bool sidebar_open = true;
 
 	Page(std::unique_ptr<Toolbar> tb, std::unique_ptr<Sidebar> sb, Side side,
 		std::unique_ptr<Widget> body);
 	void set_banner(Kit &kit, std::unique_ptr<Widget> w);
+	void set_sidebar(Kit &kit, bool open);
 	void open_app_menu(Kit &kit, bool kbd);
 	void bind_actions(Kit &kit);
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
+	void paint(Kit &kit) const override;
 	bool key(Kit &kit, const Key &ev) override;
 
 	// Popups, owned apart from the children.

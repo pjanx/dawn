@@ -316,7 +316,7 @@ heading_of(const Widget *w)
 // markers out when these were built, and taking them out a second time would
 // eat a literal underscore in a filename.
 static QString
-name_of(const Widget *w)
+name_of(const Kit &kit, const Widget *w)
 {
 	if (auto *combo = dynamic_cast<const Combo *>(w))
 		return combo->current_text();
@@ -325,7 +325,7 @@ name_of(const Widget *w)
 		// has already spelled out what it does.
 		if (!button->text.isEmpty())
 			return button->text;
-		return button->tip_text;
+		return button->tip(kit);
 	}
 	if (auto *label = dynamic_cast<const Label *>(w))
 		return label->text;
@@ -345,7 +345,7 @@ name_of(const Widget *w)
 	// never by name: a client looking a control up by name while a menu is
 	// open finds the button and the menu, and both answers are right.
 	if (auto *popup = dynamic_cast<const Popup *>(w); popup && popup->opener)
-		return name_of(popup->opener);
+		return name_of(kit, popup->opener);
 	if (auto *browser = dynamic_cast<const Browser *>(w)) {
 		// The directory, never the cursor: a list that renamed itself
 		// with every selection would be a different object each time.
@@ -452,7 +452,7 @@ accelerator_of(const Widget *w)
 		item && !item->accel.isEmpty())
 		return item->accel;
 	if (auto *button = dynamic_cast<const Button *>(w))
-		return button->tip_accel;
+		return button->tip_key();
 	return {};
 }
 
@@ -499,7 +499,7 @@ state_of(Window *window, const Widget *w)
 		state.modal = 1;
 
 	if (auto *button = dynamic_cast<const Button *>(w)) {
-		if (!button->enabled_)
+		if (!button->enabled())
 			state.disabled = 1;
 		if (kit.pressed_ == w)
 			state.pressed = 1;
@@ -595,7 +595,7 @@ kit_point(const QWindow &content, int x, int y)
 namespace
 {
 // What one Dawn window has registered with Qt.  Identity is the live widget
-// pointer: every path that destroys a widget goes through Kit::forget_tree(),
+// pointer: every path that destroys a widget goes through Kit::retire(),
 // and a whole page through Window::drop_frames(), so nothing here outlives
 // what it describes.  Ids are not promised across a window, or a launch.
 struct Registry {
@@ -622,6 +622,8 @@ struct Registry {
 	// Whether the window was last announced as holding the keyboard.
 	bool active = false;
 	bool active_known = false;
+	// A sweep is in the event loop.
+	bool sweep_queued = false;
 };
 }  // namespace
 
@@ -635,9 +637,8 @@ find_registry(Window *window)
 }
 
 // Whatever a mutation here changed has to reach the screen the same way it
-// would have after a keystroke; the frame settles layout, focus and the
-// input method.  Every action and every edit ends with this, and with only
-// this -- there is no second spelling of it in this file.
+// would have after a keystroke.  Every action and every edit ends with this,
+// and with only this -- there is no second spelling of it in this file.
 static void
 schedule_render(Kit &kit)
 {
@@ -1079,9 +1080,13 @@ accessible_factory(const QString &, QObject *object)
 	return new ClientAdapter(content);
 }
 
+// A container with no node of its own, which a retired row can leave the
+// focus on, is announced as its nearest semantic ancestor.
 static QAccessibleInterface *
 announced_focus(Window *window, Widget *w)
 {
+	if (w && flattened(w))
+		w = semantic_parent(w);
 	if (!w)
 		return nullptr;
 
@@ -1256,7 +1261,7 @@ WidgetAdapter::WidgetAdapter(Window *window, Widget *w)
 	: window_(window), widget_(w)
 {
 	this->last_state_ = state_of(window, w);
-	this->last_name_ = name_of(w);
+	this->last_name_ = name_of(window->kit(), w);
 	this->last_value_ = value_of(w);
 	semantic_children(w, this->last_children_);
 }
@@ -1476,7 +1481,7 @@ WidgetAdapter::text(QAccessible::Text t) const
 
 	switch (t) {
 	case QAccessible::Name:
-		return name_of(this->widget_);
+		return name_of(this->window_->kit(), this->widget_);
 	case QAccessible::Value:
 		return value_of(this->widget_);
 	case QAccessible::Accelerator:
@@ -1488,8 +1493,9 @@ WidgetAdapter::text(QAccessible::Text t) const
 
 		// The tooltip of a labelled control just repeats its label; only an
 		// icon-only one has anything left to add, and that became its name.
-		const QString tip = this->widget_->tip(this->window_->kit());
-		return tip == name_of(this->widget_) ? QString() : tip;
+		const Kit &kit = this->window_->kit();
+		const QString tip = this->widget_->tip(kit);
+		return tip == name_of(kit, this->widget_) ? QString() : tip;
 	}
 	default:
 		return {};
@@ -1828,7 +1834,7 @@ WidgetAdapter::actionNames() const
 
 	auto *button = dynamic_cast<const Button *>(this->widget_);
 	if (const QString action = default_action_of(this->widget_);
-		!action.isEmpty() && (!button || button->enabled_))
+		!action.isEmpty() && (!button || button->enabled()))
 		names += action;
 	if (this->widget_->focusable())
 		names += QAccessibleActionInterface::setFocusAction();
@@ -1848,8 +1854,6 @@ WidgetAdapter::doAction(const QString &name)
 		kit.set_focus(this->widget_, true);
 	else
 		kit.activate(this->widget_);
-	// Whatever that changed has to reach the screen the same way it would
-	// have after a keystroke; the frame settles focus and the input method.
 	schedule_render(kit);
 }
 
@@ -2502,14 +2506,16 @@ retire_widget(Registry &registry, Widget *w)
 
 // A popup is never anybody's child -- it floats on the kit's stack, and its
 // owner holds it in a field of its own.  Following child() alone therefore
-// walks straight past a combo's list, a toolbar's overflow and a menu's
-// submenus, and would leave their nodes registered over freed memory once
-// the owner goes.
+// walks straight past a combo's list, a toolbar's overflow, a menu's
+// submenus and an entry's edit menu, and would leave their nodes registered
+// over freed memory once the owner goes.
 static void
 owned_popups(const Widget *w, vector<Widget *> &out)
 {
 	if (auto *combo = dynamic_cast<const Combo *>(w); combo && combo->popup_)
 		out.push_back(combo->popup_.get());
+	if (auto *entry = dynamic_cast<const Entry *>(w); entry && entry->menu_)
+		out.push_back(entry->menu_.get());
 	if (auto *toolbar = dynamic_cast<const Toolbar *>(w);
 		toolbar && toolbar->overflow)
 		out.push_back(toolbar->overflow.get());
@@ -2542,7 +2548,7 @@ reconcile_widget(WidgetAdapter *adapter)
 		return;
 
 	const QAccessible::State now = state_of(adapter->window_, adapter->widget_);
-	const QString name = name_of(adapter->widget_);
+	const QString name = name_of(adapter->window_->kit(), adapter->widget_);
 	const QString value = value_of(adapter->widget_);
 
 	// Qt's AT-SPI bridge handles one StateChanged bit per event, so checked
@@ -2983,6 +2989,22 @@ notify_active(Window *window)
 	}
 }
 
+// One sweep for a batch of render requests, once the tree is idle.  It
+// announces a focus that moved without a Focus notification, as when a
+// retired widget leaves it to its parent.
+static void
+sweep(Window *window)
+{
+	Registry *registry = find_registry(window);
+	if (!registry)
+		return;
+
+	registry->sweep_queued = false;
+	window->kit().arrange();
+	notify_focus(window, window->kit().focus_);
+	reconcile_window(window);
+}
+
 void
 accessible_changed(Window *window, Change what, Widget *w)
 {
@@ -2995,8 +3017,12 @@ accessible_changed(Window *window, Change what, Widget *w)
 			retire_subtree(*registry, w);
 		break;
 	case Change::State:
-		if (window)
-			reconcile_window(window);
+		// Without a registry, no client has asked for a node yet.
+		if (Registry *registry = find_registry(window);
+			registry && !registry->sweep_queued && window->kit().post) {
+			registry->sweep_queued = true;
+			window->kit().post([window] { sweep(window); });
+		}
 		break;
 	case Change::Text:
 		if (window && w) {

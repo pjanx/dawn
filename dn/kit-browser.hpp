@@ -123,10 +123,11 @@ struct Browser : Widget {
 	BrowseSetup setup_;
 	BrowserView view_ = BrowserView::Tile;
 	int thumb_size_ = 256;
-	bool places_dirty_ = true;
-	// The visible band moved, or pixels arrived: atlas residency is settled
-	// once per frame, after layout, rather than once per thumbnail.
+	// A sync of atlas residency is in the event loop: the visible band moved,
+	// or pixels arrived.  Layout syncs without one.
 	bool thumbs_dirty_ = false;
+	// Posted callbacks do nothing once the browser is gone.
+	std::shared_ptr<bool> post_guard_ = std::make_shared<bool>();
 
 	Scroll scroll_;
 
@@ -205,8 +206,6 @@ struct Browser : Widget {
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
-	void update(Kit &kit) override;
-	void placed(Kit &kit) override;
 	bool busy() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -217,7 +216,6 @@ struct Browser : Widget {
 	bool key(Kit &kit, const Key &ev) override;
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
-	[[nodiscard]] int wake_ms(const Kit &) const override;
 };
 
 std::unique_ptr<Page> make_browser_page(

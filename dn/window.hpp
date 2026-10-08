@@ -54,7 +54,6 @@ class Window final : public QWindow
 	void apply_screen_profile(QScreen *target_screen, bool force_reload);
 	std::vector<std::pair<const char *, QString>> about_details() const;
 	void request_render();
-	void arm_ui_wake();
 	void render();
 	void focus_gained();
 	void focus_lost();
@@ -79,6 +78,7 @@ class Window final : public QWindow
 	void sync_title();
 	void sync_host();
 	void reset_fonts();
+	void settle_layout();
 	bool handle_native_gesture(QNativeGestureEvent *event);
 	bool handle_touch(QTouchEvent *event);
 	bool handle_input_method(QInputMethodEvent *event);

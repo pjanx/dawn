@@ -196,7 +196,8 @@ struct TextTarget {
 // --- Kit ---------------------------------------------------------------------
 
 // Shaping belongs to the text's owner, independently of its allocation or
-// glyph atlas. Keep the variants used by the current and preceding frames.
+// glyph atlas.  Each get() is one use.  The cache keeps the entries of at
+// least its last kTextCacheCap uses.
 struct TextCache {
 	struct Text {
 		std::unique_ptr<TextLayout> layout;
@@ -206,7 +207,7 @@ struct TextCache {
 		uint64_t used = 0;
 	};
 	std::map<std::tuple<QString, int, int, bool, TextAlign>, Text> texts;
-	uint64_t frame = 0;
+	uint64_t uses = 0;
 	uint64_t epoch = 0;
 
 	Text &get(const Kit &kit, const QString &text, int wrap, int max_lines,
@@ -250,13 +251,12 @@ struct Widget {
 	// For placement alone, such as scrolling or changing alignment.
 	void invalidate_arrange();
 	void arrange(Kit &kit, Rect alloc);
-	void set_visible(bool value);
+	// Hiding the widget closes the popups that refer to its subtree, and
+	// moves the focus out of it.
+	void set_visible(Kit &kit, bool value);
 	Size measure(Kit &kit, int max_w, int max_h);
 
 	virtual ~Widget() = default;
-	// Content updates precede layout; placed() sees the resulting geometry.
-	virtual void update(Kit &) {}
-	virtual void placed(Kit &) {}
 	virtual bool busy() const { return false; }
 	virtual void screen_changed(const ScreenState &, bool, bool) {}
 	virtual void rescale(Kit &) {}
@@ -338,7 +338,6 @@ struct Widget {
 
 	// Delivered from the event loop, while the widget tree is idle.
 	virtual void focus_lost(Kit &) {}
-	[[nodiscard]] virtual int wake_ms(const Kit &) const { return -1; }
 
 	virtual std::span<const std::unique_ptr<Widget>> children() const
 	{
@@ -353,6 +352,8 @@ struct Widget {
 // and the accessibility adapters both ask this, and the two must not disagree
 // about what a user can see.
 [[nodiscard]] Rect visible_rect(const Widget *w, Rect host);
+// Whether the widget or one of its ancestors is the tree.
+[[nodiscard]] bool within(const Widget *w, const Widget *tree);
 
 struct Composite : Widget {
 	std::vector<std::unique_ptr<Widget>> kids;
@@ -360,8 +361,7 @@ struct Composite : Widget {
 	Widget *add_child(std::unique_ptr<Widget> child, std::size_t at);
 	// The inverse: detaches one child and hands its ownership back.
 	std::unique_ptr<Widget> take_child(std::size_t at);
-	// Forgets toolkit state pointing into the removed subtrees before
-	// releasing their ownership.
+	// Retires the removed subtrees, which the event loop then destroys.
 	void erase_children(Kit &kit, std::size_t from);
 	std::span<const std::unique_ptr<Widget>> children() const override
 	{
@@ -390,13 +390,16 @@ struct Button : Widget {
 	std::function<void(Kit &)> on_click;
 
 	Button() { this->hittable = true; }
-	// Refresh enabled state and return the action's checked state.
-	bool sync_action();
+	// A button with an action gets its state from the actor.  Other buttons
+	// use their fields.
+	[[nodiscard]] bool enabled() const;
+	[[nodiscard]] bool on() const;
+	[[nodiscard]] const char *shown_icon() const;
 	void set_text(const QString &value);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
-	QString tip(const Kit &) const override { return this->tip_text; }
-	QString tip_key() const override { return this->tip_accel; }
+	QString tip(const Kit &) const override;
+	QString tip_key() const override;
 	bool focusable() const override;
 	[[nodiscard]] QChar mnemonic_key() const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
@@ -486,7 +489,6 @@ struct Entry : Widget {
 	bool input_method(Kit &kit, const QString &commit, const QString &pre,
 		int pre_caret) override;
 	bool text_target(const Kit &kit, TextTarget &out) const override;
-	[[nodiscard]] int wake_ms(const Kit &kit) const override;
 
 	// Every committed edit ends up in splice(): it clamps the span to whole
 	// grapheme clusters, leaves the caret after what went in, tells the host
@@ -622,7 +624,6 @@ struct Scroll {
 	void set_metrics(const Kit &kit, float content_h, float view_h);
 	void reveal();
 	[[nodiscard]] bool visible() const;
-	[[nodiscard]] int wake_ms() const;
 	[[nodiscard]] Rect bar_rect(Rect viewport) const;
 	[[nodiscard]] Rect thumb_rect(Rect viewport) const;
 	bool wheel(int delta, float step_px);
@@ -655,7 +656,6 @@ struct ScrollColumn : Column {
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
 	bool key(Kit &kit, const Key &ev) override;
-	[[nodiscard]] int wake_ms(const Kit &) const override;
 };
 
 // Decorated single-child wrapper. Use a Column to stack children.
@@ -667,7 +667,6 @@ struct Panel : Composite {
 	float min_h = 0;
 	Fill fill = Fill::None;
 	Stroke stroke = Stroke::None;
-	bool busy = false;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
@@ -691,6 +690,9 @@ struct Popup : Panel {
 	// This hook must not open or close popups.
 	virtual void after_close(Kit &kit) {}
 	virtual bool restores_focus() const { return false; }
+	// Whether the tree contains this popup, its opener, or a widget that this
+	// popup uses.  If so, the removal of the tree also closes this popup.
+	virtual bool refers_to(const Widget *tree) const;
 	virtual void place(Kit &kit);
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
@@ -755,6 +757,9 @@ struct Overflow : MenuPopup {
 	Overflow();
 	~Overflow() override;
 	void open_slot(Kit &kit, ToolbarSlot &slot);
+	// Moves the items after the split of the lender into this popup again,
+	// after the bar changes its width.  With no item to show, it closes.
+	void relend(Kit &kit);
 	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
@@ -793,6 +798,8 @@ struct MenuItem : Button {
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
+	// The item shows its label and its accelerator itself.
+	QString tip(const Kit &) const override { return {}; }
 	bool activate(Kit &kit) override;
 };
 
@@ -885,7 +892,6 @@ struct Toolbar : Panel {
 	Toolbar(std::unique_ptr<ToolbarSlot> left_row,
 		std::unique_ptr<ToolbarSlot> mid_row,
 		std::unique_ptr<ToolbarSlot> right_row);
-	void sync_buttons();
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
@@ -905,7 +911,6 @@ struct Titlebar : Panel {
 	bool drag_armed_ = false;
 
 	Titlebar();
-	void sync(Kit &kit);
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
@@ -924,9 +929,9 @@ enum class Change : uint8_t {
 	Focus,
 	// The widget and everything below it is about to stop existing.
 	Retired,
-	// After layout: enabled, checked, expanded, names, and which popups
-	// are on the stack.  Null widget, because this is a sweep of what
-	// the last frame committed rather than one mutation.
+	// Something changed, so do a sweep soon: enabled, checked, expanded,
+	// names, and which popups are on the stack.  The widget is null, because
+	// this asks for a sweep and does not report one change.
 	State,
 	// Committed text and caret of the widget, already applied.  Preedit is
 	// not this: it is not the Value a client reads back.
@@ -951,7 +956,6 @@ struct Kit {
 	Sheet atlas_;
 	uint32_t atlas_epoch_ = 0;
 	uint64_t font_epoch_ = 0;
-	uint64_t text_frame_ = 0;
 	mutable TextCache text_cache_;
 	mutable TextBackend text_backend_;
 	Packed white_{};
@@ -989,10 +993,14 @@ struct Kit {
 	// Dialogs are opened, not owned by whoever opens them: one stacks over
 	// another, and the one underneath has to outlive the click that did it.
 	std::vector<std::unique_ptr<Dialog>> dialogs_;
+	// The kit keeps retired widgets until the event loop destroys them,
+	// because the click that retired a widget can still run inside it.
+	std::vector<std::unique_ptr<Widget>> retired_;
 	int host_w_ = 0;
 	int host_h_ = 0;
 	Renderer *renderer_ = nullptr;
 	std::function<void(std::function<void()>)> post;
+	std::function<void(int ms, std::function<void()>)> post_after;
 	std::function<void()> request_render;
 	// The focused Entry changed, or moved its caret: the platform has to
 	// re-query the input method state.
@@ -1021,10 +1029,11 @@ struct Kit {
 	std::unique_ptr<Panel> tooltip_panel_;
 	QString tooltip_text_;
 	QString tooltip_accel_;
-	bool tooltip_visible_ = false;
 	const Widget *tooltip_anchor_ = nullptr;  // set for keyboard-focus tips
 
 	ScreenState screen_state_;
+	// The time in milliseconds until the last paint becomes stale, or -1.
+	int wake_ms_ = -1;
 
 	Kit() = default;
 	~Kit() { destroy(); }
@@ -1034,8 +1043,13 @@ struct Kit {
 
 	void init(float dpr);
 	void destroy();
-	void forget_tree(Widget *tree);
+	// Removes the widget from the tree permanently.  If the focus is in the
+	// widget, the focus goes to its parent.  The slot of the owner is empty
+	// after this call.
+	void retire(std::unique_ptr<Widget> &owner);
+	void close_referring(const Widget *tree);
 	void sync_focus();
+	void set_root(Page *root);
 	// A fresh dialog, owned here until it closes.  Filled in by whichever
 	// dialog_*() builds it, and reaped once it is done.
 	Dialog &new_dialog();
@@ -1046,7 +1060,6 @@ struct Kit {
 	void close_popups();
 	void close_transient_popups();
 	void close_above(const Popup *p);
-	void relayout_popups();
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
 	// Popups accepting input: the transient tail, or the topmost dialog.
@@ -1129,11 +1142,15 @@ struct Kit {
 	void clip_pop();
 	void tooltip(const Widget *hot);
 	void hide_tooltip();
-	[[nodiscard]] int wake_ms() const;
-	// One frame of the widget tree: lay it out, settle what the layout may
-	// have moved -- popups, focus, the hover under the pointer -- and paint.
-	// Content update() runs before layout and placed() after it.
-	void frame_ui(Page &ui);
+	// Paint sets the time when it must draw again.
+	void wake_after(int ms);
+	// Arranges the root and the popups, and finds the widget below the
+	// pointer.  The result stays until something changes, so each function
+	// that reads geometry calls this first.
+	void arrange();
+	// One frame of the widget tree: arrange it, settle the cursor and the
+	// tooltip, and paint it.
+	void frame_ui();
 	void paint();
 	// Native layout metrics in device pixels. Logical extents round outward
 	// when handed to widget layout; glyph bearings remain independent.

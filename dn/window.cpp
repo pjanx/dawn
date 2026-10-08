@@ -177,6 +177,9 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 			this, [fn = std::move(fn)]() { fn(); }, Qt::QueuedConnection);
 	};
 	this->kit_.post = std::move(post);
+	this->kit_.post_after = [this](int ms, function<void()> fn) {
+		QTimer::singleShot(ms, this, std::move(fn));
+	};
 	this->kit_.request_render = [this] { request_render(); };
 	this->kit_.input_method_changed = [this] { sync_input_method(); };
 	this->kit_.notify = [this](Change what, Widget *w) {
@@ -347,6 +350,7 @@ Window::initialize(const QUrl &url, BrowseSetup setup, Mode mode)
 			this->app_->settings.browser_thumbnail_size;
 	}
 	sync_host();
+	this->kit_.set_root(active_page());
 	apply_screen_profile(screen(), false);
 
 	if (mode == Mode::Browse)
@@ -360,7 +364,7 @@ void
 Window::drop_frames()
 {
 	this->kit_.close_popups();
-	this->kit_.root_ = nullptr;
+	this->kit_.set_root(nullptr);
 	this->kit_.pressed_ = nullptr;
 	this->kit_.hot_ = nullptr;
 	this->kit_.set_focus(nullptr, false);
@@ -552,6 +556,7 @@ Window::bind_host()
 		request_render();
 	};
 	this->host_.retitle = [this] { sync_title(); };
+	this->host_.busy = [this] { return this->awaiting_view_; };
 	this->host_.new_window = [this](QUrl url) {
 		if (url.isEmpty())
 			url = current_url();
@@ -728,6 +733,7 @@ Window::set_mode(Mode m)
 		return;
 
 	this->mode_ = m;
+	this->kit_.set_root(active_page());
 	sync_macos_app_menu(this->app_);
 	sync_title();
 }
@@ -1102,6 +1108,7 @@ Window::sync_host()
 	if (!this->renderer_ready_)
 		return;
 
+	const int was_w = this->kit_.frame().w;
 	const float dpr = host_dpr(*this);
 	this->kit_.dpi_ = host_dpi(*this);
 	if (this->kit_.set_host(float(width()), float(height()), dpr))
@@ -1112,7 +1119,6 @@ Window::sync_host()
 	this->kit_.maximized_ = bool(sh->windowState() & Qt::WindowMaximized);
 	this->kit_.active_ = this->system_grab_ || sh->isActive() || isActive();
 
-	// Pages sync their titlebars as they arrange.
 	const bool csd = this->csd_ && !this->kit_.fullscreen_;
 	const bool shadow = csd && !this->kit_.maximized_;
 	if (this->kit_.csd_ != csd || this->kit_.csd_shadow_ != shadow) {
@@ -1122,6 +1128,10 @@ Window::sync_host()
 			if (page)
 				page->invalidate_arrange();
 	}
+	// A Titlebar starts visible, and the block above may never run.
+	for (auto &page : this->pages_)
+		if (page)
+			page->titlebar->set_visible(this->kit_, csd);
 
 	QRegion mask;
 	if (shadow) {
@@ -1139,6 +1149,9 @@ Window::sync_host()
 		sh->setMask(QRegion());
 	this->renderer_.dest_inset =
 		shadow ? uint32_t(max(0L, lround(double(kGlowPts) * double(dpr)))) : 0;
+	// Activation also comes through here, and must not move the focus.
+	if (this->kit_.frame().w != was_w)
+		settle_layout();
 }
 
 // Text shaped and measured with the old fonts is stale, and so is whatever
@@ -1153,7 +1166,21 @@ Window::reset_fonts()
 	for (auto &page : this->pages_)
 		if (page && page->content)
 			page->content->rescale(this->kit_);
+	settle_layout();
 	request_render();
+}
+
+// The width of the toolbar, and the measurements of its items, change only
+// where this runs.  The open overflow takes the items that no longer fit, and
+// a focus that layout hid moves on.
+void
+Window::settle_layout()
+{
+	this->kit_.arrange();
+	// TODO(p): And get rid of this as well.
+	if (Page *ui = active_page(); ui && ui->toolbar)
+		ui->toolbar->overflow->relend(this->kit_);
+	this->kit_.sync_focus();
 }
 
 void
@@ -1251,6 +1278,9 @@ Window::open_sibling(int delta)
 void
 Window::request_render()
 {
+	// Whatever changes what a client sees also changes the screen, and so
+	// asks for a frame.  This also occurs during teardown.
+	accessible_changed(this, Change::State, nullptr);
 	if (!this->renderer_ready_ || this->update_pending_)
 		return;
 
@@ -1277,15 +1307,11 @@ Window::render()
 		this->resize_pending_ = false;
 	}
 
-	// Nothing to do for a resize: relayout_popups() re-places every popup
-	// and drops the ones whose opener stopped being shown.
-	Page *ui = active_page();
-	if (!ui)
+	// Nothing to do for a resize: arranging re-places every popup.
+	if (!active_page())
 		return;
 
-	if (ui->toolbar)
-		ui->toolbar->busy = this->awaiting_view_ || ui->content->busy();
-	this->kit_.frame_ui(*ui);
+	this->kit_.frame_ui();
 	if (this->kit_.cursor_ != this->cursor_applied_) {
 		this->cursor_applied_ = this->kit_.cursor_;
 		setCursor(this->cursor_applied_);
@@ -1310,15 +1336,9 @@ Window::render()
 		this->resize_pending_ = true;
 		request_render();
 	}
-	arm_ui_wake();
-}
-
-void
-Window::arm_ui_wake()
-{
-	const int ms = this->kit_.wake_ms();
-	if (ms >= 0)
-		this->ui_wake_.start(ms);
+	// Paint sets the time when its drawing becomes stale.
+	if (this->kit_.wake_ms_ >= 0)
+		this->ui_wake_.start(this->kit_.wake_ms_);
 	else
 		this->ui_wake_.stop();
 }
@@ -1929,9 +1949,6 @@ Window::mousePressEvent(QMouseEvent *event)
 	}
 	if (event->button() == Qt::BackButton ||
 		event->button() == Qt::ForwardButton) {
-		// HACK: Actions can rescan the directory, and a rescan frees widgets
-		// that Hint may hold.
-		this->kit_.close_transient_popups();
 		apply_window(
 			event->button() == Qt::BackButton ? Action::Back : Action::Forward);
 		event->accept();

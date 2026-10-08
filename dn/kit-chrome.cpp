@@ -290,9 +290,8 @@ make_banner(Label **out)
 	dismiss->flat = true;
 	dismiss->tip_text = QString::fromUtf8(_("Dismiss"));
 	dismiss->icon = "x-symbolic";
-	dismiss->on_click = [banner = err.get()](Kit &) {
-		banner->set_visible(false);
-	};
+	dismiss->on_click = [banner = err.get()](
+							Kit &kit) { banner->set_visible(kit, false); };
 
 	row->add_child(std::move(lab), size_t(-1));
 	row->add_child(std::move(dismiss), size_t(-1));
@@ -327,7 +326,7 @@ dialog_entry(Kit &kit, const char *title_text, const char *affirm,
 				dialog.close(inner);
 			else {
 				message->set_text(result);
-				message->set_visible(true);
+				message->set_visible(inner, true);
 			}
 		});
 	dialog.show(kit, std::move(col), 480.f, std::move(commit),
@@ -760,6 +759,14 @@ Hint::after_close(Kit &)
 	this->targets_.clear();
 }
 
+bool
+Hint::refers_to(const Widget *tree) const
+{
+	return Popup::refers_to(tree) ||
+		any_of(this->targets_.begin(), this->targets_.end(),
+			[tree](const Target &t) { return within(t.widget, tree); });
+}
+
 void
 Hint::place(Kit &kit)
 {
@@ -814,7 +821,7 @@ Hint::key(Kit &kit, const Key &ev)
 		const Target *exact = nullptr;
 		int exact_n = 0;
 		for (const Target &t : this->targets_) {
-			if (!t.label.startsWith(next))
+			if (!matches(t) || !t.label.startsWith(next))
 				continue;
 			any = true;
 			if (t.label == next) {
@@ -922,31 +929,21 @@ Hint::assign_labels()
 		this->targets_[size_t(i)].label = label_at(i, len);
 }
 
+// A target that is out of sight, that cannot take the focus, or that is of an
+// older listing gets an empty rect, and nothing matches it.
 void
 Hint::refresh_rects()
 {
-	vector<Target> keep;
-	keep.reserve(this->targets_.size());
 	for (Target &t : this->targets_) {
+		t.at = {};
 		if (t.widget) {
-			const Rect clipped = visible_rect(t.widget, this->page->r);
-			if (!t.widget->focusable() || clipped.w <= 0 || clipped.h <= 0)
-				continue;
-			t.at = clipped;
-			keep.push_back(t);
-			continue;
+			if (t.widget->focusable())
+				t.at = visible_rect(t.widget, this->page->r);
+		} else if (t.browser && t.file_rev == t.browser->file_rev_) {
+			const Browser::File &f = t.browser->files_[size_t(t.file_i)];
+			t.at = t.browser->on_screen(f.tile).intersect(t.browser->r);
 		}
-		if (!t.browser || t.file_rev != t.browser->file_rev_)
-			continue;
-		const Browser::File &f = t.browser->files_[size_t(t.file_i)];
-		const Rect clipped =
-			t.browser->on_screen(f.tile).intersect(t.browser->r);
-		if (clipped.empty())
-			continue;
-		t.at = clipped;
-		keep.push_back(t);
 	}
-	this->targets_ = std::move(keep);
 }
 
 void
@@ -964,7 +961,7 @@ Hint::layout_chips(const Kit &kit)
 bool
 Hint::matches(const Target &t) const
 {
-	return t.label.startsWith(this->typed_);
+	return !t.at.empty() && t.label.startsWith(this->typed_);
 }
 
 void
@@ -1016,7 +1013,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		auto split = make_unique<Splitter>();
 		this->splitter = split.get();
 		this->splitter->on_drag = [this](Kit &kit, float mx) {
-			if (!this->sidebar_open || this->sidebar_side == Side::None)
+			if (!this->sidebar->shown() || this->sidebar_side == Side::None)
 				return;
 			// The drag happens in pixels, like the frame it is measured
 			// against; sidebar_w is stored in points, so that the sidebar
@@ -1062,9 +1059,9 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	if (this->sidebar) {
 		if (this->sidebar->min_w > 0.f)
 			this->sidebar_w = this->sidebar->min_w;
-		this->sidebar_open = this->sidebar->visible;
+		// A Splitter starts visible, but a sidebar can start hidden.
+		this->splitter->visible = this->sidebar->visible;
 	} else {
-		this->sidebar_open = false;
 		this->sidebar_side = Side::None;
 	}
 }
@@ -1083,8 +1080,6 @@ void
 Page::bind_actions(Kit &kit)
 {
 	bind_tree_actions(*this, this->actor);
-	if (this->toolbar)
-		this->toolbar->sync_buttons();
 	if (this->app_menu)
 		this->app_menu->build(kit, this->menu_tree, this->actor);
 }
@@ -1107,6 +1102,7 @@ Page::open_app_menu(Kit &kit, bool kbd)
 	if (!anchor->shown() && this->toolbar && this->toolbar->left &&
 		this->toolbar->left->more->shown())
 		anchor = this->toolbar->left->more;
+	this->app_menu->sync();
 	this->app_menu->open(kit, anchor);
 	if (kbd)
 		kit.focus_first(this->app_menu.get());
@@ -1117,10 +1113,21 @@ Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 {
 	const size_t at = 1 + bool(this->toolbar);
 	if (this->banner) {
-		kit.forget_tree(this->banner);
-		(void) take_child(at);
+		kit.retire(this->kids[at]);
+		this->kids.erase(this->kids.begin() + ptrdiff_t(at));
+		invalidate_measure();
 	}
 	this->banner = add_child(std::move(w), at);
+}
+
+void
+Page::set_sidebar(Kit &kit, bool open)
+{
+	if (!this->sidebar)
+		return;
+
+	this->splitter->set_visible(kit, open);
+	this->sidebar->set_visible(kit, open);
 }
 
 Size
@@ -1142,7 +1149,6 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	const Rect frame = kit.frame();
 	int y = frame.y;
 	if (this->titlebar) {
-		this->titlebar->sync(kit);
 		const Size size = this->titlebar->measure(kit, frame.w, frame.h);
 		if (this->titlebar->shown()) {
 			this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});
@@ -1165,11 +1171,9 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	const int body_h = max(0, frame.bottom() - body_y);
 	int side_w = 0;
 	if (this->sidebar) {
-		const bool open = this->sidebar_open &&
-			this->sidebar_side != Side::None && body_h > 0;
-		this->sidebar->set_visible(open);
-		this->splitter->set_visible(open);
-		if (open) {
+		// A body with no height gets an empty sidebar, not a hidden one.
+		if (this->sidebar->shown() && this->sidebar_side != Side::None &&
+			body_h > 0) {
 			// sidebar_w is kept in points, so that dragging the window to a
 			// display of a different scale keeps its physical width.
 			side_w = max(0, kit.px(this->sidebar_w));
@@ -1204,6 +1208,22 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	}
 	if (this->content && this->content->shown())
 		this->content->arrange(kit, well);
+}
+
+// The bottom hairline of the toolbar shows that the content or the host waits.
+void
+Page::paint(Kit &kit) const
+{
+	paint_children(kit);
+	const bool busy = this->content->busy() ||
+		(this->host && this->host->busy && this->host->busy());
+	if (!busy || !this->toolbar || !this->toolbar->shown())
+		return;
+
+	const Rect &r = this->toolbar->r;
+	const int hair = kit.hairline();
+	kit.list_.add_rect_filled({r.x, r.bottom() - hair, r.right(), r.bottom()},
+		kit.colours_[ColourBusy]);
 }
 
 bool
@@ -1315,6 +1335,22 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 		if (action == Action::Maximize)
 			return kit.maximized_;
 		return checked && checked(action);
+	};
+	// An action can disable the button that has the focus.  The focus then
+	// moves on as Tab moves it.  It stays if its widget could not take it
+	// before the action either, as a list that lost its rows.  It also stays
+	// in a menu, which closes after the item that ran the action.
+	page->actor.apply = [&kit, apply = std::move(page->actor.apply)](
+							Action action) {
+		Widget *was =
+			kit.focus_ && kit.focus_->focusable() ? kit.focus_ : nullptr;
+		if (apply)
+			apply(action);
+		kit.arrange();
+		const Popup *top = kit.top_popup();
+		if (was && kit.focus_ == was && !was->focusable() &&
+			!(top && top->transient()))
+			kit.cycle_focus_in(kit.focus_scope(), 1, true);
 	};
 	page->content->page_ = page.get();
 	page->bind_actions(kit);

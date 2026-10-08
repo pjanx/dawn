@@ -39,7 +39,7 @@ void
 Cropper::set_message(const string &message)
 {
 	this->error_label_->set_text(QString::fromStdString(message));
-	this->error_->set_visible(!message.empty());
+	this->error_->set_visible(this->kit_, !message.empty());
 }
 
 bool

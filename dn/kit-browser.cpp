@@ -1207,6 +1207,24 @@ sync_thumbs(Browser &b)
 	enqueue_thumbs(b);
 }
 
+// One sync for a batch of events that moved the visible band, or brought
+// pixels.  The handlers queue it before they ask for a frame.
+static void
+queue_sync_thumbs(Browser &b)
+{
+	if (b.thumbs_dirty_ || !b.kit_.post)
+		return;
+
+	b.thumbs_dirty_ = true;
+	b.kit_.post([guard = weak_ptr<bool>(b.post_guard_), &b] {
+		if (!guard.lock())
+			return;
+		b.thumbs_dirty_ = false;
+		sync_thumbs(b);
+		request_render(b);
+	});
+}
+
 // A rescan does not start a new generation, so `gen` alone does not say
 // that this result is still wanted: the file at `path` may since have been
 // replaced by another version of itself.  mtime and size say which one this
@@ -1275,7 +1293,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 			f.progress.interim = update.interim;
 			f.progress.pending = false;
 			f.progress.regen_failed = false;
-			b.thumbs_dirty_ = true;
+			queue_sync_thumbs(b);
 			trim_ram(b);
 		}
 		break;
@@ -1485,7 +1503,7 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	else if (float(row.y + row.h) > b.scroll_.offset + vis)
 		b.scroll_.offset = max(0.f, float(row.y + row.h) - vis);
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
-	b.thumbs_dirty_ = true;
+	queue_sync_thumbs(b);
 }
 
 static void
@@ -1496,7 +1514,7 @@ page_scroll(Browser &b, int dir)
 	const float step = vis > rh ? vis - rh : vis;
 	b.scroll_.offset = clamp(
 		b.scroll_.offset + float(dir) * step, 0.f, b.scroll_.max_offset());
-	b.thumbs_dirty_ = true;
+	queue_sync_thumbs(b);
 	request_render(b);
 }
 
@@ -1925,6 +1943,54 @@ matches_search(const Browser &b, const string &name)
 }
 
 static void
+fill_places(Browser &b)
+{
+	auto *list = b.places_;
+	if (!list)
+		return;
+
+	// Rebuilding the sidebar is not the user moving the focus: erase_children
+	// leaves the focus on the list, and this puts it back on the successor of
+	// the row, leaving whatever decided the ring in the first place alone.
+	string restore_path;
+	if (auto *focus = dynamic_cast<SideRow *>(b.kit_.focus_);
+		focus && focus->parent_ == list)
+		restore_path = focus->path;
+	list->erase_children(b.kit_, 0);
+	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
+		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
+		if (d.path.empty()) {
+			list->add_child(make_unique<Sep>(), size_t(-1));
+			continue;
+		}
+
+		auto row = make_unique<SideRow>();
+		row->path = d.path;
+		row->browser = &b;
+		row->pad_x = kWinPadX;
+		row->icon = d.icon;
+		row->text = QString::fromStdString(d.name);
+		row->tip_text = QString::fromStdString(d.tip);
+		row->active = d.current;
+		const string path = d.path;
+		row->on_click = [&b, path](Kit &) {
+			if (!path.empty())
+				b.open_dir(url_of(path), true);
+		};
+		list->add_child(std::move(row), size_t(-1));
+	}
+	if (!restore_path.empty()) {
+		for (size_t i = list->kids.size(); i--;) {
+			auto *row = dynamic_cast<SideRow *>(list->kids[i].get());
+			if (row && row->path == restore_path) {
+				b.kit_.reseat_focus(row);
+				break;
+			}
+		}
+	}
+}
+
+static void
 scan_dir(Browser &b)
 {
 	string keep;
@@ -1937,10 +2003,10 @@ scan_dir(Browser &b)
 	b.can_parent_dir_ = false;
 	b.files_.clear();
 	b.side_dirs_.clear();
-	b.places_dirty_ = true;
 	if (b.dir_url_.isEmpty()) {
 		clear_cursor(b);
 		b.set_files({});
+		fill_places(b);
 		return;
 	}
 
@@ -2107,6 +2173,7 @@ scan_dir(Browser &b)
 		row.icon = "go-down-symbolic";
 		b.side_dirs_.push_back(std::move(row));
 	}
+	fill_places(b);
 }
 
 static float
@@ -2230,7 +2297,7 @@ spec_active(const Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		return b.page_ ? b.page_->sidebar_open : true;
+		return b.page_ ? b.page_->sidebar->visible : true;
 	case Action::Filenames:
 		return b.show_names_;
 	case Action::Filter:
@@ -2300,64 +2367,13 @@ make_sidebar(Browser &b)
 	return side;
 }
 
-static void
-fill_places(Browser &b)
-{
-	auto *list = b.places_;
-	if (!list)
-		return;
-
-	// Rebuilding the sidebar is not the user moving the focus: erase_children
-	// drops the pointer into the dying rows, and this puts it back on their
-	// successor, leaving whatever decided the ring in the first place alone.
-	string restore_path;
-	if (auto *focus = dynamic_cast<SideRow *>(b.kit_.focus_);
-		focus && focus->parent_ == list)
-		restore_path = focus->path;
-	list->erase_children(b.kit_, 0);
-	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
-		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
-		if (d.path.empty()) {
-			list->add_child(make_unique<Sep>(), size_t(-1));
-			continue;
-		}
-
-		auto row = make_unique<SideRow>();
-		row->path = d.path;
-		row->browser = &b;
-		row->pad_x = kWinPadX;
-		row->icon = d.icon;
-		row->text = QString::fromStdString(d.name);
-		row->tip_text = QString::fromStdString(d.tip);
-		row->active = d.current;
-		const string path = d.path;
-		row->on_click = [&b, path](Kit &) {
-			if (!path.empty())
-				open_directory(b, url_of(path), true, 0);
-		};
-		list->add_child(std::move(row), size_t(-1));
-	}
-	if (!restore_path.empty()) {
-		for (size_t i = list->kids.size(); i--;) {
-			auto *row = dynamic_cast<SideRow *>(list->kids[i].get());
-			if (row && row->path == restore_path) {
-				b.kit_.reseat_focus(row);
-				break;
-			}
-		}
-	}
-	b.places_dirty_ = false;
-}
-
 static bool
 apply_action(Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		if (b.page_) {
-			b.page_->sidebar_open = !b.page_->sidebar_open;
-			b.page_->invalidate_arrange();
-		}
+		if (b.page_)
+			b.page_->set_sidebar(b.kit_, !b.page_->sidebar->visible);
 		request_render(b);
 		return true;
 	case Action::DirPrev: {
@@ -2422,7 +2438,7 @@ apply_action(Browser &b, Action action)
 			Toolbar *tb = b.page_->toolbar;
 			if (!tb->overflow || !tb->left || !tb->left->more->shown())
 				return false;
-			tb->overflow->open(b.kit_, tb->left->more);
+			tb->overflow->open_slot(b.kit_, *tb->left);
 		}
 		if (!b.search_->focusable())
 			return false;
@@ -2512,7 +2528,7 @@ Browser::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
 	layout_grid(*this, this->r);
-	this->thumbs_dirty_ = true;
+	sync_thumbs(*this);
 }
 
 bool
@@ -2794,21 +2810,6 @@ Browser::screen_changed(
 	request_render(*this);
 }
 
-void
-Browser::update(Kit &)
-{
-	if (this->places_dirty_)
-		fill_places(*this);
-}
-
-void
-Browser::placed(Kit &)
-{
-	if (this->thumbs_dirty_)
-		sync_thumbs(*this);
-	this->thumbs_dirty_ = false;
-}
-
 bool
 Browser::key(Kit &kit, const Key &ev)
 {
@@ -2860,12 +2861,12 @@ Browser::key(Kit &kit, const Key &ev)
 		switch (ev.key) {
 		case Qt::Key_Up:
 			this->scroll_.offset = 0;
-			this->thumbs_dirty_ = true;
+			queue_sync_thumbs(*this);
 			request_render(*this);
 			return true;
 		case Qt::Key_Down:
 			this->scroll_.offset = this->scroll_.max_offset();
-			this->thumbs_dirty_ = true;
+			queue_sync_thumbs(*this);
 			request_render(*this);
 			return true;
 		}
@@ -2906,7 +2907,7 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button != Qt::LeftButton)
 		return false;
 	if (this->scroll_.press(x, y, button, this->r)) {
-		this->thumbs_dirty_ = true;
+		queue_sync_thumbs(*this);
 		kit.set_focus(this, false);
 		kit.pressed_ = this;
 		return true;
@@ -3001,7 +3002,8 @@ Browser::motion(Kit &kit, float x, float y)
 {
 	if (this->scroll_.dragging) {
 		const bool moved = this->scroll_.motion(y, this->r);
-		this->thumbs_dirty_ |= moved;
+		if (moved)
+			queue_sync_thumbs(*this);
 		return moved;
 	}
 
@@ -3036,7 +3038,7 @@ bool
 Browser::scroll(Kit &, float, float, int delta)
 {
 	this->scroll_.wheel(delta, row_h(*this));
-	this->thumbs_dirty_ = true;
+	queue_sync_thumbs(*this);
 	return true;
 }
 
@@ -3044,14 +3046,8 @@ bool
 Browser::pan(Kit &, float, float, float, float dy)
 {
 	this->scroll_.pan(dy);
-	this->thumbs_dirty_ = true;
+	queue_sync_thumbs(*this);
 	return true;
-}
-
-int
-Browser::wake_ms(const Kit &) const
-{
-	return this->scroll_.wake_ms();
 }
 
 }  // namespace dn

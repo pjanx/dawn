@@ -261,6 +261,10 @@ blit(Kit &kit, const Kit::Packed &rect, const QImage &src, bool coverage)
 	kit.atlas_.mark_dirty(rect);
 }
 
+// This must be more than the number of captions that one window can show,
+// because the browser keeps them in its own cache.
+constexpr uint64_t kTextCacheCap = 1024;
+
 static const Kit::Glyph *
 cache_glyph(Kit &kit, uint32_t font_id, uint32_t gid, int phase)
 {
@@ -307,18 +311,16 @@ TextCache::get(const Kit &kit, const QString &text, int wrap, int max_lines,
 		this->texts.clear();
 		this->epoch = kit.font_epoch_;
 	}
-	if (this->frame != kit.text_frame_) {
-		this->frame = kit.text_frame_;
-		// Sync may ask for text just before frame_ui advances the clock.
+	if (this->texts.size() > 2 * kTextCacheCap) {
 		erase_if(this->texts, [&](const auto &entry) {
-			return entry.second.used + 2 < this->frame;
+			return entry.second.used + kTextCacheCap <= this->uses;
 		});
 	}
 
 	auto [it, fresh] =
 		this->texts.try_emplace({text, wrap, max_lines, bold, align});
 	Text &cached = it->second;
-	cached.used = this->frame;
+	cached.used = ++this->uses;
 	if (!fresh)
 		return cached;
 
@@ -588,13 +590,17 @@ Widget::arrange(Kit &kit, Rect alloc)
 }
 
 void
-Widget::set_visible(bool value)
+Widget::set_visible(Kit &kit, bool value)
 {
 	if (this->visible == value)
 		return;
 
 	this->visible = value;
 	invalidate_measure();
+	if (!value) {
+		kit.close_referring(this);
+		kit.sync_focus();
+	}
 }
 
 Size
@@ -657,7 +663,8 @@ Widget::hit_at(float x, float y)
 
 	const auto kids = children();
 	for (size_t i = kids.size(); i > 0; i--) {
-		if (Widget *h = kids[i - 1]->hit_at(x, y))
+		// A retirement can leave a slot empty for a moment.
+		if (Widget *h = kids[i - 1] ? kids[i - 1]->hit_at(x, y) : nullptr)
 			return h;
 	}
 	return this->hittable ? this : nullptr;
@@ -684,7 +691,7 @@ static int
 button_text_avail(const Kit &kit, const Button &b)
 {
 	const int px = kit.px(kFramePadX + b.pad_x);
-	const int left = px + (b.icon ? kit.px(kIconPts + 4.f) : 0);
+	const int left = px + (b.shown_icon() ? kit.px(kIconPts + 4.f) : 0);
 	return max(1, b.r.w - left - px);
 }
 
@@ -710,6 +717,53 @@ checkbox_text_avail(const Kit &kit, const Checkbox &c, int width)
 	return max(1, width - used);
 }
 
+static bool
+bound(const Button &b)
+{
+	return b.actor && b.action != Action::None;
+}
+
+bool
+Button::enabled() const
+{
+	if (!bound(*this))
+		return this->enabled_;
+	return !this->actor->enabled || this->actor->enabled(this->action);
+}
+
+bool
+Button::on() const
+{
+	return bound(*this) && this->actor->checked &&
+		this->actor->checked(this->action);
+}
+
+// A toggle with two icons has both, so the measurement does not depend on
+// the state.
+const char *
+Button::shown_icon() const
+{
+	if (!bound(*this))
+		return this->icon;
+	return action_icon(action_def(this->action), on());
+}
+
+QString
+Button::tip(const Kit &) const
+{
+	if (!bound(*this))
+		return this->tip_text;
+	return action_tip(action_def(this->action), on());
+}
+
+QString
+Button::tip_key() const
+{
+	if (!bound(*this))
+		return this->tip_accel;
+	return accel_label(action_def(this->action));
+}
+
 void
 Button::set_text(const QString &value)
 {
@@ -725,14 +779,15 @@ Button::measure_content(Kit &kit, int, int)
 {
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
+	const char *shown = shown_icon();
 	int cw = 0;
 	int ch = kit.line_height(this->bold);
-	if (this->icon) {
+	if (shown) {
 		cw = icon;
 		ch = max(ch, icon);
 	}
 	if (!this->text.isEmpty()) {
-		if (this->icon)
+		if (shown)
 			cw += kit.px(4.f);
 		cw += this->text_cache_.text_width(kit, this->text, this->bold);
 		ch = max(
@@ -746,21 +801,24 @@ Button::paint(Kit &kit) const
 {
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	if ((this->enabled_ && pressed) || this->active)
+	const bool enabled = this->enabled();
+	if ((enabled && pressed) || this->active ||
+		(on() && this->action != Action::SortDir))
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (this->enabled_ && hot)
+	else if (enabled && hot)
 		kit.draw_fill(this->r, kit.colours_[ColourHover]);
 	if (!this->flat)
 		kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
-	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+	const char *shown = shown_icon();
+	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
-	if (this->icon)
+	if (shown)
 		kit.draw_icon(this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
-			this->icon, col(kit.colours_[ColourInk], ink_a));
+			shown, col(kit.colours_[ColourInk], ink_a));
 	if (!this->text.isEmpty()) {
-		const int tx = this->r.x + px + (this->icon ? icon + kit.px(4.f) : 0);
+		const int tx = this->r.x + px + (shown ? icon + kit.px(4.f) : 0);
 		const auto &cached = this->text_cache_.get(kit, this->text,
 			button_text_avail(kit, *this), 1, this->bold, TextAlign::Start);
 		kit.emit_layout(float(tx),
@@ -775,7 +833,7 @@ Button::paint(Kit &kit) const
 bool
 Button::focusable() const
 {
-	return this->enabled_ && shown() && this->hittable && this->r.w > 0;
+	return enabled() && shown() && this->hittable && this->r.w > 0;
 }
 
 // A disabled or unlaid-out button answers to nothing, the same way it takes
@@ -829,21 +887,10 @@ Button::key(Kit &kit, const Key &ev)
 }
 
 bool
-Button::sync_action()
-{
-	if (!this->actor || this->action == Action::None)
-		return false;
-	this->enabled_ =
-		!this->actor->enabled || this->actor->enabled(this->action);
-	return this->actor->checked && this->actor->checked(this->action);
-}
-
-bool
 Button::activate(Kit &kit)
 {
-	if (this->actor && this->action != Action::None) {
-		sync_action();
-		if (!this->enabled_ || !this->actor->apply)
+	if (bound(*this)) {
+		if (!enabled() || !this->actor->apply)
 			return false;
 		this->actor->apply(this->action);
 	} else {
@@ -889,9 +936,10 @@ Checkbox::paint(Kit &kit) const
 {
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	if (this->enabled_ && pressed)
+	const bool enabled = this->enabled();
+	if (enabled && pressed)
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (this->enabled_ && hot)
+	else if (enabled && hot)
 		kit.draw_fill(this->r, kit.colours_[ColourHover]);
 
 	const int px = kit.px(kFramePadX + this->pad_x);
@@ -905,7 +953,7 @@ Checkbox::paint(Kit &kit) const
 	kit.draw_border(
 		{bx, by, box, box}, kit.colours_[ColourDivider], kit.hairline());
 
-	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	if (this->checked)
 		kit.draw_icon(bx + border, by + border, icon, "object-select-symbolic",
@@ -927,7 +975,7 @@ Checkbox::paint(Kit &kit) const
 bool
 Checkbox::activate(Kit &kit)
 {
-	if (!this->enabled_)
+	if (!enabled())
 		return false;
 
 	kit.set_focus(this, true);
@@ -1576,8 +1624,14 @@ Entry::paint(Kit &kit) const
 		}
 	}
 
+	// A composing field holds the caret steady, and a selection hides it.
+	// Otherwise, paint again when the caret flips.
+	const double phase = blink_phase(kit, *this);
+	const double until = (phase < 0.5 ? 0.5 : 1.0) - phase;
+	if (focused && this->anchor == this->caret && this->preedit.isEmpty())
+		kit.wake_after(max(1, int(ceil(until * kCaretBlinkMs * 2.0))));
 	if (focused && this->anchor == this->caret &&
-		(!this->preedit.isEmpty() || blink_phase(kit, *this) < 0.5)) {
+		(!this->preedit.isEmpty() || phase < 0.5)) {
 		const int at =
 			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
 		const TextAffinity affinity = this->preedit.isEmpty()
@@ -1822,20 +1876,6 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 	return true;
 }
 
-int
-Entry::wake_ms(const Kit &kit) const
-{
-	// An unfocused field has no caret, a composing one holds it steady, and
-	// a selection hides it: none needs waking.  Otherwise, sleep until the
-	// caret next flips.
-	if (kit.focus_ != this || !this->preedit.isEmpty() ||
-		this->anchor != this->caret)
-		return -1;
-	const double phase = blink_phase(kit, *this);
-	const double until = (phase < 0.5 ? 0.5 : 1.0) - phase;
-	return max(1, int(ceil(until * kCaretBlinkMs * 2.0)));
-}
-
 // --- Sep ---------------------------------------------------------------------
 
 Size
@@ -1960,15 +2000,12 @@ Composite::take_child(size_t at)
 void
 Composite::erase_children(Kit &kit, size_t from)
 {
-	invalidate_measure();
 	from = min(from, this->kids.size());
-	for (size_t i = from; i < this->kids.size(); i++) {
-		if (this->kids[i]) {
-			kit.forget_tree(this->kids[i].get());
-			this->kids[i]->parent_ = nullptr;
-		}
-	}
+	for (size_t i = from; i < this->kids.size(); i++)
+		kit.retire(this->kids[i]);
 	this->kids.erase(this->kids.begin() + ptrdiff_t(from), this->kids.end());
+	// Last: a retirement can close a popup, which arranges the tree.
+	invalidate_measure();
 }
 
 // --- Container ---------------------------------------------------------------
@@ -2323,21 +2360,6 @@ Scroll::visible() const
 	return elapsed < kScrollHideMs;
 }
 
-int
-Scroll::wake_ms() const
-{
-	if (this->content <= this->view || this->dragging)
-		return -1;
-	if (this->shown_at_.time_since_epoch().count() == 0)
-		return -1;
-	const float elapsed = chrono::duration<float, milli>(
-		chrono::steady_clock::now() - this->shown_at_)
-							  .count();
-	if (elapsed >= kScrollHideMs)
-		return -1;
-	return int(ceil(double(kScrollHideMs - elapsed)));
-}
-
 Rect
 Scroll::bar_rect(Rect viewport) const
 {
@@ -2454,6 +2476,14 @@ Scroll::paint(Kit &kit, Rect viewport) const
 {
 	if (!visible())
 		return;
+
+	// The bar hides itself some time after it last moves.
+	if (!this->dragging) {
+		const float elapsed = chrono::duration<float, milli>(
+			chrono::steady_clock::now() - this->shown_at_)
+								  .count();
+		kit.wake_after(int(ceil(double(kScrollHideMs - elapsed))));
+	}
 
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.w <= 0 || thumb.h <= 0)
@@ -2580,12 +2610,6 @@ ScrollColumn::key(Kit &, const Key &ev)
 	return this->scroll_.page(direction);
 }
 
-int
-ScrollColumn::wake_ms(const Kit &) const
-{
-	return this->scroll_.wake_ms();
-}
-
 // --- Panel -------------------------------------------------------------------
 
 Size
@@ -2658,8 +2682,7 @@ Panel::paint(Kit &kit) const
 	case Stroke::Bottom:
 		kit.list_.add_rect_filled({this->r.x, this->r.bottom() - hair,
 									  this->r.right(), this->r.bottom()},
-			this->busy ? kit.colours_[ColourBusy]
-					   : kit.colours_[ColourDivider]);
+			kit.colours_[ColourDivider]);
 		break;
 	case Stroke::None:
 		break;
@@ -2725,10 +2748,27 @@ Popup::place_below(Kit &kit, int x, Size size)
 	arrange(kit, {x, y, size.w, size.h});
 }
 
+bool
+within(const Widget *w, const Widget *tree)
+{
+	for (; w; w = w->parent_) {
+		if (w == tree)
+			return true;
+	}
+	return false;
+}
+
+bool
+Popup::refers_to(const Widget *tree) const
+{
+	return this == tree || within(this->opener, tree);
+}
+
+// An opener that layout hides keeps the popup at its last anchor.
 void
 Popup::place(Kit &kit)
 {
-	if (this->opener)
+	if (this->opener && !this->opener->r.empty())
 		this->at = this->opener->r;
 
 	const int glow = kit.px(kGlowPts);
@@ -2815,23 +2855,20 @@ Dialog::show(Kit &kit, unique_ptr<Widget> content, float min_w,
 	kit.focus_first(this);
 }
 
-// Not dropped here: the footer button that closed it is still running inside
-// this very tree.  The event loop is the first place nothing stands on it.
+// The kit retires the dialog and does not destroy it here: the footer button
+// that closed it still runs inside this tree.
 void
 Dialog::after_close(Kit &kit)
 {
-	if (!kit.post)
+	auto &dialogs = kit.dialogs_;
+	const auto it = find_if(dialogs.begin(), dialogs.end(),
+		[this](const auto &d) { return d.get() == this; });
+	if (it == dialogs.end())
 		return;
 
-	kit.post([&kit, dialog = this] {
-		auto &dialogs = kit.dialogs_;
-		const auto it = find_if(dialogs.begin(), dialogs.end(),
-			[dialog](const auto &d) { return d.get() == dialog; });
-		if (it == dialogs.end())
-			return;
-		kit.forget_tree(dialog);
-		dialogs.erase(it);
-	});
+	unique_ptr<Widget> owner = std::move(*it);
+	dialogs.erase(it);
+	kit.retire(owner);
 }
 
 void
@@ -2904,23 +2941,25 @@ menu_item_width(const Kit &kit, int label_w, int accel_w, bool sub)
 		(sub ? kit.icon_px() : 0);
 }
 
+// The keep widget is in the list even when it cannot take the focus, so that
+// Tab can continue from where the focus is.
 static void
-collect_focusable(Widget *w, vector<Widget *> &out)
+collect_focusable(Widget *w, const Widget *keep, vector<Widget *> &out)
 {
 	if (!w || !w->shown() || dynamic_cast<Titlebar *>(w))
 		return;
-	if (w->focusable())
+	if (w->focusable() || w == keep)
 		out.push_back(w);
 
 	// A group stands for itself with one of its own, and Tab steps over
 	// everything else it holds.
 	if (Widget *stop = w->tab_stop()) {
-		if (stop->shown() && stop->focusable())
+		if (stop->shown() && (stop->focusable() || stop == keep))
 			out.push_back(stop);
 		return;
 	}
 	for (const auto &k : w->children())
-		collect_focusable(k.get(), out);
+		collect_focusable(k.get(), keep, out);
 }
 
 // The same walk, in the same order, for what one letter selects.  Labels
@@ -2960,8 +2999,10 @@ MenuPopup::reveal(Kit &kit, Widget *w)
 {
 	auto *item = dynamic_cast<MenuItem *>(w);
 	if (item && item->sub) {
-		if (!item->sub->visible)
+		if (!item->sub->visible) {
+			item->sub->sync();
 			item->sub->open(kit, item);
+		}
 		kit.set_focus(item->sub, false);
 		return;
 	}
@@ -3084,12 +3125,35 @@ Overflow::~Overflow()
 		this->lender->reclaim();
 }
 
+static bool
+holds_items(const Overflow &o)
+{
+	return any_of(o.col->kids.begin(), o.col->kids.end(),
+		[](const auto &item) { return item->shown() && !is_sep(item.get()); });
+}
+
 void
 Overflow::open_slot(Kit &kit, ToolbarSlot &slot)
 {
 	close(kit);
-	this->lender = &slot;
-	Popup::open(kit, slot.more);
+	slot.lend_to(*this);
+	if (holds_items(*this))
+		Popup::open(kit, slot.more);
+	else
+		slot.reclaim();
+}
+
+void
+Overflow::relend(Kit &kit)
+{
+	if (!this->visible || !this->lender)
+		return;
+
+	this->lender->lend_to(*this);
+	if (holds_items(*this))
+		place(kit);
+	else
+		close(kit);
 }
 
 void
@@ -3103,15 +3167,7 @@ Overflow::after_close(Kit &)
 void
 Overflow::place(Kit &kit)
 {
-	this->lender->lend_to(*this);
-	if (none_of(this->col->kids.begin(), this->col->kids.end(),
-			[](const auto &item) {
-				return item->shown() && !is_sep(item.get());
-			})) {
-		close(kit);
-		return;
-	}
-	if (this->opener)
+	if (this->opener && !this->opener->r.empty())
 		this->at = this->opener->r;
 
 	const int glow = kit.px(kGlowPts);
@@ -3148,7 +3204,7 @@ void
 Overflow::step_line(Kit &kit, int dir)
 {
 	vector<Widget *> items;
-	collect_focusable(this, items);
+	collect_focusable(this, nullptr, items);
 	const auto it = find(items.begin(), items.end(), kit.focus_);
 	if (it == items.end()) {
 		this->want_x_ = -1;
@@ -3268,21 +3324,18 @@ Menu::add_sep()
 void
 Menu::clear(Kit &kit)
 {
-	// A sub is on the popup stack for as long as it is open, so dropping it
-	// here would leave kit.popups_ walking freed memory every frame.
-	// Closing takes down whatever it opened above it, but that settles the
-	// stack alone: the items are destroyed below without anything being
-	// told, which is what forgetting is for.  It has to go a level at a
-	// time, because a popup roots its own parent chain -- an item two menus
-	// down is no descendant of this one, and forgetting this tree would
-	// walk straight past it.
+	// A sub is on the popup stack for as long as it is open.  Retiring it
+	// closes it, with whatever it opened above it, and keeps it until nothing
+	// stands on it.  It has to go a level at a time, because a popup roots
+	// its own parent chain -- an item two menus down is no descendant of this
+	// one, and retiring this tree would walk straight past it.
 	for (auto &sub : this->subs_) {
 		if (!sub)
 			continue;
 
-		sub->close(kit);
 		sub->clear(kit);
-		kit.forget_tree(sub.get());
+		unique_ptr<Widget> owner = std::move(sub);
+		kit.retire(owner);
 	}
 	this->subs_.clear();
 	this->col->erase_children(kit, 0);
@@ -3315,7 +3368,10 @@ Menu::build(Kit &kit, span<const MenuNode> nodes, const Actor &a)
 	sync();
 }
 
-// Just this level: a submenu syncs itself once it is placed in turn.
+// Just this level: a submenu syncs itself when it opens in turn.  The labels
+// and the check marks stay until the menu opens again.  Only the enabled state
+// is live, because a label follows its checked state, and the menu measures
+// the label.
 void
 Menu::sync()
 {
@@ -3325,7 +3381,7 @@ Menu::sync()
 			continue;
 
 		const Action action = item->action;
-		item->checked = item->sync_action();
+		item->checked = item->on();
 		const ActionDef &def = action_def(action);
 		item->set_text(
 			menu_label(action_label(def, item->checked), &item->mnemonic));
@@ -3341,7 +3397,6 @@ Menu::sync()
 void
 Menu::place(Kit &kit)
 {
-	sync();
 	const auto *item = dynamic_cast<MenuItem *>(this->opener);
 	if (!item || item->sub != this || !this->parent_popup) {
 		Popup::place(kit);
@@ -3418,7 +3473,8 @@ MenuItem::paint(Kit &kit) const
 	// The selection is kit.focus_ alone: kit.pressed_ is just the capture,
 	// and it would stay lit behind the pointer when press-dragging through.
 	// A submenu's opener keeps this->active, as focus_ moves into the submenu.
-	if (this->enabled_ && (this->active || kit.focus_ == this))
+	const bool enabled = this->enabled();
+	if (enabled && (this->active || kit.focus_ == this))
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 
 	const MenuCols cols = menu_cols(kit, *this);
@@ -3428,7 +3484,7 @@ MenuItem::paint(Kit &kit) const
 	const int accel_x = this->r.x + cols.accel_x;
 	const int iy = this->r.y + (this->r.h - icon) / 2;
 	const Colour label_c =
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha);
+		col(kit.colours_[ColourInk], enabled ? 1.f : kDimAlpha);
 
 	if (this->checkable && this->checked)
 		kit.draw_icon(lead_x, iy, icon, "object-select-symbolic", label_c);
@@ -3449,8 +3505,7 @@ MenuItem::paint(Kit &kit) const
 	if (this->sub) {
 		kit.draw_icon(this->r.right() - pad_x - cols.chevron, iy, icon,
 			"go-next-symbolic",
-			col(kit.colours_[ColourInk],
-				this->enabled_ ? 1.f : kDisabledAlpha));
+			col(kit.colours_[ColourInk], enabled ? 1.f : kDisabledAlpha));
 	}
 }
 
@@ -3461,6 +3516,7 @@ MenuItem::activate(Kit &kit)
 		return Button::activate(kit);
 	if (!owning_popup(this))
 		return false;
+	this->sub->sync();
 	this->sub->open(kit, this);
 	kit.focus_first(this->sub);
 	return true;
@@ -3504,7 +3560,8 @@ ComboItem::paint(Kit &kit) const
 {
 	// The same rule as MenuItem: the selection is kit.focus_ alone, never
 	// kit.pressed_, which would stay lit behind a press-drag through the list.
-	if (this->enabled_ && (this->active || kit.focus_ == this))
+	const bool enabled = this->enabled();
+	if (enabled && (this->active || kit.focus_ == this))
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	if (this->text.isEmpty())
 		return;
@@ -3514,7 +3571,7 @@ ComboItem::paint(Kit &kit) const
 		max(1, this->r.w - pad * 2), 1, false, TextAlign::Start);
 	kit.emit_layout(float(this->r.x + pad),
 		float(this->r.y + (this->r.h - cached.height) / 2), cached,
-		col(kit.colours_[ColourInk], this->enabled_ ? 1.f : kDimAlpha), -1);
+		col(kit.colours_[ColourInk], enabled ? 1.f : kDimAlpha), -1);
 }
 
 ComboPopup::ComboPopup()
@@ -3534,7 +3591,7 @@ ComboPopup::ComboPopup()
 void
 ComboPopup::place(Kit &kit)
 {
-	if (this->opener)
+	if (this->opener && !this->opener->r.empty())
 		this->at = this->opener->r;
 
 	const int glow = kit.px(kGlowPts);
@@ -3598,15 +3655,16 @@ Combo::paint(Kit &kit) const
 
 	const bool hot = kit.hot_ == this;
 	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	if ((this->enabled_ && pressed) || this->active)
+	const bool enabled = this->enabled();
+	if ((enabled && pressed) || this->active)
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (this->enabled_ && hot)
+	else if (enabled && hot)
 		kit.draw_fill(this->r, kit.colours_[ColourHover]);
 	kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
-	const float ink_a = (this->enabled_ ? 1.f : kDisabledAlpha) *
+	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
 		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
 	kit.draw_icon(this->r.right() - pad_x - icon,
 		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
@@ -3649,7 +3707,7 @@ Combo::select(Kit &kit, int index)
 bool
 Combo::activate(Kit &kit)
 {
-	if (!this->enabled_ || this->items.empty())
+	if (!enabled() || this->items.empty())
 		return false;
 	if (this->popup_->visible) {
 		this->popup_->close(kit);
@@ -3699,7 +3757,7 @@ constexpr float kWinPadY = 4.f;
 ToolbarSlot::ToolbarSlot()
 {
 	auto button = make_unique<Button>();
-	button->visible = false;
+	button->layout_visible = false;
 	button->flat = true;
 	button->focus_on_press = false;
 	button->icon = "disclose-arrow-down-symbolic";
@@ -3869,7 +3927,8 @@ ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 		while (this->split_ > 0 && is_sep(this->items_[this->split_ - 1]))
 			this->split_--;
 	}
-	this->more->set_visible(this->split_ < end);
+	// Layout owns this, and the bar measures its items without the button.
+	this->more->layout_visible = this->split_ < end;
 	sync_layout_visible();
 	Row::arrange_content(kit, alloc);
 }
@@ -3907,39 +3966,6 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 			else
 				this->overflow->open_slot(kit, *slot);
 		};
-	}
-}
-
-// What a toolbar or title bar button shows is its action's state.
-static void
-sync_action_button(Widget *w)
-{
-	auto *btn = dynamic_cast<Button *>(w);
-	if (!btn)
-		return;
-	if (btn->action == Action::None)
-		return;
-
-	const ActionDef &d = action_def(btn->action);
-	const bool on = btn->sync_action();
-	btn->active = on && btn->action != Action::SortDir;
-	const char *icon = action_icon(d, on);
-	if (bool(btn->icon) != bool(icon))
-		btn->invalidate_measure();
-	btn->icon = icon;
-	btn->tip_text = action_tip(d, on);
-	btn->tip_accel = accel_label(d);
-}
-
-void
-Toolbar::sync_buttons()
-{
-	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (!slot)
-			continue;
-		// items_, not kids: what the overflow is holding is still ours to sync.
-		for (Widget *k : slot->items_)
-			sync_action_button(k);
 	}
 }
 
@@ -4082,16 +4108,8 @@ Titlebar::Titlebar()
 	add_child(std::move(cls), size_t(-1));
 }
 
-void
-Titlebar::sync(Kit &kit)
-{
-	set_visible(kit.csd_ && !kit.fullscreen_);
-	for (Button *btn : {this->minimize, this->maximize, this->close})
-		sync_action_button(btn);
-}
-
-// Only the client draws its own decorations, and never over a fullscreen
-// window: this is the one widget that decides for itself whether it is there.
+// The window shows this only while the client draws its own decorations, and
+// never over a fullscreen window.
 Size
 Titlebar::measure_content(Kit &kit, int avail_w, int)
 {
@@ -4410,6 +4428,9 @@ popup_for_hit(const Kit &kit, Widget *h)
 void
 Kit::sync_focus()
 {
+	// Whether a widget can take the focus depends on its rect.
+	arrange();
+
 	// Focus can be dropped from under a text field -- a popup opening over
 	// it, or the toolbar overflowing it away -- and the input method has to
 	// hear about it, or it keeps composing into a field that is gone.
@@ -4495,7 +4516,7 @@ Kit::reseat_focus(Widget *w)
 	// anybody asked it to, but because the widget that held it was rebuilt
 	// and this is its successor.  Whoever is listening still has to hear
 	// it -- from the outside a different object has the keyboard than a
-	// moment ago, and forget_tree() has already said the old one is gone.
+	// moment ago, and retire() has already said the old one is gone.
 	if (this->focus_ == w)
 		return;
 
@@ -4567,7 +4588,7 @@ bool
 Kit::cycle_focus_in(Widget *scope, int dir, bool wrap)
 {
 	vector<Widget *> items;
-	collect_focusable(scope, items);
+	collect_focusable(scope, this->focus_, items);
 	if (items.empty())
 		return false;
 	int i = -1;
@@ -4599,13 +4620,15 @@ void
 Kit::focus_first(Widget *scope)
 {
 	vector<Widget *> items;
-	collect_focusable(scope, items);
+	collect_focusable(scope, nullptr, items);
 	set_focus(items.empty() ? nullptr : items.front(), true);
 }
 
 bool
 Kit::key(const Key &ev)
 {
+	// FIXME: Not here.
+	arrange();
 	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
 		return p->key(*this, ev);
 
@@ -4658,6 +4681,8 @@ Kit::text_target(TextTarget &out) const
 bool
 Kit::input_method(const QString &commit, const QString &preedit, int caret)
 {
+	// FIXME: Not here.
+	arrange();
 	for (Widget *w = this->focus_; w; w = w->parent_) {
 		if (w->input_method(*this, commit, preedit, caret))
 			return true;
@@ -4680,18 +4705,14 @@ bool
 Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 {
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	this->mods_ = mods;
 	this->touch_x_ = x;
 	this->touch_y_ = y;
 	this->touch_panned_ = false;
 	if (button == Qt::LeftButton)
 		this->left_down_ = true;
-	if (this->root_ && this->root_->r.w <= 0) {
-		this->root_->arrange(*this, {0, 0, this->host_w_, this->host_h_});
-		relayout_popups();
-		sync_focus();
-	}
-	this->hot_ = hit(x, y);
 	this->touch_target_ = this->hot_;
 
 	// A press tracks the pointer just like a hover does, so that what a menu
@@ -4716,6 +4737,8 @@ bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	if (button == Qt::LeftButton)
 		this->left_down_ = false;
 
@@ -4757,12 +4780,12 @@ bool
 Kit::mouse_motion(float x, float y)
 {
 	pointer_at(x, y);
-	this->hot_ = hit(x, y);
+	// FIXME: Not here.
+	arrange();
 	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (Scroll *s = w->scrollbar())
 			s->reveal();
 	}
-	tooltip(this->hot_);
 
 	// A popup gets first refusal so press-dragging through a menu tracks
 	// hover, but a widget that claims the motion -- a scrollbar being
@@ -4827,6 +4850,8 @@ bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	if (!delta)
 		return false;
 	Widget *h = hit(x, y);
@@ -4846,6 +4871,8 @@ Kit::pan(float x, float y, float dx, float dy)
 {
 	// The deltas scale the same way as the position does.
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	dx = float(px(dx));
 	dy = float(px(dy));
 	return pan_at(hit(x, y), x, y, dx, dy);
@@ -4869,6 +4896,8 @@ bool
 Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 {
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	Widget *h = hit(x, y);
 	if (popup_open() && !owning_popup(h))
 		return true;
@@ -4883,6 +4912,8 @@ bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
 	pointer_at(x, y);
+	// FIXME: Not here.
+	arrange();
 	// A menu must not take the second click of a pair for another pick; a
 	// dialog is an ordinary widget tree, and a list inside one wants it.
 	// hit() already confines this to whatever owns the pointer.
@@ -4914,9 +4945,12 @@ Kit::destroy()
 	close_popups();
 	// While the subtrees are still whole: retained pointers and whatever
 	// exposes them to the outside have to be retired before the trees go.
-	for (auto &dialog : this->dialogs_)
-		forget_tree(dialog.get());
+	for (auto &dialog : this->dialogs_) {
+		unique_ptr<Widget> owner = std::move(dialog);
+		retire(owner);
+	}
 	this->dialogs_.clear();
+	this->retired_.clear();
 	this->tooltip_panel_.reset();
 	this->text_cache_.texts.clear();
 	this->atlas_epoch_++;
@@ -4931,50 +4965,69 @@ Kit::destroy()
 	hide_tooltip();
 }
 
+// The focus goes to the parent without a Focus notification.  The next sweep
+// announces it, or the caller reseats it on a successor.
 void
-Kit::forget_tree(Widget *tree)
+Kit::retire(unique_ptr<Widget> &owner)
 {
+	Widget *tree = owner.get();
+	if (!tree)
+		return;
+
 	// First of all, while the subtree is still whole and still reachable
-	// from its parent: whoever exposed it has to retire it in that order,
-	// and callers forget a subtree before dropping it, never after.
+	// from its parent: whoever exposed it reports the removal on the parent.
 	if (this->notify)
 		this->notify(Change::Retired, tree);
 
-	auto forget = [tree](auto &target) {
-		for (auto *w = target; w; w = w->parent_) {
-			if (w == tree) {
-				target = nullptr;
-				return true;
-			}
-		}
-		return false;
+	Widget *parent = tree->parent_;
+	tree->parent_ = nullptr;
+	if (this->retired_.empty() && this->post)
+		this->post([this] { this->retired_.clear(); });
+	this->retired_.push_back(std::move(owner));
+
+	auto forget = [tree](auto &target, Widget *to) {
+		if (!within(target, tree))
+			return false;
+		target = to;
+		return true;
 	};
 
-	// A popup outlives the frame it was opened from, but not the widget it
-	// hangs off: left on the stack, it would be placed and painted through
-	// freed memory every frame.  Closing is safe here, as callers forget a
-	// subtree before dropping it, not after.  What they covered goes first,
-	// so that closing gives no focus back into the tree.
+	// What the popups cover goes first, so that closing them gives no focus
+	// back into the tree.
 	for (Popup *p : this->popups_)
-		forget(p->covered);
+		forget(p->covered, parent);
+	for (Widget *&w : this->lost_focus_)
+		forget(w, nullptr);
+	if (forget(this->focus_, parent)) {
+		this->focus_at_ = chrono::steady_clock::now();
+		if (parent)
+			parent->invalidate_arrange();
+		if (this->input_method_changed)
+			this->input_method_changed();
+		if (this->request_render)
+			this->request_render();
+	}
+	forget(this->pressed_, nullptr);
+	forget(this->touch_target_, nullptr);
+	const bool forgot_hot = forget(this->hot_, nullptr);
+	if (forget(this->tooltip_anchor_, nullptr) || forgot_hot)
+		hide_tooltip();
+
+	// A popup outlives the frame it was opened from, but not the widget it
+	// hangs off: left on the stack, it would act on a widget that is gone.
+	close_referring(tree);
+}
+
+// Closing the lowest popup that refers to the tree closes all above it too.
+void
+Kit::close_referring(const Widget *tree)
+{
 	for (Popup *p : this->popups_) {
-		bool doomed = p == tree;
-		for (const Widget *w = p->opener; w; w = w->parent_)
-			doomed |= w == tree;
-		if (doomed) {
+		if (p->refers_to(tree)) {
 			p->close(*this);
-			break;
+			return;
 		}
 	}
-
-	for (Widget *&w : this->lost_focus_)
-		forget(w);
-	forget(this->focus_);
-	forget(this->pressed_);
-	forget(this->touch_target_);
-	const bool forgot_hot = forget(this->hot_);
-	if (forget(this->tooltip_anchor_) || forgot_hot)
-		hide_tooltip();
 }
 
 void
@@ -5043,14 +5096,13 @@ Kit::bake_colours(const ScreenState &state)
 
 // Take the tooltip down and restart its delay from wherever the pointer
 // stands: whatever ends up under it has to earn the tooltip afresh.  Leaving
-// the clock be would have wake_ms() find an already overdue tip, and tooltip()
-// show it on the very next frame, without any hover at all.
+// the clock be would have paint find an already overdue tip, and show it on
+// the very next frame, without any hover at all.
 void
 Kit::hide_tooltip()
 {
 	this->tooltip_text_.clear();
 	this->tooltip_accel_.clear();
-	this->tooltip_visible_ = false;
 	this->tooltip_anchor_ = nullptr;
 	this->hover_at_ = chrono::steady_clock::now();
 	this->hover_x_ = this->mouse_x_;
@@ -5068,7 +5120,6 @@ Kit::tooltip(const Widget *hot)
 		this->tooltip_text_ = this->focus_->tip(*this);
 		this->tooltip_accel_ = this->focus_->tip_key();
 		this->tooltip_anchor_ = this->focus_;
-		this->tooltip_visible_ = true;
 		return;
 	}
 	this->tooltip_anchor_ = nullptr;
@@ -5084,23 +5135,15 @@ Kit::tooltip(const Widget *hot)
 		this->hover_at_ = chrono::steady_clock::now();
 		this->hover_x_ = this->mouse_x_;
 		this->hover_y_ = this->mouse_y_;
-		this->tooltip_visible_ = false;
-	}
-	if (tip.isEmpty())
-		this->tooltip_visible_ = false;
-	else {
-		const float elapsed = chrono::duration<float, milli>(
-			chrono::steady_clock::now() - this->hover_at_)
-								  .count();
-		if (elapsed >= kTooltipDelayMs)
-			this->tooltip_visible_ = true;
 	}
 }
 
+// Do this whenever there is a tip.  Otherwise, paint can find the delay over
+// before the panel has a layout for it.
 static void
 prepare_tooltip(Kit &kit)
 {
-	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty())
+	if (kit.tooltip_text_.isEmpty())
 		return;
 
 	if (!kit.tooltip_panel_) {
@@ -5123,8 +5166,9 @@ prepare_tooltip(Kit &kit)
 	auto *label = (Label *) row->child(0);
 	auto *accel = (Label *) row->child(1);
 	label->set_text(kit.tooltip_text_);
+	// The panel is in no tree.  A new text already invalidates the label.
 	accel->set_text(kit.tooltip_accel_);
-	accel->set_visible(!kit.tooltip_accel_.isEmpty());
+	accel->visible = !kit.tooltip_accel_.isEmpty();
 	const Size size = tipn.measure(kit, kUnlim, kUnlim);
 	const int tw = size.w, th = size.h;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
@@ -5147,44 +5191,30 @@ prepare_tooltip(Kit &kit)
 	tipn.arrange(kit, {tx, ty, tw, th});
 }
 
+// The tip of the keyboard focus shows immediately.  The tip below the pointer
+// shows after a delay.
 static void
 paint_tooltip(Kit &kit)
 {
-	if (!kit.tooltip_visible_ || kit.tooltip_text_.isEmpty() ||
-		!kit.tooltip_panel_)
+	if (kit.tooltip_text_.isEmpty() || !kit.tooltip_panel_)
 		return;
+	if (!kit.tooltip_anchor_) {
+		const float elapsed = chrono::duration<float, milli>(
+			chrono::steady_clock::now() - kit.hover_at_)
+								  .count();
+		if (elapsed < kTooltipDelayMs) {
+			kit.wake_after(int(ceil(double(kTooltipDelayMs - elapsed))));
+			return;
+		}
+	}
 	kit.draw_shadow(kit.tooltip_panel_->r);
 	kit.tooltip_panel_->paint(kit);
 }
 
-static int
-wake_tree(const Kit &kit, const Widget *w)
+void
+Kit::wake_after(int ms)
 {
-	if (!w || !w->shown())
-		return -1;
-
-	int ms = w->wake_ms(kit);
-	for (const auto &k : w->children())
-		ms = sooner(ms, wake_tree(kit, k.get()));
-	return ms;
-}
-
-int
-Kit::wake_ms() const
-{
-	int ms = -1;
-	if (!this->tooltip_text_.isEmpty() && !this->tooltip_visible_) {
-		const float elapsed = chrono::duration<float, milli>(
-			chrono::steady_clock::now() - this->hover_at_)
-								  .count();
-		ms = max(0, int(ceil(double(kTooltipDelayMs - elapsed))));
-	}
-	ms = sooner(ms, wake_tree(*this, this->root_));
-	// Popups are not in the root tree, and a scrollbar inside one still
-	// has to be told when to hide itself.
-	for (const Popup *p : this->popups_)
-		ms = sooner(ms, wake_tree(*this, p));
-	return ms;
+	this->wake_ms_ = sooner(this->wake_ms_, max(0, ms));
 }
 
 Dialog &
@@ -5227,7 +5257,9 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 		opener->active = true;
 	p.covered = this->focus_;
 	p.covered_ring = this->focus_visible_;
-	p.set_visible(true);
+	// The stack settles the focus itself, below.
+	p.visible = true;
+	p.invalidate_measure();
 
 	// A submenu continues the gesture; a list over a dialog starts one.
 	if (!top_popup() || !top_popup()->transient())
@@ -5248,7 +5280,7 @@ close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 		Popup *p = kit.popups_.back();
 		Button *opener = p->opener;
 		kit.popups_.pop_back();
-		p->set_visible(false);
+		p->visible = false;
 		p->parent_popup = nullptr;
 		p->opener = nullptr;
 		if (opener)
@@ -5263,7 +5295,9 @@ close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 		Widget *scope = kit.root_;
 		if (Popup *top = kit.top_popup())
 			scope = top;
-		if (opener && opener->focusable() && (keyboard || p->restores_focus()))
+		// An opener in a retired tree is not in the scope.
+		if (focus_in_visible_tree(opener, scope) &&
+			(keyboard || p->restores_focus()))
 			kit.set_focus(opener,
 				keyboard || ring || (opener == covered && p->covered_ring));
 		else if (!focus_in_visible_tree(kit.focus_, scope))
@@ -5449,6 +5483,8 @@ Kit::resize_edges(float x, float y) const
 bool
 Kit::start_resize_at(float x, float y)
 {
+	// FIXME: Not here.
+	arrange();
 	const Qt::Edges edges = resize_edges(x, y);
 	if (!edges || !this->start_resize)
 		return false;
@@ -5481,19 +5517,35 @@ Kit::sync_cursor()
 	}
 }
 
+// Layout can make layout dirty again, for a gutter or a toolbar split.  Both
+// become stable after one or two passes.
 void
-Kit::relayout_popups()
+Kit::arrange()
 {
-	for (size_t i = 0; i < this->popups_.size();) {
-		Popup *p = this->popups_[i];
-		if (p->opener && !p->opener->shown()) {
-			p->close(*this);
+	if (!this->inited_)
+		return;
+
+	for (int pass = 0; pass < 3; pass++) {
+		if (this->root_)
+			this->root_->arrange(*this, {0, 0, this->host_w_, this->host_h_});
+		for (Popup *p : this->popups_)
+			p->place(*this);
+		if ((!this->root_ || !this->root_->arrange_dirty_) &&
+			none_of(this->popups_.begin(), this->popups_.end(),
+				[](const Popup *p) { return p->arrange_dirty_; }))
 			break;
-		}
-		p->place(*this);
-		if (i < this->popups_.size() && this->popups_[i] == p)
-			i++;
 	}
+	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
+}
+
+// Over a dialog, each popup is a child of the dialog, and stays open.
+void
+Kit::set_root(Page *root)
+{
+	if (!modal())
+		close_popups();
+	this->root_ = root;
+	sync_focus();
 }
 
 bool
@@ -5509,24 +5561,13 @@ Kit::set_host(float width_pts, float height_pts, float dpr)
 }
 
 void
-Kit::frame_ui(Page &ui)
+Kit::frame_ui()
 {
 	if (!this->inited_)
 		return;
 
-	this->root_ = &ui;
-	ui.content->update(*this);
-	if (ui.toolbar)
-		ui.toolbar->sync_buttons();
-
-	this->text_frame_++;
-	ui.arrange(*this, {0, 0, this->host_w_, this->host_h_});
-	ui.content->placed(*this);
-	relayout_popups();
-	sync_focus();
-	if (this->notify)
-		this->notify(Change::State, nullptr);
-	this->hot_ = hit(this->mouse_x_, this->mouse_y_);
+	// Only the frame uses the cursor and the tooltip.
+	arrange();
 	sync_cursor();
 	tooltip(this->hot_);
 	prepare_tooltip(*this);
@@ -5536,6 +5577,7 @@ Kit::frame_ui(Page &ui)
 void
 Kit::paint()
 {
+	this->wake_ms_ = -1;
 	const float white_u = float(this->white_.x) + 0.5f;
 	const float white_v = float(this->white_.y) + 0.5f;
 	this->list_.begin(

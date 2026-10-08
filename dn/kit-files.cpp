@@ -301,8 +301,10 @@ FileList::set_entries(Kit &kit, vector<FileEntry> entries)
 			kit.reseat_focus(raw);
 	}
 	sort_rows();
-	if (had_focus && !kit.focus_)
-		kit.reseat_focus(this->rows->tab_stop());
+	// Retirement leaves the focus on the list when no row succeeds it.
+	if (Widget *stop = this->rows->tab_stop();
+		had_focus && stop && (!kit.focus_ || kit.focus_->parent_ != this->rows))
+		kit.reseat_focus(stop);
 	this->rows->scroll_.offset = 0;
 }
 
@@ -501,7 +503,7 @@ struct Chooser : Column {
 	// The directory the listing is actually of, as an absolute native path.
 	QString dir;
 
-	void warn(const QString &message) const;
+	void warn(Kit &kit, const QString &message) const;
 	void set_dir(Kit &kit, const QString &next);
 	void go_parent(Kit &kit);
 	QString make_dir(Kit &kit, const QString &folder);
@@ -517,10 +519,10 @@ struct Chooser : Column {
 }  // namespace
 
 void
-Chooser::warn(const QString &message) const
+Chooser::warn(Kit &kit, const QString &message) const
 {
 	this->warning->set_text(message);
-	this->warning->set_visible(!message.isEmpty());
+	this->warning->set_visible(kit, !message.isEmpty());
 }
 
 int
@@ -545,12 +547,12 @@ Chooser::set_dir(Kit &kit, const QString &next)
 {
 	const QFileInfo info(next);
 	if (next.isEmpty() || !info.isDir()) {
-		warn(QString::fromUtf8(_("Not a directory")));
+		warn(kit, QString::fromUtf8(_("Not a directory")));
 		this->path->set_text(kit, this->dir);
 		return;
 	}
 
-	warn({});
+	warn(kit, {});
 	this->dir = QDir::cleanPath(info.absoluteFilePath());
 	this->path->set_text(kit, this->dir);
 	rescan(kit);
@@ -627,7 +629,7 @@ Chooser::write(Kit &kit, const QString &target, int type)
 	if (message.isEmpty())
 		this->dialog->close(kit);
 	else
-		warn(message);
+		warn(kit, message);
 }
 
 void
@@ -638,7 +640,7 @@ Chooser::accept(Kit &kit)
 	if (!this->setup.save) {
 		const FileEntry *entry = this->list->current(kit);
 		if (!entry) {
-			warn(QString::fromUtf8(_("No file selected")));
+			warn(kit, QString::fromUtf8(_("No file selected")));
 			return;
 		}
 		// Opening a directory is entering it, wherever it is asked for.
@@ -651,7 +653,7 @@ Chooser::accept(Kit &kit)
 
 	QString file = this->name->text.trimmed();
 	if (file.isEmpty()) {
-		warn(QString::fromUtf8(_("No filename given")));
+		warn(kit, QString::fromUtf8(_("No filename given")));
 		return;
 	}
 

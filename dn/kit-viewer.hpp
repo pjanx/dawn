@@ -94,6 +94,8 @@ struct Viewer : Widget {
 	uint32_t image_height_ = 0;
 
 	bool playing_ = false;
+	// Each stop makes the frame ticks in the event loop stale.
+	uint64_t play_gen_ = 0;
 	std::chrono::steady_clock::time_point frame_at_{};
 	uint64_t remaining_loops_ = 0;
 
@@ -152,10 +154,8 @@ struct Viewer : Widget {
 	[[nodiscard]] bool has_view() const;
 	void screen_changed(
 		const ScreenState &state, bool changed, bool force_reload) override;
-	void update(Kit &kit) override;
 	void rescale(Kit &kit) override;
 	bool busy() const override { return opening_; }
-	[[nodiscard]] int wake_ms(const Kit &) const override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;

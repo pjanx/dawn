@@ -188,7 +188,7 @@ spec_active(const Viewer &v, Action action)
 	case Action::Smooth:
 		return v.filter_;
 	case Action::Information:
-		return v.page_ && v.page_->sidebar_open;
+		return v.page_ && v.page_->sidebar->visible;
 	case Action::Fixate:
 		return v.fixate_;
 	case Action::Lock:
@@ -283,7 +283,7 @@ fill_info_texts(Viewer &v)
 
 	auto &list = *v.tags_;
 	list.erase_children(v.kit_, 0);
-	list.set_visible(im && !im->text.empty());
+	list.set_visible(v.kit_, im && !im->text.empty());
 	if (!list.visible)
 		return;
 
@@ -430,14 +430,16 @@ upload_frame(const Viewer &v, const dawn::Image &image)
 constexpr int64_t kBrowserDelayFloorMs = 11;
 constexpr int64_t kBrowserDelayBumpMs = 100;
 
+// Each frame shows for 1 ms or more.  If a frame shows for 0 ms, playback
+// advances on each pass of the event loop.
 static int64_t
 display_delay_ms(const Viewer &v, int64_t duration)
 {
-	if (duration < 0 || !v.browser_delays_)
+	if (duration < 0)
 		return duration;
-	if (duration < kBrowserDelayFloorMs)
+	if (v.browser_delays_ && duration < kBrowserDelayFloorMs)
 		return kBrowserDelayBumpMs;
-	return duration;
+	return max<int64_t>(duration, 1);
 }
 
 static void
@@ -462,6 +464,7 @@ static void
 stop_playback(Viewer &v)
 {
 	v.playing_ = false;
+	v.play_gen_++;
 }
 
 static bool
@@ -479,6 +482,46 @@ advance_frame(Viewer &v)
 	return true;
 }
 
+// Shows the next frame once the current one is due, and then waits for the
+// frame after it.  The viewer keeps this clock, not the window's frames.
+static void
+animate(Viewer &v, uint64_t gen)
+{
+	if (gen != v.play_gen_ || !v.playing_ || !v.frame_)
+		return;
+
+	const auto now = chrono::steady_clock::now();
+	int64_t duration = display_delay_ms(v, v.frame_->frame_duration);
+	const auto then = v.frame_at_ + chrono::milliseconds(duration);
+	if (duration >= 0 && then <= now) {
+		if (!advance_frame(v)) {
+			stop_playback(v);
+			request_render(v);
+			return;
+		}
+		v.frame_at_ = then;
+		duration = display_delay_ms(v, v.frame_->frame_duration);
+		if (duration >= 0 && v.frame_at_ + chrono::milliseconds(duration) < now)
+			v.frame_at_ = now;
+		request_render(v);
+	}
+	if (duration < 0) {
+		stop_playback(v);
+		request_render(v);
+		return;
+	}
+	if (!v.kit_.post_after)
+		return;
+
+	const auto wait = chrono::ceil<chrono::milliseconds>(
+		v.frame_at_ + chrono::milliseconds(duration) - now);
+	v.kit_.post_after(int(max<int64_t>(0, wait.count())),
+		[guard = weak_ptr<bool>(v.worker_->post_guard), &v, gen] {
+			if (guard.lock())
+				animate(v, gen);
+		});
+}
+
 static void
 start_playback(Viewer &v)
 {
@@ -493,31 +536,7 @@ start_playback(Viewer &v)
 			set_frame(v, v.current_);
 	}
 	v.playing_ = true;
-}
-
-static void
-animate(Viewer &v)
-{
-	if (!v.playing_ || !v.frame_)
-		return;
-
-	const int64_t duration = display_delay_ms(v, v.frame_->frame_duration);
-	if (duration < 0) {
-		stop_playback(v);
-		return;
-	}
-	const auto now = chrono::steady_clock::now();
-	const auto then = v.frame_at_ + chrono::milliseconds(duration);
-	if (then > now)
-		return;
-	if (!advance_frame(v)) {
-		stop_playback(v);
-		return;
-	}
-	v.frame_at_ = then;
-	const int64_t next = display_delay_ms(v, v.frame_->frame_duration);
-	if (next >= 0 && v.frame_at_ + chrono::milliseconds(next) < now)
-		v.frame_at_ = now;
+	animate(v, v.play_gen_);
 }
 
 static void
@@ -826,47 +845,46 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	dawn::ImagePtr image = cached.image;
 	const string &message = cached.message;
 	v.cms_icc_ = cached.cms_icc;
-	v.opening_ = false;
-	if (v.page_ && v.page_->host && v.page_->host->opened)
-		v.page_->host->opened();
-	v.set_message(message);
 	if (!message.empty())
 		qWarning("%s: %s", qUtf8Printable(v.url_.toString(QUrl::PrettyDecoded)),
 			message.c_str());
 	if (!image || !image->nominal_width || !image->nominal_height) {
 		clear_image(v);
-		fill_info_texts(v);
-		sync_info(v);
-		request_render(v);
-		return;
-	}
-	v.image_ = std::move(image);
-	v.current_ = v.image_;
-	v.frame_ = v.current_;
-	v.browser_delays_ = v.image_->browser_animation_bump;
-	v.nonlinear_processing_ = !page_opaque(*v.current_);
-	v.image_width_ = v.frame_->nominal_width;
-	v.image_height_ = v.frame_->nominal_height;
-	if (v.restore_view_.valid) {
-		v.scale_ = v.restore_view_.scale;
-		v.pan_x_ = v.restore_view_.pan_x;
-		v.pan_y_ = v.restore_view_.pan_y;
-		v.orientation_ = v.restore_view_.orientation;
-		v.angle_ = v.restore_view_.angle;
-		v.view_locked_ = v.restore_view_.view_locked;
-		v.restore_view_.valid = false;
 	} else {
-		v.orientation_ = orientation_or_0(v.current_->orientation);
-		if (!v.fixate_) {
-			v.scale_to_fit_ = true;
-			v.pan_x_ = 0;
-			v.pan_y_ = 0;
-			v.angle_ = 0;
+		v.image_ = std::move(image);
+		v.current_ = v.image_;
+		v.frame_ = v.current_;
+		v.browser_delays_ = v.image_->browser_animation_bump;
+		v.nonlinear_processing_ = !page_opaque(*v.current_);
+		v.image_width_ = v.frame_->nominal_width;
+		v.image_height_ = v.frame_->nominal_height;
+		if (v.restore_view_.valid) {
+			v.scale_ = v.restore_view_.scale;
+			v.pan_x_ = v.restore_view_.pan_x;
+			v.pan_y_ = v.restore_view_.pan_y;
+			v.orientation_ = v.restore_view_.orientation;
+			v.angle_ = v.restore_view_.angle;
+			v.view_locked_ = v.restore_view_.view_locked;
+			v.restore_view_.valid = false;
+		} else {
+			v.orientation_ = orientation_or_0(v.current_->orientation);
+			if (!v.fixate_) {
+				v.scale_to_fit_ = true;
+				v.pan_x_ = 0;
+				v.pan_y_ = 0;
+				v.angle_ = 0;
+			}
 		}
+		upload_page(v);
+		v.remaining_loops_ = 0;
+		start_playback(v);
 	}
-	upload_page(v);
-	v.remaining_loops_ = 0;
-	start_playback(v);
+	// After the new image is in place: a mode switch and a hidden banner both
+	// lay the page out, and the layout must not fit or render the old image.
+	v.opening_ = false;
+	if (v.page_ && v.page_->host && v.page_->host->opened)
+		v.page_->host->opened();
+	v.set_message(message);
 	fill_info_texts(v);
 	sync_info(v);
 	request_render(v);
@@ -1884,10 +1902,8 @@ apply_action(Viewer &v, Action action)
 		snap_view(v, SnapDir::Right);
 		return true;
 	case Action::Information:
-		if (v.page_) {
-			v.page_->sidebar_open = !v.page_->sidebar_open;
-			v.page_->invalidate_arrange();
-		}
+		if (v.page_)
+			v.page_->set_sidebar(v.kit_, !v.page_->sidebar->visible);
 		request_render(v);
 		return true;
 	case Action::PageFirst:
@@ -2138,7 +2154,7 @@ Viewer::set_message(const string &message)
 {
 	this->error_label_->set_text(
 		QString::fromUtf8(_("Error: %1")).arg(QString::fromStdString(message)));
-	this->error_->set_visible(!message.empty());
+	this->error_->set_visible(this->kit_, !message.empty());
 }
 
 bool
@@ -2160,12 +2176,6 @@ Viewer::screen_changed(
 }
 
 void
-Viewer::update(Kit &)
-{
-	animate(*this);
-}
-
-void
 Viewer::rescale(Kit &)
 {
 	// Ahead of layout, which reserves the label's width.
@@ -2183,25 +2193,6 @@ Viewer::arrange_content(Kit &, Rect alloc)
 	clamp_view(*this);
 	sync_scale_label(*this);
 	ensure_vector_frame(*this);
-}
-
-int
-Viewer::wake_ms(const Kit &) const
-{
-	if (!this->playing_ || !this->frame_)
-		return -1;
-
-	const int64_t duration =
-		display_delay_ms(*this, this->frame_->frame_duration);
-	if (duration < 0)
-		return -1;
-
-	const float elapsed = chrono::duration<float, milli>(
-		chrono::steady_clock::now() - this->frame_at_)
-							  .count();
-	if (elapsed >= float(duration))
-		return 0;
-	return int(ceil(double(duration) - double(elapsed)));
 }
 
 bool
