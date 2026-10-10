@@ -85,19 +85,18 @@ struct [[nodiscard]] Size {
 
 // Widget geometry, in device pixels.  Integral by construction: layout
 // arithmetic composes exactly, and there is nothing left to snap.  Floats
-// belong to drawing, and to whatever is genuinely continuous -- a pointer
-// position, a scroll offset mid-drag, the viewer's pan and zoom.
+// belong to drawing, and to whatever is genuinely continuous -- a pan delta,
+// a scroll offset mid-drag, the viewer's pan and zoom.  The pointer is not:
+// the Kit rounds it to a device pixel where it comes in.
 struct Rect {
 	int x = 0;
 	int y = 0;
 	int w = 0;
 	int h = 0;
-	// Takes floats: the pointer is continuous, and comparing it against an
-	// integral edge is exact.
-	[[nodiscard]] bool contains(float px, float py) const
+	[[nodiscard]] bool contains(int px, int py) const
 	{
-		return px >= float(this->x) && py >= float(this->y) &&
-			px < float(this->x + this->w) && py < float(this->y + this->h);
+		return px >= this->x && py >= this->y && px < this->x + this->w &&
+			py < this->y + this->h;
 	}
 	[[nodiscard]] int right() const { return this->x + this->w; }
 	[[nodiscard]] int bottom() const { return this->y + this->h; }
@@ -277,7 +276,7 @@ struct Widget {
 	// a widget that is shown.
 	virtual void arrange_content(Kit &, Rect) {}
 	virtual void paint(Kit &kit) const;
-	virtual Widget *hit_at(float x, float y);
+	virtual Widget *hit_at(int x, int y);
 	[[nodiscard]] bool shown() const
 	{
 		return this->visible && this->layout_visible;
@@ -307,27 +306,18 @@ struct Widget {
 	// Below this->r. Empty (w <= 0) means follow the pointer.
 	[[nodiscard]] virtual Rect tip_anchor() const { return this->r; }
 
-	virtual bool press(Kit &, float x, float y, Qt::MouseButton)
+	virtual bool press(Kit &, int x, int y, Qt::MouseButton) { return false; }
+	virtual bool release(Kit &, int x, int y, Qt::MouseButton) { return false; }
+	virtual bool double_click(Kit &, int x, int y, Qt::MouseButton)
 	{
 		return false;
 	}
-	virtual bool release(Kit &, float x, float y, Qt::MouseButton)
-	{
-		return false;
-	}
-	virtual bool double_click(Kit &, float x, float y, Qt::MouseButton)
-	{
-		return false;
-	}
-	virtual bool motion(Kit &, float x, float y) { return false; }
+	virtual bool motion(Kit &, int x, int y) { return false; }
 
-	virtual bool scroll(Kit &, float x, float y, int delta) { return false; }
-	virtual bool pan(Kit &, float x, float y, float dx, float dy)
-	{
-		return false;
-	}
+	virtual bool scroll(Kit &, int x, int y, int delta) { return false; }
+	virtual bool pan(Kit &, int x, int y, float dx, float dy) { return false; }
 	virtual bool gesture(
-		Kit &, float x, float y, float scale_factor, float angle_delta)
+		Kit &, int x, int y, float scale_factor, float angle_delta)
 	{
 		return false;
 	}
@@ -418,8 +408,8 @@ struct Button : Widget {
 	QString tip_key() const override;
 	bool focusable() const override;
 	[[nodiscard]] QChar mnemonic_key() const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
 	bool key(Kit &kit, const Key &ev) override;
 	bool activate(Kit &kit) override;
 };
@@ -501,10 +491,9 @@ struct Entry : Widget {
 	bool focusable() const override;
 	void focus_lost(Kit &kit) override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
 	// Opens the caret menu, at the pointer or at the caret.
 	void context(Kit &kit, Rect at, bool kbd);
 	bool key(Kit &kit, const Key &ev) override;
@@ -537,7 +526,7 @@ struct Entry : Widget {
 	// Bring [start, end] into view without moving the caret.
 	void reveal(const Kit &kit, int start, int end);
 	[[nodiscard]] int inner_w(const Kit &kit) const;
-	[[nodiscard]] TextHit hit_text(const Kit &kit, float x, float y) const;
+	[[nodiscard]] TextHit hit_text(const Kit &kit, int x, int y) const;
 	// The text as painted: the placeholder stands in when empty.
 	[[nodiscard]] QString painted() const;
 	// The caret within painted(), which sits mid-preedit while composing.
@@ -563,16 +552,16 @@ is_sep(const Widget *w)
 // a comfortable distance to either side.
 struct Splitter : Widget {
 	int grab_ = 0;
-	std::function<void(Kit &kit, float mouse_x)> on_drag;
+	std::function<void(Kit &kit, int mouse_x)> on_drag;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	Widget *hit_at(float x, float y) override;
+	Widget *hit_at(int x, int y) override;
 	Qt::CursorShape cursor() const override { return Qt::SplitHCursor; }
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
 };
 
 // --- Container ---------------------------------------------------------------
@@ -628,8 +617,8 @@ struct Flow : Container {
 
 class Scroll {
 	std::chrono::steady_clock::time_point shown_at_{};
-	float grab_ = 0;
-	void set_from_y(float y, Rect viewport);
+	int grab_ = 0;
+	void set_from_y(int y, Rect viewport);
 
 public:
 	// Continuous: a drag moves it by arbitrary amounts, and quantising it
@@ -654,8 +643,8 @@ public:
 	bool wheel(int delta, float step_px);
 	bool pan(float dy);
 	bool page(int dir);
-	bool press(float x, float y, Qt::MouseButton button, Rect viewport);
-	bool motion(float y, Rect viewport);
+	bool press(int x, int y, Qt::MouseButton button, Rect viewport);
+	bool motion(int y, Rect viewport);
 	bool release(Qt::MouseButton button);
 	void paint(Kit &kit, Rect viewport) const;
 };
@@ -669,12 +658,12 @@ struct ScrollColumn : Column {
 	Scroll *scrollbar() override { return &this->scroll_; }
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	Widget *hit_at(float x, float y) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool scroll(Kit &kit, float x, float y, int delta) override;
-	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
+	Widget *hit_at(int x, int y) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool scroll(Kit &kit, int x, int y, int delta) override;
+	bool pan(Kit &kit, int x, int y, float dx, float dy) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -763,9 +752,9 @@ struct MenuPopup : Popup {
 	MenuPopup();
 	void focus_item(Kit &kit, Widget *w, bool kbd) const;
 	void reveal(Kit &kit, Widget *w);
-	bool motion(Kit &kit, float x, float y) override;
+	bool motion(Kit &kit, int x, int y) override;
 	bool key(Kit &kit, const Key &ev) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
 };
 
 class ToolbarSlot;
@@ -795,7 +784,7 @@ public:
 	void after_close(Kit &kit) override;
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
-	bool motion(Kit &kit, float x, float y) override;
+	bool motion(Kit &kit, int x, int y) override;
 };
 
 struct Menu : MenuPopup {
@@ -937,19 +926,18 @@ struct Titlebar : Panel {
 	Button *minimize = nullptr;
 	Button *maximize = nullptr;
 	Button *close = nullptr;
-	float drag_x_ = 0.f;
-	float drag_y_ = 0.f;
+	int drag_x_ = 0;
+	int drag_y_ = 0;
 	bool drag_armed_ = false;
 
 	Titlebar();
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool double_click(Kit &kit, int x, int y, Qt::MouseButton button) override;
 };
 
 // --- Kit ---------------------------------------------------------------------
@@ -999,8 +987,8 @@ struct Kit {
 	Colour colours_[ColourCount]{};
 
 	// Remembered from the last event.
-	float mouse_x_ = -1.f;
-	float mouse_y_ = -1.f;
+	int mouse_x_ = -1;
+	int mouse_y_ = -1;
 	unsigned mods_ = 0;
 
 	Page *root_ = nullptr;
@@ -1014,8 +1002,8 @@ struct Kit {
 	// real pointer ask this before arming.
 	bool touch_press_ = false;
 	// Press position until scrolling starts, then the last pan position.
-	float touch_x_ = 0;
-	float touch_y_ = 0;
+	int touch_x_ = 0;
+	int touch_y_ = 0;
 	// Suppress click activation once a pan has been consumed.
 	bool touch_panned_ = false;
 	// Initial hit, even if no widget accepted the press.
@@ -1052,14 +1040,14 @@ struct Kit {
 	Qt::CursorShape cursor_ = Qt::ArrowCursor;
 	std::function<void()> start_move;
 	std::function<void(Qt::Edges)> start_resize;
-	std::function<void(float, float)> start_menu;
+	std::function<void(int, int)> start_menu;
 	// Hand a drag off to the platform: the window owns QDrag and its nested
 	// event loop, and takes the mime data with it.
 	std::function<void(QMimeData *, const QImage &)> start_drag;
 	std::chrono::steady_clock::time_point hover_at_{};
 	std::chrono::steady_clock::time_point popup_at_{};
-	float hover_x_ = 0;
-	float hover_y_ = 0;
+	int hover_x_ = 0;
+	int hover_y_ = 0;
 	std::unique_ptr<Panel> tooltip_panel_;
 	QString tooltip_text_;
 	QString tooltip_accel_;
@@ -1097,14 +1085,14 @@ struct Kit {
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
 	[[nodiscard]] bool in_input_scope(const Widget *w) const;
-	Widget *hit(float x, float y);
+	Widget *hit(int x, int y);
 
 	/// What part of the host area can be used for widgets.
 	/// Under client-side decorations, the frame may be inset by the shadow.
 	[[nodiscard]] Rect frame() const;
 	/// The frame minus any titlebar.
 	[[nodiscard]] Rect client() const;
-	bool start_resize_at(float x, float y);
+	bool start_resize_at(int x, int y);
 
 	// Moving focus says in the same breath whether to draw it: a ring means
 	// the keyboard put focus here.  Anything that changes who has focus goes
@@ -1131,16 +1119,18 @@ struct Kit {
 	bool key(const Key &ev);
 	bool input_method(const QString &commit, const QString &preedit, int caret);
 	[[nodiscard]] bool text_target(TextTarget &out) const;
-	bool mouse_press(float x, float y, Qt::MouseButton button, unsigned mods);
-	bool mouse_release(float x, float y, Qt::MouseButton button);
+	bool mouse_press(
+		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
+	bool mouse_release(float x_pts, float y_pts, Qt::MouseButton button);
 	// End the widget interaction without a click when the release is lost.
 	void cancel_press();
-	bool mouse_motion(float x, float y);
-	bool mouse_scroll(float x, float y, int delta);
-	bool pan(float x, float y, float dx, float dy);
-	bool gesture(float x, float y, float scale_factor, float angle_delta);
+	bool mouse_motion(float x_pts, float y_pts);
+	bool mouse_scroll(float x_pts, float y_pts, int delta);
+	bool pan(float x_pts, float y_pts, float dx, float dy);
+	bool gesture(
+		float x_pts, float y_pts, float scale_factor, float angle_delta);
 	bool mouse_double_click(
-		float x, float y, Qt::MouseButton button, unsigned mods);
+		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
 	// Whether the ratio changed, to which the host answers with reset_fonts().
 	bool set_host(float width_pts, float height_pts, float dpr);
 	void reset_fonts();

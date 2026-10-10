@@ -129,9 +129,9 @@ struct Hint : Popup {
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
 	bool key(Kit &kit, const Key &ev) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
 
 private:
 	struct Target {

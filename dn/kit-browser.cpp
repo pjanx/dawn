@@ -386,11 +386,11 @@ show_cursor_context(Browser &b, Kit &kit)
 
 // The pointer has travelled far enough from where it went down.
 static bool
-drag_threshold(const Kit &kit, float x0, float y0, float x, float y)
+drag_threshold(const Kit &kit, int x0, int y0, int x, int y)
 {
-	const float dx = x - x0;
-	const float dy = y - y0;
-	const float slop = float(kit.px(kDragPts));
+	const int dx = x - x0;
+	const int dy = y - y0;
+	const int slop = kit.px(kDragPts);
 	return dx * dx + dy * dy >= slop * slop;
 }
 
@@ -410,8 +410,8 @@ namespace
 struct SideRow : Button {
 	string path;
 	Browser *browser = nullptr;
-	float drag_x_ = 0.f;
-	float drag_y_ = 0.f;
+	int drag_x_ = 0;
+	int drag_y_ = 0;
 	bool drag_armed_ = false;
 
 	SideRow()
@@ -421,9 +421,9 @@ struct SideRow : Button {
 	}
 
 	Size measure_content(Kit &, int max_w, int) override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -436,11 +436,10 @@ SideRow::measure_content(Kit &kit, int max_w, int max_h)
 }
 
 bool
-SideRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
+SideRow::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
-		show_file_context(
-			*this->browser, kit, this->path, {int(x), int(y), 0, 0}, false);
+		show_file_context(*this->browser, kit, this->path, {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {
@@ -458,7 +457,7 @@ SideRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
+SideRow::release(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::MiddleButton) {
 		if (kit.pressed_ != this)
@@ -472,7 +471,7 @@ SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-SideRow::motion(Kit &kit, float x, float y)
+SideRow::motion(Kit &kit, int x, int y)
 {
 	// Motion also bubbles up from a plain hover, and a release can go
 	// missing -- see the fullscreen workaround in Window::event.
@@ -1443,7 +1442,7 @@ remember_cursor_x(Browser &b)
 }
 
 static void
-remember_cursor_x_at(Browser &b, float x)
+remember_cursor_x_at(Browser &b, int x)
 {
 	if (b.cursor_ < 0)
 		return;
@@ -1452,7 +1451,7 @@ remember_cursor_x_at(Browser &b, float x)
 		b.cursor_x_dirty_ = true;
 		return;
 	}
-	b.cursor_x_ = clamp(x, float(c.x), float(c.right()));
+	b.cursor_x_ = float(clamp(x, c.x, c.right()));
 	b.cursor_x_dirty_ = false;
 }
 
@@ -2449,7 +2448,7 @@ Browser::arrange_content(Kit &kit, Rect alloc)
 }
 
 Widget *
-Browser::hit_at(float x, float y)
+Browser::hit_at(int x, int y)
 {
 	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
@@ -2753,14 +2752,13 @@ Browser::key(Kit &kit, const Key &ev)
 // What reaches the browser itself is a press beside the files, or on the
 // scroll bar.  The cells take the rest.
 bool
-Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Browser::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
 		kit.set_focus(this, false);
 		if (this->dir_url_.isEmpty())
 			return false;
-		show_file_context(
-			*this, kit, dir_path(*this), {int(x), int(y), 0, 0}, false);
+		show_file_context(*this, kit, dir_path(*this), {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton)
@@ -2779,13 +2777,13 @@ Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Browser::release(Kit &, float, float, Qt::MouseButton button)
+Browser::release(Kit &, int, int, Qt::MouseButton button)
 {
 	return this->scroll_.release(button);
 }
 
 bool
-Browser::motion(Kit &, float, float y)
+Browser::motion(Kit &, int, int y)
 {
 	if (!this->scroll_.dragging)
 		return false;
@@ -2795,14 +2793,14 @@ Browser::motion(Kit &, float, float y)
 }
 
 bool
-Browser::scroll(Kit &, float, float, int delta)
+Browser::scroll(Kit &, int, int, int delta)
 {
 	invalidate_arrange();
 	return this->scroll_.wheel(delta, row_h(*this));
 }
 
 bool
-Browser::pan(Kit &, float, float, float, float dy)
+Browser::pan(Kit &, int, int, float, float dy)
 {
 	invalidate_arrange();
 	return this->scroll_.pan(dy);
@@ -2819,14 +2817,14 @@ browser_of(const FileCell &cell)
 // The cell also covers the caption and the padding around the thumbnail,
 // which merely select the file; the tile is what opens it.
 static bool
-on_tile(const FileCell &cell, float x, float y)
+on_tile(const FileCell &cell, int x, int y)
 {
 	const Browser &b = browser_of(cell);
 	return b.on_screen(b.files_[size_t(cell.index)].tile).contains(x, y);
 }
 
 static void
-open_cell(FileCell &cell, float x)
+open_cell(FileCell &cell, int x)
 {
 	Browser &b = browser_of(cell);
 	b.cursor_ = cell.index;
@@ -2920,7 +2918,7 @@ FileCell::tip(const Kit &kit) const
 // A press that moves the cursor then focuses this cell.  In the browser, the
 // focus is on the cell at the cursor.
 bool
-FileCell::press(Kit &kit, float x, float y, Qt::MouseButton button)
+FileCell::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	Browser &b = browser_of(*this);
 	if (button == Qt::RightButton) {
@@ -2929,8 +2927,8 @@ FileCell::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		b.cursor_ = this->index;
 		remember_cursor_x_at(b, x);
 		kit.set_focus(this, false);
-		show_file_context(b, kit, b.files_[size_t(this->index)].path,
-			{int(x), int(y), 0, 0}, false);
+		show_file_context(
+			b, kit, b.files_[size_t(this->index)].path, {x, y, 0, 0}, false);
 		return true;
 	}
 	// This does not move the cursor, so the browser gets the focus.
@@ -2958,7 +2956,7 @@ FileCell::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-FileCell::release(Kit &kit, float x, float y, Qt::MouseButton button)
+FileCell::release(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::LeftButton)
 		this->drag_armed_ = false;
@@ -2977,7 +2975,7 @@ FileCell::release(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-FileCell::double_click(Kit &, float x, float y, Qt::MouseButton button)
+FileCell::double_click(Kit &, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -3013,7 +3011,7 @@ drag_thumbnail(const Browser::File &f)
 }
 
 bool
-FileCell::motion(Kit &kit, float x, float y)
+FileCell::motion(Kit &kit, int x, int y)
 {
 	// Motion also bubbles up from a plain hover, and a release can go
 	// missing -- see the fullscreen workaround in Window::event.

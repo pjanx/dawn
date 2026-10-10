@@ -1018,7 +1018,7 @@ child_at_point(Window *window, const Widget *scope, int x, int y)
 	semantic_children(scope, kids);
 	// Later children paint over earlier ones, so they are hit first.
 	for (auto it = kids.rbegin(); it != kids.rend(); it++) {
-		if (visible_rect(*it, host).contains(float(at.x()), float(at.y())))
+		if (visible_rect(*it, host).contains(at.x(), at.y()))
 			return interface_for(window, *it);
 	}
 	return nullptr;
@@ -1381,10 +1381,10 @@ FileRowsAdapter::childAt(int x, int y) const
 		return nullptr;
 
 	const QPoint at = kit_point(*this->window_, x, y);
-	const float ax = float(at.x()), ay = float(at.y());
-	Widget *hit = this->widget_->hit_at(ax, ay);
+	Widget *hit = this->widget_->hit_at(at.x(), at.y());
 	if (!hit || hit->parent_ != this->widget_ ||
-		!visible_rect(hit, host_rect(this->window_->kit())).contains(ax, ay))
+		!visible_rect(hit, host_rect(this->window_->kit()))
+			.contains(at.x(), at.y()))
 		return nullptr;
 	return interface_for(this->window_, hit);
 }
@@ -2041,7 +2041,7 @@ ShellAdapter::childAt(int x, int y) const
 	const Rect host = host_rect(content->kit());
 	const QPoint at = kit_point(*content, x, y);
 	for (auto it = popups.rbegin(); it != popups.rend(); it++) {
-		if (visible_rect(*it, host).contains(float(at.x()), float(at.y())))
+		if (visible_rect(*it, host).contains(at.x(), at.y()))
 			return interface_for(content, *it);
 	}
 

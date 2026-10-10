@@ -42,11 +42,10 @@ struct FileRow : Button {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 	[[nodiscard]] QString tip(const Kit &kit) const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
 	bool activate(Kit &kit) override;
-	bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, int x, int y, Qt::MouseButton button) override;
 };
 
 // A filter and an explicit default save suffix.  Static data: the globs are

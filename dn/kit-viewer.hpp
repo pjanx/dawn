@@ -108,8 +108,8 @@ struct Viewer : Widget {
 
 	enum class Drag : uint8_t { None, Pan, Zoom, Rotate };
 	Drag drag_ = Drag::None;
-	double drag_x_ = 0;
-	double drag_y_ = 0;
+	int drag_x_ = 0;
+	int drag_y_ = 0;
 	float drag_pivot_x_ = 0;
 	float drag_pivot_y_ = 0;
 	float drag_angle_ = 0;
@@ -156,16 +156,15 @@ struct Viewer : Widget {
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
 	bool busy() const override { return opening_; }
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool scroll(Kit &kit, float x, float y, int delta) override;
-	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
-	bool gesture(Kit &kit, float x, float y, float scale_factor,
-		float angle_delta) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool scroll(Kit &kit, int x, int y, int delta) override;
+	bool pan(Kit &kit, int x, int y, float dx, float dy) override;
+	bool gesture(
+		Kit &kit, int x, int y, float scale_factor, float angle_delta) override;
 	bool key(Kit &kit, const Key &ev) override;
-	bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, int x, int y, Qt::MouseButton button) override;
 };
 
 std::unique_ptr<Page> make_viewer_page(

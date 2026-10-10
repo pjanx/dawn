@@ -199,7 +199,7 @@ FileRow::paint(Kit &kit) const
 // platform's Press -- and all three of those arrive as activate(), exactly
 // as they do on a file in the browser.
 bool
-FileRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
+FileRow::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (!Button::press(kit, x, y, button))
 		return false;
@@ -209,7 +209,7 @@ FileRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-FileRow::release(Kit &kit, float, float, Qt::MouseButton button)
+FileRow::release(Kit &kit, int, int, Qt::MouseButton button)
 {
 	return button == Qt::LeftButton && kit.pressed_ == this;
 }
@@ -228,7 +228,7 @@ FileRow::activate(Kit &kit)
 }
 
 bool
-FileRow::double_click(Kit &kit, float, float, Qt::MouseButton button)
+FileRow::double_click(Kit &kit, int, int, Qt::MouseButton button)
 {
 	return button == Qt::LeftButton && activate(kit);
 }

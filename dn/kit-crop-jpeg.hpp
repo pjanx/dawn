@@ -25,7 +25,7 @@ struct Cropper : Widget {
 	float pan_x_ = 0, pan_y_ = 0;
 	enum class Drag : uint8_t { None, Origin, Corner, Pan };
 	Drag drag_ = Drag::None;
-	double drag_x_ = 0, drag_y_ = 0;
+	int drag_x_ = 0, drag_y_ = 0;
 	std::shared_ptr<dawn::Cmm> cmm_;
 	std::shared_ptr<dawn::Profile> screen_profile_;
 	Label *region_label_ = nullptr;
@@ -59,11 +59,11 @@ struct Cropper : Widget {
 		const ScreenState &state, bool changed, bool force_reload) override;
 	bool focusable() const override { return shown(); }
 	Qt::CursorShape cursor() const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &, float, float, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
-	bool scroll(Kit &, float x, float y, int delta) override;
-	bool pan(Kit &, float, float, float dx, float dy) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &, int, int, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool scroll(Kit &, int x, int y, int delta) override;
+	bool pan(Kit &, int, int, float dx, float dy) override;
 	bool key(Kit &, const Key &ev) override;
 };
 

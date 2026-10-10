@@ -2218,7 +2218,7 @@ Viewer::key(Kit &kit, const Key &ev)
 }
 
 bool
-Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Viewer::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
 		kit.set_focus(this, false);
@@ -2228,8 +2228,7 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		const Rect dest = image_dest_rect(*this);
 		if (!dest.contains(x, y))
 			return false;
-		this->page_->context->show(
-			kit, this->url_, {int(x), int(y), 0, 0}, false);
+		this->page_->context->show(kit, this->url_, {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
@@ -2249,20 +2248,20 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 
 	// Hold one screen point for the whole gesture, so the image point under
 	// it cannot walk with the cursor.
-	this->drag_pivot_x_ = x;
-	this->drag_pivot_y_ = y;
+	this->drag_pivot_x_ = float(x);
+	this->drag_pivot_y_ = float(y);
 	if (this->drag_ == Drag::Rotate) {
 		this->drag_pivot_x_ = well_cx(*this);
 		this->drag_pivot_y_ = well_cy(*this);
 	}
 	this->drag_angle_ = 0;
-	this->drag_x_ = double(x);
-	this->drag_y_ = double(y);
+	this->drag_x_ = x;
+	this->drag_y_ = y;
 	return true;
 }
 
 bool
-Viewer::release(Kit &, float, float, Qt::MouseButton button)
+Viewer::release(Kit &, int, int, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
 		return false;
@@ -2272,40 +2271,42 @@ Viewer::release(Kit &, float, float, Qt::MouseButton button)
 }
 
 bool
-Viewer::motion(Kit &, float x, float y)
+Viewer::motion(Kit &, int x, int y)
 {
 	if (this->drag_ == Drag::None)
 		return false;
 
 	const float x0 = float(this->drag_x_);
 	const float y0 = float(this->drag_y_);
+	const float x1 = float(x);
+	const float y1 = float(y);
 	if (this->drag_ == Drag::Pan)
-		pan_by(*this, double(x) - this->drag_x_, double(y) - this->drag_y_);
+		pan_by(*this, double(x - this->drag_x_), double(y - this->drag_y_));
 	else if (this->drag_ == Drag::Zoom) {
 		const float span = float(this->kit_.px(kZoomDragPts));
-		const float factor = pow(kZoomStep, -(y - y0) / span);
+		const float factor = pow(kZoomStep, -(y1 - y0) / span);
 		zoom_at(*this, factor, {this->drag_pivot_x_, this->drag_pivot_y_});
 	} else {
 		const Vec p = {this->drag_pivot_x_, this->drag_pivot_y_};
 		const float r0 = hypot(x0 - p.x, y0 - p.y);
-		const float r1 = hypot(x - p.x, y - p.y);
+		const float r1 = hypot(x1 - p.x, y1 - p.y);
 		const float min_r = float(this->kit_.px(kRotateMinR));
 		if (r0 >= min_r && r1 >= min_r) {
-			const float d =
-				wrap_angle(atan2(y - p.y, x - p.x) - atan2(y0 - p.y, x0 - p.x));
+			const float d = wrap_angle(
+				atan2(y1 - p.y, x1 - p.x) - atan2(y0 - p.y, x0 - p.x));
 			if (this->view_locked_)
 				rotate_locked(*this, d);
 			else
 				transform_at(*this, this->scale_, this->angle_ + d, p);
 		}
 	}
-	this->drag_x_ = double(x);
-	this->drag_y_ = double(y);
+	this->drag_x_ = x;
+	this->drag_y_ = y;
 	return true;
 }
 
 bool
-Viewer::double_click(Kit &kit, float, float, Qt::MouseButton button)
+Viewer::double_click(Kit &kit, int, int, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton || kit.mods_)
 		return false;
@@ -2316,28 +2317,29 @@ Viewer::double_click(Kit &kit, float, float, Qt::MouseButton button)
 }
 
 bool
-Viewer::scroll(Kit &, float x, float y, int delta)
+Viewer::scroll(Kit &, int x, int y, int delta)
 {
-	zoom_at(*this, delta > 0 ? kZoomStep : 1.f / kZoomStep, {x, y});
+	zoom_at(
+		*this, delta > 0 ? kZoomStep : 1.f / kZoomStep, {float(x), float(y)});
 	return true;
 }
 
 bool
-Viewer::pan(Kit &, float, float, float dx, float dy)
+Viewer::pan(Kit &, int, int, float dx, float dy)
 {
 	pan_by(*this, double(dx), double(dy));
 	return true;
 }
 
 bool
-Viewer::gesture(Kit &, float x, float y, float scale_factor, float angle_delta)
+Viewer::gesture(Kit &, int x, int y, float scale_factor, float angle_delta)
 {
 	if (this->view_locked_)
 		angle_delta = 0;
 	if (scale_factor == 1.f && angle_delta == 0.f)
 		return true;
-	transform_at(
-		*this, this->scale_ * scale_factor, this->angle_ + angle_delta, {x, y});
+	transform_at(*this, this->scale_ * scale_factor, this->angle_ + angle_delta,
+		{float(x), float(y)});
 	return true;
 }
 

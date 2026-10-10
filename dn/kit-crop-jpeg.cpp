@@ -170,7 +170,7 @@ Cropper::cursor() const
 }
 
 bool
-Cropper::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Cropper::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (!this->image_)
 		return false;
@@ -195,7 +195,7 @@ Cropper::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Cropper::release(Kit &, float, float, Qt::MouseButton button)
+Cropper::release(Kit &, int, int, Qt::MouseButton button)
 {
 	if ((button == Qt::LeftButton && this->drag_ == Drag::Origin) ||
 		(button == Qt::RightButton && this->drag_ == Drag::Corner) ||
@@ -207,7 +207,7 @@ Cropper::release(Kit &, float, float, Qt::MouseButton button)
 }
 
 bool
-Cropper::motion(Kit &kit, float x, float y)
+Cropper::motion(Kit &kit, int x, int y)
 {
 	if (!this->image_ || this->drag_ == Drag::None)
 		return false;
@@ -244,17 +244,17 @@ Cropper::motion(Kit &kit, float x, float y)
 }
 
 bool
-Cropper::scroll(Kit &, float x, float y, int delta)
+Cropper::scroll(Kit &, int x, int y, int delta)
 {
 	if (!this->image_ || !delta)
 		return false;
 
-	zoom_at(this->zoom_ + (delta > 0 ? 1 : -1), x, y);
+	zoom_at(this->zoom_ + (delta > 0 ? 1 : -1), float(x), float(y));
 	return true;
 }
 
 bool
-Cropper::pan(Kit &, float, float, float dx, float dy)
+Cropper::pan(Kit &, int, int, float dx, float dy)
 {
 	if (!this->image_)
 		return false;

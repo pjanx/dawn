@@ -652,7 +652,7 @@ Widget::paint(Kit &kit) const
 }
 
 Widget *
-Widget::hit_at(float x, float y)
+Widget::hit_at(int x, int y)
 {
 	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
@@ -866,7 +866,7 @@ Button::mnemonic_key() const
 }
 
 bool
-Button::press(Kit &kit, float, float, Qt::MouseButton button)
+Button::press(Kit &kit, int, int, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -879,7 +879,7 @@ Button::press(Kit &kit, float, float, Qt::MouseButton button)
 }
 
 bool
-Button::release(Kit &kit, float x, float y, Qt::MouseButton button)
+Button::release(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -1459,13 +1459,13 @@ Entry::selected() const
 }
 
 TextHit
-Entry::hit_text(const Kit &kit, float x, float y) const
+Entry::hit_text(const Kit &kit, int x, int y) const
 {
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(kEntryPadY));
 	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
 	return this->text_cache_.hit_test(
-		kit, this->text, x - float(in.x) + this->scroll_, y - float(ty), false);
+		kit, this->text, float(x - in.x) + this->scroll_, float(y - ty), false);
 }
 
 void
@@ -1664,12 +1664,12 @@ Entry::focus_lost(Kit &kit)
 }
 
 bool
-Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Entry::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	// Leave the caret where it is.
 	if (button == Qt::RightButton) {
 		kit.set_focus(this, true);
-		context(kit, {int(x), int(y), 0, 0}, false);
+		context(kit, {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton)
@@ -1689,7 +1689,7 @@ Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 // Selects the segment between two word boundaries that the pointer is over:
 // a word, or whatever separates two of them.
 bool
-Entry::double_click(Kit &kit, float x, float y, Qt::MouseButton button)
+Entry::double_click(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton || !this->preedit.isEmpty())
 		return false;
@@ -1714,7 +1714,7 @@ Entry::double_click(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Entry::motion(Kit &kit, float x, float y)
+Entry::motion(Kit &kit, int x, int y)
 {
 	if (kit.pressed_ != this || !kit.left_down_ || !this->preedit.isEmpty())
 		return false;
@@ -1926,7 +1926,7 @@ Splitter::paint(Kit &kit) const
 }
 
 Widget *
-Splitter::hit_at(float x, float y)
+Splitter::hit_at(int x, int y)
 {
 	if (!shown() || this->r.empty())
 		return nullptr;
@@ -1934,7 +1934,7 @@ Splitter::hit_at(float x, float y)
 }
 
 bool
-Splitter::press(Kit &kit, float, float, Qt::MouseButton button)
+Splitter::press(Kit &kit, int, int, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -1943,7 +1943,7 @@ Splitter::press(Kit &kit, float, float, Qt::MouseButton button)
 }
 
 bool
-Splitter::motion(Kit &kit, float x, float)
+Splitter::motion(Kit &kit, int x, int)
 {
 	if (kit.pressed_ != this)
 		return false;
@@ -1953,7 +1953,7 @@ Splitter::motion(Kit &kit, float x, float)
 }
 
 bool
-Splitter::release(Kit &, float, float, Qt::MouseButton button)
+Splitter::release(Kit &, int, int, Qt::MouseButton button)
 {
 	return button == Qt::LeftButton;
 }
@@ -2371,7 +2371,7 @@ Scroll::thumb_rect(Rect viewport) const
 }
 
 void
-Scroll::set_from_y(float y, Rect viewport)
+Scroll::set_from_y(int y, Rect viewport)
 {
 	const Rect bar = bar_rect(viewport);
 	const Rect thumb = thumb_rect(viewport);
@@ -2381,7 +2381,7 @@ Scroll::set_from_y(float y, Rect viewport)
 		this->offset = 0.f;
 		return;
 	}
-	const float ty = y - this->grab_ - float(bar.y);
+	const float ty = float(y - this->grab_ - bar.y);
 	this->offset = std::clamp(ty / travel, 0.f, 1.f) * range;
 }
 
@@ -2417,7 +2417,7 @@ Scroll::page(int dir)
 }
 
 bool
-Scroll::press(float x, float y, Qt::MouseButton button, Rect viewport)
+Scroll::press(int x, int y, Qt::MouseButton button, Rect viewport)
 {
 	if (button != Qt::LeftButton || !visible())
 		return false;
@@ -2425,9 +2425,9 @@ Scroll::press(float x, float y, Qt::MouseButton button, Rect viewport)
 		return false;
 	const Rect thumb = thumb_rect(viewport);
 	if (thumb.contains(x, y))
-		this->grab_ = y - float(thumb.y);
+		this->grab_ = y - thumb.y;
 	else {
-		this->grab_ = float(thumb.h) * 0.5f;
+		this->grab_ = thumb.h / 2;
 		set_from_y(y, viewport);
 	}
 	this->dragging = true;
@@ -2436,7 +2436,7 @@ Scroll::press(float x, float y, Qt::MouseButton button, Rect viewport)
 }
 
 bool
-Scroll::motion(float y, Rect viewport)
+Scroll::motion(int y, Rect viewport)
 {
 	if (!this->dragging)
 		return false;
@@ -2520,7 +2520,7 @@ ScrollColumn::paint(Kit &kit) const
 }
 
 Widget *
-ScrollColumn::hit_at(float x, float y)
+ScrollColumn::hit_at(int x, int y)
 {
 	if (!shown() || this->r.empty() || !this->r.contains(x, y))
 		return nullptr;
@@ -2531,7 +2531,7 @@ ScrollColumn::hit_at(float x, float y)
 }
 
 bool
-ScrollColumn::press(Kit &kit, float x, float y, Qt::MouseButton button)
+ScrollColumn::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (!this->scroll_.press(x, y, button, this->r))
 		return false;
@@ -2542,13 +2542,13 @@ ScrollColumn::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-ScrollColumn::release(Kit &, float, float, Qt::MouseButton button)
+ScrollColumn::release(Kit &, int, int, Qt::MouseButton button)
 {
 	return this->scroll_.release(button);
 }
 
 bool
-ScrollColumn::motion(Kit &, float, float y)
+ScrollColumn::motion(Kit &, int, int y)
 {
 	if (!this->scroll_.dragging)
 		return false;
@@ -2558,14 +2558,14 @@ ScrollColumn::motion(Kit &, float, float y)
 }
 
 bool
-ScrollColumn::scroll(Kit &, float, float, int delta)
+ScrollColumn::scroll(Kit &, int, int, int delta)
 {
 	invalidate_arrange();
 	return this->scroll_.wheel(delta, float(this->scroll_.step * 3));
 }
 
 bool
-ScrollColumn::pan(Kit &, float, float, float, float dy)
+ScrollColumn::pan(Kit &, int, int, float, float dy)
 {
 	invalidate_arrange();
 	return this->scroll_.pan(dy);
@@ -2970,7 +2970,7 @@ MenuPopup::reveal(Kit &kit, Widget *w)
 }
 
 bool
-MenuPopup::motion(Kit &kit, float, float)
+MenuPopup::motion(Kit &kit, int, int)
 {
 	Widget *w = kit.hot_;
 	Widget *item = nullptr;
@@ -3029,7 +3029,7 @@ MenuPopup::key(Kit &kit, const Key &ev)
 }
 
 bool
-MenuPopup::release(Kit &kit, float x, float y, Qt::MouseButton button)
+MenuPopup::release(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton && button != Qt::RightButton)
 		return false;
@@ -3135,7 +3135,7 @@ Overflow::place(Kit &kit)
 }
 
 bool
-Overflow::motion(Kit &kit, float x, float y)
+Overflow::motion(Kit &kit, int x, int y)
 {
 	// Unlike a menu, this popup can hold the field that currently has the
 	// caret -- it is the toolbar's own, moved in here.  Hover-follows-focus
@@ -4047,7 +4047,7 @@ Titlebar::arrange_content(Kit &kit, Rect)
 }
 
 bool
-Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Titlebar::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
 		if (!kit.start_menu)
@@ -4074,7 +4074,7 @@ Titlebar::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Titlebar::release(Kit &, float, float, Qt::MouseButton button)
+Titlebar::release(Kit &, int, int, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -4083,14 +4083,14 @@ Titlebar::release(Kit &, float, float, Qt::MouseButton button)
 }
 
 bool
-Titlebar::motion(Kit &kit, float x, float y)
+Titlebar::motion(Kit &kit, int x, int y)
 {
 	if (!this->drag_armed_ || !kit.start_move)
 		return false;
 
-	const float dx = x - this->drag_x_;
-	const float dy = y - this->drag_y_;
-	const float slop = float(kit.px(kDragPts));
+	const int dx = x - this->drag_x_;
+	const int dy = y - this->drag_y_;
+	const int slop = kit.px(kDragPts);
 	if (dx * dx + dy * dy < slop * slop)
 		return false;
 
@@ -4100,7 +4100,7 @@ Titlebar::motion(Kit &kit, float x, float y)
 }
 
 bool
-Titlebar::double_click(Kit &kit, float x, float y, Qt::MouseButton button)
+Titlebar::double_click(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -4602,9 +4602,9 @@ tooltip(Kit &kit, const Widget *hot)
 	kit.tooltip_anchor_ = nullptr;
 	const QString tip = hot ? hot->tip(kit) : QString();
 	const QString accel = hot ? hot->tip_key() : QString();
-	const float dx = kit.mouse_x_ - kit.hover_x_;
-	const float dy = kit.mouse_y_ - kit.hover_y_;
-	const float slop = float(kit.px(kTooltipMovePts));
+	const int dx = kit.mouse_x_ - kit.hover_x_;
+	const int dy = kit.mouse_y_ - kit.hover_y_;
+	const int slop = kit.px(kTooltipMovePts);
 	const bool moved = dx * dx + dy * dy > slop * slop;
 	if (tip != kit.tooltip_text_ || accel != kit.tooltip_accel_ || moved) {
 		kit.tooltip_text_ = tip;
@@ -4650,8 +4650,8 @@ prepare_tooltip(Kit &kit)
 	const int tw = size.w, th = size.h;
 	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
 
-	int tx = int(kit.mouse_x_) + kit.px(16.f);
-	int ty = int(kit.mouse_y_) + kit.px(8.f);
+	int tx = kit.mouse_x_ + kit.px(16.f);
+	int ty = kit.mouse_y_ + kit.px(8.f);
 	Rect a{};
 	if (kit.tooltip_anchor_)
 		a = kit.tooltip_anchor_->tip_anchor();
@@ -4661,7 +4661,7 @@ prepare_tooltip(Kit &kit)
 		if (ty + th + glow > kit.host_h_)
 			ty = max(0, a.y - th - step);
 	} else if (ty + th + glow > kit.host_h_)
-		ty = max(0, int(kit.mouse_y_) - th - step);
+		ty = max(0, kit.mouse_y_ - th - step);
 	if (tx + tw + glow > kit.host_w_)
 		tx = max(0, kit.host_w_ - tw - glow);
 
@@ -4690,18 +4690,17 @@ paint_tooltip(Kit &kit)
 
 // Platform events arrive in logical points; the widget tree is device pixels.
 // Convert once, here, and remember the position as the pointer's.
-static void
-pointer_at(Kit &kit, float &x, float &y)
+static pair<int, int>
+pointer_at(Kit &kit, float x_pts, float y_pts)
 {
-	x = float(kit.px(x));
-	y = float(kit.px(y));
-	kit.mouse_x_ = x;
-	kit.mouse_y_ = y;
+	kit.mouse_x_ = kit.px(x_pts);
+	kit.mouse_y_ = kit.px(y_pts);
+	return {kit.mouse_x_, kit.mouse_y_};
 }
 
 // Let the open popups, innermost first, move their selection to kit.hot_.
 static bool
-track_popups(Kit &kit, float x, float y)
+track_popups(Kit &kit, int x, int y)
 {
 	for (size_t i = kit.popups_.size(); i > 0;) {
 		Popup *p = kit.popups_[--i];
@@ -4713,9 +4712,10 @@ track_popups(Kit &kit, float x, float y)
 }
 
 bool
-Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
+Kit::mouse_press(
+	float x_pts, float y_pts, Qt::MouseButton button, unsigned mods)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	this->mods_ = mods;
@@ -4745,9 +4745,9 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 }
 
 bool
-Kit::mouse_release(float x, float y, Qt::MouseButton button)
+Kit::mouse_release(float x_pts, float y_pts, Qt::MouseButton button)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	if (button == Qt::LeftButton)
@@ -4782,14 +4782,14 @@ Kit::cancel_press()
 	this->touch_panned_ = false;
 	if (Widget *w = this->pressed_) {
 		// Release handlers may check pressed_ before resetting their state.
-		w->release(*this, -1.f, -1.f, Qt::LeftButton);
+		w->release(*this, -1, -1, Qt::LeftButton);
 		this->pressed_ = nullptr;
 	}
 }
 
 // Bubble pan from a fixed target; coordinates and deltas are device pixels.
 static bool
-pan_at(Kit &kit, Widget *from, float x, float y, float dx, float dy)
+pan_at(Kit &kit, Widget *from, int x, int y, float dx, float dy)
 {
 	if (dx == 0.f && dy == 0.f)
 		return false;
@@ -4804,22 +4804,22 @@ pan_at(Kit &kit, Widget *from, float x, float y, float dx, float dy)
 
 // Scroll from the initial touch target when widget motion is unhandled.
 static bool
-touch_pan(Kit &kit, float x, float y)
+touch_pan(Kit &kit, int x, int y)
 {
 	if (!kit.touch_press_ || !kit.left_down_)
 		return false;
 
 	// Keep the press position until the threshold, preserving the first delta.
-	const float dx = x - kit.touch_x_;
-	const float dy = y - kit.touch_y_;
+	const int dx = x - kit.touch_x_;
+	const int dy = y - kit.touch_y_;
 	if (!kit.touch_panned_) {
-		const float slop = float(kit.px(kDragPts));
+		const int slop = kit.px(kDragPts);
 		if (dx * dx + dy * dy < slop * slop)
 			return false;
 	}
 
 	// Suppress the click only if a pan handler consumes the motion.
-	if (!pan_at(kit, kit.touch_target_, x, y, dx, dy))
+	if (!pan_at(kit, kit.touch_target_, x, y, float(dx), float(dy)))
 		return false;
 	if (!kit.touch_panned_) {
 		kit.touch_panned_ = true;
@@ -4832,9 +4832,9 @@ touch_pan(Kit &kit, float x, float y)
 }
 
 bool
-Kit::mouse_motion(float x, float y)
+Kit::mouse_motion(float x_pts, float y_pts)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	for (Widget *w = this->hot_; w; w = w->parent_) {
@@ -4862,9 +4862,9 @@ Kit::mouse_motion(float x, float y)
 }
 
 bool
-Kit::mouse_scroll(float x, float y, int delta)
+Kit::mouse_scroll(float x_pts, float y_pts, int delta)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	if (!delta)
@@ -4882,21 +4882,22 @@ Kit::mouse_scroll(float x, float y, int delta)
 }
 
 bool
-Kit::pan(float x, float y, float dx, float dy)
+Kit::pan(float x_pts, float y_pts, float dx, float dy)
 {
-	// The deltas scale the same way as the position does.
-	pointer_at(*this, x, y);
+	// The deltas scale like the position, but are not rounded: a slow pan
+	// moves by less than a pixel each time, and the parts must add up.
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
-	dx = float(px(dx));
-	dy = float(px(dy));
+	dx *= this->dpr_;
+	dy *= this->dpr_;
 	return pan_at(*this, hit(x, y), x, y, dx, dy);
 }
 
 bool
-Kit::gesture(float x, float y, float scale_factor, float angle_delta)
+Kit::gesture(float x_pts, float y_pts, float scale_factor, float angle_delta)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	Widget *h = hit(x, y);
@@ -4910,9 +4911,10 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 }
 
 bool
-Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
+Kit::mouse_double_click(
+	float x_pts, float y_pts, Qt::MouseButton button, unsigned mods)
 {
-	pointer_at(*this, x, y);
+	const auto [x, y] = pointer_at(*this, x_pts, y_pts);
 	// FIXME: Not here.
 	arrange();
 	this->mods_ = mods;
@@ -5278,7 +5280,7 @@ Kit::in_input_scope(const Widget *w) const
 }
 
 Widget *
-Kit::hit(float x, float y)
+Kit::hit(int x, int y)
 {
 	const auto popups = input_popups(*this);
 	for (auto it = popups.rbegin(); it != popups.rend(); it++) {
@@ -5329,36 +5331,34 @@ Kit::client() const
 // The resize band straddles the frame's edge, and reaches outside it into
 // the shadow, which is the only thing a maximised window has none of.
 static Qt::Edges
-resize_edges(const Kit &kit, float x, float y)
+resize_edges(const Kit &kit, int x, int y)
 {
 	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
 		return {};
 
-	// Already in pixels: the Kit input entry points converted them.
-	const int ix = int(x), iy = int(y);
-	if (ix < 0 || iy < 0 || ix >= kit.host_w_ || iy >= kit.host_h_)
+	if (x < 0 || y < 0 || x >= kit.host_w_ || y >= kit.host_h_)
 		return {};
 
 	const Rect f = kit.frame();
-	const bool inside = f.contains(float(ix), float(iy));
+	const bool inside = f.contains(x, y);
 	if (kit.csd_shadow_ ? inside : !inside)
 		return {};
 
 	const int band = kit.px(kResizeBorderPts);
 	Qt::Edges e;
-	if (ix < f.x + band)
+	if (x < f.x + band)
 		e |= Qt::LeftEdge;
-	if (ix >= f.x + f.w - band)
+	if (x >= f.x + f.w - band)
 		e |= Qt::RightEdge;
-	if (iy < f.y + band)
+	if (y < f.y + band)
 		e |= Qt::TopEdge;
-	if (iy >= f.y + f.h - band)
+	if (y >= f.y + f.h - band)
 		e |= Qt::BottomEdge;
 	return e;
 }
 
 bool
-Kit::start_resize_at(float x, float y)
+Kit::start_resize_at(int x, int y)
 {
 	// FIXME: Not here.
 	arrange();

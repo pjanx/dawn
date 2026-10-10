@@ -832,7 +832,7 @@ Hint::key(Kit &kit, const Key &ev)
 }
 
 bool
-Hint::press(Kit &kit, float x, float y, Qt::MouseButton button)
+Hint::press(Kit &kit, int x, int y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton) {
 		close(kit);
@@ -854,13 +854,13 @@ Hint::press(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-Hint::release(Kit &, float, float, Qt::MouseButton)
+Hint::release(Kit &, int, int, Qt::MouseButton)
 {
 	return true;
 }
 
 bool
-Hint::motion(Kit &, float, float)
+Hint::motion(Kit &, int, int)
 {
 	return true;
 }
@@ -955,7 +955,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	if (this->sidebar) {
 		auto split = make_unique<Splitter>();
 		this->splitter = split.get();
-		this->splitter->on_drag = [this](Kit &kit, float mx) {
+		this->splitter->on_drag = [this](Kit &kit, int mx) {
 			if (!this->sidebar->shown())
 				return;
 			// The drag happens in pixels, like the frame it is measured
@@ -966,8 +966,8 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 			const float max_side =
 				max(min_side, float(frame.w - kit.px(kMinWell)));
 			const float want = this->sidebar_side == Side::Right
-				? float(frame.right()) - mx
-				: mx - float(frame.x);
+				? float(frame.right() - mx)
+				: float(mx - frame.x);
 			this->sidebar_w = clamp(want, min_side, max_side) / kit.dpr_;
 			invalidate_arrange();
 		};

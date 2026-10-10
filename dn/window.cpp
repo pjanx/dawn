@@ -213,7 +213,7 @@ Window::Window(App *app, QWindow *parent) : QWindow(parent), app_(app)
 		request_render();
 	};
 #if DN_WITH_WAYLAND
-	this->kit_.start_menu = [this](float x, float y) {
+	this->kit_.start_menu = [this](int x, int y) {
 		// Wants shell-local logical coordinates, while the kit passes
 		// device pixels; we may also hang off the shell by the glow.
 		const qreal dpr = qreal(host_dpr(*this));
@@ -1940,8 +1940,7 @@ Window::mousePressEvent(QMouseEvent *event)
 	// start_resize_at() works in pixels, like the rest of the widget tree;
 	// this call sidesteps the Kit entry points that would convert for us.
 	if (event->button() == Qt::LeftButton &&
-		this->kit_.start_resize_at(
-			float(this->kit_.px(x)), float(this->kit_.px(y)))) {
+		this->kit_.start_resize_at(this->kit_.px(x), this->kit_.px(y))) {
 		request_render();
 		event->accept();
 		return;

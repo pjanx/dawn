@@ -182,7 +182,7 @@ struct Browser : Composite {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
-	Widget *hit_at(float x, float y) override;
+	Widget *hit_at(int x, int y) override;
 	[[nodiscard]] bool focusable() const override;
 	// The cell at the cursor, or this when there is no cursor.  While the
 	// focus is in the browser, it is on this widget.
@@ -207,12 +207,12 @@ struct Browser : Composite {
 		const ScreenState &state, bool changed, bool force_reload) override;
 	void rescale(Kit &kit) override;
 	bool busy() const override;
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
 	Scroll *scrollbar() override { return &this->scroll_; }
-	bool motion(Kit &kit, float x, float y) override;
-	bool scroll(Kit &kit, float x, float y, int delta) override;
-	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
+	bool motion(Kit &kit, int x, int y) override;
+	bool scroll(Kit &kit, int x, int y, int delta) override;
+	bool pan(Kit &kit, int x, int y, float dx, float dy) override;
 	bool key(Kit &kit, const Key &ev) override;
 };
 
@@ -222,8 +222,8 @@ struct FileCell : Widget {
 	int index = -1;
 	// Where a left press on the thumbnail started.  When the pointer then
 	// moves far enough, the press drags the file out, and does not open it.
-	float drag_x_ = 0.f;
-	float drag_y_ = 0.f;
+	int drag_x_ = 0;
+	int drag_y_ = 0;
 	bool drag_armed_ = false;
 
 	FileCell() { this->hittable = true; }
@@ -234,11 +234,10 @@ struct FileCell : Widget {
 	[[nodiscard]] Qt::CursorShape cursor() const override;
 	[[nodiscard]] QString tip(const Kit &kit) const override;
 	[[nodiscard]] Rect tip_anchor() const override { return {}; }
-	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool double_click(
-		Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, float x, float y) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool double_click(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
 };
 
 std::unique_ptr<Page> make_browser_page(
