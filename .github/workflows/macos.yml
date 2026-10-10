@@ -38,6 +38,12 @@ jobs:
             cp "$archive" "Dawn-master-macOS-arm64.$suffix"
           done
 
+      # Without a Vulkan device, the scaler test skips.
+      # Without avifenc and cjxl, the gain map test leaves out those containers.
+      # Installing them would also enable libjxl in the package.
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
       - name: Publish continuous build
         env:
           GH_TOKEN: ${{ github.token }}
