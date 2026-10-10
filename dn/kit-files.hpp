@@ -69,5 +69,7 @@ struct FileDialogSetup {
 };
 
 void dialog_files(Kit &kit, FileDialogSetup setup);
+/// Replaces the file whole or not at all, and says why not, as on_accept does.
+QString write_file(const QString &path, std::span<const uint8_t> data);
 
 }  // namespace dn

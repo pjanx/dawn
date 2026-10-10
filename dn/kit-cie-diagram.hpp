@@ -31,8 +31,8 @@ struct CieDiagram : Widget {
 
 private:
 	Kit::Packed slot_{};
-	// The atlas that slot_ is in; a rebuilt one has forgotten it.
-	uint32_t epoch_ = 0;
+	// The fonts of the atlas that slot_ is in; new fonts rebuild the atlas.
+	uint64_t epoch_ = 0;
 };
 
 }  // namespace dn

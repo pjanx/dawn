@@ -397,6 +397,8 @@ struct Button : Widget {
 	[[nodiscard]] const char *shown_icon() const;
 	void set_text(const QString &value);
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	// Pressed, active or on, else hovered: what all pressable controls show.
+	void paint_background(Kit &kit) const;
 	void paint(Kit &kit) const override;
 	QString tip(const Kit &) const override;
 	QString tip_key() const override;
@@ -518,6 +520,8 @@ struct Entry : Widget {
 	[[nodiscard]] TextHit hit_text(const Kit &kit, float x, float y) const;
 	// The text as painted: the placeholder stands in when empty.
 	[[nodiscard]] QString painted() const;
+	// The caret within painted(), which sits mid-preedit while composing.
+	[[nodiscard]] TextRect painted_caret(const Kit &kit) const;
 };
 
 struct Sep : Widget {
@@ -664,7 +668,6 @@ struct Panel : Composite {
 	float pad_x = 0;
 	float pad_y = 0;
 	float min_w = 0;
-	float min_h = 0;
 	Fill fill = Fill::None;
 	Stroke stroke = Stroke::None;
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
@@ -736,6 +739,7 @@ struct MenuItem;
 // A popup navigated like a menu: hovering moves the focus, arrows walk the
 // items, and a click anywhere else in the stack dismisses it.
 struct MenuPopup : Popup {
+	MenuPopup();
 	void focus_item(Kit &kit, Widget *w, bool kbd) const;
 	void reveal(Kit &kit, Widget *w);
 	bool motion(Kit &kit, float x, float y) override;
@@ -954,7 +958,6 @@ struct Kit {
 	int dpi_ = 96;  ///< Physical pixels per inch, for physical units
 	bool inited_ = false;
 	Sheet atlas_;
-	uint32_t atlas_epoch_ = 0;
 	uint64_t font_epoch_ = 0;
 	mutable TextCache text_cache_;
 	mutable TextBackend text_backend_;

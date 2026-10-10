@@ -527,14 +527,14 @@ Window::bind_host()
 		}
 		if (a == Action::Back) {
 			if (this->mode_ == Mode::Browse && this->browser_)
-				return this->browser_->hist_can_back();
+				return !this->browser_->hist_back_.empty();
 			return this->browser_ && !this->browser_->dir_url_.isEmpty();
 		}
 		if (a == Action::Forward) {
 			if (this->mode_ == Mode::Browse && this->browser_)
-				return this->browser_->hist_can_forward() ||
+				return !this->browser_->hist_forward_.empty() ||
 					(this->viewer_ && this->viewer_->has_view());
-			return this->browser_ && this->browser_->hist_can_forward();
+			return this->browser_ && !this->browser_->hist_forward_.empty();
 		}
 		return true;
 	};
@@ -591,8 +591,7 @@ Window::trash_url(const QUrl &url)
 	if (this->browser_)
 		this->browser_->file_gone(url);
 	if (viewing) {
-		if (this->browser_ && this->browser_->cursor_ >= 0 &&
-			this->browser_->cursor_ < int(this->browser_->files_.size())) {
+		if (this->browser_ && this->browser_->cursor_ >= 0) {
 			open_viewer(this->browser_->file_url(this->browser_->cursor_));
 			set_mode(Mode::View);
 		} else {

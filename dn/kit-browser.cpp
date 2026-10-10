@@ -238,47 +238,23 @@ thumb_atlas_max(const Browser &b)
 	return Sheet::kSize;
 }
 
-static void
-thumb_dest_params(uint32_t gw, uint32_t gh, int thumb_size, float dpr,
-	int atlas_max, uint32_t *out_w, uint32_t *out_h)
+static pair<uint32_t, uint32_t>
+thumb_dest(uint32_t gw, uint32_t gh, int thumb_size, float dpr, int atlas_max)
 {
-	if (!out_w || !out_h)
-		return;
-	if (!gw || !gh) {
-		*out_w = 1;
-		*out_h = 1;
-		return;
-	}
-	const float d = dpr > 0.f ? dpr : 1.f;
-	float cap_h = max(1.f, float(thumb_size) * d);
+	if (!gw || !gh)
+		return {1, 1};
+	float cap_h = max(1.f, float(thumb_size) * dpr);
 	const float cap_w = float(kThumbWide) * cap_h;
 	const float s = min(cap_w / float(gw), cap_h / float(gh));
 	int w = max(1, int(lround(double(gw) * double(s))));
 	int h = max(1, int(lround(double(gh) * double(s))));
 	const int atlas = max(1, atlas_max);
 	if (w > atlas || h > atlas) {
-		float s2 = 1.f;
-		if (w > 0)
-			s2 = min(s2, float(atlas) / float(w));
-		if (h > 0)
-			s2 = min(s2, float(atlas) / float(h));
+		const float s2 = float(atlas) / float(max(w, h));
 		w = max(1, int(lround(double(w) * double(s2))));
 		h = max(1, int(lround(double(h) * double(s2))));
-		if (w > atlas)
-			w = atlas;
-		if (h > atlas)
-			h = atlas;
 	}
-	*out_w = uint32_t(w);
-	*out_h = uint32_t(h);
-}
-
-static void
-thumb_dest(const Browser &b, uint32_t gw, uint32_t gh, uint32_t *out_w,
-	uint32_t *out_h)
-{
-	thumb_dest_params(
-		gw, gh, b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b), out_w, out_h);
+	return {uint32_t(w), uint32_t(h)};
 }
 
 static size_t
@@ -298,9 +274,8 @@ bundle_outputs(uint32_t image_w, uint32_t image_h, int top_tier)
 	vector<dawn::ThumbScaler::Job::Output> outputs;
 	for (int tier = max(0, top_tier); tier >= 0; tier--) {
 		const int h = thumbnail_tier_height(tier);
-		uint32_t width = 1, height = 1;
-		thumb_dest_params(
-			image_w, image_h, h, 1.f, h * kThumbWide, &width, &height);
+		const auto [width, height] =
+			thumb_dest(image_w, image_h, h, 1.f, h * kThumbWide);
 		outputs.push_back({width, height, tier});
 	}
 	return outputs;
@@ -385,9 +360,6 @@ shift_enter(int key, unsigned mods)
 static void
 open_new_window(const Browser &b, const string &path)
 {
-	if (path.empty() || !b.page_ || !b.page_->host ||
-		!b.page_->host->new_window)
-		return;
 	b.page_->host->new_window(url_of(path));
 }
 
@@ -395,15 +367,13 @@ static void
 show_file_context(
 	const Browser &b, Kit &kit, const string &path, Rect anchor, bool kbd)
 {
-	if (!b.page_ || !b.page_->context || path.empty())
-		return;
 	b.page_->context->show(kit, url_of(path), anchor, kbd);
 }
 
 static bool
 show_cursor_context(Browser &b, Kit &kit)
 {
-	if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
+	if (b.cursor_ >= 0) {
 		const Browser::File &f = b.files_[size_t(b.cursor_)];
 		show_file_context(b, kit, f.path, b.on_screen(f.tile), true);
 		return true;
@@ -469,9 +439,8 @@ bool
 SideRow::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
-		if (this->browser)
-			show_file_context(
-				*this->browser, kit, this->path, {int(x), int(y), 0, 0}, false);
+		show_file_context(
+			*this->browser, kit, this->path, {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button == Qt::MiddleButton) {
@@ -494,11 +463,8 @@ SideRow::release(Kit &kit, float x, float y, Qt::MouseButton button)
 	if (button == Qt::MiddleButton) {
 		if (kit.pressed_ != this)
 			return false;
-		if (kit.hit(x, y) == this && this->browser && !this->path.empty()) {
-			if (Page *page = this->browser->page_;
-				page && page->host && page->host->new_window)
-				page->host->new_window(url_of(this->path));
-		}
+		if (kit.hit(x, y) == this)
+			open_new_window(*this->browser, this->path);
 		return true;
 	}
 	this->drag_armed_ = false;
@@ -526,13 +492,11 @@ bool
 SideRow::key(Kit &kit, const Key &ev)
 {
 	if (context_key(ev.key, ev.mods)) {
-		if (this->browser)
-			show_file_context(*this->browser, kit, this->path, this->r, true);
+		show_file_context(*this->browser, kit, this->path, this->r, true);
 		return true;
 	}
 	if (shift_enter(ev.key, ev.mods)) {
-		if (this->browser)
-			open_new_window(*this->browser, this->path);
+		open_new_window(*this->browser, this->path);
 		return true;
 	}
 	return Button::key(kit, ev);
@@ -627,15 +591,12 @@ make_thumb(shared_ptr<dawn::Cmm> cmm, const ThumbJob &job)
 	orientation_display_size(image->width, image->height, ori,
 		&result.geometry_w, &result.geometry_h);
 	if (image->render && result.geometry_w && result.geometry_h) {
-		uint32_t ow = 1, oh = 1;
-		if (job.cacheable) {
-			const int h = thumbnail_tier_height(tier);
-			thumb_dest_params(result.geometry_w, result.geometry_h, h, 1.f,
-				h * kThumbWide, &ow, &oh);
-		} else {
-			thumb_dest_params(result.geometry_w, result.geometry_h,
-				job.thumb_size, job.dpr, job.atlas_max, &ow, &oh);
-		}
+		const int h = thumbnail_tier_height(tier);
+		const auto [ow, oh] = job.cacheable
+			? thumb_dest(
+				  result.geometry_w, result.geometry_h, h, 1.f, h * kThumbWide)
+			: thumb_dest(result.geometry_w, result.geometry_h, job.thumb_size,
+				  job.dpr, job.atlas_max);
 		const double scale = min(double(ow) / double(result.geometry_w),
 			double(oh) / double(result.geometry_h));
 		if (dawn::ImagePtr raster = image->render->render(ctx, scale, nullptr))
@@ -758,9 +719,8 @@ load_thumb(Thumbnailer &thumbnailer, Thumbnailer::Client client,
 	if (!update.failed && update.image && update.image->width &&
 		update.image->height) {
 		const dawn::Image &src = *update.image;
-		uint32_t ow = 1, oh = 1;
-		thumb_dest_params(update.geometry_w, update.geometry_h, job.thumb_size,
-			job.dpr, job.atlas_max, &ow, &oh);
+		const auto [ow, oh] = thumb_dest(update.geometry_w, update.geometry_h,
+			job.thumb_size, job.dpr, job.atlas_max);
 		const bool one_to_one = !job.cacheable &&
 			update.orientation == dawn::Orientation::Rotate0 &&
 			src.width == ow && src.height == oh;
@@ -1471,7 +1431,7 @@ clear_cursor(Browser &b)
 static void
 remember_cursor_x(Browser &b)
 {
-	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
+	if (b.cursor_ < 0)
 		return;
 	const Rect &c = b.files_[size_t(b.cursor_)].cell;
 	if (c.empty()) {
@@ -1485,7 +1445,7 @@ remember_cursor_x(Browser &b)
 static void
 remember_cursor_x_at(Browser &b, float x)
 {
-	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size()))
+	if (b.cursor_ < 0)
 		return;
 	const Rect &c = b.files_[size_t(b.cursor_)].cell;
 	if (c.w <= 0) {
@@ -1543,18 +1503,8 @@ move_cursor(Browser &b, CursorDir dir)
 	if (b.rows_.empty())
 		return;
 	if (b.cursor_ < 0) {
-		int row_i = 0;
-		if (dir == CursorDir::Right || dir == CursorDir::Down) {
-			b.cursor_ = b.rows_.front().first;
-		} else {
-			row_i = int(b.rows_.size()) - 1;
-			const Browser::GridRow &row = b.rows_.back();
-			b.cursor_ = row.first + row.count - 1;
-		}
-		remember_cursor_x(b);
-		scroll_to_row(b, b.rows_[size_t(row_i)]);
-		follow_cursor(b);
-		request_render(b);
+		const bool first = dir == CursorDir::Right || dir == CursorDir::Down;
+		b.select_index(first ? 0 : int(b.files_.size()) - 1, true);
 		return;
 	}
 	int row_i = find_cursor_row(b);
@@ -1592,34 +1542,6 @@ move_cursor(Browser &b, CursorDir dir)
 	row_i = find_cursor_row(b);
 	if (row_i >= 0)
 		scroll_to_row(b, b.rows_[size_t(row_i)]);
-	follow_cursor(b);
-	request_render(b);
-}
-
-static void
-move_cursor_home(Browser &b)
-{
-	if (b.rows_.empty())
-		return;
-
-	const Browser::GridRow &row = b.rows_.front();
-	b.cursor_ = row.first;
-	remember_cursor_x(b);
-	scroll_to_row(b, row);
-	follow_cursor(b);
-	request_render(b);
-}
-
-static void
-move_cursor_end(Browser &b)
-{
-	if (b.rows_.empty())
-		return;
-
-	const Browser::GridRow &row = b.rows_.back();
-	b.cursor_ = row.first + row.count - 1;
-	remember_cursor_x(b);
-	scroll_to_row(b, row);
 	follow_cursor(b);
 	request_render(b);
 }
@@ -1682,8 +1604,8 @@ layout_grid(Browser &b, Rect area)
 		int tw = th;
 		int ih = th;
 		if (f.image_w && f.image_h) {
-			uint32_t fit_w = 1, fit_h = 1;
-			thumb_dest(b, f.image_w, f.image_h, &fit_w, &fit_h);
+			const auto [fit_w, fit_h] = thumb_dest(f.image_w, f.image_h,
+				b.thumb_size_, b.kit_.dpr_, thumb_atlas_max(b));
 			tw = int(fit_w);
 			ih = int(fit_h);
 		}
@@ -1713,9 +1635,7 @@ layout_grid(Browser &b, Rect area)
 	flush();
 	if (y > 0)
 		y -= gap;
-	if (b.cursor_ >= int(b.files_.size()))
-		clear_cursor(b);
-	if (b.cursor_ < 0 || b.cursor_ >= int(b.files_.size())) {
+	if (b.cursor_ < 0) {
 		b.layout_cursor_ = -1;
 		b.layout_cell_x_ = 0;
 		b.layout_w_ = 0;
@@ -1936,9 +1856,7 @@ push_place(Browser &b, const string &root, string path, const char *name,
 static bool
 matches_search(const Browser &b, const string &name)
 {
-	// Scanning can outrun the toolbar: before it is built there is no field,
-	// and so nothing to narrow by.
-	if (!b.search_ || b.search_->text.isEmpty())
+	if (b.search_->text.isEmpty())
 		return true;
 	return QString::fromStdString(name).contains(
 		b.search_->text, Qt::CaseInsensitive);
@@ -1948,9 +1866,6 @@ static void
 fill_places(Browser &b)
 {
 	auto *list = b.places_;
-	if (!list)
-		return;
-
 	// Rebuilding the sidebar is not the user moving the focus: erase_children
 	// leaves the focus on the list, and this puts it back on the successor of
 	// the row, leaving whatever decided the ring in the first place alone.
@@ -1996,7 +1911,7 @@ static void
 scan_dir(Browser &b)
 {
 	string keep;
-	if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()))
+	if (b.cursor_ >= 0)
 		keep = b.files_[size_t(b.cursor_)].path;
 
 	vector<Browser::File> old = std::move(b.files_);
@@ -2131,12 +2046,9 @@ scan_dir(Browser &b)
 		}
 	}
 
-	// Bookmarks live on the App: scan_dir may run before the page is wired.
-	if (b.page_ && b.page_->host && b.page_->host->bookmarks) {
-		for (const string &path : b.page_->host->bookmarks()) {
-			push_place(b, root, path, dir_basename(path).c_str(),
-				"folder-symbolic", path);
-		}
+	for (const string &path : b.page_->host->bookmarks()) {
+		push_place(
+			b, root, path, dir_basename(path).c_str(), "folder-symbolic", path);
 	}
 	b.side_dirs_.push_back({});
 
@@ -2182,18 +2094,12 @@ scan_dir(Browser &b)
 	fill_places(b);
 }
 
-static float
-places_scroll(const Browser &b)
-{
-	return b.places_ ? b.places_->scroll_.offset : 0;
-}
-
 static void
 push_hist(vector<Browser::HistEntry> &st, const Browser &b)
 {
 	if (b.dir_url_.isEmpty())
 		return;
-	st.push_back({b.dir_url_, places_scroll(b)});
+	st.push_back({b.dir_url_, b.places_->scroll_.offset});
 }
 
 static void
@@ -2207,15 +2113,12 @@ open_directory(Browser &b, const QUrl &url, bool record, float side_scroll)
 		push_hist(b.hist_back_, b);
 	}
 	b.dir_url_ = dir;
-	if (b.page_ && b.page_->host && b.page_->host->retitle)
-		b.page_->host->retitle();
+	b.page_->host->retitle();
 	b.size_cache_.clear();
 	invalidate_thumbs(b);
 	b.scroll_.offset = 0;
-	if (b.places_) {
-		b.places_->scroll_.offset = side_scroll;
-		b.places_->invalidate_arrange();
-	}
+	b.places_->scroll_.offset = side_scroll;
+	b.places_->invalidate_arrange();
 	scan_dir(b);
 	enqueue_thumbs(b);
 	request_render(b);
@@ -2290,10 +2193,9 @@ spec_enabled(const Browser &b, Action action)
 	case Action::Reload:
 		return !b.dir_url_.isEmpty();
 	case Action::Copy:
-		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size());
 	case Action::Trash:
 		// Scanning already filtered files_ to regular files.
-		return b.cursor_ >= 0 && b.cursor_ < int(b.files_.size());
+		return b.cursor_ >= 0;
 	default:
 		return true;
 	}
@@ -2304,7 +2206,7 @@ spec_active(const Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		return b.page_ ? b.page_->sidebar->visible : true;
+		return b.page_->sidebar->visible;
 	case Action::Filenames:
 		return b.show_names_;
 	case Action::Filter:
@@ -2379,8 +2281,7 @@ apply_action(Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		if (b.page_)
-			b.page_->set_sidebar(b.kit_, !b.page_->sidebar->visible);
+		b.page_->set_sidebar(b.kit_, !b.page_->sidebar->visible);
 		request_render(b);
 		return true;
 	case Action::DirPrev: {
@@ -2436,14 +2337,12 @@ apply_action(Browser &b, Action action)
 		request_render(b);
 		return true;
 	case Action::Search: {
-		if (!b.search_)
-			return false;
 		// Too narrow a toolbar packs the field away into the overflow.
 		// Opening the popup is what moves it back into a tree the focus can
 		// reach, so it has to come first.
-		if (!b.search_->shown() && b.page_ && b.page_->toolbar) {
+		if (!b.search_->shown()) {
 			Toolbar *tb = b.page_->toolbar;
-			if (!tb->overflow || !tb->left || !tb->left->more->shown())
+			if (!tb->left->more->shown())
 				return false;
 			tb->overflow->open_slot(b.kit_, *tb->left);
 		}
@@ -2477,7 +2376,7 @@ apply_action(Browser &b, Action action)
 		request_render(b);
 		return true;
 	case Action::Activate:
-		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()))
+		if (b.cursor_ >= 0)
 			b.activate_file(b.file_url(b.cursor_));
 		return true;
 	case Action::Reload:
@@ -2488,14 +2387,13 @@ apply_action(Browser &b, Action action)
 		}
 		return true;
 	case Action::Copy:
-		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size())) {
+		if (b.cursor_ >= 0) {
 			const QUrl files[] = {b.file_url(b.cursor_)};
 			copy_files(files, false);
 		}
 		return true;
 	case Action::Trash:
-		if (b.cursor_ >= 0 && b.cursor_ < int(b.files_.size()) && b.page_ &&
-			b.page_->host && b.page_->host->trash)
+		if (b.cursor_ >= 0)
 			b.page_->host->trash(b.file_url(b.cursor_));
 		return true;
 	default:
@@ -2570,7 +2468,7 @@ Browser::focusable() const
 Widget *
 Browser::tab_stop()
 {
-	if (this->cursor_ < 0 || this->cursor_ >= int(this->kids.size()))
+	if (this->cursor_ < 0)
 		return this;
 	return this->kids[size_t(this->cursor_)].get();
 }
@@ -2655,8 +2553,7 @@ void
 Browser::activate_file(const QUrl &url)
 {
 	this->select_file(url);
-	if (this->page_ && this->page_->host && this->page_->host->activate)
-		this->page_->host->activate(url);
+	this->page_->host->activate(url);
 }
 
 void
@@ -2684,13 +2581,7 @@ void
 Browser::paint(Kit &kit) const
 {
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
-	for (size_t i = 0; i < this->kids.size(); i++) {
-		if (!thumb_in_band(*this, this->files_[i], 0.f))
-			continue;
-		kit.clip_to(this->kids[i]->r);
-		this->kids[i]->paint(kit);
-		kit.clip_pop();
-	}
+	paint_children(kit);
 	this->scroll_.paint(kit, this->r);
 }
 
@@ -2778,18 +2669,6 @@ Browser::hist_forward()
 	return true;
 }
 
-bool
-Browser::hist_can_back() const
-{
-	return !this->hist_back_.empty();
-}
-
-bool
-Browser::hist_can_forward() const
-{
-	return !this->hist_forward_.empty();
-}
-
 void
 Browser::screen_changed(
 	const ScreenState &state, bool changed, bool force_reload)
@@ -2810,7 +2689,7 @@ Browser::key(Kit &kit, const Key &ev)
 	if (context_key(ev.key, ev.mods))
 		return show_cursor_context(*this, kit);
 	if (shift_enter(ev.key, ev.mods)) {
-		if (this->cursor_ >= 0 && this->cursor_ < int(this->files_.size()))
+		if (this->cursor_ >= 0)
 			open_new_window(*this, this->files_[size_t(this->cursor_)].path);
 		return true;
 	}
@@ -2836,10 +2715,10 @@ Browser::key(Kit &kit, const Key &ev)
 			move_cursor(*this, CursorDir::Down);
 			return true;
 		case Qt::Key_Home:
-			move_cursor_home(*this);
+			select_index(0, true);
 			return true;
 		case Qt::Key_End:
-			move_cursor_end(*this);
+			select_index(int(this->files_.size()) - 1, true);
 			return true;
 		case Qt::Key_PageUp:
 			page_scroll(*this, -1);
@@ -2952,8 +2831,7 @@ open_cell(FileCell &cell, float x)
 	Browser &b = browser_of(cell);
 	b.cursor_ = cell.index;
 	remember_cursor_x_at(b, x);
-	if (b.page_ && b.page_->host && b.page_->host->activate)
-		b.page_->host->activate(b.file_url(cell.index));
+	b.page_->host->activate(b.file_url(cell.index));
 }
 
 void

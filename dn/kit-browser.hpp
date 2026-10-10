@@ -191,8 +191,6 @@ struct Browser : Composite {
 	void rescan();
 	bool hist_back();
 	bool hist_forward();
-	[[nodiscard]] bool hist_can_back() const;
-	[[nodiscard]] bool hist_can_forward() const;
 	// The listing, its cells, its path index and its revision, which only
 	// move as one.  Cells stay with their paths.
 	void set_files(std::vector<File> files);

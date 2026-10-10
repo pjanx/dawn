@@ -89,16 +89,12 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	add_apps(handlers.fallback);
 
 	auto *new_win = add_item_with_mnemonic(N_("Open in _New Window"));
-	new_win->on_click = [this, url](Kit &) {
-		if (this->host && this->host->new_window)
-			this->host->new_window(url);
-	};
+	new_win->on_click = [this, url](Kit &) { this->host->new_window(url); };
 	if (apps_sep) {
 		add_item_with_mnemonic(N_("Open _With"))->sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
-	if (QFileInfo(path).isDir() && this->host && this->host->bookmarked &&
-		this->host->toggle_bookmark) {
+	if (QFileInfo(path).isDir()) {
 		add_sep();
 		auto *bookmark = add_item_with_mnemonic(this->host->bookmarked(url)
 				? N_("Remove from _Bookmarks")
@@ -113,7 +109,7 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 		const QUrl urls[] = {url};
 		copy_files(urls, false);
 	};
-	if (QFileInfo(path).isFile() && this->host && this->host->trash) {
+	if (QFileInfo(path).isFile()) {
 		auto *trash = add_item_with_mnemonic(N_("Move to _Trash"));
 		trash->accel = accel_label(action_def(Action::Trash));
 		trash->on_click = [this, url](Kit &) { this->host->trash(url); };
@@ -815,20 +811,17 @@ Hint::key(Kit &kit, const Key &ev)
 		const QString next = this->typed_ + ch;
 		bool any = false;
 		const Target *exact = nullptr;
-		int exact_n = 0;
 		for (const Target &t : this->targets_) {
 			if (!matches(t) || !t.label.startsWith(next))
 				continue;
 			any = true;
-			if (t.label == next) {
+			if (t.label == next)
 				exact = &t;
-				exact_n++;
-			}
 		}
 		if (!any)
 			return true;
 		this->typed_ = next;
-		if (exact_n == 1 && exact)
+		if (exact)
 			fire(kit, *exact);
 		return true;
 	}
@@ -877,17 +870,10 @@ Hint::collect(Widget *scope)
 	if (!scope)
 		return;
 
-	Rect host = scope->r;
-	if (host.w <= 0 || host.h <= 0)
-		host = {0, 0, kUnlim, kUnlim};
 	vector<Widget *> widgets;
-	collect_targets(scope, host, widgets);
-	for (Widget *w : widgets) {
-		Target t;
-		t.widget = w;
-		t.at = visible_rect(w, host);
-		this->targets_.push_back(t);
-	}
+	collect_targets(scope, scope->r, widgets);
+	for (Widget *w : widgets)
+		this->targets_.push_back({.widget = w});
 }
 
 void
@@ -907,7 +893,7 @@ Hint::refresh_rects()
 	for (Target &t : this->targets_) {
 		t.at = {};
 		if (t.widget->focusable())
-			t.at = visible_rect(t.widget, this->page->r);
+			t.at = visible_rect(t.widget, this->r);
 	}
 }
 
@@ -968,7 +954,7 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		auto split = make_unique<Splitter>();
 		this->splitter = split.get();
 		this->splitter->on_drag = [this](Kit &kit, float mx) {
-			if (!this->sidebar->shown() || this->sidebar_side == Side::None)
+			if (!this->sidebar->shown())
 				return;
 			// The drag happens in pixels, like the frame it is measured
 			// against; sidebar_w is stored in points, so that the sidebar
@@ -984,41 +970,34 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 			invalidate_arrange();
 		};
 		add_child(std::move(split), size_t(-1));
+		if (this->sidebar->min_w > 0.f)
+			this->sidebar_w = this->sidebar->min_w;
+		// A Splitter starts visible, but a sidebar can start hidden.
+		this->splitter->visible = this->sidebar->visible;
 	}
 
 	// macOS has a real menu bar for this; everywhere else it is a button
 	// at the far end of the toolbar.
 #ifndef Q_OS_MACOS
-	if (this->toolbar && this->toolbar->left) {
-		auto app = make_unique<Button>();
-		app->flat = true;
-		app->focus_on_press = false;
-		app->icon = "open-menu-symbolic";
-		// The action table already names this, and says what opens it from
-		// the keyboard; it is also what an icon-only control is read out as.
-		const ActionDef &def = action_def(Action::Menu);
-		app->tip_text = action_tip(def, false);
-		app->tip_accel = accel_label(def);
-		app->activate_on_press = true;
-		app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
-		this->app_menu_button = app.get();
-		this->app_menu = make_unique<Menu>();
-		if (!this->toolbar->left->items_.empty())
-			this->toolbar->left->add_item(make_unique<Sep>(), 0);
-		this->toolbar->left->add_item(std::move(app), 0);
-	}
+	auto app = make_unique<Button>();
+	app->flat = true;
+	app->focus_on_press = false;
+	app->icon = "open-menu-symbolic";
+	// The action table already names this, and says what opens it from
+	// the keyboard; it is also what an icon-only control is read out as.
+	const ActionDef &def = action_def(Action::Menu);
+	app->tip_text = action_tip(def, false);
+	app->tip_accel = accel_label(def);
+	app->activate_on_press = true;
+	app->on_click = [this](Kit &kit) { open_app_menu(kit, false); };
+	this->app_menu_button = app.get();
+	this->app_menu = make_unique<Menu>();
+	if (!this->toolbar->left->items_.empty())
+		this->toolbar->left->add_item(make_unique<Sep>(), 0);
+	this->toolbar->left->add_item(std::move(app), 0);
 #endif
 	this->hint = make_unique<Hint>();
-	this->hint->page = this;
 	this->context = make_unique<ContextMenu>();
-	if (this->sidebar) {
-		if (this->sidebar->min_w > 0.f)
-			this->sidebar_w = this->sidebar->min_w;
-		// A Splitter starts visible, but a sidebar can start hidden.
-		this->splitter->visible = this->sidebar->visible;
-	} else {
-		this->sidebar_side = Side::None;
-	}
 }
 
 static void
@@ -1048,14 +1027,11 @@ Page::open_app_menu(Kit &kit, bool kbd)
 		this->app_menu->close(kit);
 		return;
 	}
-	if (!this->app_menu_button)
-		return;
 
 	// Too narrow a window packs the button away into the overflow, which
 	// then anchors the menu instead.
 	Button *anchor = this->app_menu_button;
-	if (!anchor->shown() && this->toolbar && this->toolbar->left &&
-		this->toolbar->left->more->shown())
+	if (!anchor->shown() && this->toolbar->left->more->shown())
 		anchor = this->toolbar->left->more;
 	this->app_menu->sync();
 	this->app_menu->open(kit, anchor);
@@ -1066,7 +1042,7 @@ Page::open_app_menu(Kit &kit, bool kbd)
 void
 Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 {
-	const size_t at = 1 + bool(this->toolbar);
+	const size_t at = 2;  // Past the titlebar and the toolbar.
 	if (this->banner) {
 		kit.retire(this->kids[at]);
 		this->kids.erase(this->kids.begin() + ptrdiff_t(at));
@@ -1103,14 +1079,12 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	// belonging to the shadow that a client-side decorated window casts.
 	const Rect frame = kit.frame();
 	int y = frame.y;
-	if (this->titlebar) {
+	if (this->titlebar->shown()) {
 		const Size size = this->titlebar->measure(kit, frame.w, frame.h);
-		if (this->titlebar->shown()) {
-			this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});
-			y += this->titlebar->r.h;
-		}
+		this->titlebar->arrange(kit, {frame.x, y, frame.w, size.h});
+		y += this->titlebar->r.h;
 	}
-	if (this->toolbar && this->toolbar->shown()) {
+	if (this->toolbar->shown()) {
 		const Size size = this->toolbar->measure(kit, frame.w, frame.h);
 		this->toolbar->arrange(kit, {frame.x, y, frame.w, size.h});
 		y += this->toolbar->r.h;
@@ -1127,15 +1101,10 @@ Page::arrange_content(Kit &kit, Rect alloc)
 	int side_w = 0;
 	if (this->sidebar) {
 		// A body with no height gets an empty sidebar, not a hidden one.
-		if (this->sidebar->shown() && this->sidebar_side != Side::None &&
-			body_h > 0) {
+		if (this->sidebar->shown() && body_h > 0) {
 			// sidebar_w is kept in points, so that dragging the window to a
 			// display of a different scale keeps its physical width.
 			side_w = max(0, kit.px(this->sidebar_w));
-			if (this->sidebar->min_w != this->sidebar_w) {
-				this->sidebar->min_w = this->sidebar_w;
-				this->sidebar->invalidate_measure();
-			}
 			if (this->sidebar_side == Side::Left)
 				this->sidebar->arrange(kit, {frame.x, body_y, side_w, body_h});
 			else
@@ -1170,9 +1139,8 @@ void
 Page::paint(Kit &kit) const
 {
 	paint_children(kit);
-	const bool busy = this->content->busy() ||
-		(this->host && this->host->busy && this->host->busy());
-	if (!busy || !this->toolbar || !this->toolbar->shown())
+	const bool busy = this->content->busy() || this->host->busy();
+	if (!busy || !this->toolbar->shown())
 		return;
 
 	const Rect &r = this->toolbar->r;
@@ -1320,19 +1288,17 @@ chain_actor(const HostActions &host, function<bool(Action)> apply,
 	// that a modal dialog is up -- and only then does the page get to say
 	// whether it has anything to do.  History stays the host's alone.
 	auto can = [&host, enabled](Action action) {
-		if (host.enabled && !host.enabled(action))
+		if (!host.enabled(action))
 			return false;
 		if (action == Action::Back || action == Action::Forward)
-			return bool(host.enabled);
+			return true;
 		return !enabled || enabled(action);
 	};
 	Actor actor;
 	actor.apply = [&host, apply, can](Action action) {
 		if (!can(action))
 			return;
-		if (apply && apply(action))
-			return;
-		if (host.apply)
+		if (!apply || !apply(action))
 			host.apply(action);
 	};
 	actor.enabled = std::move(can);

@@ -411,7 +411,6 @@ TextCache::range_rects(
 static void
 rebuild_atlas(Kit &kit)
 {
-	kit.atlas_epoch_++;
 	kit.icons_.clear();
 	kit.glyphs_.clear();
 	kit.glow_ = {};
@@ -513,12 +512,11 @@ Kit::emit_layout(float x, float y, const TextCache::Text &cached, Colour colour,
 
 static void
 emit_text(Kit &kit, TextCache &cache, float x, float y, const QString &text,
-	Colour colour, bool bold, int mnemonic)
+	Colour colour, bool bold)
 {
 	if (!text.isEmpty())
 		kit.emit_layout(x, y,
-			cache.get(kit, text, 0, 0, bold, TextAlign::Start), colour,
-			mnemonic);
+			cache.get(kit, text, 0, 0, bold, TextAlign::Start), colour, -1);
 }
 
 // --- Layout kit --------------------------------------------------------------
@@ -641,7 +639,9 @@ void
 Widget::paint_children(Kit &kit) const
 {
 	for (const auto &k : children()) {
-		if (!k->shown())
+		// The clip removes all of a child that is fully outside this widget.
+		// A child with no area can have effects, such as the image view.
+		if (!k->shown() || (!k->r.empty() && k->r.intersect(this->r).empty()))
 			continue;
 		kit.clip_to(k->r);
 		k->paint(kit);
@@ -723,6 +723,16 @@ bound(const Button &b)
 	return b.actor && b.action != Action::None;
 }
 
+// What a control writes with: fainter when disabled, when de-emphasized, and
+// in an inactive window.
+static Colour
+ink(const Kit &kit, bool enabled, bool dim)
+{
+	return col(kit.colours_[ColourInk],
+		(enabled ? 1.f : kDisabledAlpha) * (dim ? kDimAlpha : 1.f) *
+			kit.ink_alpha());
+}
+
 bool
 Button::enabled() const
 {
@@ -797,33 +807,35 @@ Button::measure_content(Kit &kit, int, int)
 }
 
 void
-Button::paint(Kit &kit) const
+Button::paint_background(Kit &kit) const
 {
-	const bool hot = kit.hot_ == this;
-	const bool pressed = kit.left_down_ && kit.pressed_ == this;
 	const bool enabled = this->enabled();
-	if ((enabled && pressed) || this->active ||
+	if ((enabled && kit.left_down_ && kit.pressed_ == this) || this->active ||
 		(on() && this->action != Action::SortDir))
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (enabled && hot)
+	else if (enabled && kit.hot_ == this)
 		kit.draw_fill(this->r, kit.colours_[ColourHover]);
+}
+
+void
+Button::paint(Kit &kit) const
+{
+	paint_background(kit);
 	if (!this->flat)
 		kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
 	const char *shown = shown_icon();
-	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
-		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
+	const Colour fg = ink(kit, enabled(), this->dim);
 	if (shown)
 		kit.draw_icon(this->r.x + px, this->r.y + (this->r.h - icon) / 2, icon,
-			shown, col(kit.colours_[ColourInk], ink_a));
+			shown, fg);
 	if (!this->text.isEmpty()) {
 		const int tx = this->r.x + px + (shown ? icon + kit.px(4.f) : 0);
 		const auto &cached = this->text_cache_.get(kit, this->text,
 			button_text_avail(kit, *this), 1, this->bold, TextAlign::Start);
 		kit.emit_layout(float(tx),
-			float(this->r.y + (this->r.h - cached.height) / 2), cached,
-			col(kit.colours_[ColourInk], ink_a),
+			float(this->r.y + (this->r.h - cached.height) / 2), cached, fg,
 			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -934,13 +946,7 @@ Checkbox::measure_content(Kit &kit, int max_w, int)
 void
 Checkbox::paint(Kit &kit) const
 {
-	const bool hot = kit.hot_ == this;
-	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	const bool enabled = this->enabled();
-	if (enabled && pressed)
-		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (enabled && hot)
-		kit.draw_fill(this->r, kit.colours_[ColourHover]);
+	paint_background(kit);
 
 	const int px = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
@@ -953,19 +959,17 @@ Checkbox::paint(Kit &kit) const
 	kit.draw_border(
 		{bx, by, box, box}, kit.colours_[ColourDivider], kit.hairline());
 
-	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
-		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
+	const Colour fg = ink(kit, enabled(), this->dim);
 	if (this->checked)
-		kit.draw_icon(bx + border, by + border, icon, "object-select-symbolic",
-			col(kit.colours_[ColourInk], ink_a));
+		kit.draw_icon(
+			bx + border, by + border, icon, "object-select-symbolic", fg);
 	if (!this->text.isEmpty()) {
 		const int tx = bx + box + kit.px(4.f);
 		const auto &cached = this->text_cache_.get(kit, this->text,
 			checkbox_text_avail(kit, *this, this->r.w), this->wrap ? 0 : 1,
 			false, TextAlign::Start);
 		kit.emit_layout(float(tx),
-			float(this->r.y + (this->r.h - cached.height) / 2), cached,
-			col(kit.colours_[ColourInk], ink_a),
+			float(this->r.y + (this->r.h - cached.height) / 2), cached, fg,
 			shown_mnemonic(this->text, this->mnemonic, cached));
 	}
 	if (kit.focus_ == this && kit.focus_visible_)
@@ -1040,9 +1044,7 @@ Label::paint(Kit &kit) const
 	else if (this->valign == Align::End)
 		ty = this->r.y + this->r.h - pad_y - th;
 	kit.emit_layout(float(tx), float(ty), cached,
-		col(kit.colours_[ColourInk],
-			(this->enabled_ ? 1.f : kDisabledAlpha) *
-				(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha()),
+		ink(kit, this->enabled_, this->dim),
 		shown_mnemonic(this->text, this->mnemonic, cached));
 }
 
@@ -1324,6 +1326,15 @@ Entry::painted() const
 	return this->text;
 }
 
+TextRect
+Entry::painted_caret(const Kit &kit) const
+{
+	const bool composing = !this->preedit.isEmpty();
+	return this->text_cache_.caret_rect(kit, painted(),
+		this->caret + (composing ? this->preedit_caret : 0),
+		composing ? TextAffinity::Leading : this->caret_affinity, false);
+}
+
 void
 Entry::touch_caret(const Kit &kit)
 {
@@ -1334,15 +1345,9 @@ Entry::touch_caret(const Kit &kit)
 void
 Entry::rescroll(const Kit &kit)
 {
-	// The caret sits mid-preedit while an input method is composing.
-	const QString full = painted();
-	const int at =
-		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const TextAffinity affinity =
-		this->preedit.isEmpty() ? this->caret_affinity : TextAffinity::Leading;
-	const float caret_x =
-		this->text_cache_.caret_rect(kit, full, at, affinity, false).x;
-	const float text_w = float(this->text_cache_.text_width(kit, full, false));
+	const float caret_x = painted_caret(kit).x;
+	const float text_w =
+		float(this->text_cache_.text_width(kit, painted(), false));
 	const float view = float(inner_w(kit));
 	if (text_w <= view) {
 		this->scroll_ = 0.f;
@@ -1563,11 +1568,10 @@ Entry::paint(Kit &kit) const
 	if (full.isEmpty()) {
 		if (!this->placeholder.isEmpty())
 			emit_text(kit, this->text_cache_, tx, float(ty), this->placeholder,
-				col(kit.colours_[ColourInk], 0.4f * kit.ink_alpha()), false,
-				-1);
+				col(kit.colours_[ColourInk], 0.4f * kit.ink_alpha()), false);
 	} else {
 		emit_text(kit, this->text_cache_, tx, float(ty), full,
-			col(kit.colours_[ColourInk], kit.ink_alpha()), false, -1);
+			col(kit.colours_[ColourInk], kit.ink_alpha()), false);
 	}
 
 	// The preedit is underlined using the same native layout and metrics that
@@ -1619,7 +1623,7 @@ Entry::paint(Kit &kit) const
 			kit.draw_fill(block, col(kit.colours_[ColourInk], kit.ink_alpha()));
 			kit.clip_to(block);
 			emit_text(kit, this->text_cache_, tx, float(ty), full,
-				kit.colours_[ColourEntryBottom], false, -1);
+				kit.colours_[ColourEntryBottom], false);
 			kit.clip_pop();
 		}
 	}
@@ -1632,13 +1636,7 @@ Entry::paint(Kit &kit) const
 		kit.wake_after(max(1, int(ceil(until * kCaretBlinkMs * 2.0))));
 	if (focused && this->anchor == this->caret &&
 		(!this->preedit.isEmpty() || phase < 0.5)) {
-		const int at =
-			this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-		const TextAffinity affinity = this->preedit.isEmpty()
-			? this->caret_affinity
-			: TextAffinity::Leading;
-		const TextRect caret =
-			this->text_cache_.caret_rect(kit, full, at, affinity, false);
+		const TextRect caret = painted_caret(kit);
 		const int cx = int(lround(double(tx) + double(caret.x)));
 		const int cy = int(floor(double(ty) + double(caret.y)));
 		const int cy1 = int(ceil(double(ty) + double(caret.y + caret.height)));
@@ -1860,13 +1858,7 @@ Entry::text_target(const Kit &kit, TextTarget &out) const
 
 	// The preedit is not in text, but the caret still has to be placed past
 	// it on screen, or the candidate window covers what is being composed.
-	const QString full = painted();
-	const int at =
-		this->caret + (this->preedit.isEmpty() ? 0 : this->preedit_caret);
-	const TextAffinity affinity =
-		this->preedit.isEmpty() ? this->caret_affinity : TextAffinity::Leading;
-	const TextRect caret =
-		this->text_cache_.caret_rect(kit, full, at, affinity, false);
+	const TextRect caret = painted_caret(kit);
 	const int tx = this->r.x + kit.px(this->pad_x);
 	const int th = kit.line_height(false);
 	const int ty = this->r.y + (this->r.h - th) / 2;
@@ -2510,19 +2502,13 @@ ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 	this->scroll_.set_metrics(kit, float(bottom - top), float(alloc.h));
 	if (this->follow_focus && kit.focus_ != this->followed_) {
 		this->followed_ = kit.focus_;
-		if (Widget *f = this->followed_) {
-			for (Widget *p = f; p; p = p->parent_) {
-				if (p != this)
-					continue;
-				const float y0 = float(f->r.y - top);
-				if (y0 < this->scroll_.offset)
-					this->scroll_.offset = y0;
-				else if (y0 + float(f->r.h) >
-					this->scroll_.offset + float(alloc.h))
-					this->scroll_.offset = y0 + float(f->r.h) - float(alloc.h);
-				this->scroll_.clamp();
-				break;
-			}
+		if (Widget *f = this->followed_; within(f, this)) {
+			const float y0 = float(f->r.y - top);
+			if (y0 < this->scroll_.offset)
+				this->scroll_.offset = y0;
+			else if (y0 + float(f->r.h) > this->scroll_.offset + float(alloc.h))
+				this->scroll_.offset = y0 + float(f->r.h) - float(alloc.h);
+			this->scroll_.clamp();
 		}
 	}
 
@@ -2617,7 +2603,7 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 {
 	Size size;
 	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
-	const int min_w = kit.px(this->min_w), min_h = kit.px(this->min_h);
+	const int min_w = kit.px(this->min_w);
 	const int iw = avail_w < kUnlim ? max(0, avail_w - pad_x * 2) : kUnlim;
 	const int ih = avail_h < kUnlim ? max(0, avail_h - pad_y * 2) : kUnlim;
 	Q_ASSERT(this->kids.size() <= 1);
@@ -2626,12 +2612,7 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 		content && content->shown() ? content->measure(kit, iw, ih) : Size{};
 	size.w = this->grow && avail_w < kUnlim ? avail_w
 											: pad_x * 2 + max(min_w, wanted.w);
-	size.h = pad_y * 2 + wanted.h;
-	if (min_h > 0)
-		size.h = max(size.h, min_h);
-	if (min_w > 0)
-		size.w = max(size.w, min_w);
-	size.h = min(size.h, avail_h);
+	size.h = min(pad_y * 2 + wanted.h, avail_h);
 	size.w = min(size.w, avail_w);
 	return size;
 }
@@ -2644,9 +2625,6 @@ Panel::arrange_content(Kit &kit, Rect alloc)
 		return;
 	}
 	this->r = alloc;
-	const int min_h = kit.px(this->min_h);
-	if (min_h > 0 && this->r.h < min_h)
-		this->r.h = min_h;
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	Q_ASSERT(this->kids.size() <= 1);
 	if (Widget *content = child(0); content && content->shown()) {
@@ -2764,13 +2742,9 @@ Popup::refers_to(const Widget *tree) const
 	return this == tree || within(this->opener, tree);
 }
 
-// An opener that layout hides keeps the popup at its last anchor.
 void
 Popup::place(Kit &kit)
 {
-	if (this->opener && !this->opener->r.empty())
-		this->at = this->opener->r;
-
 	const int glow = kit.px(kGlowPts);
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
 	const Size size = measure(kit, cap, kUnlim);
@@ -2986,6 +2960,14 @@ mnemonic_target(Widget *w)
 	return w;
 }
 
+MenuPopup::MenuPopup()
+{
+	this->pad_x = kMenuPad;
+	this->pad_y = kMenuPad;
+	this->fill = Fill::Panel;
+	this->stroke = Stroke::All;
+}
+
 void
 MenuPopup::focus_item(Kit &kit, Widget *w, bool kbd) const
 {
@@ -3110,10 +3092,6 @@ Overflow::Overflow()
 	auto column = make_unique<Flow>();
 	this->col = column.get();
 	this->col->gap = kItemGap;
-	this->pad_x = kMenuPad;
-	this->pad_y = kMenuPad;
-	this->fill = Fill::Panel;
-	this->stroke = Stroke::All;
 	add_child(std::move(column), size_t(-1));
 }
 
@@ -3167,9 +3145,6 @@ Overflow::after_close(Kit &)
 void
 Overflow::place(Kit &kit)
 {
-	if (this->opener && !this->opener->r.empty())
-		this->at = this->opener->r;
-
 	const int glow = kit.px(kGlowPts);
 	// The popup hangs from the chevron that opened it, lining its right edge
 	// up with the button's; what it may wrap against is everything to the
@@ -3290,10 +3265,6 @@ Menu::Menu()
 {
 	auto c = make_unique<Column>();
 	this->col = c.get();
-	this->pad_x = kMenuPad;
-	this->pad_y = kMenuPad;
-	this->fill = Fill::Panel;
-	this->stroke = Stroke::All;
 	add_child(std::move(c), size_t(-1));
 }
 
@@ -3500,7 +3471,7 @@ MenuItem::paint(Kit &kit) const
 			this->text_cache_.text_height(kit, this->accel, 0, false);
 		emit_text(kit, this->text_cache_, float(accel_x),
 			float(this->r.y + (this->r.h - ath) / 2), this->accel,
-			col(kit.colours_[ColourInk], kDimAlpha), false, -1);
+			col(kit.colours_[ColourInk], kDimAlpha), false);
 	}
 	if (this->sub) {
 		kit.draw_icon(this->r.right() - pad_x - cols.chevron, iy, icon,
@@ -3578,10 +3549,6 @@ ComboPopup::ComboPopup()
 {
 	auto c = make_unique<Column>();
 	this->col = c.get();
-	this->pad_x = kMenuPad;
-	this->pad_y = kMenuPad;
-	this->fill = Fill::Panel;
-	this->stroke = Stroke::All;
 	add_child(std::move(c), size_t(-1));
 }
 
@@ -3591,9 +3558,6 @@ ComboPopup::ComboPopup()
 void
 ComboPopup::place(Kit &kit)
 {
-	if (this->opener && !this->opener->r.empty())
-		this->at = this->opener->r;
-
 	const int glow = kit.px(kGlowPts);
 	const int cap = kit.host_w_ > 0 ? kit.host_w_ : kUnlim;
 	const Size size = measure(kit, cap, kUnlim);
@@ -3653,29 +3617,20 @@ Combo::paint(Kit &kit) const
 	// Unlike Win32 comboboxes, we don't want this to look editable.
 	// TODO(p): Combos and non-flat Buttons shouldn't be transparent...
 
-	const bool hot = kit.hot_ == this;
-	const bool pressed = kit.left_down_ && kit.pressed_ == this;
-	const bool enabled = this->enabled();
-	if ((enabled && pressed) || this->active)
-		kit.draw_fill(this->r, kit.colours_[ColourPress]);
-	else if (enabled && hot)
-		kit.draw_fill(this->r, kit.colours_[ColourHover]);
+	paint_background(kit);
 	kit.draw_border(this->r, kit.colours_[ColourDivider], kit.hairline());
 
 	const int pad_x = kit.px(kFramePadX + this->pad_x);
 	const int icon = kit.icon_px();
-	const float ink_a = (enabled ? 1.f : kDisabledAlpha) *
-		(this->dim ? kDimAlpha : 1.f) * kit.ink_alpha();
+	const Colour fg = ink(kit, enabled(), this->dim);
 	kit.draw_icon(this->r.right() - pad_x - icon,
-		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon,
-		col(kit.colours_[ColourInk], ink_a));
+		this->r.y + (this->r.h - icon) / 2, icon, kComboIcon, fg);
 
 	const auto &cached = this->text_cache_.get(kit, current_text(),
 		max(1, this->r.w - pad_x * 2 - kit.px(4.f) - icon), 1, false,
 		TextAlign::Start);
 	kit.emit_layout(float(this->r.x + pad_x),
-		float(this->r.y + (this->r.h - cached.height) / 2), cached,
-		col(kit.colours_[ColourInk], ink_a), -1);
+		float(this->r.y + (this->r.h - cached.height) / 2), cached, fg, -1);
 	if (kit.focus_ == this && kit.focus_visible_)
 		kit.focus_ring(this->r);
 }
@@ -3945,20 +3900,15 @@ Toolbar::Toolbar(unique_ptr<ToolbarSlot> left_row,
 	this->hittable = true;
 
 	this->left = left_row.get();
-	if (left_row)
-		add_child(std::move(left_row), size_t(-1));
+	add_child(std::move(left_row), size_t(-1));
 	this->mid = mid_row.get();
-	if (mid_row)
-		add_child(std::move(mid_row), size_t(-1));
+	add_child(std::move(mid_row), size_t(-1));
 	this->right = right_row.get();
-	if (right_row)
-		add_child(std::move(right_row), size_t(-1));
+	add_child(std::move(right_row), size_t(-1));
 
 	this->overflow = make_unique<Overflow>();
 	this->overflow->pad_y = kWinPadY;
 	for (ToolbarSlot *slot : {this->left, this->mid, this->right}) {
-		if (!slot)
-			continue;
 		slot->more->activate_on_press = true;
 		slot->more->on_click = [this, slot](Kit &kit) {
 			if (this->overflow->visible && this->overflow->lender == slot)
@@ -3976,13 +3926,8 @@ Toolbar::measure_content(Kit &kit, int avail_w, int avail_h)
 	const int pad_y = kit.px(this->pad_y);
 	const int ih = max(0, avail_h - pad_y * 2);
 	int h = 0;
-	auto slot = [&](Widget *w) {
-		if (w)
-			h = max(h, w->measure(kit, kUnlim, ih).h);
-	};
-	slot(this->left);
-	slot(this->mid);
-	slot(this->right);
+	for (ToolbarSlot *slot : {this->left, this->mid, this->right})
+		h = max(h, slot->measure(kit, kUnlim, ih).h);
 	size.w = avail_w;
 	size.h = pad_y * 2 + h;
 	if (avail_h > 0)
@@ -4015,21 +3960,14 @@ Toolbar::place_slots(Kit &kit)
 	const int h = bar.h;
 	const int x0 = bar.x;
 	const int y0 = bar.y;
-	auto nat = [&](Widget *w) -> int {
-		if (!w)
-			return 0;
-		return w->measure(kit, kUnlim, h).w;
-	};
+	auto nat = [&](Widget *w) { return w->measure(kit, kUnlim, h).w; };
 	const int lw = nat(this->left);
 	const int mw = nat(this->mid);
 	const int rw = nat(this->right);
 	int mmin = 0;
-	if (mw > 0 && this->mid && this->mid->more) {
+	if (mw > 0)
 		mmin = min(mw, this->mid->more->measure(kit, kUnlim, h).w);
-	}
 	auto stretches = [](const ToolbarSlot *slot) {
-		if (!slot)
-			return false;
 		for (const Widget *item : slot->items_) {
 			// layout_visible may be stale here -- the slot only settles its
 			// split once it arranges, below.  It costs nothing: this is
@@ -4063,12 +4001,9 @@ Toolbar::place_slots(Kit &kit)
 	// The three slots tile the bar exactly: the middle takes whatever the
 	// ends leave, and no edge is rounded independently of its neighbour.
 	const int mid_w = x0 + avail - right_w - mid_x;
-	if (this->left)
-		this->left->arrange(kit, {x0, y0, left_w, h});
-	if (this->mid)
-		this->mid->arrange(kit, {mid_x, y0, mid_w, h});
-	if (this->right)
-		this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
+	this->left->arrange(kit, {x0, y0, left_w, h});
+	this->mid->arrange(kit, {mid_x, y0, mid_w, h});
+	this->right->arrange(kit, {x0 + avail - right_w, y0, right_w, h});
 }
 
 // --- Titlebar ----------------------------------------------------------------
@@ -4117,14 +4052,8 @@ Titlebar::measure_content(Kit &kit, int avail_w, int)
 		return {};
 
 	int ih = 0;
-	auto slot = [&](Button *b) {
-		if (!b)
-			return;
+	for (Button *b : {this->minimize, this->maximize, this->close})
 		ih = max(ih, b->measure(kit, kUnlim, kUnlim).h);
-	};
-	slot(this->minimize);
-	slot(this->maximize);
-	slot(this->close);
 	return {avail_w, kit.px(this->pad_y) * 2 + ih};
 }
 
@@ -4138,28 +4067,21 @@ Titlebar::arrange_content(Kit &kit, Rect alloc)
 	this->r = alloc;
 	const Rect bar = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	int x = bar.x + bar.w;
-	auto place = [&](Button *b) {
-		if (!b)
-			return;
+	for (Button *b : {this->close, this->maximize, this->minimize}) {
 		const Size size = b->measure(kit, kUnlim, bar.h);
 		x -= size.w;
 		b->arrange(kit, {x, bar.y, size.w, bar.h});
-	};
-	place(this->close);
-	place(this->maximize);
-	place(this->minimize);
-	if (this->title) {
-		const int left = bar.x;
-		const int right = x;
-		const int avail = max(0, right - left);
-		const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
-		int tx = this->r.x + (this->r.w - tw) / 2;
-		if (tx < left)
-			tx = left;
-		if (tx + tw > right)
-			tx = max(left, right - tw);
-		this->title->arrange(kit, {tx, bar.y, tw, bar.h});
 	}
+	const int left = bar.x;
+	const int right = x;
+	const int avail = max(0, right - left);
+	const int tw = min(this->title->measure(kit, avail, bar.h).w, avail);
+	int tx = this->r.x + (this->r.w - tw) / 2;
+	if (tx < left)
+		tx = left;
+	if (tx + tw > right)
+		tx = max(left, right - tw);
+	this->title->arrange(kit, {tx, bar.y, tw, bar.h});
 }
 
 bool
@@ -4223,8 +4145,7 @@ Titlebar::double_click(
 		return false;
 	if (dynamic_cast<Button *>(kit.hit(x, y)))
 		return false;
-	if (this->maximize)
-		this->maximize->activate(kit);
+	this->maximize->activate(kit);
 	return true;
 }
 
@@ -4247,7 +4168,7 @@ Kit::pack_bitmap(const QImage &image, bool coverage)
 void
 Kit::emit_text(float x, float y, const QString &text, Colour colour, bool bold)
 {
-	::dn::emit_text(*this, this->text_cache_, x, y, text, colour, bold, -1);
+	::dn::emit_text(*this, this->text_cache_, x, y, text, colour, bold);
 }
 
 void
@@ -4958,7 +4879,7 @@ Kit::destroy()
 	this->retired_.clear();
 	this->tooltip_panel_.reset();
 	this->text_cache_.texts.clear();
-	this->atlas_epoch_++;
+	this->font_epoch_++;
 	this->icons_.clear();
 	this->glyphs_.clear();
 	this->atlas_.clear();
@@ -5378,20 +5299,11 @@ Kit::in_input_scope(const Widget *w) const
 	if (this->popups_.empty())
 		return true;
 	for (const Popup *p : input_popups()) {
-		for (const Widget *a = w; a; a = a->parent_) {
-			if (a == p)
-				return true;
-		}
-		if (p->opener == w && w && w->shown())
+		if (within(w, p) || (p->opener == w && w && w->shown()))
 			return true;
 	}
-	if (const Titlebar *t = live_titlebar()) {
-		for (const Widget *a = w; a; a = a->parent_) {
-			if (a == t)
-				return true;
-		}
-	}
-	return false;
+	const Titlebar *t = live_titlebar();
+	return t && within(w, t);
 }
 
 Widget *
@@ -5433,8 +5345,7 @@ Rect
 Kit::client() const
 {
 	Rect f = frame();
-	if (this->root_ && this->root_->titlebar &&
-		this->root_->titlebar->shown()) {
+	if (this->root_ && this->root_->titlebar->shown()) {
 		const int top =
 			clamp(this->root_->titlebar->r.bottom(), f.y, f.bottom());
 		f.h = f.bottom() - top;
@@ -5446,8 +5357,7 @@ Kit::client() const
 Titlebar *
 Kit::live_titlebar() const
 {
-	if (!this->root_ || !this->root_->titlebar ||
-		!this->root_->titlebar->shown())
+	if (!this->root_ || !this->root_->titlebar->shown())
 		return nullptr;
 	if (const Popup *p = top_popup(); p && p->transient())
 		return nullptr;
@@ -5533,8 +5443,12 @@ Kit::arrange()
 	for (int pass = 0; pass < 3; pass++) {
 		if (this->root_)
 			this->root_->arrange(*this, {0, 0, this->host_w_, this->host_h_});
-		for (Popup *p : this->popups_)
+		// An opener that layout hides keeps its popup at the last anchor.
+		for (Popup *p : this->popups_) {
+			if (p->opener && !p->opener->r.empty())
+				p->at = p->opener->r;
 			p->place(*this);
+		}
 		if ((!this->root_ || !this->root_->arrange_dirty_) &&
 			none_of(this->popups_.begin(), this->popups_.end(),
 				[](const Popup *p) { return p->arrange_dirty_; }))

@@ -14,7 +14,6 @@
 
 #include <QDir>
 #include <QFileInfo>
-#include <QSaveFile>
 
 #include <algorithm>
 #include <cmath>
@@ -83,8 +82,7 @@ void
 Cropper::open(const QUrl &url)
 {
 	this->jpeg_url_ = url;
-	if (this->page_ && this->page_->host && this->page_->host->retitle)
-		this->page_->host->retitle();
+	this->page_->host->retitle();
 	this->file_.clear();
 	this->image_.reset();
 	this->grid_ = {};
@@ -357,14 +355,7 @@ Cropper::save(const QString &input)
 		this->bottom_ - this->top_, &error);
 	if (data.empty())
 		return QString::fromStdString(error.message);
-
-	QSaveFile file(path);
-	if (!file.open(QIODevice::WriteOnly) ||
-		file.write(reinterpret_cast<const char *>(data.data()),
-			qint64(data.size())) != qint64(data.size()) ||
-		!file.commit())
-		return file.errorString();
-	return {};
+	return write_file(path, data);
 }
 
 bool

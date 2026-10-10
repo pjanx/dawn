@@ -121,11 +121,7 @@ struct Sidebar : Panel {
 	bool key(Kit &kit, const Key &ev) override;
 };
 
-struct Page;
-
 struct Hint : Popup {
-	Page *page = nullptr;
-
 	Hint();
 	void open(Kit &kit);
 	void after_close(Kit &kit) override;
@@ -171,8 +167,8 @@ struct Page : Composite {
 	std::span<const MenuNode> menu_tree = {};
 	std::span<const Action> keys = {};
 
-	enum class Side : uint8_t { None, Left, Right };
-	Side sidebar_side = Side::None;
+	enum class Side : uint8_t { Left, Right };
+	Side sidebar_side;
 	float sidebar_w = 192;
 
 	Page(std::unique_ptr<Toolbar> tb, std::unique_ptr<Sidebar> sb, Side side,
@@ -205,7 +201,7 @@ struct PageSetup {
 	std::unique_ptr<Widget> content;
 	std::unique_ptr<Toolbar> toolbar;
 	std::unique_ptr<Sidebar> sidebar;
-	Page::Side side = Page::Side::None;
+	Page::Side side{};
 	Actor actor;
 };
 std::unique_ptr<Page> make_page(

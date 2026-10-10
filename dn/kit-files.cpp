@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QRegularExpression>
+#include <QSaveFile>
 
 #include <algorithm>
 #include <memory>
@@ -143,14 +144,6 @@ FileRow::measure_content(Kit &kit, int max_w, int)
 	return {max_w < kUnlim ? max_w : 0, row_height(kit)};
 }
 
-// A directory holds more rows than there is any point in shaping or drawing;
-// the scrolled column clips them, and this is what keeps the cost clipped too.
-static bool
-offscreen(const Widget *w, const Kit &kit)
-{
-	return visible_rect(w, {0, 0, kit.host_w_, kit.host_h_}).empty();
-}
-
 static TextCache::Text &
 file_name_layout(const Kit &kit, const FileRow &row)
 {
@@ -171,9 +164,6 @@ FileRow::tip(const Kit &kit) const
 void
 FileRow::paint(Kit &kit) const
 {
-	if (offscreen(this, kit))
-		return;
-
 	if (this->list->rows->selected == this)
 		kit.draw_fill(this->r, kit.colours_[ColourPress]);
 	else if (kit.hot_ == this)
@@ -844,6 +834,18 @@ dialog_files(Kit &kit, FileDialogSetup setup)
 	if (start.isEmpty() || !QFileInfo(start).isDir())
 		start = QDir::currentPath();
 	state->set_dir(kit, start);
+}
+
+QString
+write_file(const QString &path, span<const uint8_t> data)
+{
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly) ||
+		file.write(reinterpret_cast<const char *>(data.data()),
+			qint64(data.size())) != qint64(data.size()) ||
+		!file.commit())
+		return file.errorString();
+	return {};
 }
 
 }  // namespace dn

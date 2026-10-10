@@ -242,7 +242,7 @@ raster_diagram(int w, int h, const dawn::Chromaticities &image,
 void
 CieDiagram::redraw(Kit &kit)
 {
-	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
+	if (this->epoch_ == kit.font_epoch_ && !this->slot_.empty())
 		kit.atlas_.release(this->slot_);
 	this->slot_ = {};
 	invalidate_arrange();
@@ -265,7 +265,7 @@ void
 CieDiagram::arrange_content(Kit &kit, Rect alloc)
 {
 	this->r = alloc;
-	if (this->epoch_ == kit.atlas_epoch_ && !this->slot_.empty())
+	if (this->epoch_ == kit.font_epoch_ && !this->slot_.empty())
 		return;
 
 	const int cap = caption_h(kit);
@@ -278,7 +278,7 @@ CieDiagram::arrange_content(Kit &kit, Rect alloc)
 		raster_diagram(kRasterW, kRasterH, this->image, this->screen,
 			this->show_screen, this->screen_dashed, this->image_dashed),
 		false);
-	this->epoch_ = kit.atlas_epoch_;
+	this->epoch_ = kit.font_epoch_;
 }
 
 void

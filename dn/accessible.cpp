@@ -494,7 +494,7 @@ selected_row(const Widget *list)
 	if (auto *rows = dynamic_cast<const FileRows *>(list))
 		return rows->selected;
 	auto *browser = (const Browser *) list;
-	if (browser->cursor_ < 0 || browser->cursor_ >= int(browser->kids.size()))
+	if (browser->cursor_ < 0)
 		return nullptr;
 	return browser->kids[size_t(browser->cursor_)].get();
 }

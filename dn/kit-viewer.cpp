@@ -27,7 +27,6 @@
 #include <QImage>
 #include <QKeyEvent>
 #include <QMimeData>
-#include <QSaveFile>
 #include <QUrl>
 #include <QtLogging>
 
@@ -188,7 +187,7 @@ spec_active(const Viewer &v, Action action)
 	case Action::Smooth:
 		return v.filter_;
 	case Action::Information:
-		return v.page_ && v.page_->sidebar->visible;
+		return v.page_->sidebar->visible;
 	case Action::Fixate:
 		return v.fixate_;
 	case Action::Lock:
@@ -661,9 +660,6 @@ make_sidebar(Viewer &v, const HostActions &host)
 	jpegqs->text = QString::fromUtf8(_("Enable JPEG Quant Smooth"));
 	jpegqs->enabled_ = false;
 	jpegqs->on_click = [&v](Kit &) {
-		if (!v.jpeg_quant_smooth_)
-			return;
-
 		v.enhance_jpeg_ = v.jpeg_quant_smooth_->checked;
 		if (!v.url_.isEmpty())
 			reload_open(v, true);
@@ -677,8 +673,7 @@ make_sidebar(Viewer &v, const HostActions &host)
 		auto exiftool = make_unique<Button>();
 		exiftool->text = QString::fromUtf8(_("Launch ExifTool"));
 		exiftool->on_click = [&v](Kit &) {
-			if (v.page_ && v.page_->host && v.page_->host->launch_exiftool)
-				v.page_->host->launch_exiftool(v.url_);
+			v.page_->host->launch_exiftool(v.url_);
 		};
 		v.exiftool_button_ = exiftool.get();
 		col->add_child(std::move(exiftool), size_t(-1));
@@ -836,6 +831,20 @@ clear_image(Viewer &v)
 		v.kit_.renderer_->clear_image();
 }
 
+// Shows a page from its first frame.
+static void
+show_page(Viewer &v, dawn::ImagePtr page)
+{
+	v.current_ = std::move(page);
+	v.frame_ = v.current_;
+	v.nonlinear_processing_ = !page_opaque(*v.current_);
+	v.image_width_ = v.frame_->nominal_width;
+	v.image_height_ = v.frame_->nominal_height;
+	upload_page(v);
+	v.remaining_loops_ = 0;
+	start_playback(v);
+}
+
 static void
 apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 {
@@ -852,12 +861,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 		clear_image(v);
 	} else {
 		v.image_ = std::move(image);
-		v.current_ = v.image_;
-		v.frame_ = v.current_;
 		v.browser_delays_ = v.image_->browser_animation_bump;
-		v.nonlinear_processing_ = !page_opaque(*v.current_);
-		v.image_width_ = v.frame_->nominal_width;
-		v.image_height_ = v.frame_->nominal_height;
 		if (v.restore_view_.valid) {
 			v.scale_ = v.restore_view_.scale;
 			v.pan_x_ = v.restore_view_.pan_x;
@@ -867,7 +871,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 			v.view_locked_ = v.restore_view_.view_locked;
 			v.restore_view_.valid = false;
 		} else {
-			v.orientation_ = orientation_or_0(v.current_->orientation);
+			v.orientation_ = orientation_or_0(v.image_->orientation);
 			if (!v.fixate_) {
 				v.scale_to_fit_ = true;
 				v.pan_x_ = 0;
@@ -875,15 +879,12 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 				v.angle_ = 0;
 			}
 		}
-		upload_page(v);
-		v.remaining_loops_ = 0;
-		start_playback(v);
+		show_page(v, v.image_);
 	}
 	// After the new image is in place: a mode switch and a hidden banner both
 	// lay the page out, and the layout must not fit or render the old image.
 	v.opening_ = false;
-	if (v.page_ && v.page_->host && v.page_->host->opened)
-		v.page_->host->opened();
+	v.page_->host->opened();
 	v.set_message(message);
 	fill_info_texts(v);
 	sync_info(v);
@@ -915,6 +916,16 @@ apply_scale(Viewer &v, uint64_t gen, dawn::ImagePtr image, float scale,
 	request_render(v);
 }
 
+static Viewer::CachedOpen *
+find_cached(Viewer &v, const Viewer::OpenKey &key)
+{
+	for (auto &entry : v.open_cache_) {
+		if (entry.key == key)
+			return &entry;
+	}
+	return nullptr;
+}
+
 static void
 apply_open_result(Viewer &v, OpenLoad result)
 {
@@ -926,15 +937,10 @@ apply_open_result(Viewer &v, OpenLoad result)
 	if (!v.detached_ && key.path != current && key.path != v.previous_path_ &&
 		key.path != v.next_path_)
 		return;
-	auto found = find_if(v.open_cache_.begin(), v.open_cache_.end(),
-		[&](const Viewer::CachedOpen &entry) { return entry.key == key; });
-	if (found == v.open_cache_.end()) {
-		v.open_cache_.push_back(std::move(result.payload));
-		found = prev(v.open_cache_.end());
-	} else {
-		*found = std::move(result.payload);
-	}
-	Viewer::CachedOpen *cached = &*found;
+	Viewer::CachedOpen *cached = find_cached(v, key);
+	if (!cached)
+		cached = &v.open_cache_.emplace_back();
+	*cached = std::move(result.payload);
 	if (!v.detached_ &&
 		cached->key == Viewer::OpenKey{current, v.enhance_jpeg_})
 		apply_open(v, v.open_gen_, *cached);
@@ -1138,16 +1144,6 @@ make_open_job(const Viewer &v, Viewer::OpenKey key)
 	return job;
 }
 
-static Viewer::CachedOpen *
-find_cached(Viewer &v, const Viewer::OpenKey &key)
-{
-	for (auto &entry : v.open_cache_) {
-		if (entry.key == key)
-			return &entry;
-	}
-	return nullptr;
-}
-
 static bool
 job_active(
 	const Viewer::Worker &worker, uint64_t epoch, const Viewer::OpenKey &key)
@@ -1318,28 +1314,18 @@ set_scale(Viewer &v, float scale)
 	request_render(v);
 }
 
+// Fits the image to the well along one axis, if it does not fit already.
 static void
-fit_width_if_larger(Viewer &v)
+fit_if_larger(Viewer &v, bool vertical)
 {
 	uint32_t disp_w = 0, disp_h = 0;
 	display_size(v, &disp_w, &disp_h);
-	const float content_w = well_w_px(v);
-	if (!disp_w || content_w <= 0.f)
+	const uint32_t disp = vertical ? disp_h : disp_w;
+	const float content = vertical ? well_h_px(v) : well_w_px(v);
+	if (!disp || content <= 0.f)
 		return;
-	if (ceil(double(disp_w) * double(v.scale_)) > double(content_w))
-		set_scale(v, content_w / float(disp_w));
-}
-
-static void
-fit_height_if_larger(Viewer &v)
-{
-	uint32_t disp_w = 0, disp_h = 0;
-	display_size(v, &disp_w, &disp_h);
-	const float content_h = well_h_px(v);
-	if (!disp_h || content_h <= 0.f)
-		return;
-	if (ceil(double(disp_h) * double(v.scale_)) > double(content_h))
-		set_scale(v, content_h / float(disp_h));
+	if (ceil(double(disp) * double(v.scale_)) > double(content))
+		set_scale(v, content / float(disp));
 }
 
 static void
@@ -1475,8 +1461,7 @@ show_view_context(const Viewer &v, Kit &kit)
 {
 	if (v.url_.isEmpty() || !v.image_)
 		return false;
-	if (v.page_ && v.page_->context)
-		v.page_->context->show(kit, v.url_, context_anchor(v), true);
+	v.page_->context->show(kit, v.url_, context_anchor(v), true);
 	return true;
 }
 
@@ -1644,16 +1629,9 @@ switch_page(Viewer &v, dawn::ImagePtr page)
 	if (!page || page.get() == v.current_.get())
 		return;
 
-	v.current_ = std::move(page);
-	v.frame_ = v.current_;
-	v.nonlinear_processing_ = !page_opaque(*v.current_);
-	v.image_width_ = v.frame_->nominal_width;
-	v.image_height_ = v.frame_->nominal_height;
-	v.orientation_ = orientation_or_0(v.current_->orientation);
+	v.orientation_ = orientation_or_0(page->orientation);
 	v.angle_ = 0;
-	upload_page(v);
-	v.remaining_loops_ = 0;
-	start_playback(v);
+	show_page(v, std::move(page));
 	fill_info_texts(v);
 	sync_info(v);
 	request_render(v);
@@ -1771,16 +1749,7 @@ write_export(const dawn::Image &page, const dawn::Image *frame,
 		: dawn::save_webp(page, frame,
 			  icc ? span<const uint8_t>(*icc) : span<const uint8_t>(), &data,
 			  &error);
-	if (!ok)
-		return QString::fromStdString(error.message);
-
-	QSaveFile file(path);
-	if (!file.open(QIODevice::WriteOnly) ||
-		file.write(reinterpret_cast<const char *>(data.data()),
-			qint64(data.size())) != qint64(data.size()) ||
-		!file.commit())
-		return file.errorString();
-	return {};
+	return ok ? write_file(path, data) : QString::fromStdString(error.message);
 }
 
 // What gets written is snapshotted here, not read back when the chooser is
@@ -1851,10 +1820,10 @@ apply_action(Viewer &v, Action action)
 		set_scale_to_fit(v, !v.scale_to_fit_);
 		return true;
 	case Action::FitWidth:
-		fit_width_if_larger(v);
+		fit_if_larger(v, false);
 		return true;
 	case Action::FitHeight:
-		fit_height_if_larger(v);
+		fit_if_larger(v, true);
 		return true;
 	case Action::Lock:
 		v.view_locked_ = !v.view_locked_;
@@ -1902,8 +1871,7 @@ apply_action(Viewer &v, Action action)
 		snap_view(v, SnapDir::Right);
 		return true;
 	case Action::Information:
-		if (v.page_)
-			v.page_->set_sidebar(v.kit_, !v.page_->sidebar->visible);
+		v.page_->set_sidebar(v.kit_, !v.page_->sidebar->visible);
 		request_render(v);
 		return true;
 	case Action::PageFirst:
@@ -1945,8 +1913,7 @@ apply_action(Viewer &v, Action action)
 		reload_open(v, false);
 		return true;
 	case Action::Trash:
-		if (!v.url_.isEmpty() && v.page_ && v.page_->host &&
-			v.page_->host->trash)
+		if (!v.url_.isEmpty())
 			v.page_->host->trash(v.url_);
 		return true;
 	default:
@@ -2087,8 +2054,7 @@ Viewer::open(const QUrl &url)
 	if (url == this->url_ && this->image_ && this->image_->nominal_width &&
 		this->image_->nominal_height) {
 		this->opening_ = false;
-		if (this->page_ && this->page_->host && this->page_->host->opened)
-			this->page_->host->opened();
+		this->page_->host->opened();
 		request_render(*this);
 		return;
 	}
@@ -2097,7 +2063,7 @@ Viewer::open(const QUrl &url)
 	this->basename_ = url_basename(url).toStdString();
 	sync_info(*this);
 	// Opening fits to the well, which the first layout has yet to make.
-	if (this->r.empty() && this->page_)
+	if (this->r.empty())
 		this->page_->arrange(
 			this->kit_, {0, 0, this->kit_.host_w_, this->kit_.host_h_});
 	start_open(*this, false);
@@ -2263,9 +2229,8 @@ Viewer::press(Kit &kit, float x, float y, Qt::MouseButton button)
 		const Rect dest = image_dest_rect(*this);
 		if (!dest.contains(x, y))
 			return false;
-		if (this->page_ && this->page_->context)
-			this->page_->context->show(
-				kit, this->url_, {int(x), int(y), 0, 0}, false);
+		this->page_->context->show(
+			kit, this->url_, {int(x), int(y), 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
@@ -2347,8 +2312,7 @@ Viewer::double_click(Kit &, float, float, Qt::MouseButton button, unsigned mods)
 		return false;
 
 	this->drag_ = Drag::None;
-	if (this->page_ && this->page_->actor.apply)
-		this->page_->actor.apply(Action::Fullscreen);
+	this->page_->actor.apply(Action::Fullscreen);
 	return true;
 }
 
