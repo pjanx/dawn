@@ -292,7 +292,6 @@ struct Widget {
 	// none.  An accessor rather than a field: the text it indexes into goes
 	// by a different name in every widget that draws one.
 	[[nodiscard]] virtual QChar mnemonic_key() const { return {}; }
-	virtual bool traps_focus() const { return false; }
 	// This, or the one focusable below this, that stands for the whole of it
 	// in the Tab order: a listing is one stop, and the arrows are what walk
 	// it.  Which one that is belongs to the widget -- a list answers with its
@@ -705,6 +704,13 @@ struct Popup : Panel {
 	// The focus of the layer underneath, given back when this closes.
 	Widget *covered = nullptr;
 	bool covered_ring = false;
+	bool restores_focus = false;
+	bool captures_keys = false;
+	// Focus loss dismisses transient popups; a dialog waits for Escape
+	// or its Close button.
+	bool transient = true;
+	// Whether a wash goes over everything below this popup.
+	bool dims = false;
 
 	Popup();
 	void open(Kit &kit, Button *anchor);
@@ -713,7 +719,6 @@ struct Popup : Panel {
 	// Content cleanup after removal from the stack, before settling focus.
 	// This hook must not open or close popups.
 	virtual void after_close(Kit &kit) {}
-	virtual bool restores_focus() const { return false; }
 	// Whether the tree contains this popup, its opener, or a widget that this
 	// popup uses.  If so, the removal of the tree also closes this popup.
 	virtual bool refers_to(const Widget *tree) const;
@@ -721,13 +726,6 @@ struct Popup : Panel {
 	// The half of place() that is not about x: drops the popup below its
 	// anchor, flips it above when it would not fit, and lays it out.
 	void place_below(Kit &kit, int x, Size size);
-	bool traps_focus() const override { return true; }
-	virtual bool captures_keys() const { return false; }
-	// Focus loss dismisses transient popups; a dialog waits for Escape
-	// or its Close button.
-	virtual bool transient() const { return true; }
-	// Whether a wash goes over everything below this popup.
-	virtual bool dims() const { return false; }
 	void paint(Kit &kit) const override;
 	bool key(Kit &kit, const Key &ev) override;
 };
@@ -753,8 +751,6 @@ struct Dialog : Popup {
 	void after_close(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
 	void place(Kit &kit) override;
-	bool transient() const override { return false; }
-	bool dims() const override { return true; }
 };
 
 // --- Menus -------------------------------------------------------------------
@@ -851,7 +847,6 @@ struct ComboPopup : MenuPopup {
 	Combo *combo = nullptr;
 
 	ComboPopup();
-	bool restores_focus() const override { return true; }
 	void place(Kit &kit) override;
 };
 

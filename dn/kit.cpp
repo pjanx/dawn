@@ -681,6 +681,16 @@ visible_rect(const Widget *w, Rect host)
 	return visible;
 }
 
+static Popup *
+owning_popup(Widget *w)
+{
+	for (Widget *p = w; p; p = p->parent_) {
+		if (auto *pop = dynamic_cast<Popup *>(p))
+			return pop;
+	}
+	return nullptr;
+}
+
 // --- Button ------------------------------------------------------------------
 
 static int
@@ -909,12 +919,8 @@ Button::activate(Kit &kit)
 	// Only as far as the nearest popup that stays put: a menu is done once
 	// it has been picked from, but a checkbox in a dialog is not a reason
 	// to dismiss the dialog under it.
-	for (Widget *w = this->parent_; w; w = w->parent_) {
-		if (w->traps_focus() && w->shown()) {
-			kit.close_transient_popups();
-			break;
-		}
-	}
+	if (Popup *p = owning_popup(this); p && p->shown())
+		kit.close_transient_popups();
 	return true;
 }
 
@@ -2654,16 +2660,6 @@ Popup::Popup()
 	this->visible = false;
 }
 
-static Popup *
-owning_popup(Widget *w)
-{
-	for (Widget *p = w; p; p = p->parent_) {
-		if (auto *pop = dynamic_cast<Popup *>(p))
-			return pop;
-	}
-	return nullptr;
-}
-
 void
 Popup::open(Kit &kit, Button *anchor)
 {
@@ -2758,6 +2754,8 @@ Dialog::Dialog()
 	this->pad_y = kDialogPad;
 	this->fill = Fill::Panel;
 	this->stroke = Stroke::All;
+	this->transient = false;
+	this->dims = true;
 
 	// The body absorbs whatever height place() clamps away; the footer
 	// keeps its own and stays put while the body scrolls under it.
@@ -3526,6 +3524,7 @@ ComboItem::paint(Kit &kit) const
 
 ComboPopup::ComboPopup()
 {
+	this->restores_focus = true;
 	auto c = make_unique<Column>();
 	this->col = c.get();
 	add_child(std::move(c), size_t(-1));
@@ -4328,7 +4327,7 @@ Kit::sync_focus()
 			return;
 
 		// A dialog keeps the keyboard for as long as it is on top.
-		if (p->transient())
+		if (p->transient)
 			set_focus(nullptr, false);
 		else
 			focus_first(p);
@@ -4464,11 +4463,6 @@ Kit::focus_scope() const
 {
 	if (Popup *p = top_popup(); p && p->shown())
 		return p;
-	for (Widget *w = this->focus_ ? this->focus_ : this->root_; w;
-		w = w->parent_) {
-		if (w->traps_focus() && w->shown())
-			return w;
-	}
 	return this->root_;
 }
 
@@ -4517,7 +4511,7 @@ Kit::key(const Key &ev)
 {
 	// FIXME: Not here.
 	arrange();
-	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys())
+	if (Popup *p = top_popup(); p && p->shown() && p->captures_keys)
 		return p->key(*this, ev);
 
 	if (ev.key == Qt::Key_Tab || ev.key == Qt::Key_Backtab) {
@@ -4926,7 +4920,7 @@ Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 	// dialog is an ordinary widget tree, and a list inside one wants it.
 	// hit() already confines this to whatever owns the pointer.
 	for (const Popup *p : this->popups_) {
-		if (p->transient())
+		if (p->transient)
 			return true;
 	}
 	for (Widget *w = hit(x, y); w; w = w->parent_) {
@@ -5119,7 +5113,7 @@ bool
 Kit::modal() const
 {
 	for (const Popup *p : this->popups_) {
-		if (!p->transient())
+		if (!p->transient)
 			return true;
 	}
 	return false;
@@ -5136,7 +5130,7 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 	// owns it: closing the dialog pops everything above it first.
 	if (!owner) {
 		for (Popup *q : this->popups_) {
-			if (q != &p && !q->transient())
+			if (q != &p && !q->transient)
 				owner = q;
 		}
 	}
@@ -5153,7 +5147,7 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 	p.invalidate_measure();
 
 	// A submenu continues the gesture; a list over a dialog starts one.
-	if (!top_popup() || !top_popup()->transient())
+	if (!top_popup() || !top_popup()->transient)
 		this->popup_at_ = chrono::steady_clock::now();
 
 	this->popups_.push_back(&p);
@@ -5188,7 +5182,7 @@ close_popup_tail(Kit &kit, size_t keep, bool keyboard)
 			scope = top;
 		// An opener in a retired tree is not in the scope.
 		if (focus_in_visible_tree(opener, scope) &&
-			(keyboard || p->restores_focus()))
+			(keyboard || p->restores_focus))
 			kit.set_focus(opener,
 				keyboard || ring || (opener == covered && p->covered_ring));
 		else if (!focus_in_visible_tree(kit.focus_, scope))
@@ -5216,7 +5210,7 @@ void
 Kit::close_transient_popups()
 {
 	size_t keep = this->popups_.size();
-	while (keep && this->popups_[keep - 1]->transient())
+	while (keep && this->popups_[keep - 1]->transient)
 		keep--;
 	close_popup_tail(*this, keep, false);
 }
@@ -5254,7 +5248,7 @@ input_popups(const Kit &kit)
 	if (stack.empty())
 		return stack;
 	size_t first = stack.size() - 1;
-	while (first && stack[first - 1]->transient())
+	while (first && stack[first - 1]->transient)
 		first--;
 	return stack.subspan(first);
 }
@@ -5265,7 +5259,7 @@ live_titlebar(const Kit &kit)
 {
 	if (!kit.root_ || !kit.root_->titlebar->shown())
 		return nullptr;
-	if (const Popup *p = kit.top_popup(); p && p->transient())
+	if (const Popup *p = kit.top_popup(); p && p->transient)
 		return nullptr;
 	return kit.root_->titlebar;
 }
@@ -5464,7 +5458,7 @@ paint(Kit &kit)
 	if (kit.root_)
 		kit.root_->paint(kit);
 	for (Popup *p : kit.popups_) {
-		if (p->dims())
+		if (p->dims)
 			kit.draw_fill(
 				kit.client(), col(kit.colours_[ColourInk], kWashAlpha));
 		p->paint(kit);

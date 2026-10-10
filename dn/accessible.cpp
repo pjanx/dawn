@@ -530,7 +530,7 @@ state_of(Window *window, const Widget *w)
 	// A menu traps focus as much as a dialog does, but only the one that
 	// stays put until it is answered is modal in the sense a client means.
 	if (auto *popup = dynamic_cast<const Popup *>(w);
-		popup && !popup->transient())
+		popup && !popup->transient)
 		state.modal = 1;
 
 	if (auto *button = dynamic_cast<const Button *>(w)) {

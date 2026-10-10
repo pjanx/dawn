@@ -1788,7 +1788,7 @@ Window::keyPressEvent(QKeyEvent *event)
 		this->alt_armed_ = false;
 	if (event->isAutoRepeat()) {
 		if (Popup *p = this->kit_.top_popup();
-			p && p->visible && p->captures_keys() && key != Qt::Key_Backspace)
+			p && p->visible && p->captures_keys && key != Qt::Key_Backspace)
 			return;
 	}
 	if (this->kit_.key({key, mods, event->text()})) {

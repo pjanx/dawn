@@ -729,6 +729,8 @@ modifier_only(int key)
 Hint::Hint()
 {
 	this->fill = Fill::None;
+	this->captures_keys = true;
+	this->dims = true;
 }
 
 void
@@ -1267,7 +1269,7 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 		kit.arrange();
 		const Popup *top = kit.top_popup();
 		if (was && kit.focus_ == was && !was->focusable() &&
-			!(top && top->transient()))
+			!(top && top->transient))
 			kit.cycle_focus_in(kit.focus_scope(), 1, true);
 	};
 	page->content->page_ = page.get();

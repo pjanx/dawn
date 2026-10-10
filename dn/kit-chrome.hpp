@@ -128,8 +128,6 @@ struct Hint : Popup {
 	bool refers_to(const Widget *tree) const override;
 	void place(Kit &kit) override;
 	void paint(Kit &kit) const override;
-	bool captures_keys() const override { return true; }
-	bool dims() const override { return true; }
 	bool key(Kit &kit, const Key &ev) override;
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
