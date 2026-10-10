@@ -49,70 +49,52 @@ class App;
 
 class Window final : public QWindow
 {
-
-	bool refresh_screen_profile(QScreen *target_screen);
-	void apply_screen_profile(QScreen *target_screen, bool force_reload);
-	std::vector<std::pair<const char *, QString>> about_details() const;
-	void request_render();
-	void render();
-	void focus_gained();
-	void focus_lost();
-	void begin_close();
-	void show_browser(bool select);
-	void go_back();
-	void go_forward();
-	void toggle_fullscreen();
-	void toggle_dark();
-	void open_viewer(const QUrl &url);
-	void sync_viewer_preloads();
-	void cancel_viewer_loads();
-	void launch_exiftool(const QUrl &url);
-	void trash_url(const QUrl &url);
-	void show_viewer_error(const QString &message);
-	void show_help();
-	int viewer_file_index(const QUrl &url) const;
-	void open_sibling(int delta);
-	void drop_frames();
-	void bind_host();
-	void set_mode(Mode m);
-	void sync_title();
-	void sync_host();
-	void reset_fonts();
-	void settle_layout();
-	bool handle_native_gesture(QNativeGestureEvent *event);
-	bool handle_touch(QTouchEvent *event);
-	bool handle_input_method(QInputMethodEvent *event);
-	bool handle_input_method_query(QInputMethodQueryEvent *event);
-	[[nodiscard]] QVariant input_method_value(
-		const TextTarget &target, Qt::InputMethodQuery q) const;
-	void sync_input_method();
-	[[nodiscard]] Extent pixel_size() const;
-
 	App *app_ = nullptr;
 	Renderer renderer_;
 	Kit kit_;
 	HostActions host_;
 	std::unique_ptr<Page> pages_[size_t(Mode::Count)];
+
+	// - - The faces held by pages_
+
 	Cropper *cropper_ = nullptr;
 	Commander *commander_ = nullptr;
 	Browser *browser_ = nullptr;
 	Viewer *viewer_ = nullptr;
 	Mode mode_ = Mode::View;
+	bool awaiting_view_ = false;
+
+	// - - The screen
+
 	ScreenState screen_state_;
-	VkSurfaceKHR surface_ = VK_NULL_HANDLE;
-	bool renderer_ready_ = false;
-	bool exposed_ = false;
-	bool resize_pending_ = false;
-	bool update_pending_ = false;
 	std::string screen_profile_label_;  // Its name and source
 	// What the screen profile last saw of Windows Advanced Color, against
 	// which activation tells a brightness change from a mode change.
 	AdvancedColor advanced_color_;
 	// macOS screen-parameter notifications, for as long as this lives.
 	std::shared_ptr<void> screen_parameters_;
-	bool awaiting_view_ = false;
+
+	// - - Presentation
+
 	QTimer ui_wake_;
 	QTimer present_retry_;
+	VkSurfaceKHR surface_ = VK_NULL_HANDLE;
+	bool renderer_ready_ = false;
+	bool exposed_ = false;
+	bool resize_pending_ = false;
+	bool update_pending_ = false;
+	Qt::CursorShape cursor_applied_ = Qt::ArrowCursor;
+
+	// - - The shell
+
+	bool csd_ = false;
+	bool system_grab_ = false;
+	bool fullscreen_from_maximized_ = false;
+
+	// - - Input
+
+	bool alt_armed_ = false;
+	bool ime_sync_pending_ = false;
 	bool pinch_active_ = false;
 	float pinch_last_zoom_ = 0;
 	float pinch_last_rot_ = 0;
@@ -125,12 +107,58 @@ class Window final : public QWindow
 	float touch_y0_ = 0;
 	float touch_x1_ = 0;
 	float touch_y1_ = 0;
-	bool alt_armed_ = false;
-	bool ime_sync_pending_ = false;
-	bool csd_ = false;
-	bool system_grab_ = false;
-	bool fullscreen_from_maximized_ = false;
-	Qt::CursorShape cursor_applied_ = Qt::ArrowCursor;
+
+	// - - Shell and lifetime
+
+	void bind_host();
+	void set_mode(Mode m);
+	void sync_title();
+	void sync_host();
+	void reset_fonts();
+	void settle_layout();
+	void focus_gained();
+	void focus_lost();
+	void toggle_fullscreen();
+	void toggle_dark();
+	void begin_close();
+
+	// - - The screen
+
+	bool refresh_screen_profile(QScreen *target_screen);
+	void apply_screen_profile(QScreen *target_screen, bool force_reload);
+	std::vector<std::pair<const char *, QString>> about_details() const;
+	[[nodiscard]] Extent pixel_size() const;
+
+	// - - Presentation
+
+	void request_render();
+	void render();
+	void drop_frames();
+
+	// - - Navigation and files
+
+	void show_browser(bool select);
+	void go_back();
+	void go_forward();
+	void open_viewer(const QUrl &url);
+	void sync_viewer_preloads();
+	void cancel_viewer_loads();
+	int viewer_file_index(const QUrl &url) const;
+	void open_sibling(int delta);
+	void show_viewer_error(const QString &message);
+	void launch_exiftool(const QUrl &url);
+	void trash_url(const QUrl &url);
+	void show_help();
+
+	// - - Input
+
+	bool handle_native_gesture(QNativeGestureEvent *event);
+	bool handle_touch(QTouchEvent *event);
+	bool handle_input_method(QInputMethodEvent *event);
+	bool handle_input_method_query(QInputMethodQueryEvent *event);
+	[[nodiscard]] QVariant input_method_value(
+		const TextTarget &target, Qt::InputMethodQuery q) const;
+	void sync_input_method();
 
 protected:
 	bool event(QEvent *event) override;

@@ -232,7 +232,10 @@ struct TextCache {
 // --- Widget ------------------------------------------------------------------
 
 struct Widget {
+	// FIXME: We shouldn't cache the Page in everything,
+	// that's dependency inversion.
 	Page *page_ = nullptr;
+
 	Rect r;
 	bool visible = true;
 	bool layout_visible = true;
@@ -960,10 +963,6 @@ enum class Change : uint8_t {
 };
 
 struct Kit {
-	// Widgets owed focus_lost(), delivered from the event loop once whatever
-	// moved the focus has returned: the callback may replace the very tree
-	// that is still dispatching.
-	std::vector<Widget *> lost_focus_;
 	using Packed = Sheet::Packed;
 	struct Glyph {
 		Packed rect;
@@ -971,8 +970,48 @@ struct Kit {
 		int bearing_y = 0;
 	};
 
+	// - - The host window, as it last told the kit
+
 	float dpr_ = 1.f;
 	int dpi_ = 96;  ///< Physical pixels per inch, for physical units
+	int host_w_ = 0;
+	int host_h_ = 0;
+	bool fullscreen_ = false;
+	bool maximized_ = false;
+	bool active_ = true;
+	bool csd_ = false;
+	bool csd_shadow_ = false;
+	bool dark_ = false;
+	ScreenState screen_state_;
+	Renderer *renderer_ = nullptr;
+
+	// - - What the kit asks of the host
+
+	std::function<void(std::function<void()>)> post;
+	std::function<void(int ms, std::function<void()>)> post_after;
+	std::function<void()> request_render;
+	// The focused Entry changed, or moved its caret: the platform has to
+	// re-query the input method state.
+	std::function<void()> input_method_changed;
+	// Semantic changes, for whoever exposes this tree to the outside.  A
+	// separate channel from the one above on purpose: the input method has
+	// its own needs, and must not have them overwritten by a second listener.
+	std::function<void(Change, Widget *)> notify;
+	std::function<void()> start_move;
+	std::function<void(Qt::Edges)> start_resize;
+	std::function<void(int, int)> start_menu;
+	// Hand a drag off to the platform: the window owns QDrag and its nested
+	// event loop, and takes the mime data with it.
+	std::function<void(QMimeData *, const QImage &)> start_drag;
+
+	// - - What a frame leaves for the host
+
+	Qt::CursorShape cursor_ = Qt::ArrowCursor;
+	// The time in milliseconds until the last paint becomes stale, or -1.
+	int wake_ms_ = -1;
+
+	// - - Drawing resources
+
 	bool inited_ = false;
 	Sheet atlas_;
 	uint64_t font_epoch_ = 0;
@@ -983,20 +1022,42 @@ struct Kit {
 	std::map<std::pair<std::string, int>, Packed> icons_;
 	std::unordered_map<uint64_t, Glyph> glyphs_;
 	OverlayList list_;
-
 	Colour colours_[ColourCount]{};
 
-	// Remembered from the last event.
-	int mouse_x_ = -1;
-	int mouse_y_ = -1;
-	unsigned mods_ = 0;
+	// - - The widget tree
 
+	// FIXME: This should be a widget.
+	// The main problem here is with the Page owning the Titlebar.
 	Page *root_ = nullptr;
+	// Non-null, unique, open popups: dialogs followed by transient popups.
+	// Closing an entry closes its entire tail, innermost first.
+	std::vector<Popup *> popups_;
+	std::chrono::steady_clock::time_point popup_at_{};
+	// Dialogs are opened, not owned by whoever opens them: one stacks over
+	// another, and the one underneath has to outlive the click that did it.
+	std::vector<std::unique_ptr<Dialog>> dialogs_;
+	// The kit keeps retired widgets until the event loop destroys them,
+	// because the click that retired a widget can still run inside it.
+	std::vector<std::unique_ptr<Widget>> retired_;
+
+	// - - Focus
+
 	Widget *focus_ = nullptr;
 	bool focus_visible_ = false;
 	// When focus_ last moved, so that a caret starts its blink lit.
 	std::chrono::steady_clock::time_point focus_at_{};
+	// Widgets owed focus_lost(), delivered from the event loop once whatever
+	// moved the focus has returned: the callback may replace the very tree
+	// that is still dispatching.
+	std::vector<Widget *> lost_focus_;
+
+	// - - The pointer, remembered from the last event
+
+	int mouse_x_ = -1;
+	int mouse_y_ = -1;
+	unsigned mods_ = 0;
 	Widget *hot_ = nullptr;
+	Widget *pressed_ = nullptr;
 	bool left_down_ = false;
 	// Touch synthesizes mouse events; gestures that only make sense for a
 	// real pointer ask this before arming.
@@ -1008,44 +1069,10 @@ struct Kit {
 	bool touch_panned_ = false;
 	// Initial hit, even if no widget accepted the press.
 	Widget *touch_target_ = nullptr;
-	Widget *pressed_ = nullptr;
-	// Non-null, unique, open popups: dialogs followed by transient popups.
-	// Closing an entry closes its entire tail, innermost first.
-	std::vector<Popup *> popups_;
-	// Dialogs are opened, not owned by whoever opens them: one stacks over
-	// another, and the one underneath has to outlive the click that did it.
-	std::vector<std::unique_ptr<Dialog>> dialogs_;
-	// The kit keeps retired widgets until the event loop destroys them,
-	// because the click that retired a widget can still run inside it.
-	std::vector<std::unique_ptr<Widget>> retired_;
-	int host_w_ = 0;
-	int host_h_ = 0;
-	Renderer *renderer_ = nullptr;
-	std::function<void(std::function<void()>)> post;
-	std::function<void(int ms, std::function<void()>)> post_after;
-	std::function<void()> request_render;
-	// The focused Entry changed, or moved its caret: the platform has to
-	// re-query the input method state.
-	std::function<void()> input_method_changed;
-	// Semantic changes, for whoever exposes this tree to the outside.  A
-	// separate channel from the one above on purpose: the input method has
-	// its own needs, and must not have them overwritten by a second listener.
-	std::function<void(Change, Widget *)> notify;
-	bool fullscreen_ = false;
-	bool maximized_ = false;
-	bool active_ = true;
-	bool csd_ = false;
-	bool csd_shadow_ = false;
-	bool dark_ = false;
-	Qt::CursorShape cursor_ = Qt::ArrowCursor;
-	std::function<void()> start_move;
-	std::function<void(Qt::Edges)> start_resize;
-	std::function<void(int, int)> start_menu;
-	// Hand a drag off to the platform: the window owns QDrag and its nested
-	// event loop, and takes the mime data with it.
-	std::function<void(QMimeData *, const QImage &)> start_drag;
+
+	// - - The tooltip
+
 	std::chrono::steady_clock::time_point hover_at_{};
-	std::chrono::steady_clock::time_point popup_at_{};
 	int hover_x_ = 0;
 	int hover_y_ = 0;
 	std::unique_ptr<Panel> tooltip_panel_;
@@ -1053,9 +1080,7 @@ struct Kit {
 	QString tooltip_accel_;
 	const Widget *tooltip_anchor_ = nullptr;  // set for keyboard-focus tips
 
-	ScreenState screen_state_;
-	// The time in milliseconds until the last paint becomes stale, or -1.
-	int wake_ms_ = -1;
+	// - - Lifetime, and changes to the host
 
 	Kit() = default;
 	~Kit() { destroy(); }
@@ -1065,28 +1090,49 @@ struct Kit {
 
 	void init(float dpr);
 	void destroy();
+	// Whether the ratio changed, to which the host answers with reset_fonts().
+	bool set_host(float width_pts, float height_pts, float dpr);
+	void reset_fonts();
+	void bake_colours(const ScreenState &state);
+
+	// - - Input from the host, in points
+
+	bool key(const Key &ev);
+	bool input_method(const QString &commit, const QString &preedit, int caret);
+	[[nodiscard]] bool text_target(TextTarget &out) const;
+	bool mouse_press(
+		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
+	bool mouse_release(float x_pts, float y_pts, Qt::MouseButton button);
+	// End the widget interaction without a click when the release is lost.
+	void cancel_press();
+	bool mouse_motion(float x_pts, float y_pts);
+	bool mouse_scroll(float x_pts, float y_pts, int delta);
+	bool pan(float x_pts, float y_pts, float dx, float dy);
+	bool gesture(
+		float x_pts, float y_pts, float scale_factor, float angle_delta);
+	bool mouse_double_click(
+		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
+
+	// - - Frames
+
+	// Arranges the root and the popups, and finds the widget below the
+	// pointer.  The result stays until something changes, so each function
+	// that reads geometry calls this first.
+	void arrange();
+	// One frame of the widget tree: arrange it, settle the cursor and the
+	// tooltip, and paint it.
+	void frame_ui();
+	// Paint sets the time when it must draw again.
+	void wake_after(int ms);
+
+	// - - The widget tree, in device pixels
+
+	void set_root(Page *root);
 	// Removes the widget from the tree permanently.  If the focus is in the
 	// widget, the focus goes to its parent.  The slot of the owner is empty
 	// after this call.
 	void retire(std::unique_ptr<Widget> &owner);
-	void close_referring(const Widget *tree);
-	void sync_focus();
-	void set_root(Page *root);
-	// A fresh dialog, owned here until it closes.  Filled in by whichever
-	// dialog_*() builds it, and reaped once it is done.
-	Dialog &new_dialog();
-	// Whether anything the user has to answer is up.
-	[[nodiscard]] bool modal() const;
-	void open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor);
-	void close_popup(Popup *p, bool keyboard);
-	void close_popups();
-	void close_transient_popups();
-	void close_above(const Popup *p);
-	[[nodiscard]] bool popup_open() const;
-	[[nodiscard]] Popup *top_popup() const;
-	[[nodiscard]] bool in_input_scope(const Widget *w) const;
 	Widget *hit(int x, int y);
-
 	/// What part of the host area can be used for widgets.
 	/// Under client-side decorations, the frame may be inset by the shadow.
 	[[nodiscard]] Rect frame() const;
@@ -1094,6 +1140,26 @@ struct Kit {
 	[[nodiscard]] Rect client() const;
 	bool start_resize_at(int x, int y);
 
+	// - - Popups and dialogs
+
+	void open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor);
+	void close_popup(Popup *p, bool keyboard);
+	void close_popups();
+	void close_transient_popups();
+	void close_above(const Popup *p);
+	void close_referring(const Widget *tree);
+	[[nodiscard]] bool popup_open() const;
+	[[nodiscard]] Popup *top_popup() const;
+	[[nodiscard]] bool in_input_scope(const Widget *w) const;
+	// A fresh dialog, owned here until it closes.  Filled in by whichever
+	// dialog_*() builds it, and reaped once it is done.
+	Dialog &new_dialog();
+	/// Returns whether the page is blocked by a dialog.
+	[[nodiscard]] bool modal() const;
+
+	// - - Focus
+
+	void sync_focus();
 	// Moving focus says in the same breath whether to draw it: a ring means
 	// the keyboard put focus here.  Anything that changes who has focus goes
 	// through here, so the two can never drift into a ring that outlives its
@@ -1116,58 +1182,8 @@ struct Kit {
 	Widget *focus_scope() const;
 	bool cycle_focus_in(Widget *scope, int dir, bool wrap);
 	void focus_first(Widget *scope);
-	bool key(const Key &ev);
-	bool input_method(const QString &commit, const QString &preedit, int caret);
-	[[nodiscard]] bool text_target(TextTarget &out) const;
-	bool mouse_press(
-		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
-	bool mouse_release(float x_pts, float y_pts, Qt::MouseButton button);
-	// End the widget interaction without a click when the release is lost.
-	void cancel_press();
-	bool mouse_motion(float x_pts, float y_pts);
-	bool mouse_scroll(float x_pts, float y_pts, int delta);
-	bool pan(float x_pts, float y_pts, float dx, float dy);
-	bool gesture(
-		float x_pts, float y_pts, float scale_factor, float angle_delta);
-	bool mouse_double_click(
-		float x_pts, float y_pts, Qt::MouseButton button, unsigned mods);
-	// Whether the ratio changed, to which the host answers with reset_fonts().
-	bool set_host(float width_pts, float height_pts, float dpr);
-	void reset_fonts();
-	void bake_colours(const ScreenState &state);
-	void draw_icon(int x, int y, int size, const char *name, Colour colour);
-	// Coverage copies scalar alpha; other bitmaps are sRGB premultiplied.
-	Packed pack_bitmap(const QImage &image, bool coverage);
-	void emit_layout(float x, float y, const TextCache::Text &cached,
-		Colour colour, int mnemonic);
-	void emit_text(
-		float x, float y, const QString &text, Colour colour, bool bold);
-	void draw_glow(Rect w, Colour col);
-	// An inactive window halves whatever alpha its ink already had.
-	[[nodiscard]] float ink_alpha() const { return this->active_ ? 1.f : 0.75f; }
-	void focus_ring(Rect w);   // 1pt inset ring
-	void draw_shadow(Rect w);  // popup/tooltip drop shadow
-	// Rect-shaped wrappers over the corner-based draw list.
-	void draw_fill(Rect w, Colour col);
-	void draw_border(Rect w, Colour col, int thickness);
-	void clip_to(Rect w);
-	void clip_pop();
-	// Paint sets the time when it must draw again.
-	void wake_after(int ms);
-	// Arranges the root and the popups, and finds the widget below the
-	// pointer.  The result stays until something changes, so each function
-	// that reads geometry calls this first.
-	void arrange();
-	// One frame of the widget tree: arrange it, settle the cursor and the
-	// tooltip, and paint it.
-	void frame_ui();
 
-	// Native layout metrics in device pixels. Logical extents round outward
-	// when handed to widget layout; glyph bearings remain independent.
-	[[nodiscard]] int text_width(const QString &text, bool bold) const;
-	[[nodiscard]] int text_height(
-		const QString &text, int wrap_px, bool bold) const;
-	[[nodiscard]] int line_height(bool bold) const;
+	// - - Units and metrics
 
 	/// Convert points to device pixels.
 	[[nodiscard]] int px(float pts) const
@@ -1187,6 +1203,36 @@ struct Kit {
 	// One icon square, in device pixels: the size draw_icon() rasterises at,
 	// and the size the quad that samples it is drawn at.
 	[[nodiscard]] int icon_px() const { return std::max(px(kIconPts), 16); }
+
+	// Native layout metrics in device pixels. Logical extents round outward
+	// when handed to widget layout; glyph bearings remain independent.
+	[[nodiscard]] int text_width(const QString &text, bool bold) const;
+	[[nodiscard]] int text_height(
+		const QString &text, int wrap_px, bool bold) const;
+	[[nodiscard]] int line_height(bool bold) const;
+
+	// - - Drawing
+
+	void draw_icon(int x, int y, int size, const char *name, Colour colour);
+	// Coverage copies scalar alpha; other bitmaps are sRGB premultiplied.
+	Packed pack_bitmap(const QImage &image, bool coverage);
+	void emit_layout(float x, float y, const TextCache::Text &cached,
+		Colour colour, int mnemonic);
+	void emit_text(
+		float x, float y, const QString &text, Colour colour, bool bold);
+	void draw_glow(Rect w, Colour col);
+	void focus_ring(Rect w);   // 1pt inset ring
+	void draw_shadow(Rect w);  // popup/tooltip drop shadow
+	// Rect-shaped wrappers over the corner-based draw list.
+	void draw_fill(Rect w, Colour col);
+	void draw_border(Rect w, Colour col, int thickness);
+	void clip_to(Rect w);
+	void clip_pop();
+	// An inactive window halves whatever alpha its ink already had.
+	[[nodiscard]] float ink_alpha() const
+	{
+		return this->active_ ? 1.f : 0.75f;
+	}
 };
 
 }  // namespace dn

@@ -42,13 +42,13 @@ struct HostActions {
 
 // The menu that a right click on a file opens: what this application knows
 // how to do with it, plus whatever the desktop can open it with.
-struct ContextMenu : Menu {
+class ContextMenu : public Menu {
+	void fill_items(Kit &kit, const QUrl &url);
+
+public:
 	const HostActions *host = nullptr;
 
 	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
-
-private:
-	void fill_items(Kit &kit, const QUrl &url);
 };
 
 // The thumbnail sizes the browser has, smallest first.  One table: what the
@@ -78,62 +78,12 @@ struct SettingsDraft {
 	std::vector<Loader> loaders;
 };
 
-/// Hidden until shown, and hidden again by its own dismiss button.
-std::unique_ptr<Panel> make_banner(Label **out);
-
-/// A translated label, which may carry a mnemonic.
-std::unique_ptr<Label> dialog_label(const char *text, bool bold, bool wrap);
-/// A button for a dialog's action row.
-std::unique_ptr<Button> dialog_action(
-	const char *text, std::function<void(Kit &)> on_click);
-std::unique_ptr<Button> dialog_dismiss_action(Dialog &dialog, const char *text);
-/// A labelled row for a GutterColumn.  The buddy is passed rather than taken
-/// off the control: a cell that holds more than one widget still has exactly
-/// one that the mnemonic means.
-std::unique_ptr<GutterRow> dialog_field(
-	const char *label, std::unique_ptr<Widget> control, Widget *buddy);
-
-/// One field and a button.  on_commit returns an empty string once it is
-/// done, or the message to show while staying open.
-void dialog_entry(Kit &kit, const char *title, const char *affirm,
-	const QString &initial,
-	std::function<QString(Kit &kit, const QString &)> on_commit);
-
-/// Stacks over whatever is already up, and asks.
-void dialog_question(Kit &kit, const QString &message, const char *affirm,
-	std::function<void(Kit &)> on_confirm);
-
-/// Details pair a label marked with N_() with a value shown as it is.
-void dialog_about(
-	Kit &kit, std::span<const std::pair<const char *, QString>> details);
-void dialog_shortcuts(
-	Kit &kit, std::span<const MenuNode> tree, std::span<const Action> keys);
-void dialog_location(Kit &kit, const QString &initial,
-	std::function<void(const QString &)> on_open);
-
-// Takes the draft by value: the dialog edits its own copy, and Save is the
-// only way anything gets back out.
-void dialog_settings(Kit &kit, SettingsDraft draft,
-	std::function<void(const SettingsDraft &)> on_save);
-
 struct Sidebar : Panel {
 	explicit Sidebar(std::unique_ptr<Widget> child);
 	bool key(Kit &kit, const Key &ev) override;
 };
 
-struct Hint : Popup {
-	Hint();
-	void open(Kit &kit);
-	void after_close(Kit &kit) override;
-	bool refers_to(const Widget *tree) const override;
-	void place(Kit &kit) override;
-	void paint(Kit &kit) const override;
-	bool key(Kit &kit, const Key &ev) override;
-	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
-	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
-	bool motion(Kit &kit, int x, int y) override;
-
-private:
+class Hint : public Popup {
 	struct Target {
 		QString label;
 		Rect at{};
@@ -150,6 +100,18 @@ private:
 	void layout_chips(const Kit &kit);
 	[[nodiscard]] bool matches(const Target &t) const;
 	void fire(Kit &kit, Target t);
+
+public:
+	Hint();
+	void open(Kit &kit);
+	void after_close(Kit &kit) override;
+	bool refers_to(const Widget *tree) const override;
+	void place(Kit &kit) override;
+	void paint(Kit &kit) const override;
+	bool key(Kit &kit, const Key &ev) override;
+	bool press(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool release(Kit &kit, int x, int y, Qt::MouseButton button) override;
+	bool motion(Kit &kit, int x, int y) override;
 };
 
 struct Page : Composite {
@@ -188,12 +150,15 @@ struct Page : Composite {
 };
 
 enum class Slot : uint8_t { Left, Middle, Right };
+
 struct ToolbarSpec {
 	Slot slot;
 	Action action;
 };
+
 std::unique_ptr<Toolbar> make_toolbar(std::span<const ToolbarSpec> items,
 	const std::function<std::unique_ptr<Widget>(const ToolbarSpec &)> &custom);
+
 struct PageSetup {
 	Mode mode = Mode::View;
 	std::unique_ptr<Widget> content;
@@ -202,12 +167,57 @@ struct PageSetup {
 	Page::Side side{};
 	Actor actor;
 };
+
+/// Hidden until shown, and hidden again by its own dismiss button.
+std::unique_ptr<Panel> make_banner(Label **out);
+
 std::unique_ptr<Page> make_page(
 	Kit &kit, const HostActions &host, PageSetup setup);
+
+// --- Utilities ---------------------------------------------------------------
+
 std::shared_ptr<dawn::Profile> profile_from_screen(
 	dawn::Cmm &cmm, const std::shared_ptr<const ScreenColour> &colour);
-
 Actor chain_actor(const HostActions &host, std::function<bool(Action)> apply,
 	std::function<bool(Action)> enabled, std::function<bool(Action)> checked);
+
+// --- Dialogs -----------------------------------------------------------------
+
+/// A translated label, which may carry a mnemonic.
+std::unique_ptr<Label> dialog_label(const char *text, bool bold, bool wrap);
+
+/// A button for a dialog's action row.
+std::unique_ptr<Button> dialog_action(
+	const char *text, std::function<void(Kit &)> on_click);
+std::unique_ptr<Button> dialog_dismiss_action(Dialog &dialog, const char *text);
+
+/// A labelled row for a GutterColumn.  The buddy is passed rather than taken
+/// off the control: a cell that holds more than one widget still has exactly
+/// one that the mnemonic means.
+std::unique_ptr<GutterRow> dialog_field(
+	const char *label, std::unique_ptr<Widget> control, Widget *buddy);
+
+/// One field and a button.  on_commit returns an empty string once it is
+/// done, or the message to show while staying open.
+void dialog_entry(Kit &kit, const char *title, const char *affirm,
+	const QString &initial,
+	std::function<QString(Kit &kit, const QString &)> on_commit);
+
+/// Stacks over whatever is already up, and asks.
+void dialog_question(Kit &kit, const QString &message, const char *affirm,
+	std::function<void(Kit &)> on_confirm);
+
+/// Details pair a label marked with N_() with a value shown as it is.
+void dialog_about(
+	Kit &kit, std::span<const std::pair<const char *, QString>> details);
+void dialog_shortcuts(
+	Kit &kit, std::span<const MenuNode> tree, std::span<const Action> keys);
+void dialog_location(Kit &kit, const QString &initial,
+	std::function<void(const QString &)> on_open);
+
+// Takes the draft by value: the dialog edits its own copy, and Save is the
+// only way anything gets back out.
+void dialog_settings(Kit &kit, SettingsDraft draft,
+	std::function<void(const SettingsDraft &)> on_save);
 
 }  // namespace dn
