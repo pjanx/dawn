@@ -554,9 +554,6 @@ struct Container : Composite {
 	float pad_x = 0;
 	float pad_y = 0;
 
-	// Retain the packing result independently of the parent's position.
-	std::vector<Size> sizes_;
-
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
@@ -602,12 +599,7 @@ struct GutterColumn : Column {
 // Packs sideways like a Row, but breaks onto a new line when the next child
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
-class Flow : public Container {
-	// Child allocations relative to the padded content origin.
-	std::vector<Rect> cells_;
-	Size wrap(Kit &kit, int inner_w);
-
-public:
+struct Flow : Container {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 };

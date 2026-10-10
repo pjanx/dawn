@@ -2008,18 +2008,19 @@ share_slack(int slack, int growers, int i)
 	return slack / growers + (i < slack % growers ? 1 : 0);
 }
 
-Size
-Container::measure_content(Kit &kit, int max_w, int max_h)
+// The size of the container, and what each child gets of it.
+static Size
+pack(Kit &kit, const Container &c, int max_w, int max_h, vector<Size> &sizes)
 {
-	const bool hz = this->horizontal;
-	this->sizes_.assign(this->kids.size(), {});
-	const int pad_x = kit.px(this->pad_x), pad_y = kit.px(this->pad_y);
+	const bool hz = c.horizontal;
+	sizes.assign(c.kids.size(), {});
+	const int pad_x = kit.px(c.pad_x), pad_y = kit.px(c.pad_y);
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
 	const int ih = max_h < kUnlim ? max(0, max_h - pad_y * 2) : kUnlim;
 	int growers = 0, vis = 0;
 	int used = 0, cross = 0;
-	for (size_t i = 0; i < this->kids.size(); i++) {
-		Widget *k = this->kids[i].get();
+	for (size_t i = 0; i < c.kids.size(); i++) {
+		Widget *k = c.kids[i].get();
 		if (!k || !k->shown())
 			continue;
 		if (k->grow) {
@@ -2028,12 +2029,12 @@ Container::measure_content(Kit &kit, int max_w, int max_h)
 			continue;
 		}
 		const Size size = k->measure(kit, hz ? kUnlim : iw, hz ? ih : kUnlim);
-		this->sizes_[i] = size;
+		sizes[i] = size;
 		used += hz ? size.w : size.h;
 		cross = max(cross, hz ? size.h : size.w);
 		vis++;
 	}
-	const int gaps = kit.px(this->gap) * max(0, vis - 1);
+	const int gaps = kit.px(c.gap) * max(0, vis - 1);
 	if (growers) {
 		// An unbounded offer is a question about the natural size, not an
 		// allocation: there is no slack to hand out, and each grower then
@@ -2042,8 +2043,8 @@ Container::measure_content(Kit &kit, int max_w, int max_h)
 			? max(0, (hz ? iw : ih) - used - gaps)
 			: 0;
 		int grower = 0;
-		for (size_t i = 0; i < this->kids.size(); i++) {
-			Widget *k = this->kids[i].get();
+		for (size_t i = 0; i < c.kids.size(); i++) {
+			Widget *k = c.kids[i].get();
 			if (!k || !k->shown() || !k->grow)
 				continue;
 			const int got = (hz ? max_w : max_h) < kUnlim
@@ -2052,13 +2053,20 @@ Container::measure_content(Kit &kit, int max_w, int max_h)
 			const Size size = k->measure(kit, hz ? got : iw, hz ? ih : got);
 			used += hz ? size.w : size.h;
 			cross = max(cross, hz ? size.h : size.w);
-			this->sizes_[i] = hz ? Size{got, size.h} : Size{size.w, got};
+			sizes[i] = hz ? Size{got, size.h} : Size{size.w, got};
 		}
 	}
 	used += gaps;
 	return {
-		this->grow && max_w < kUnlim ? max_w : pad_x * 2 + (hz ? used : cross),
+		c.grow && max_w < kUnlim ? max_w : pad_x * 2 + (hz ? used : cross),
 		pad_y * 2 + (hz ? cross : used)};
+}
+
+Size
+Container::measure_content(Kit &kit, int max_w, int max_h)
+{
+	vector<Size> sizes;
+	return pack(kit, *this, max_w, max_h, sizes);
 }
 
 void
@@ -2069,8 +2077,8 @@ Container::arrange_content(Kit &kit, Rect alloc)
 	const int gap = kit.px(this->gap), pad_y = kit.px(this->pad_y);
 	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
 	const int imain = hz ? in.w : in.h;
-	(void) Container::measure_content(kit, alloc.w, alloc.h);
-	const auto &sizes = this->sizes_;
+	vector<Size> sizes;
+	(void) pack(kit, *this, alloc.w, alloc.h, sizes);
 	int packed = 0;
 	int nv = 0;
 	for (size_t i = 0; i < this->kids.size(); i++) {
@@ -2188,11 +2196,13 @@ GutterRow::arrange_content(Kit &kit, Rect alloc)
 
 // --- Flow --------------------------------------------------------------------
 
-Size
-Flow::wrap(Kit &kit, int inner_w)
+// The size of the lines, and the cells of the children, relative to the
+// padded content origin.
+static Size
+wrap(Kit &kit, const Flow &f, int inner_w, vector<Rect> &cells)
 {
-	const int gap = kit.px(this->gap);
-	this->cells_.assign(this->kids.size(), {});
+	const int gap = kit.px(f.gap);
+	cells.assign(f.kids.size(), {});
 
 	int widest = 0, y = 0;
 	size_t first = 0;
@@ -2205,10 +2215,10 @@ Flow::wrap(Kit &kit, int inner_w)
 		const int slack = inner_w < kUnlim ? max(0, inner_w - line_w) : 0;
 		int x = 0, got = 0;
 		for (size_t i = first; i < end; i++) {
-			Widget *k = this->kids[i].get();
+			Widget *k = f.kids[i].get();
 			if (!k || !k->shown())
 				continue;
-			Rect &cell = this->cells_[i];
+			Rect &cell = cells[i];
 			if (k->grow)
 				cell.w += share_slack(slack, growers, got++);
 			if (is_sep(k))
@@ -2223,9 +2233,9 @@ Flow::wrap(Kit &kit, int inner_w)
 		line_w = line_h = kept = growers = 0;
 	};
 
-	const size_t n = this->kids.size();
+	const size_t n = f.kids.size();
 	for (size_t i = 0; i < n; i++) {
-		Widget *k = this->kids[i].get();
+		Widget *k = f.kids[i].get();
 		if (!k || !k->shown())
 			continue;
 		// A separator infers its orientation from the offer, and here it
@@ -2241,7 +2251,7 @@ Flow::wrap(Kit &kit, int inner_w)
 		// vanishing into a break that can never be satisfied.
 		if (kept && line_w + need > inner_w)
 			flush(i);
-		this->cells_[i] = {0, 0, size.w, size.h};
+		cells[i] = {0, 0, size.w, size.h};
 		line_w += kept ? need : size.w;
 		line_h = max(line_h, size.h);
 		growers += k->grow;
@@ -2260,7 +2270,8 @@ Flow::measure_content(Kit &kit, int max_w, int)
 	const int iw = max_w < kUnlim ? max(0, max_w - pad_x * 2) : kUnlim;
 	// Only as wide as the wrap actually came out: this popup is anchored by
 	// its right edge, so claiming the whole offer would shove it off-screen.
-	const Size used = wrap(kit, iw);
+	vector<Rect> cells;
+	const Size used = wrap(kit, *this, iw, cells);
 	// The height offered is not a limit to honour: Panel::arrange re-measures
 	// its child against its own inner height, which is itself derived from
 	// this answer.  Clamping here would cut the lower lines out of r, and
@@ -2272,12 +2283,13 @@ void
 Flow::arrange_content(Kit &kit, Rect alloc)
 {
 	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
-	(void) wrap(kit, in.w);
+	vector<Rect> cells;
+	(void) wrap(kit, *this, in.w, cells);
 	for (size_t i = 0; i < this->kids.size(); i++) {
 		Widget *k = this->kids[i].get();
 		if (!k || !k->shown())
 			continue;
-		const Rect cell = this->cells_[i];
+		const Rect cell = cells[i];
 		k->arrange(kit, {in.x + cell.x, in.y + cell.y, cell.w, cell.h});
 	}
 }
