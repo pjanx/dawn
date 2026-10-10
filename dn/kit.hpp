@@ -177,6 +177,14 @@ struct Key {
 	QString text;
 };
 
+inline bool
+context_key(int key, unsigned mods)
+{
+	if (key == Qt::Key_Menu)
+		return true;
+	return key == Qt::Key_F10 && mods == unsigned(Qt::ShiftModifier);
+}
+
 // What an input method needs to know about the widget it is composing into.
 // Everything the platform asks for is derived from these; a widget that
 // fills one in is by that fact a text target.
@@ -193,7 +201,7 @@ struct TextTarget {
 	Rect caret_rect;
 };
 
-// --- Kit ---------------------------------------------------------------------
+// --- Atlas -------------------------------------------------------------------
 
 // Shaping belongs to the text's owner, independently of its allocation or
 // glyph atlas.  Each get() is one use.  The cache keeps the entries of at
@@ -221,6 +229,8 @@ struct TextCache {
 	std::vector<TextRect> range_rects(
 		const Kit &kit, const QString &text, int start, int length, bool bold);
 };
+
+// --- Widget ------------------------------------------------------------------
 
 struct Widget {
 	Page *page_ = nullptr;
@@ -357,6 +367,8 @@ struct Widget {
 // Whether the widget or one of its ancestors is the tree.
 [[nodiscard]] bool within(const Widget *w, const Widget *tree);
 
+// --- Composite ---------------------------------------------------------------
+
 struct Composite : Widget {
 	std::vector<std::unique_ptr<Widget>> kids;
 
@@ -370,6 +382,8 @@ struct Composite : Widget {
 		return this->kids;
 	}
 };
+
+// --- Button ------------------------------------------------------------------
 
 struct Button : Widget {
 	Action action = Action::None;
@@ -412,6 +426,8 @@ struct Button : Widget {
 	bool activate(Kit &kit) override;
 };
 
+// --- Checkbox ----------------------------------------------------------------
+
 struct Checkbox : Button {
 	bool checked = false;
 	bool wrap = false;
@@ -420,6 +436,8 @@ struct Checkbox : Button {
 	void paint(Kit &kit) const override;
 	bool activate(Kit &kit) override;
 };
+
+// --- Label -------------------------------------------------------------------
 
 struct Label : Widget {
 	QString text;
@@ -446,6 +464,8 @@ struct Label : Widget {
 	QString tip(const Kit &) const override { return this->tip_text; }
 	QString tip_key() const override { return this->tip_accel; }
 };
+
+// --- Entry -------------------------------------------------------------------
 
 // A single-line text field.  The selection runs from the anchor to the caret,
 // and is empty when they meet; every committed edit collapses it.  It never
@@ -526,10 +546,20 @@ struct Entry : Widget {
 	[[nodiscard]] TextRect painted_caret(const Kit &kit) const;
 };
 
+// --- Sep ---------------------------------------------------------------------
+
 struct Sep : Widget {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void paint(Kit &kit) const override;
 };
+
+inline bool
+is_sep(const Widget *w)
+{
+	return dynamic_cast<const Sep *>(w);
+}
+
+// --- Splitter ----------------------------------------------------------------
 
 // A hairline of its own between two panes; the mouse may grab it from
 // a comfortable distance to either side.
@@ -547,6 +577,8 @@ struct Splitter : Widget {
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
+// --- Container ---------------------------------------------------------------
+
 struct Container : Composite {
 	bool horizontal = false;
 	Align align = Align::Start;
@@ -558,26 +590,14 @@ struct Container : Composite {
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
-inline bool
-is_sep(const Widget *w)
-{
-	return dynamic_cast<const Sep *>(w);
-}
-
-inline bool
-context_key(int key, unsigned mods)
-{
-	if (key == Qt::Key_Menu)
-		return true;
-	return key == Qt::Key_F10 && mods == unsigned(Qt::ShiftModifier);
-}
-
 struct Row : Container {
 	Row() { this->horizontal = true; }
 };
 
 struct Column : Container {
 };
+
+// --- Gutter ------------------------------------------------------------------
 
 // A row whose first cell is sized by the GutterColumn that owns it, so that
 // its second cell starts where its peers' do.  A cell is one widget: nest a
@@ -596,6 +616,8 @@ struct GutterColumn : Column {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 };
 
+// --- Flow --------------------------------------------------------------------
+
 // Packs sideways like a Row, but breaks onto a new line when the next child
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
@@ -603,6 +625,8 @@ struct Flow : Container {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
+
+// --- Scroll ------------------------------------------------------------------
 
 class Scroll {
 	std::chrono::steady_clock::time_point shown_at_{};
@@ -619,8 +643,8 @@ public:
 	bool dragging = false;
 	// Point constants resolved against the current scale, by set_metrics():
 	// the bar is drawn and hit-tested far from any Kit.
-	int bar_w = 8;
-	int step = 32;
+	int bar_w = 0;
+	int step = 0;
 
 	[[nodiscard]] float max_offset() const;
 	void clamp();
@@ -656,6 +680,8 @@ struct ScrollColumn : Column {
 	bool key(Kit &kit, const Key &ev) override;
 };
 
+// --- Panel -------------------------------------------------------------------
+
 // Decorated single-child wrapper. Use a Column to stack children.
 // Subclasses with custom layout override measure_content/arrange_content.
 struct Panel : Composite {
@@ -668,6 +694,8 @@ struct Panel : Composite {
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
 };
+
+// --- Popup -------------------------------------------------------------------
 
 // A panel that floats above the widget tree, on Kit's popup stack.
 // Menu behaviour is not here but in MenuPopup below.
@@ -705,6 +733,8 @@ struct Popup : Panel {
 	bool key(Kit &kit, const Key &ev) override;
 };
 
+// --- Dialog ------------------------------------------------------------------
+
 // Dismissed by Escape or a footer button; the caller fills the body and may
 // replace the default Close action.
 struct Dialog : Popup {
@@ -727,6 +757,8 @@ struct Dialog : Popup {
 	bool transient() const override { return false; }
 	bool dims() const override { return true; }
 };
+
+// --- Menus -------------------------------------------------------------------
 
 struct MenuItem;
 
@@ -800,6 +832,8 @@ struct MenuItem : Button {
 	bool activate(Kit &kit) override;
 };
 
+// --- Combo -------------------------------------------------------------------
+
 struct Combo;
 
 // One row of a Combo's list: a menu item without the menu's furniture.
@@ -844,6 +878,8 @@ struct Combo : Button {
 	[[nodiscard]] QString current_text() const;
 };
 
+// --- ToolbarSlot -------------------------------------------------------------
+
 // One end of a toolbar. What does not fit goes behind the "more" button.
 class ToolbarSlot : public Row {
 	// On a toolbar item layout_visible means "I am in somebody's kids right
@@ -880,6 +916,8 @@ public:
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
+// --- Toolbar -----------------------------------------------------------------
+
 class Toolbar : public Panel {
 	void place_slots(Kit &kit);
 
@@ -896,6 +934,8 @@ public:
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 };
+
+// --- Titlebar ----------------------------------------------------------------
 
 /// Part of the client-side decoration: shown only while Kit::csd_ is on.
 struct Titlebar : Panel {
@@ -917,6 +957,8 @@ struct Titlebar : Panel {
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
 };
+
+// --- Kit ---------------------------------------------------------------------
 
 /// Why the host is being told about a widget.  These are the distinctions an
 /// accessibility adapter has to make, and no more: the kit does not know what
@@ -1060,22 +1102,15 @@ struct Kit {
 	void close_above(const Popup *p);
 	[[nodiscard]] bool popup_open() const;
 	[[nodiscard]] Popup *top_popup() const;
-	// Popups accepting input: the transient tail, or the topmost dialog.
-	[[nodiscard]] std::span<Popup *const> input_popups() const;
 	[[nodiscard]] bool in_input_scope(const Widget *w) const;
 	Widget *hit(float x, float y);
-	bool track_popups(float x, float y);
 
 	/// What part of the host area can be used for widgets.
 	/// Under client-side decorations, the frame may be inset by the shadow.
 	[[nodiscard]] Rect frame() const;
 	/// The frame minus any titlebar.
 	[[nodiscard]] Rect client() const;
-	/// Returns the titlebar if shown and responsive.
-	[[nodiscard]] Titlebar *live_titlebar() const;
-	[[nodiscard]] Qt::Edges resize_edges(float x, float y) const;
 	bool start_resize_at(float x, float y);
-	void sync_cursor();
 
 	// Moving focus says in the same breath whether to draw it: a ring means
 	// the keyboard put focus here.  Anything that changes who has focus goes
@@ -1102,19 +1137,13 @@ struct Kit {
 	bool key(const Key &ev);
 	bool input_method(const QString &commit, const QString &preedit, int caret);
 	[[nodiscard]] bool text_target(TextTarget &out) const;
-	// Convert an event position to pixels, and remember it as the pointer's.
-	void pointer_at(float &x, float &y);
 	bool mouse_press(float x, float y, Qt::MouseButton button, unsigned mods);
 	bool mouse_release(float x, float y, Qt::MouseButton button);
 	// End the widget interaction without a click when the release is lost.
 	void cancel_press();
 	bool mouse_motion(float x, float y);
-	// Scroll from the initial touch target when widget motion is unhandled.
-	bool touch_pan(float x, float y);
 	bool mouse_scroll(float x, float y, int delta);
 	bool pan(float x, float y, float dx, float dy);
-	// Bubble pan from a fixed target; coordinates and deltas are device pixels.
-	bool pan_at(Widget *from, float x, float y, float dx, float dy);
 	bool gesture(float x, float y, float scale_factor, float angle_delta);
 	bool mouse_double_click(
 		float x, float y, Qt::MouseButton button, unsigned mods);
@@ -1139,8 +1168,6 @@ struct Kit {
 	void draw_border(Rect w, Colour col, int thickness);
 	void clip_to(Rect w);
 	void clip_pop();
-	void tooltip(const Widget *hot);
-	void hide_tooltip();
 	// Paint sets the time when it must draw again.
 	void wake_after(int ms);
 	// Arranges the root and the popups, and finds the widget below the
@@ -1150,7 +1177,6 @@ struct Kit {
 	// One frame of the widget tree: arrange it, settle the cursor and the
 	// tooltip, and paint it.
 	void frame_ui();
-	void paint();
 
 	// Native layout metrics in device pixels. Logical extents round outward
 	// when handed to widget layout; glyph bearings remain independent.

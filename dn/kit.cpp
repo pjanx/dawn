@@ -4580,21 +4580,150 @@ Kit::input_method(const QString &commit, const QString &preedit, int caret)
 	return false;
 }
 
-// Platform events arrive in logical points; the widget tree is device pixels.
-// Convert once, here.
-void
-Kit::pointer_at(float &x, float &y)
+// Take the tooltip down and restart its delay from wherever the pointer
+// stands: whatever ends up under it has to earn the tooltip afresh.  Leaving
+// the clock be would have paint find an already overdue tip, and show it on
+// the very next frame, without any hover at all.
+static void
+hide_tooltip(Kit &kit)
 {
-	x = float(px(x));
-	y = float(px(y));
-	this->mouse_x_ = x;
-	this->mouse_y_ = y;
+	kit.tooltip_text_.clear();
+	kit.tooltip_accel_.clear();
+	kit.tooltip_anchor_ = nullptr;
+	kit.hover_at_ = chrono::steady_clock::now();
+	kit.hover_x_ = kit.mouse_x_;
+	kit.hover_y_ = kit.mouse_y_;
+}
+
+static void
+tooltip(Kit &kit, const Widget *hot)
+{
+	if (is_popup_opener(kit, hot))
+		hot = nullptr;
+	if (kit.focus_visible_ && kit.focus_ && !kit.focus_->tip(kit).isEmpty() &&
+		kit.focus_->tip_anchor().w > 0) {
+		kit.tooltip_text_ = kit.focus_->tip(kit);
+		kit.tooltip_accel_ = kit.focus_->tip_key();
+		kit.tooltip_anchor_ = kit.focus_;
+		return;
+	}
+	kit.tooltip_anchor_ = nullptr;
+	const QString tip = hot ? hot->tip(kit) : QString();
+	const QString accel = hot ? hot->tip_key() : QString();
+	const float dx = kit.mouse_x_ - kit.hover_x_;
+	const float dy = kit.mouse_y_ - kit.hover_y_;
+	const float slop = float(kit.px(kTooltipMovePts));
+	const bool moved = dx * dx + dy * dy > slop * slop;
+	if (tip != kit.tooltip_text_ || accel != kit.tooltip_accel_ || moved) {
+		kit.tooltip_text_ = tip;
+		kit.tooltip_accel_ = accel;
+		kit.hover_at_ = chrono::steady_clock::now();
+		kit.hover_x_ = kit.mouse_x_;
+		kit.hover_y_ = kit.mouse_y_;
+	}
+}
+
+// Do this whenever there is a tip.  Otherwise, paint can find the delay over
+// before the panel has a layout for it.
+static void
+prepare_tooltip(Kit &kit)
+{
+	if (kit.tooltip_text_.isEmpty())
+		return;
+
+	if (!kit.tooltip_panel_) {
+		auto panel = make_unique<Panel>();
+		panel->pad_x = kTooltipPadX;
+		panel->pad_y = kFramePadY;
+		panel->fill = Fill::Tooltip;
+		panel->stroke = Stroke::All;
+		auto row = make_unique<Row>();
+		row->gap = 8.f;
+		row->add_child(make_unique<Label>(), size_t(-1));
+		auto accel = make_unique<Label>();
+		accel->dim = true;
+		row->add_child(std::move(accel), size_t(-1));
+		panel->add_child(std::move(row), size_t(-1));
+		kit.tooltip_panel_ = std::move(panel);
+	}
+	Panel &tipn = *kit.tooltip_panel_;
+	Widget *row = tipn.child(0);
+	auto *label = (Label *) row->child(0);
+	auto *accel = (Label *) row->child(1);
+	label->set_text(kit.tooltip_text_);
+	// The panel is in no tree.  A new text already invalidates the label.
+	accel->set_text(kit.tooltip_accel_);
+	accel->visible = !kit.tooltip_accel_.isEmpty();
+	const Size size = tipn.measure(kit, kUnlim, kUnlim);
+	const int tw = size.w, th = size.h;
+	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
+
+	int tx = int(kit.mouse_x_) + kit.px(16.f);
+	int ty = int(kit.mouse_y_) + kit.px(8.f);
+	Rect a{};
+	if (kit.tooltip_anchor_)
+		a = kit.tooltip_anchor_->tip_anchor();
+	if (a.w > 0) {
+		tx = a.x;
+		ty = a.y + a.h + step;
+		if (ty + th + glow > kit.host_h_)
+			ty = max(0, a.y - th - step);
+	} else if (ty + th + glow > kit.host_h_)
+		ty = max(0, int(kit.mouse_y_) - th - step);
+	if (tx + tw + glow > kit.host_w_)
+		tx = max(0, kit.host_w_ - tw - glow);
+
+	tipn.arrange(kit, {tx, ty, tw, th});
+}
+
+// The tip of the keyboard focus shows immediately.  The tip below the pointer
+// shows after a delay.
+static void
+paint_tooltip(Kit &kit)
+{
+	if (kit.tooltip_text_.isEmpty() || !kit.tooltip_panel_)
+		return;
+	if (!kit.tooltip_anchor_) {
+		const float elapsed = chrono::duration<float, milli>(
+			chrono::steady_clock::now() - kit.hover_at_)
+								  .count();
+		if (elapsed < kTooltipDelayMs) {
+			kit.wake_after(int(ceil(double(kTooltipDelayMs - elapsed))));
+			return;
+		}
+	}
+	kit.draw_shadow(kit.tooltip_panel_->r);
+	kit.tooltip_panel_->paint(kit);
+}
+
+// Platform events arrive in logical points; the widget tree is device pixels.
+// Convert once, here, and remember the position as the pointer's.
+static void
+pointer_at(Kit &kit, float &x, float &y)
+{
+	x = float(kit.px(x));
+	y = float(kit.px(y));
+	kit.mouse_x_ = x;
+	kit.mouse_y_ = y;
+}
+
+// Let the open popups, innermost first, move their selection to kit.hot_.
+static bool
+track_popups(Kit &kit, float x, float y)
+{
+	for (size_t i = kit.popups_.size(); i > 0;) {
+		Popup *p = kit.popups_[--i];
+		if (p->motion(kit, x, y))
+			return true;
+		i = min(i, kit.popups_.size());
+	}
+	return false;
 }
 
 bool
 Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	this->mods_ = mods;
@@ -4607,7 +4736,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 
 	// A press tracks the pointer just like a hover does, so that what a menu
 	// shows as selected is what the release will activate.
-	track_popups(x, y);
+	track_popups(*this, x, y);
 	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (w->press(*this, x, y, button))
 			return true;
@@ -4626,7 +4755,7 @@ Kit::mouse_press(float x, float y, Qt::MouseButton button, unsigned mods)
 bool
 Kit::mouse_release(float x, float y, Qt::MouseButton button)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	if (button == Qt::LeftButton)
@@ -4666,10 +4795,54 @@ Kit::cancel_press()
 	}
 }
 
+// Bubble pan from a fixed target; coordinates and deltas are device pixels.
+static bool
+pan_at(Kit &kit, Widget *from, float x, float y, float dx, float dy)
+{
+	if (dx == 0.f && dy == 0.f)
+		return false;
+	if (kit.popup_open() && !owning_popup(from))
+		return true;
+	for (Widget *w = from; w; w = w->parent_) {
+		if (w->pan(kit, x, y, dx, dy))
+			return true;
+	}
+	return false;
+}
+
+// Scroll from the initial touch target when widget motion is unhandled.
+static bool
+touch_pan(Kit &kit, float x, float y)
+{
+	if (!kit.touch_press_ || !kit.left_down_)
+		return false;
+
+	// Keep the press position until the threshold, preserving the first delta.
+	const float dx = x - kit.touch_x_;
+	const float dy = y - kit.touch_y_;
+	if (!kit.touch_panned_) {
+		const float slop = float(kit.px(kDragPts));
+		if (dx * dx + dy * dy < slop * slop)
+			return false;
+	}
+
+	// Suppress the click only if a pan handler consumes the motion.
+	if (!pan_at(kit, kit.touch_target_, x, y, dx, dy))
+		return false;
+	if (!kit.touch_panned_) {
+		kit.touch_panned_ = true;
+		hide_tooltip(kit);
+	}
+
+	kit.touch_x_ = x;
+	kit.touch_y_ = y;
+	return true;
+}
+
 bool
 Kit::mouse_motion(float x, float y)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	for (Widget *w = this->hot_; w; w = w->parent_) {
@@ -4682,64 +4855,24 @@ Kit::mouse_motion(float x, float y)
 	// dragged -- keeps it.
 	if (this->pressed_) {
 		if (!press_targets_popup(*this, this->pressed_))
-			return this->pressed_->motion(*this, x, y) || touch_pan(x, y);
+			return this->pressed_->motion(*this, x, y) ||
+				touch_pan(*this, x, y);
 		if (this->pressed_->motion(*this, x, y))
 			return true;
 	}
-	if (track_popups(x, y))
+	if (track_popups(*this, x, y))
 		return true;
 	for (Widget *w = this->hot_; w; w = w->parent_) {
 		if (w->motion(*this, x, y))
 			return true;
 	}
-	return touch_pan(x, y);
-}
-
-bool
-Kit::touch_pan(float x, float y)
-{
-	if (!this->touch_press_ || !this->left_down_)
-		return false;
-
-	// Keep the press position until the threshold, preserving the first delta.
-	const float dx = x - this->touch_x_;
-	const float dy = y - this->touch_y_;
-	if (!this->touch_panned_) {
-		const float slop = float(px(kDragPts));
-		if (dx * dx + dy * dy < slop * slop)
-			return false;
-	}
-
-	// Suppress the click only if a pan handler consumes the motion.
-	if (!pan_at(this->touch_target_, x, y, dx, dy))
-		return false;
-	if (!this->touch_panned_) {
-		this->touch_panned_ = true;
-		hide_tooltip();
-	}
-
-	this->touch_x_ = x;
-	this->touch_y_ = y;
-	return true;
-}
-
-// Let the open popups, innermost first, move their selection to kit.hot_.
-bool
-Kit::track_popups(float x, float y)
-{
-	for (size_t i = this->popups_.size(); i > 0;) {
-		Popup *p = this->popups_[--i];
-		if (p->motion(*this, x, y))
-			return true;
-		i = min(i, this->popups_.size());
-	}
-	return false;
+	return touch_pan(*this, x, y);
 }
 
 bool
 Kit::mouse_scroll(float x, float y, int delta)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	if (!delta)
@@ -4760,32 +4893,18 @@ bool
 Kit::pan(float x, float y, float dx, float dy)
 {
 	// The deltas scale the same way as the position does.
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	dx = float(px(dx));
 	dy = float(px(dy));
-	return pan_at(hit(x, y), x, y, dx, dy);
-}
-
-bool
-Kit::pan_at(Widget *from, float x, float y, float dx, float dy)
-{
-	if (dx == 0.f && dy == 0.f)
-		return false;
-	if (popup_open() && !owning_popup(from))
-		return true;
-	for (Widget *w = from; w; w = w->parent_) {
-		if (w->pan(*this, x, y, dx, dy))
-			return true;
-	}
-	return false;
+	return pan_at(*this, hit(x, y), x, y, dx, dy);
 }
 
 bool
 Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	Widget *h = hit(x, y);
@@ -4801,7 +4920,7 @@ Kit::gesture(float x, float y, float scale_factor, float angle_delta)
 bool
 Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 {
-	pointer_at(x, y);
+	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
 	// A menu must not take the second click of a pair for another pick; a
@@ -4852,7 +4971,7 @@ Kit::destroy()
 	set_focus(nullptr, false);
 	this->hot_ = nullptr;
 	this->pressed_ = nullptr;
-	hide_tooltip();
+	hide_tooltip(*this);
 }
 
 // The focus goes to the parent without a Focus notification.  The next sweep
@@ -4901,7 +5020,7 @@ Kit::retire(unique_ptr<Widget> &owner)
 	forget(this->touch_target_, nullptr);
 	const bool forgot_hot = forget(this->hot_, nullptr);
 	if (forget(this->tooltip_anchor_, nullptr) || forgot_hot)
-		hide_tooltip();
+		hide_tooltip(*this);
 
 	// A popup outlives the frame it was opened from, but not the widget it
 	// hangs off: left on the stack, it would act on a widget that is gone.
@@ -4984,123 +5103,6 @@ Kit::bake_colours(const ScreenState &state)
 	}
 }
 
-// Take the tooltip down and restart its delay from wherever the pointer
-// stands: whatever ends up under it has to earn the tooltip afresh.  Leaving
-// the clock be would have paint find an already overdue tip, and show it on
-// the very next frame, without any hover at all.
-void
-Kit::hide_tooltip()
-{
-	this->tooltip_text_.clear();
-	this->tooltip_accel_.clear();
-	this->tooltip_anchor_ = nullptr;
-	this->hover_at_ = chrono::steady_clock::now();
-	this->hover_x_ = this->mouse_x_;
-	this->hover_y_ = this->mouse_y_;
-}
-
-void
-Kit::tooltip(const Widget *hot)
-{
-	if (is_popup_opener(*this, hot))
-		hot = nullptr;
-	if (this->focus_visible_ && this->focus_ &&
-		!this->focus_->tip(*this).isEmpty() &&
-		this->focus_->tip_anchor().w > 0) {
-		this->tooltip_text_ = this->focus_->tip(*this);
-		this->tooltip_accel_ = this->focus_->tip_key();
-		this->tooltip_anchor_ = this->focus_;
-		return;
-	}
-	this->tooltip_anchor_ = nullptr;
-	const QString tip = hot ? hot->tip(*this) : QString();
-	const QString accel = hot ? hot->tip_key() : QString();
-	const float dx = this->mouse_x_ - this->hover_x_;
-	const float dy = this->mouse_y_ - this->hover_y_;
-	const float slop = float(px(kTooltipMovePts));
-	const bool moved = dx * dx + dy * dy > slop * slop;
-	if (tip != this->tooltip_text_ || accel != this->tooltip_accel_ || moved) {
-		this->tooltip_text_ = tip;
-		this->tooltip_accel_ = accel;
-		this->hover_at_ = chrono::steady_clock::now();
-		this->hover_x_ = this->mouse_x_;
-		this->hover_y_ = this->mouse_y_;
-	}
-}
-
-// Do this whenever there is a tip.  Otherwise, paint can find the delay over
-// before the panel has a layout for it.
-static void
-prepare_tooltip(Kit &kit)
-{
-	if (kit.tooltip_text_.isEmpty())
-		return;
-
-	if (!kit.tooltip_panel_) {
-		auto panel = make_unique<Panel>();
-		panel->pad_x = kTooltipPadX;
-		panel->pad_y = kFramePadY;
-		panel->fill = Fill::Tooltip;
-		panel->stroke = Stroke::All;
-		auto row = make_unique<Row>();
-		row->gap = 8.f;
-		row->add_child(make_unique<Label>(), size_t(-1));
-		auto accel = make_unique<Label>();
-		accel->dim = true;
-		row->add_child(std::move(accel), size_t(-1));
-		panel->add_child(std::move(row), size_t(-1));
-		kit.tooltip_panel_ = std::move(panel);
-	}
-	Panel &tipn = *kit.tooltip_panel_;
-	Widget *row = tipn.child(0);
-	auto *label = (Label *) row->child(0);
-	auto *accel = (Label *) row->child(1);
-	label->set_text(kit.tooltip_text_);
-	// The panel is in no tree.  A new text already invalidates the label.
-	accel->set_text(kit.tooltip_accel_);
-	accel->visible = !kit.tooltip_accel_.isEmpty();
-	const Size size = tipn.measure(kit, kUnlim, kUnlim);
-	const int tw = size.w, th = size.h;
-	const int glow = kit.px(kGlowPts), step = kit.px(4.f);
-
-	int tx = int(kit.mouse_x_) + kit.px(16.f);
-	int ty = int(kit.mouse_y_) + kit.px(8.f);
-	Rect a{};
-	if (kit.tooltip_anchor_)
-		a = kit.tooltip_anchor_->tip_anchor();
-	if (a.w > 0) {
-		tx = a.x;
-		ty = a.y + a.h + step;
-		if (ty + th + glow > kit.host_h_)
-			ty = max(0, a.y - th - step);
-	} else if (ty + th + glow > kit.host_h_)
-		ty = max(0, int(kit.mouse_y_) - th - step);
-	if (tx + tw + glow > kit.host_w_)
-		tx = max(0, kit.host_w_ - tw - glow);
-
-	tipn.arrange(kit, {tx, ty, tw, th});
-}
-
-// The tip of the keyboard focus shows immediately.  The tip below the pointer
-// shows after a delay.
-static void
-paint_tooltip(Kit &kit)
-{
-	if (kit.tooltip_text_.isEmpty() || !kit.tooltip_panel_)
-		return;
-	if (!kit.tooltip_anchor_) {
-		const float elapsed = chrono::duration<float, milli>(
-			chrono::steady_clock::now() - kit.hover_at_)
-								  .count();
-		if (elapsed < kTooltipDelayMs) {
-			kit.wake_after(int(ceil(double(kTooltipDelayMs - elapsed))));
-			return;
-		}
-	}
-	kit.draw_shadow(kit.tooltip_panel_->r);
-	kit.tooltip_panel_->paint(kit);
-}
-
 void
 Kit::wake_after(int ms)
 {
@@ -5157,7 +5159,7 @@ Kit::open_popup(Popup &p, Popup *owner, Button *opener, Rect anchor)
 
 	this->popups_.push_back(&p);
 	sync_focus();
-	hide_tooltip();
+	hide_tooltip(*this);
 }
 
 static void
@@ -5245,10 +5247,11 @@ Kit::top_popup() const
 	return this->popups_.empty() ? nullptr : this->popups_.back();
 }
 
-span<Popup *const>
-Kit::input_popups() const
+// Popups that accept input: the transient tail, or the topmost dialog.
+static span<Popup *const>
+input_popups(const Kit &kit)
 {
-	const span<Popup *const> stack = this->popups_;
+	const span<Popup *const> stack = kit.popups_;
 	if (stack.empty())
 		return stack;
 	size_t first = stack.size() - 1;
@@ -5257,23 +5260,34 @@ Kit::input_popups() const
 	return stack.subspan(first);
 }
 
+// The titlebar if it is shown and responsive.
+static Titlebar *
+live_titlebar(const Kit &kit)
+{
+	if (!kit.root_ || !kit.root_->titlebar->shown())
+		return nullptr;
+	if (const Popup *p = kit.top_popup(); p && p->transient())
+		return nullptr;
+	return kit.root_->titlebar;
+}
+
 bool
 Kit::in_input_scope(const Widget *w) const
 {
 	if (this->popups_.empty())
 		return true;
-	for (const Popup *p : input_popups()) {
+	for (const Popup *p : input_popups(*this)) {
 		if (within(w, p) || (p->opener == w && w && w->shown()))
 			return true;
 	}
-	const Titlebar *t = live_titlebar();
+	const Titlebar *t = live_titlebar(*this);
 	return t && within(w, t);
 }
 
 Widget *
 Kit::hit(float x, float y)
 {
-	const auto popups = input_popups();
+	const auto popups = input_popups(*this);
 	for (auto it = popups.rbegin(); it != popups.rend(); it++) {
 		if (Widget *h = (*it)->hit_at(x, y))
 			return h;
@@ -5284,7 +5298,7 @@ Kit::hit(float x, float y)
 		if (opener && opener->shown() && opener->r.contains(x, y))
 			return opener;
 	}
-	if (Titlebar *t = live_titlebar()) {
+	if (Titlebar *t = live_titlebar(*this)) {
 		if (Widget *h = t->hit_at(x, y))
 			return h;
 	}
@@ -5319,35 +5333,25 @@ Kit::client() const
 	return f;
 }
 
-Titlebar *
-Kit::live_titlebar() const
-{
-	if (!this->root_ || !this->root_->titlebar->shown())
-		return nullptr;
-	if (const Popup *p = top_popup(); p && p->transient())
-		return nullptr;
-	return this->root_->titlebar;
-}
-
 // The resize band straddles the frame's edge, and reaches outside it into
 // the shadow, which is the only thing a maximised window has none of.
-Qt::Edges
-Kit::resize_edges(float x, float y) const
+static Qt::Edges
+resize_edges(const Kit &kit, float x, float y)
 {
-	if (!this->csd_ || this->fullscreen_ || this->maximized_)
+	if (!kit.csd_ || kit.fullscreen_ || kit.maximized_)
 		return {};
 
 	// Already in pixels: the Kit input entry points converted them.
 	const int ix = int(x), iy = int(y);
-	if (ix < 0 || iy < 0 || ix >= this->host_w_ || iy >= this->host_h_)
+	if (ix < 0 || iy < 0 || ix >= kit.host_w_ || iy >= kit.host_h_)
 		return {};
 
-	const Rect f = frame();
+	const Rect f = kit.frame();
 	const bool inside = f.contains(float(ix), float(iy));
-	if (this->csd_shadow_ ? inside : !inside)
+	if (kit.csd_shadow_ ? inside : !inside)
 		return {};
 
-	const int band = px(kResizeBorderPts);
+	const int band = kit.px(kResizeBorderPts);
 	Qt::Edges e;
 	if (ix < f.x + band)
 		e |= Qt::LeftEdge;
@@ -5365,7 +5369,7 @@ Kit::start_resize_at(float x, float y)
 {
 	// FIXME: Not here.
 	arrange();
-	const Qt::Edges edges = resize_edges(x, y);
+	const Qt::Edges edges = resize_edges(*this, x, y);
 	if (!edges || !this->start_resize)
 		return false;
 
@@ -5377,21 +5381,21 @@ Kit::start_resize_at(float x, float y)
 	return true;
 }
 
-void
-Kit::sync_cursor()
+static void
+sync_cursor(Kit &kit)
 {
-	this->cursor_ = Qt::ArrowCursor;
-	if (dynamic_cast<Button *>(this->hot_))
+	kit.cursor_ = Qt::ArrowCursor;
+	if (dynamic_cast<Button *>(kit.hot_))
 		return;
-	if (const Qt::Edges edges = resize_edges(this->mouse_x_, this->mouse_y_)) {
-		this->cursor_ = resize_cursor(edges);
+	if (const Qt::Edges edges = resize_edges(kit, kit.mouse_x_, kit.mouse_y_)) {
+		kit.cursor_ = resize_cursor(edges);
 		return;
 	}
 	// A child that does not care lets its parent decide.
-	for (Widget *w = this->hot_; w; w = w->parent_) {
+	for (Widget *w = kit.hot_; w; w = w->parent_) {
 		if (const Qt::CursorShape shape = w->cursor();
 			shape != Qt::ArrowCursor) {
-			this->cursor_ = shape;
+			kit.cursor_ = shape;
 			return;
 		}
 	}
@@ -5444,6 +5448,36 @@ Kit::set_host(float width_pts, float height_pts, float dpr)
 	return changed;
 }
 
+static void
+paint(Kit &kit)
+{
+	kit.wake_ms_ = -1;
+	const float white_u = float(kit.white_.x) + 0.5f;
+	const float white_v = float(kit.white_.y) + 0.5f;
+	kit.list_.begin(
+		kit.host_w_, kit.host_h_, {white_u, white_v, white_u, white_v});
+	if (kit.csd_shadow_) {
+		// TODO(p): Consider if we don't want to add another 1px border.
+		const Rect f = kit.frame();
+		if (!f.empty())
+			kit.draw_glow(f, {0, 0, 0, kit.active_ ? 0.25f : 0.125f});
+	}
+	if (kit.root_)
+		kit.root_->paint(kit);
+	for (Popup *p : kit.popups_) {
+		if (p->dims())
+			kit.draw_fill(
+				kit.client(), col(kit.colours_[ColourInk], kWashAlpha));
+		p->paint(kit);
+	}
+	paint_tooltip(kit);
+	kit.list_.end();
+	if (kit.renderer_ && !kit.atlas_.dirty.empty() &&
+		kit.renderer_->overlay.upload_font(kit.atlas_.pixels.data(),
+			kit.atlas_.w, kit.atlas_.h, kit.atlas_.dirty))
+		kit.atlas_.dirty = {};
+}
+
 void
 Kit::frame_ui()
 {
@@ -5452,39 +5486,10 @@ Kit::frame_ui()
 
 	// Only the frame uses the cursor and the tooltip.
 	arrange();
-	sync_cursor();
-	tooltip(this->hot_);
+	sync_cursor(*this);
+	tooltip(*this, this->hot_);
 	prepare_tooltip(*this);
-	paint();
-}
-
-void
-Kit::paint()
-{
-	this->wake_ms_ = -1;
-	const float white_u = float(this->white_.x) + 0.5f;
-	const float white_v = float(this->white_.y) + 0.5f;
-	this->list_.begin(
-		this->host_w_, this->host_h_, {white_u, white_v, white_u, white_v});
-	if (this->csd_shadow_) {
-		// TODO(p): Consider if we don't want to add another 1px border.
-		const Rect f = frame();
-		if (!f.empty())
-			draw_glow(f, {0, 0, 0, this->active_ ? 0.25f : 0.125f});
-	}
-	if (this->root_)
-		this->root_->paint(*this);
-	for (Popup *p : this->popups_) {
-		if (p->dims())
-			draw_fill(client(), col(this->colours_[ColourInk], kWashAlpha));
-		p->paint(*this);
-	}
-	paint_tooltip(*this);
-	this->list_.end();
-	if (this->renderer_ && !this->atlas_.dirty.empty() &&
-		this->renderer_->overlay.upload_font(this->atlas_.pixels.data(),
-			this->atlas_.w, this->atlas_.h, this->atlas_.dirty))
-		this->atlas_.dirty = {};
+	paint(*this);
 }
 
 }  // namespace dn
