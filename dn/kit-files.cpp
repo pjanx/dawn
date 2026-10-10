@@ -228,7 +228,7 @@ FileRow::activate(Kit &kit)
 }
 
 bool
-FileRow::double_click(Kit &kit, float, float, Qt::MouseButton button, unsigned)
+FileRow::double_click(Kit &kit, float, float, Qt::MouseButton button)
 {
 	return button == Qt::LeftButton && activate(kit);
 }

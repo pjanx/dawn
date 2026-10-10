@@ -164,8 +164,8 @@ struct Viewer : Widget {
 	bool gesture(Kit &kit, float x, float y, float scale_factor,
 		float angle_delta) override;
 	bool key(Kit &kit, const Key &ev) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
+	bool double_click(
+		Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
 std::unique_ptr<Page> make_viewer_page(

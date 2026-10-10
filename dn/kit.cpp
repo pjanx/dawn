@@ -1683,8 +1683,7 @@ Entry::press(Kit &kit, float x, float y, Qt::MouseButton button)
 // Selects the segment between two word boundaries that the pointer is over:
 // a word, or whatever separates two of them.
 bool
-Entry::double_click(
-	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
+Entry::double_click(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton || !this->preedit.isEmpty())
 		return false;
@@ -4102,8 +4101,7 @@ Titlebar::motion(Kit &kit, float x, float y)
 }
 
 bool
-Titlebar::double_click(
-	Kit &kit, float x, float y, Qt::MouseButton button, unsigned)
+Titlebar::double_click(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;
@@ -4923,6 +4921,7 @@ Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 	pointer_at(*this, x, y);
 	// FIXME: Not here.
 	arrange();
+	this->mods_ = mods;
 	// A menu must not take the second click of a pair for another pick; a
 	// dialog is an ordinary widget tree, and a list inside one wants it.
 	// hit() already confines this to whatever owns the pointer.
@@ -4931,7 +4930,7 @@ Kit::mouse_double_click(float x, float y, Qt::MouseButton button, unsigned mods)
 			return true;
 	}
 	for (Widget *w = hit(x, y); w; w = w->parent_) {
-		if (w->double_click(*this, x, y, button, mods))
+		if (w->double_click(*this, x, y, button))
 			return true;
 	}
 	return false;

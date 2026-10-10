@@ -2305,9 +2305,9 @@ Viewer::motion(Kit &, float x, float y)
 }
 
 bool
-Viewer::double_click(Kit &, float, float, Qt::MouseButton button, unsigned mods)
+Viewer::double_click(Kit &kit, float, float, Qt::MouseButton button)
 {
-	if (button != Qt::LeftButton || mods)
+	if (button != Qt::LeftButton || kit.mods_)
 		return false;
 
 	this->drag_ = Drag::None;

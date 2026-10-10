@@ -236,8 +236,8 @@ struct FileCell : Widget {
 	[[nodiscard]] Rect tip_anchor() const override { return {}; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
+	bool double_click(
+		Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
 };
 

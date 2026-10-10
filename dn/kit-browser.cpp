@@ -2977,8 +2977,7 @@ FileCell::release(Kit &kit, float x, float y, Qt::MouseButton button)
 }
 
 bool
-FileCell::double_click(
-	Kit &, float x, float y, Qt::MouseButton button, unsigned)
+FileCell::double_click(Kit &, float x, float y, Qt::MouseButton button)
 {
 	if (button != Qt::LeftButton)
 		return false;

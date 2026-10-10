@@ -316,8 +316,7 @@ struct Widget {
 	{
 		return false;
 	}
-	virtual bool double_click(
-		Kit &, float x, float y, Qt::MouseButton, unsigned mods)
+	virtual bool double_click(Kit &, float x, float y, Qt::MouseButton)
 	{
 		return false;
 	}
@@ -504,8 +503,8 @@ struct Entry : Widget {
 	void focus_lost(Kit &kit) override;
 	Qt::CursorShape cursor() const override { return Qt::IBeamCursor; }
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
+	bool double_click(
+		Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
 	// Opens the caret menu, at the pointer or at the caret.
 	void context(Kit &kit, Rect at, bool kbd);
@@ -954,8 +953,8 @@ struct Titlebar : Panel {
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool motion(Kit &kit, float x, float y) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
+	bool double_click(
+		Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
 // --- Kit ---------------------------------------------------------------------

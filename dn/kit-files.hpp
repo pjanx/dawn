@@ -45,8 +45,8 @@ struct FileRow : Button {
 	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool activate(Kit &kit) override;
-	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
-		unsigned mods) override;
+	bool double_click(
+		Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
 // A filter and an explicit default save suffix.  Static data: the globs are
