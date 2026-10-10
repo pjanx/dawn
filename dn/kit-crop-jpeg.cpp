@@ -124,7 +124,6 @@ Cropper::measure_content(Kit &, int max_w, int max_h)
 void
 Cropper::arrange_content(Kit &kit, Rect alloc)
 {
-	this->r = alloc;
 	this->hint_.arrange(kit, alloc);
 }
 

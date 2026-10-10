@@ -126,6 +126,8 @@ struct Browser : Composite {
 	// The listing or its measures changed, and the grid needs a new layout.
 	// A scroll or a focus change only moves the cells.
 	bool grid_dirty_ = true;
+	// Where the grid was last laid out.
+	Rect grid_area_{};
 	// A sync of atlas residency is in the event loop: the visible band moved,
 	// or pixels arrived.  Layout syncs without one.
 	bool thumbs_dirty_ = false;

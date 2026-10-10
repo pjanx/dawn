@@ -262,9 +262,8 @@ CieDiagram::measure_content(Kit &kit, int max_w, int max_h)
 // Rasterised here rather than when painted: arrangement re-runs whenever
 // the atlas could have been rebuilt, which is on a font reset.
 void
-CieDiagram::arrange_content(Kit &kit, Rect alloc)
+CieDiagram::arrange_content(Kit &kit, Rect)
 {
-	this->r = alloc;
 	if (this->epoch_ == kit.font_epoch_ && !this->slot_.empty())
 		return;
 

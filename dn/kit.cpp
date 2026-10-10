@@ -584,7 +584,9 @@ Widget::arrange(Kit &kit, Rect alloc)
 	this->arrange_dirty_ = false;
 	this->arrange_epoch_ = kit.font_epoch_;
 	this->allocation_ = alloc;
-	arrange_content(kit, alloc);
+	this->r = shown() ? alloc : Rect{};
+	if (shown())
+		arrange_content(kit, alloc);
 }
 
 void
@@ -620,12 +622,6 @@ Widget::measure(Kit &kit, int max_w, int max_h)
 		this->measurements_.erase(this->measurements_.begin());
 	this->measurements_.push_back({max_w, max_h, size});
 	return size;
-}
-
-void
-Widget::arrange_content(Kit &, Rect alloc)
-{
-	this->r = shown() ? alloc : Rect{};
 }
 
 Widget *
@@ -1535,9 +1531,8 @@ Entry::measure_content(Kit &kit, int, int)
 }
 
 void
-Entry::arrange_content(Kit &kit, Rect alloc)
+Entry::arrange_content(Kit &kit, Rect)
 {
-	this->r = shown() ? alloc : Rect{};
 	// Only the scroll: a relayout is no reason to restart the blink.
 	rescroll(kit);
 }
@@ -1911,9 +1906,8 @@ Splitter::measure_content(Kit &kit, int, int max_h)
 }
 
 void
-Splitter::arrange_content(Kit &kit, Rect alloc)
+Splitter::arrange_content(Kit &kit, Rect)
 {
-	Widget::arrange_content(kit, alloc);
 	this->grab_ = kit.px(kGrabSlack);
 }
 
@@ -2072,11 +2066,6 @@ Container::arrange_content(Kit &kit, Rect alloc)
 {
 	const bool hz = this->horizontal;
 	const Align align = this->align;
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	const int gap = kit.px(this->gap), pad_y = kit.px(this->pad_y);
 	const Rect in = alloc.inset(kit.px(this->pad_x), pad_y);
 	const int imain = hz ? in.w : in.h;
@@ -2100,16 +2089,14 @@ Container::arrange_content(Kit &kit, Rect alloc)
 		p += max(0, imain - packed);
 	for (size_t i = 0; i < this->kids.size(); i++) {
 		auto &k = this->kids[i];
-		if (!k || !k->shown()) {
-			if (k)
-				k->r = {};
+		if (!k)
 			continue;
-		}
 		if (hz)
 			k->arrange(kit, {p, in.y, sizes[i].w, in.h});
 		else
 			k->arrange(kit, {in.x, p, in.w, sizes[i].h});
-		p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + gap;
+		if (k->shown())
+			p = (hz ? k->r.x + k->r.w : k->r.y + k->r.h) + gap;
 	}
 	if (this->grow)
 		return;
@@ -2183,11 +2170,6 @@ GutterRow::measure_content(Kit &kit, int max_w, int max_h)
 void
 GutterRow::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	Widget *lead = gutter_cell(this, 0), *rest = gutter_cell(this, 1);
 	const int gap = rest ? kit.px(this->gap) : 0;
@@ -2289,11 +2271,6 @@ Flow::measure_content(Kit &kit, int max_w, int)
 void
 Flow::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	const Rect in = alloc.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	(void) wrap(kit, in.w);
 	for (size_t i = 0; i < this->kids.size(); i++) {
@@ -2490,10 +2467,6 @@ ScrollColumn::arrange_content(Kit &kit, Rect alloc)
 	const int by = int(lround(this->scroll_.offset));
 	const int top = alloc.y - by;
 	Column::arrange_content(kit, {alloc.x, top, alloc.w, alloc.h});
-	if (!shown())
-		return;
-
-	this->r = alloc;
 	int bottom = top;
 	for (const auto &k : this->kids) {
 		if (k && k->shown())
@@ -2618,13 +2591,8 @@ Panel::measure_content(Kit &kit, int avail_w, int avail_h)
 }
 
 void
-Panel::arrange_content(Kit &kit, Rect alloc)
+Panel::arrange_content(Kit &kit, Rect)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	const Rect in = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	Q_ASSERT(this->kids.size() <= 1);
 	if (Widget *content = child(0); content && content->shown()) {
@@ -3830,12 +3798,6 @@ ToolbarSlot::measure_content(Kit &kit, int max_w, int max_h)
 void
 ToolbarSlot::arrange_content(Kit &kit, Rect alloc)
 {
-	if (!shown()) {
-		this->r = {};
-		this->split_ = 0;
-		sync_layout_visible();
-		return;
-	}
 	const int pad_x = kit.px(this->pad_x);
 	const Rect in = alloc.inset(pad_x, kit.px(this->pad_y));
 	const size_t end = this->items_.size();
@@ -3936,13 +3898,8 @@ Toolbar::measure_content(Kit &kit, int avail_w, int avail_h)
 }
 
 void
-Toolbar::arrange_content(Kit &kit, Rect alloc)
+Toolbar::arrange_content(Kit &kit, Rect)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	place_slots(kit);
 }
 
@@ -4058,13 +4015,8 @@ Titlebar::measure_content(Kit &kit, int avail_w, int)
 }
 
 void
-Titlebar::arrange_content(Kit &kit, Rect alloc)
+Titlebar::arrange_content(Kit &kit, Rect)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	const Rect bar = this->r.inset(kit.px(this->pad_x), kit.px(this->pad_y));
 	int x = bar.x + bar.w;
 	for (Button *b : {this->close, this->maximize, this->minimize}) {

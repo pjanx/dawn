@@ -263,7 +263,9 @@ struct Widget {
 	// At least as of now, we don't seem to need baseline measurements.
 	// Returns the requested size without changing arranged geometry.
 	virtual Size measure_content(Kit &kit, int max_w, int max_h) = 0;
-	virtual void arrange_content(Kit &kit, Rect alloc);
+	// Places the children.  arrange() has set r, and calls this only for
+	// a widget that is shown.
+	virtual void arrange_content(Kit &, Rect) {}
 	virtual void paint(Kit &kit) const;
 	virtual Widget *hit_at(float x, float y);
 	[[nodiscard]] bool shown() const

@@ -427,8 +427,6 @@ FileList::measure_content(Kit &kit, int max_w, int)
 void
 FileList::arrange_content(Kit &kit, Rect alloc)
 {
-	this->r = alloc;
-
 	// Everything lives within the border this draws itself, so that the
 	// border never lands on the outermost pixel of a row, or of its ring.
 	const int hair = kit.hairline();

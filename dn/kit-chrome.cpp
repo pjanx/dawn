@@ -1068,13 +1068,8 @@ Page::measure_content(Kit &, int max_w, int max_h)
 }
 
 void
-Page::arrange_content(Kit &kit, Rect alloc)
+Page::arrange_content(Kit &kit, Rect)
 {
-	if (!shown()) {
-		this->r = {};
-		return;
-	}
-	this->r = alloc;
 	// The window may only fill the frame within its surface, the rest
 	// belonging to the shadow that a client-side decorated window casts.
 	const Rect frame = kit.frame();

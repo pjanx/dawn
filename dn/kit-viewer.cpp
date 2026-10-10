@@ -2151,9 +2151,8 @@ Viewer::rescale(Kit &)
 // The view is the viewer's layout: fitted to the well, which only now has its
 // size, kept within it, and with a vector page rendered at the final scale.
 void
-Viewer::arrange_content(Kit &, Rect alloc)
+Viewer::arrange_content(Kit &, Rect)
 {
-	this->r = alloc;
 	if (this->scale_to_fit_)
 		fit_to_well(*this);
 	clamp_view(*this);

@@ -2433,9 +2433,9 @@ Browser::measure_content(Kit &, int max_w, int max_h)
 void
 Browser::arrange_content(Kit &kit, Rect alloc)
 {
-	const bool regrid = this->grid_dirty_ || alloc != this->r;
+	const bool regrid = this->grid_dirty_ || alloc != this->grid_area_;
 	if (regrid) {
-		this->r = alloc;
+		this->grid_area_ = alloc;
 		this->grid_dirty_ = false;
 		layout_grid(*this, alloc);
 	}

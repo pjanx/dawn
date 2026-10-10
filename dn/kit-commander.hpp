@@ -19,7 +19,6 @@ struct Commander : Widget {
 	{
 		return {max_w, max_h};
 	}
-	void arrange_content(Kit &, Rect alloc) override { r = alloc; }
 };
 
 std::unique_ptr<Page> make_commander_page(
