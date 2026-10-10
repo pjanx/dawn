@@ -3182,7 +3182,7 @@ Overflow::step_line(Kit &kit, int dir)
 	collect_focusable(this, nullptr, items);
 	const auto it = find(items.begin(), items.end(), kit.focus_);
 	if (it == items.end()) {
-		this->want_x_ = -1;
+		this->x_anchor_ = -1;
 		kit.cycle_focus_in(this, dir, true);
 		return;
 	}
@@ -3193,8 +3193,8 @@ Overflow::step_line(Kit &kit, int dir)
 	const int n = int(items.size()), i = int(it - items.begin());
 	// The column to aim for outlives a run of Up/Downs, so that crossing a
 	// short line does not drag the track sideways.
-	if (this->want_x_ < 0)
-		this->want_x_ = centre_of(items[size_t(i)]);
+	if (this->x_anchor_ < 0)
+		this->x_anchor_ = centre_of(items[size_t(i)]);
 
 	int j = i;
 	const int from = items[size_t(i)]->r.y;
@@ -3209,7 +3209,7 @@ Overflow::step_line(Kit &kit, int dir)
 	for (int k = 0; k < n; k++) {
 		if (items[size_t(k)]->r.y != line_y)
 			continue;
-		const float d = abs(centre_of(items[size_t(k)]) - this->want_x_);
+		const float d = abs(centre_of(items[size_t(k)]) - this->x_anchor_);
 		if (d < least) {
 			least = d;
 			best = k;
@@ -3237,16 +3237,16 @@ Overflow::key(Kit &kit, const Key &ev)
 	case Qt::Key_Left:
 	case Qt::Key_Right:
 		// The items read as one strip that happens to be folded.
-		this->want_x_ = -1;
+		this->x_anchor_ = -1;
 		kit.cycle_focus_in(this, ev.key == Qt::Key_Left ? -1 : 1, true);
 		break;
 	case Qt::Key_Home:
-		this->want_x_ = -1;
+		this->x_anchor_ = -1;
 		kit.focus_first(this);
 		break;
 	case Qt::Key_End:
 		// Entering the strip backwards from nowhere lands on its last item.
-		this->want_x_ = -1;
+		this->x_anchor_ = -1;
 		kit.set_focus(nullptr, true);
 		kit.cycle_focus_in(this, -1, true);
 		break;
@@ -5336,6 +5336,7 @@ Kit::frame() const
 	const Rect host = {0, 0, this->host_w_, this->host_h_};
 	if (!this->csd_shadow_)
 		return host;
+
 	// TODO(p): Consider if we don't want to add another 1px border.
 	const int glow = px(kGlowPts);
 	return host.inset(glow, glow);

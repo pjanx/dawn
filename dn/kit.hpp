@@ -166,7 +166,7 @@ enum : uint8_t {
 
 struct Kit;
 struct Menu;
-struct Scroll;
+class Scroll;
 
 // One keystroke, as the platform delivered it.
 struct Key {
@@ -600,17 +600,22 @@ struct GutterColumn : Column {
 // Packs sideways like a Row, but breaks onto a new line when the next child
 // would not fit.  Children keep their natural widths: this is for a strip of
 // toolbar items that ran out of bar, not for a menu.
-struct Flow : Container {
-	Size measure_content(Kit &kit, int max_w, int max_h) override;
-	void arrange_content(Kit &kit, Rect alloc) override;
-
-private:
+class Flow : public Container {
 	// Child allocations relative to the padded content origin.
 	std::vector<Rect> cells_;
 	Size wrap(Kit &kit, int inner_w);
+
+public:
+	Size measure_content(Kit &kit, int max_w, int max_h) override;
+	void arrange_content(Kit &kit, Rect alloc) override;
 };
 
-struct Scroll {
+class Scroll {
+	std::chrono::steady_clock::time_point shown_at_{};
+	float grab_ = 0;
+	void set_from_y(float y, Rect viewport);
+
+public:
 	// Continuous: a drag moves it by arbitrary amounts, and quantising it
 	// mid-drag would make the thumb stutter.  Rounded where it becomes
 	// geometry, never before.
@@ -637,11 +642,6 @@ struct Scroll {
 	bool motion(float y, Rect viewport);
 	bool release(Qt::MouseButton button);
 	void paint(Kit &kit, Rect viewport) const;
-
-private:
-	std::chrono::steady_clock::time_point shown_at_{};
-	float grab_ = 0;
-	void set_from_y(float y, Rect viewport);
 };
 
 struct ScrollColumn : Column {
@@ -747,12 +747,19 @@ struct MenuPopup : Popup {
 	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 };
 
-struct ToolbarSlot;
+class ToolbarSlot;
 
 // What a ToolbarSlot puts the items it could not fit into.  These are the
 // toolbar items themselves, moved here for as long as the popup is up rather
 // than stood in for, so they keep flowing sideways, and wrap.
-struct Overflow : MenuPopup {
+class Overflow : public MenuPopup {
+	// Moves the focus a line up or down, keeping to one track.
+	void step_line(Kit &kit, int dir);
+
+	// Stabilise a run of Up/Down on this coordinate.  Negative means unset.
+	float x_anchor_ = -1;
+
+public:
 	Flow *col = nullptr;
 	// Whose items col is currently holding.  One Overflow serves all three
 	// slots, so this, not the slot asking, says who to hand them back to.
@@ -768,14 +775,6 @@ struct Overflow : MenuPopup {
 	void place(Kit &kit) override;
 	bool key(Kit &kit, const Key &ev) override;
 	bool motion(Kit &kit, float x, float y) override;
-
-private:
-	// Moves the focus a line up or down, keeping to one track.
-	void step_line(Kit &kit, int dir);
-
-	// Which column Up/Down aim for, so that a run of them keeps to one
-	// track across lines of differing item counts.  Negative means unset.
-	float want_x_ = -1;
 };
 
 struct Menu : MenuPopup {
@@ -852,7 +851,23 @@ struct Combo : Button {
 };
 
 // One end of a toolbar. What does not fit goes behind the "more" button.
-struct ToolbarSlot : Row {
+class ToolbarSlot : public Row {
+	// On a toolbar item layout_visible means "I am in somebody's kids right
+	// now": it is what keeps an item that overflowed while the popup is shut
+	// -- parented here, but no child of anyone -- out of the focus order.
+	void sync_layout_visible();
+
+	// Where the lent items came from, so that they go back in bar order.
+	// Empty (first >= last) when the popup holds none of ours.
+	std::size_t lent_first_ = 0;
+	std::size_t lent_last_ = 0;
+	Overflow *borrower_ = nullptr;
+
+	using Composite::add_child;
+	using Composite::erase_children;
+	using Composite::take_child;
+
+public:
 	Button *more = nullptr;
 	std::size_t split_ = 0;
 
@@ -869,25 +884,12 @@ struct ToolbarSlot : Row {
 	void reclaim();
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
-
-private:
-	// On a toolbar item layout_visible means "I am in somebody's kids right
-	// now": it is what keeps an item that overflowed while the popup is shut
-	// -- parented here, but no child of anyone -- out of the focus order.
-	void sync_layout_visible();
-
-	// Where the lent items came from, so that they go back in bar order.
-	// Empty (first >= last) when the popup holds none of ours.
-	std::size_t lent_first_ = 0;
-	std::size_t lent_last_ = 0;
-	Overflow *borrower_ = nullptr;
-
-	using Composite::add_child;
-	using Composite::erase_children;
-	using Composite::take_child;
 };
 
-struct Toolbar : Panel {
+class Toolbar : public Panel {
+	void place_slots(Kit &kit);
+
+public:
 	ToolbarSlot *left = nullptr;
 	ToolbarSlot *mid = nullptr;
 	ToolbarSlot *right = nullptr;
@@ -899,12 +901,9 @@ struct Toolbar : Panel {
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
-
-private:
-	void place_slots(Kit &kit);
 };
 
-// Client-side decorations: shown only while Kit::csd_ is on.
+/// Part of the client-side decoration: shown only while Kit::csd_ is on.
 struct Titlebar : Panel {
 	Label *title = nullptr;
 	Button *minimize = nullptr;
@@ -925,20 +924,20 @@ struct Titlebar : Panel {
 		unsigned mods) override;
 };
 
-// Why the host is being told about a widget.  These are the distinctions an
-// accessibility adapter has to make, and no more: the kit does not know what
-// the platform calls any of them, nor that anyone is listening at all.
+/// Why the host is being told about a widget.  These are the distinctions an
+/// accessibility adapter has to make, and no more: the kit does not know what
+/// the platform calls any of them, nor that anyone is listening at all.
 enum class Change : uint8_t {
-	// The keyboard focus moved to the widget, or away from it when null.
+	/// The keyboard focus moved to the widget, or away from it when null.
 	Focus,
-	// The widget and everything below it is about to stop existing.
+	/// The widget and everything below it is about to stop existing.
 	Retired,
-	// Something changed, so do a sweep soon: enabled, checked, expanded,
-	// names, and which popups are on the stack.  The widget is null, because
-	// this asks for a sweep and does not report one change.
+	/// Something changed, so do a sweep soon: enabled, checked, expanded,
+	/// names, and which popups are on the stack.  The widget is null, because
+	/// this asks for a sweep and does not report one change.
 	State,
-	// Committed text and caret of the widget, already applied.  Preedit is
-	// not this: it is not the Value a client reads back.
+	/// Committed text and caret of the widget, already applied.  Preedit is
+	/// not this: it is not the Value a client reads back.
 	Text,
 };
 
@@ -969,14 +968,17 @@ struct Kit {
 
 	Colour colours_[ColourCount]{};
 
+	// Remembered from the last event.
+	float mouse_x_ = -1.f;
+	float mouse_y_ = -1.f;
+	unsigned mods_ = 0;
+
 	Page *root_ = nullptr;
 	Widget *focus_ = nullptr;
 	bool focus_visible_ = false;
 	// When focus_ last moved, so that a caret starts its blink lit.
 	std::chrono::steady_clock::time_point focus_at_{};
 	Widget *hot_ = nullptr;
-	float mouse_x_ = -1.f;
-	float mouse_y_ = -1.f;
 	bool left_down_ = false;
 	// Touch synthesizes mouse events; gestures that only make sense for a
 	// real pointer ask this before arming.
@@ -989,7 +991,6 @@ struct Kit {
 	// Initial hit, even if no widget accepted the press.
 	Widget *touch_target_ = nullptr;
 	Widget *pressed_ = nullptr;
-	unsigned mods_ = 0;
 	// Non-null, unique, open popups: dialogs followed by transient popups.
 	// Closing an entry closes its entire tail, innermost first.
 	std::vector<Popup *> popups_;
@@ -1071,12 +1072,12 @@ struct Kit {
 	Widget *hit(float x, float y);
 	bool track_popups(float x, float y);
 
-	// Client-side decorations.  The host window is host_w_ by host_h_;
-	// under csd_shadow_ the window itself only fills the frame within it.
+	/// What part of the host area can be used for widgets.
+	/// Under client-side decorations, the frame may be inset by the shadow.
 	[[nodiscard]] Rect frame() const;
-	// The frame minus any titlebar.
+	/// The frame minus any titlebar.
 	[[nodiscard]] Rect client() const;
-	// The titlebar belongs to the window.
+	/// Returns the titlebar if shown and responsive.
 	[[nodiscard]] Titlebar *live_titlebar() const;
 	[[nodiscard]] Qt::Edges resize_edges(float x, float y) const;
 	bool start_resize_at(float x, float y);
@@ -1156,6 +1157,7 @@ struct Kit {
 	// tooltip, and paint it.
 	void frame_ui();
 	void paint();
+
 	// Native layout metrics in device pixels. Logical extents round outward
 	// when handed to widget layout; glyph bearings remain independent.
 	[[nodiscard]] int text_width(const QString &text, bool bold) const;
@@ -1163,23 +1165,19 @@ struct Kit {
 		const QString &text, int wrap_px, bool bold) const;
 	[[nodiscard]] int line_height(bool bold) const;
 
-	// Points to device pixels.  Converted on use rather than cached: a sum of
-	// point terms rounds once here, where baked-up constants would each round
-	// separately and accumulate the error.
+	/// Convert points to device pixels.
 	[[nodiscard]] int px(float pts) const
 	{
 		return int(lround(double(pts) * double(this->dpr_)));
 	}
 
-	// The inverse, for the widget fields that are declared in points: a
-	// width measured off the text has to go back through this before it
-	// can be handed to one, or it gets scaled a second time.
+	/// Convert device pixels to points.
 	[[nodiscard]] float pts(int px) const
 	{
 		return float(double(px) / double(this->dpr_));
 	}
 
-	// An appropriately thick rule, border or caret, in device pixels.
+	/// An appropriately thick rule, border or caret, in device pixels.
 	[[nodiscard]] int hairline() const { return std::max(px(1.f), 1); }
 
 	// One icon square, in device pixels: the size draw_icon() rasterises at,
