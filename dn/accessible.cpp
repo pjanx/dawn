@@ -77,7 +77,6 @@ accessible_activated(Window *)
 #include <cmath>
 #include <limits>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -153,6 +152,15 @@ semantic_parent(const Widget *w)
 		if (!flattened(p))
 			return p;
 	return nullptr;
+}
+
+// A listing holds only rows, and one of them can be selected.  All rows are
+// of one kind, so some queries skip them.
+static bool
+listing(const Widget *w)
+{
+	return dynamic_cast<const FileRows *>(w) ||
+		dynamic_cast<const Browser *>(w);
 }
 
 static void
@@ -235,7 +243,7 @@ role_of(const Widget *w)
 {
 	if (dynamic_cast<const MenuItem *>(w))
 		return QAccessible::MenuItem;
-	if (dynamic_cast<const ComboItem *>(w) || dynamic_cast<const FileRow *>(w))
+	if (dynamic_cast<const ComboItem *>(w) || listing(w->parent_))
 		return QAccessible::ListItem;
 	if (dynamic_cast<const Combo *>(w))
 		return QAccessible::ComboBox;
@@ -252,7 +260,7 @@ role_of(const Widget *w)
 		return QAccessible::EditableText;
 	if (dynamic_cast<const Label *>(w))
 		return QAccessible::StaticText;
-	if (dynamic_cast<const Browser *>(w) || dynamic_cast<const FileRows *>(w))
+	if (listing(w))
 		return QAccessible::List;
 	if (auto *viewer = dynamic_cast<const Viewer *>(w)) {
 		if (viewer->current_ &&
@@ -285,6 +293,9 @@ role_of(const Widget *w)
 static Label *
 buddy_label(const Widget *w)
 {
+	// No label names a row.  A search of a long listing for one takes time.
+	if (listing(w->parent_))
+		return nullptr;
 	for (Widget *p = w->parent_; p; p = p->parent_) {
 		for (const auto &child : p->children()) {
 			auto *label = dynamic_cast<Label *>(child.get());
@@ -310,6 +321,17 @@ heading_of(const Widget *w)
 			return inner;
 	}
 	return {};
+}
+
+// The file of a cell, or null for a cell that the listing dropped.
+static const Browser::File *
+file_of(const FileCell *cell)
+{
+	auto *browser = (const Browser *) cell->parent_;
+	if (!browser || cell->index < 0 ||
+		cell->index >= int(browser->files_.size()))
+		return nullptr;
+	return &browser->files_[size_t(cell->index)];
 }
 
 // Display strings as they already are: menu_label() took the mnemonic
@@ -354,6 +376,10 @@ name_of(const Kit &kit, const Widget *w)
 	}
 	if (auto *viewer = dynamic_cast<const Viewer *>(w))
 		return QString::fromStdString(viewer->basename_);
+	if (auto *cell = dynamic_cast<const FileCell *>(w)) {
+		const Browser::File *file = file_of(cell);
+		return file ? QString::fromStdString(file->name) : QString();
+	}
 	// The titlebar stays unnamed, even now that it is an ordinary group: the
 	// window carries the title, and the Label inside the bar carries it
 	// again, so a third copy on the container between them would have a
@@ -364,6 +390,10 @@ name_of(const Kit &kit, const Widget *w)
 static QString
 description_of(const Widget *w)
 {
+	if (auto *cell = dynamic_cast<const FileCell *>(w)) {
+		const Browser::File *file = file_of(cell);
+		return file ? QString::fromStdString(file->path) : QString();
+	}
 	auto *viewer = dynamic_cast<const Viewer *>(w);
 	if (!viewer || (viewer->image_width_ == 0 && viewer->image_height_ == 0))
 		return {};
@@ -456,18 +486,26 @@ accelerator_of(const Widget *w)
 	return {};
 }
 
-// The row a browser's cursor is on, or -1 for no row and for anything that
-// is not a browser.  One fact answers three questions about a listing: what
-// is selected, what its focused descendant is, and whether the list itself
-// holds the focus or only passes it on.
-static int
-cursor_row(const Widget *w)
+// The selected row of a listing, or null.  The browser selects the cell at
+// its cursor.
+static Widget *
+selected_row(const Widget *list)
 {
-	auto *browser = dynamic_cast<const Browser *>(w);
-	if (!browser || browser->cursor_ < 0 ||
-		browser->cursor_ >= int(browser->files_.size()))
-		return -1;
-	return browser->cursor_;
+	if (auto *rows = dynamic_cast<const FileRows *>(list))
+		return rows->selected;
+	auto *browser = (const Browser *) list;
+	if (browser->cursor_ < 0 || browser->cursor_ >= int(browser->kids.size()))
+		return nullptr;
+	return browser->kids[size_t(browser->cursor_)].get();
+}
+
+static void
+select_row(Kit &kit, Widget *list, Widget *row)
+{
+	if (auto *rows = dynamic_cast<FileRows *>(list))
+		rows->select(kit, (FileRow *) row);
+	else if (auto *browser = dynamic_cast<Browser *>(list))
+		browser->select_index(row ? ((FileCell *) row)->index : -1, false);
 }
 
 static QAccessible::State
@@ -486,10 +524,7 @@ state_of(Window *window, const Widget *w)
 	// Focus is only focus while the window has it.  A background window
 	// keeps its own idea of where the keyboard would go, which is not the
 	// same as the keyboard being there.
-	// A list with the cursor on a row is focused through that row, which is
-	// what focusChild() gives out; both saying so would leave two objects
-	// claiming the keyboard at once.
-	if (kit.focus_ == w && window_active(window) && cursor_row(w) < 0)
+	if (kit.focus_ == w && window_active(window))
 		state.focused = 1;
 
 	// A menu traps focus as much as a dialog does, but only the one that
@@ -532,9 +567,9 @@ state_of(Window *window, const Widget *w)
 			state.selected = 1;
 	}
 
-	if (auto *row = dynamic_cast<const FileRow *>(w)) {
+	if (listing(w->parent_)) {
 		state.selectable = 1;
-		state.selected = ((const FileRows *) row->parent_)->selected == row;
+		state.selected = selected_row(w->parent_) == w;
 	}
 
 	// has_popup() already answers for a combo, which is the only reason
@@ -606,10 +641,6 @@ struct Registry {
 	// retirement invalidates one for us.
 	QAccessible::Id focus = 0;
 	unordered_map<Widget *, QAccessible::Id> widgets;
-	// File identity is (browser lifetime, full path), never a row index.
-	// Wrappers are created on child(i), so this only holds what a client
-	// has already asked for.
-	unordered_map<Widget *, unordered_map<string, QAccessible::Id>> files;
 	// Popups last announced as shown, as ids so a retired widget cannot
 	// be looked up again and re-registered from a dangling pointer.
 	vector<QAccessible::Id> popups;
@@ -657,85 +688,19 @@ notify(QAccessibleEvent *event)
 		QAccessible::updateAccessibility(event);
 }
 
-// --- File adapter ------------------------------------------------------------
-
-static Rect
-file_visible_rect(
-	Window *window, const Browser *browser, const Browser::File &file)
-{
-	if (!window || !browser || !in_exposed_tree(window, browser))
-		return {};
-	return browser->on_screen(file.tile).intersect(
-		visible_rect(browser, host_rect(window->kit())));
-}
-
-static const Browser::File *
-file_of(const Browser *browser, const string &path)
-{
-	if (!browser)
-		return nullptr;
-
-	const int i = browser->file_index(path);
-	if (i < 0 || i >= int(browser->files_.size()))
-		return nullptr;
-
-	return &browser->files_[size_t(i)];
-}
-
 // The adapters themselves.  Qt owns every registered interface, and this
 // file is the only place that names any of these types, which is what the
 // unnamed namespace is here for; everything else in this file is static.
 namespace
 {
 
-// One listing entry.  Objectless, and keyed by path so a rescan that keeps
-// the file keeps the id; the row is resolved against files_ each query.
-struct FileAdapter final : public QAccessibleInterface,
-						   public QAccessibleActionInterface {
-	Window *window_ = nullptr;
-	Browser *browser_ = nullptr;
-	string path_;
-
-	FileAdapter(Window *window, Browser *browser, string path);
-	~FileAdapter() override = default;
-
-	void detach();
-	[[nodiscard]] const Browser::File *resolve() const;
-
-	// Valid until detach(), not until the path leaves files_: ObjectDestroyed
-	// is emitted after scan_dir has already dropped the row, and Qt drops
-	// that event if isValid() is already false.
-	bool isValid() const override;
-	QObject *object() const override { return nullptr; }
-	QWindow *window() const override;
-
-	QAccessibleInterface *parent() const override;
-	QAccessibleInterface *child(int) const override { return nullptr; }
-	QAccessibleInterface *childAt(int, int) const override { return nullptr; }
-	QAccessibleInterface *focusChild() const override { return nullptr; }
-	int childCount() const override { return 0; }
-	int indexOfChild(const QAccessibleInterface *) const override { return -1; }
-
-	QString text(QAccessible::Text t) const override;
-	void setText(QAccessible::Text, const QString &) override {}
-	QRect rect() const override;
-	QAccessible::Role role() const override { return QAccessible::ListItem; }
-	QAccessible::State state() const override;
-
-	void *interface_cast(QAccessible::InterfaceType type) override;
-
-	QStringList actionNames() const override;
-	void doAction(const QString &name) override;
-	QStringList keyBindingsForAction(const QString &) const override;
-};
-
 // --- Widget adapter ----------------------------------------------------------
 
 // One exposed widget.  Objectless, because Dawn's widgets are not QObjects,
 // and giving each one a shadow QObject would double the tree to say nothing.
 //
-// What every widget can do lives here.  An Entry's text and a Browser's
-// listing are each one widget class's business, and are two subclasses
+// What every widget can do lives here.  An Entry's text and a listing's
+// selection are each one widget class's business, and are subclasses
 // below: on the one hand their optional interfaces then carry no methods
 // that answer "not me" for everything else, and on the other the bookkeeping
 // each needs is a field on the few adapters that have it rather than on all
@@ -851,37 +816,6 @@ struct EntryAdapter final : public WidgetAdapter,
 	using WidgetAdapter::text;
 };
 
-// The file listing.  Children are the entries of files_ after filter and
-// sort, made on child(i) and never all at once; the bookkeeping here is
-// what a frame sweep diffs the listing and the cursor against.
-struct BrowserAdapter final : public WidgetAdapter,
-							  public QAccessibleSelectionInterface {
-	vector<string> last_file_paths_;
-	uint64_t last_file_rev_ = 0;
-	string last_cursor_path_;
-
-	BrowserAdapter(Window *window, Browser *browser);
-	~BrowserAdapter() override = default;
-
-	[[nodiscard]] Browser *browser() const;
-	[[nodiscard]] int row_of(QAccessibleInterface *childItem) const;
-
-	QAccessibleInterface *child(int index) const override;
-	QAccessibleInterface *childAt(int x, int y) const override;
-	QAccessibleInterface *focusChild() const override;
-	int childCount() const override;
-	int indexOfChild(const QAccessibleInterface *other) const override;
-
-	void *interface_cast(QAccessible::InterfaceType type) override;
-
-	int selectedItemCount() const override;
-	QList<QAccessibleInterface *> selectedItems() const override;
-	bool select(QAccessibleInterface *childItem) override;
-	bool unselect(QAccessibleInterface *childItem) override;
-	bool selectAll() override;
-	bool clear() override;
-};
-
 // The list a combo drops.  Its children are the choices, and exactly one of
 // them is current; selecting one sets the value without pressing it, which
 // is what tells "look at this" apart from "take this".
@@ -905,10 +839,17 @@ struct ComboListAdapter final : public WidgetAdapter,
 	bool clear() override;
 };
 
+// A listing: the rows of the chooser, or the cells of the browser.  Each child
+// is a row, so the adapter reads the children directly from the widget.
 struct FileRowsAdapter final : WidgetAdapter, QAccessibleSelectionInterface {
 	QAccessible::Id last_selected = 0;
+	uint64_t last_file_rev = 0;
 
-	FileRowsAdapter(Window *window, FileRows *rows);
+	FileRowsAdapter(Window *window, Widget *list);
+	QAccessibleInterface *child(int index) const override;
+	QAccessibleInterface *childAt(int x, int y) const override;
+	int childCount() const override;
+	int indexOfChild(const QAccessibleInterface *other) const override;
 	void *interface_cast(QAccessible::InterfaceType type) override;
 	int selectedItemCount() const override;
 	QList<QAccessibleInterface *> selectedItems() const override;
@@ -979,12 +920,10 @@ new_adapter(Window *window, Widget *w)
 {
 	if (auto *entry = dynamic_cast<Entry *>(w))
 		return new EntryAdapter(window, entry);
-	if (auto *browser = dynamic_cast<Browser *>(w))
-		return new BrowserAdapter(window, browser);
 	if (auto *list = dynamic_cast<ComboPopup *>(w))
 		return new ComboListAdapter(window, list);
-	if (auto *rows = dynamic_cast<FileRows *>(w))
-		return new FileRowsAdapter(window, rows);
+	if (listing(w))
+		return new FileRowsAdapter(window, w);
 	return new WidgetAdapter(window, w);
 }
 
@@ -1002,38 +941,6 @@ interface_for(Window *window, Widget *w)
 	WidgetAdapter *adapter = new_adapter(window, w);
 	registry.widgets[w] = QAccessible::registerAccessibleInterface(adapter);
 	return adapter;
-}
-
-static QAccessibleInterface *
-interface_for_file(Window *window, Browser *browser, const string &path)
-{
-	if (!window || !browser || path.empty() || browser->file_index(path) < 0)
-		return nullptr;
-
-	Registry &registry = g_registries[window];
-	auto &ids = registry.files[browser];
-	auto it = ids.find(path);
-	if (it != ids.end())
-		return QAccessible::accessibleInterface(it->second);
-
-	auto *adapter = new FileAdapter(window, browser, path);
-	ids[path] = QAccessible::registerAccessibleInterface(adapter);
-	return adapter;
-}
-
-static QAccessibleInterface *
-existing_file(Window *window, Browser *browser, const string &path)
-{
-	Registry *registry = find_registry(window);
-	if (!registry || !browser || path.empty())
-		return nullptr;
-	auto bit = registry->files.find(browser);
-	if (bit == registry->files.end())
-		return nullptr;
-	auto it = bit->second.find(path);
-	if (it == bit->second.end())
-		return nullptr;
-	return QAccessible::accessibleInterface(it->second);
 }
 
 static QAccessibleInterface *
@@ -1117,146 +1024,6 @@ child_at_point(Window *window, const Widget *scope, int x, int y)
 	return nullptr;
 }
 
-FileAdapter::FileAdapter(Window *window, Browser *browser, string path)
-	: window_(window), browser_(browser), path_(std::move(path))
-{
-}
-
-void
-FileAdapter::detach()
-{
-	this->browser_ = nullptr;
-	this->path_.clear();
-}
-
-const Browser::File *
-FileAdapter::resolve() const
-{
-	return file_of(this->browser_, this->path_);
-}
-
-bool
-FileAdapter::isValid() const
-{
-	return this->browser_ != nullptr && !this->path_.empty();
-}
-
-QStringList
-FileAdapter::keyBindingsForAction(const QString &) const
-{
-	return {};
-}
-
-QWindow *
-FileAdapter::window() const
-{
-	return this->window_->shell();
-}
-
-QAccessibleInterface *
-FileAdapter::parent() const
-{
-	return this->browser_ ? interface_for(this->window_, this->browser_)
-						  : nullptr;
-}
-
-QString
-FileAdapter::text(QAccessible::Text t) const
-{
-	const Browser::File *file = this->resolve();
-	if (!file)
-		return {};
-	if (t == QAccessible::Name)
-		return QString::fromStdString(file->name);
-	if (t == QAccessible::Description)
-		return QString::fromStdString(file->path);
-	return {};
-}
-
-QRect
-FileAdapter::rect() const
-{
-	const Browser::File *file = this->resolve();
-	if (!file)
-		return {};
-	return global_rect(*this->window_,
-		file_visible_rect(this->window_, this->browser_, *file));
-}
-
-QAccessible::State
-FileAdapter::state() const
-{
-	QAccessible::State state;
-	const Browser::File *file = this->resolve();
-	if (!file) {
-		state.invalid = 1;
-		return state;
-	}
-
-	state.selectable = 1;
-	state.focusable = 1;
-	if (file_visible_rect(this->window_, this->browser_, *file).empty())
-		state.offscreen = 1;
-	if (!effectively_shown(this->browser_) ||
-		!in_exposed_tree(this->window_, this->browser_))
-		state.invisible = 1;
-
-	const int row = this->browser_->file_index(this->path_);
-	if (row >= 0 && row == this->browser_->cursor_) {
-		state.selected = 1;
-		if (this->window_->kit().focus_ == this->browser_ &&
-			window_active(this->window_))
-			state.focused = 1;
-	}
-	return state;
-}
-
-void *
-FileAdapter::interface_cast(QAccessible::InterfaceType type)
-{
-	if (type == QAccessible::ActionInterface)
-		return (QAccessibleActionInterface *) this;
-	return nullptr;
-}
-
-// A row is operable when its listing is, and when it is still in it: what
-// the listing can do, every row of it can do.
-static bool
-file_actionable(const FileAdapter *adapter)
-{
-	return adapter && adapter->resolve() &&
-		operable(adapter->window_, adapter->browser_);
-}
-
-QStringList
-FileAdapter::actionNames() const
-{
-	if (!file_actionable(this))
-		return {};
-	return {QAccessibleActionInterface::pressAction(),
-		QAccessibleActionInterface::setFocusAction()};
-}
-
-void
-FileAdapter::doAction(const QString &name)
-{
-	if (!this->actionNames().contains(name))
-		return;
-
-	const int row = this->browser_->file_index(this->path_);
-	if (row < 0)
-		return;
-
-	Kit &kit = this->window_->kit();
-	if (name == QAccessibleActionInterface::setFocusAction()) {
-		this->browser_->select_index(row, true);
-		kit.set_focus(this->browser_, true);
-	} else {
-		this->browser_->activate_file(this->browser_->file_url(row));
-	}
-	schedule_render(kit);
-}
-
 WidgetAdapter::WidgetAdapter(Window *window, Widget *w)
 	: window_(window), widget_(w)
 {
@@ -1278,22 +1045,6 @@ EntryAdapter::entry() const
 	// Always an Entry while the widget is there: interface_for() chose this
 	// class by asking, and a widget never changes type under its adapter.
 	return (Entry *) this->widget_;
-}
-
-BrowserAdapter::BrowserAdapter(Window *window, Browser *browser)
-	: WidgetAdapter(window, browser), last_file_rev_(browser->file_rev_)
-{
-	this->last_file_paths_.reserve(browser->files_.size());
-	for (const Browser::File &file : browser->files_)
-		this->last_file_paths_.push_back(file.path);
-	if (const int row = cursor_row(browser); row >= 0)
-		this->last_cursor_path_ = browser->files_[size_t(row)].path;
-}
-
-Browser *
-BrowserAdapter::browser() const
-{
-	return (Browser *) this->widget_;
 }
 
 QWindow *
@@ -1380,71 +1131,6 @@ WidgetAdapter::focusChild() const
 	return nullptr;
 }
 
-// The listing is the browser's children, and there is no Widget behind any
-// of them: the rows are entries of files_, resolved by path.
-int
-BrowserAdapter::childCount() const
-{
-	return this->widget_ ? int(this->browser()->files_.size()) : 0;
-}
-
-QAccessibleInterface *
-BrowserAdapter::child(int index) const
-{
-	if (!this->widget_ || index < 0)
-		return nullptr;
-	Browser *browser = this->browser();
-	if (index >= int(browser->files_.size()))
-		return nullptr;
-	return interface_for_file(
-		this->window_, browser, browser->files_[size_t(index)].path);
-}
-
-int
-BrowserAdapter::indexOfChild(const QAccessibleInterface *other) const
-{
-	auto *file = dynamic_cast<const FileAdapter *>(other);
-	if (!this->widget_ || !file || file->browser_ != this->browser())
-		return -1;
-	return this->browser()->file_index(file->path_);
-}
-
-QAccessibleInterface *
-BrowserAdapter::childAt(int x, int y) const
-{
-	if (!this->widget_)
-		return nullptr;
-
-	Browser *browser = this->browser();
-	const QPoint at = kit_point(*this->window_, x, y);
-	for (const Browser::File &file : browser->files_) {
-		// The clipped rectangle, which is the one rect() reports: a row
-		// half scrolled out of the well must not answer for the half of
-		// its tile that is not there, and one entirely out of it is no
-		// clickable ghost at all.
-		if (!file_visible_rect(this->window_, browser, file)
-				.contains(float(at.x()), float(at.y())))
-			continue;
-		return interface_for_file(this->window_, browser, file.path);
-	}
-	return nullptr;
-}
-
-QAccessibleInterface *
-BrowserAdapter::focusChild() const
-{
-	Browser *browser = this->widget_ ? this->browser() : nullptr;
-	if (!browser || this->window_->kit().focus_ != browser)
-		return nullptr;
-
-	const int row = cursor_row(browser);
-	if (row < 0)
-		return nullptr;
-
-	return interface_for_file(
-		this->window_, browser, browser->files_[size_t(row)].path);
-}
-
 QRect
 WidgetAdapter::rect() const
 {
@@ -1487,8 +1173,11 @@ WidgetAdapter::text(QAccessible::Text t) const
 	case QAccessible::Accelerator:
 		return accelerator_of(this->widget_);
 	case QAccessible::Description: {
+		// The tip of a cell is its name.  A cell that the listing dropped
+		// has no file.
 		if (const QString described = description_of(this->widget_);
-			!described.isEmpty())
+			!described.isEmpty() ||
+			dynamic_cast<const FileCell *>(this->widget_))
 			return described;
 
 		// The tooltip of a labelled control just repeats its label; only an
@@ -1567,83 +1256,6 @@ EntryAdapter::interface_cast(QAccessible::InterfaceType type)
 	if (type == QAccessible::EditableTextInterface)
 		return (QAccessibleEditableTextInterface *) this;
 	return WidgetAdapter::interface_cast(type);
-}
-
-void *
-BrowserAdapter::interface_cast(QAccessible::InterfaceType type)
-{
-	if (type == QAccessible::SelectionInterface)
-		return (QAccessibleSelectionInterface *) this;
-	return WidgetAdapter::interface_cast(type);
-}
-
-// Single selection: the cursor row, or nothing.  Selecting must never open
-// the file, which is what the separate press action is for.
-int
-BrowserAdapter::selectedItemCount() const
-{
-	return this->widget_ && cursor_row(this->browser()) >= 0 ? 1 : 0;
-}
-
-QList<QAccessibleInterface *>
-BrowserAdapter::selectedItems() const
-{
-	QList<QAccessibleInterface *> items;
-	Browser *browser = this->widget_ ? this->browser() : nullptr;
-	const int row = browser ? cursor_row(browser) : -1;
-	if (row < 0)
-		return items;
-	if (QAccessibleInterface *item = interface_for_file(
-			this->window_, browser, browser->files_[size_t(row)].path))
-		items.append(item);
-	return items;
-}
-
-// The row this child stands for, or -1 for anything that is not a row of
-// this very listing.
-int
-BrowserAdapter::row_of(QAccessibleInterface *childItem) const
-{
-	auto *file = dynamic_cast<FileAdapter *>(childItem);
-	if (!this->actionable() || !file || file->browser_ != this->browser())
-		return -1;
-	return this->browser()->file_index(file->path_);
-}
-
-bool
-BrowserAdapter::select(QAccessibleInterface *childItem)
-{
-	const int row = this->row_of(childItem);
-	if (row < 0)
-		return false;
-	this->browser()->select_index(row, false);
-	return true;
-}
-
-bool
-BrowserAdapter::unselect(QAccessibleInterface *childItem)
-{
-	const int row = this->row_of(childItem);
-	if (row < 0 || row != this->browser()->cursor_)
-		return false;
-	this->browser()->select_index(-1, false);
-	return true;
-}
-
-// The model has one cursor, so there is nothing "all" could mean.
-bool
-BrowserAdapter::selectAll()
-{
-	return false;
-}
-
-bool
-BrowserAdapter::clear()
-{
-	if (!this->actionable())
-		return false;
-	this->browser()->select_index(-1, false);
-	return true;
 }
 
 ComboListAdapter::ComboListAdapter(Window *window, ComboPopup *list)
@@ -1740,9 +1352,64 @@ ComboListAdapter::clear()
 	return false;
 }
 
-FileRowsAdapter::FileRowsAdapter(Window *window, FileRows *rows)
-	: WidgetAdapter(window, rows)
+// The constructor records the current state, so that the first sweep does not
+// announce a change that did not occur.
+FileRowsAdapter::FileRowsAdapter(Window *window, Widget *list)
+	: WidgetAdapter(window, list)
 {
+	if (auto *browser = dynamic_cast<Browser *>(list))
+		this->last_file_rev = browser->file_rev_;
+	if (QAccessibleInterface *selected =
+			interface_for(window, selected_row(list)))
+		this->last_selected = QAccessible::uniqueId(selected);
+}
+
+QAccessibleInterface *
+FileRowsAdapter::child(int index) const
+{
+	if (!this->widget_ || index < 0)
+		return nullptr;
+	return interface_for(this->window_, this->widget_->child(size_t(index)));
+}
+
+// The row that hit testing finds, if its visible rectangle holds the point,
+// which is the rectangle that rect() reports.
+QAccessibleInterface *
+FileRowsAdapter::childAt(int x, int y) const
+{
+	if (!this->widget_)
+		return nullptr;
+
+	const QPoint at = kit_point(*this->window_, x, y);
+	const float ax = float(at.x()), ay = float(at.y());
+	Widget *hit = this->widget_->hit_at(ax, ay);
+	if (!hit || hit->parent_ != this->widget_ ||
+		!visible_rect(hit, host_rect(this->window_->kit())).contains(ax, ay))
+		return nullptr;
+	return interface_for(this->window_, hit);
+}
+
+int
+FileRowsAdapter::childCount() const
+{
+	return this->widget_ ? int(this->widget_->children().size()) : 0;
+}
+
+// A cell knows its index.  The search finds a row of the chooser by address.
+int
+FileRowsAdapter::indexOfChild(const QAccessibleInterface *other) const
+{
+	auto *adapter = dynamic_cast<const WidgetAdapter *>(other);
+	if (!this->widget_ || !adapter || !adapter->widget_ ||
+		adapter->widget_->parent_ != this->widget_)
+		return -1;
+	if (auto *cell = dynamic_cast<const FileCell *>(adapter->widget_))
+		return cell->index;
+
+	const auto kids = this->widget_->children();
+	const auto it = find_if(kids.begin(), kids.end(),
+		[adapter](const auto &row) { return row.get() == adapter->widget_; });
+	return it == kids.end() ? -1 : int(it - kids.begin());
 }
 
 void *
@@ -1756,7 +1423,7 @@ FileRowsAdapter::interface_cast(QAccessible::InterfaceType type)
 int
 FileRowsAdapter::selectedItemCount() const
 {
-	return this->widget_ && ((FileRows *) this->widget_)->selected ? 1 : 0;
+	return this->widget_ && selected_row(this->widget_) ? 1 : 0;
 }
 
 QList<QAccessibleInterface *>
@@ -1764,20 +1431,20 @@ FileRowsAdapter::selectedItems() const
 {
 	if (!selectedItemCount())
 		return {};
-	return {
-		interface_for(this->window_, ((FileRows *) this->widget_)->selected)};
+	return {interface_for(this->window_, selected_row(this->widget_))};
 }
 
+// A selection must not open the file.  The Press action does that.
 bool
 FileRowsAdapter::select(QAccessibleInterface *item)
 {
 	auto *adapter = dynamic_cast<WidgetAdapter *>(item);
-	auto *row = adapter ? dynamic_cast<FileRow *>(adapter->widget_) : nullptr;
-	if (!row || row->parent_ != this->widget_ || !this->actionable())
+	if (!adapter || !adapter->widget_ ||
+		adapter->widget_->parent_ != this->widget_ || !this->actionable())
 		return false;
 
 	Kit &kit = this->window_->kit();
-	((FileRows *) this->widget_)->select(kit, row);
+	select_row(kit, this->widget_, adapter->widget_);
 	schedule_render(kit);
 	return true;
 }
@@ -1787,7 +1454,7 @@ FileRowsAdapter::unselect(QAccessibleInterface *item)
 {
 	auto *adapter = dynamic_cast<WidgetAdapter *>(item);
 	if (!this->widget_ || !adapter || !adapter->widget_ ||
-		adapter->widget_ != ((FileRows *) this->widget_)->selected)
+		adapter->widget_ != selected_row(this->widget_))
 		return false;
 	return clear();
 }
@@ -1798,7 +1465,7 @@ FileRowsAdapter::clear()
 	if (!this->actionable())
 		return false;
 	Kit &kit = this->window_->kit();
-	((FileRows *) this->widget_)->select(kit, nullptr);
+	select_row(kit, this->widget_, nullptr);
 	schedule_render(kit);
 	return true;
 }
@@ -1822,6 +1489,8 @@ default_action_of(const Widget *w)
 			return QAccessibleActionInterface::showMenuAction();
 		return QAccessibleActionInterface::pressAction();
 	}
+	if (dynamic_cast<const FileCell *>(w))
+		return QAccessibleActionInterface::pressAction();
 	return {};
 }
 
@@ -1850,10 +1519,15 @@ WidgetAdapter::doAction(const QString &name)
 		return;
 
 	Kit &kit = this->window_->kit();
-	if (name == QAccessibleActionInterface::setFocusAction())
+	if (name == QAccessibleActionInterface::setFocusAction()) {
+		// The cursor goes with the focus.  Otherwise, the two show different
+		// files.  A focus that is in the browser already follows the cursor.
+		if (auto *cell = dynamic_cast<FileCell *>(this->widget_))
+			((Browser *) cell->parent_)->select_index(cell->index, true);
 		kit.set_focus(this->widget_, true);
-	else
+	} else {
 		kit.activate(this->widget_);
+	}
 	schedule_render(kit);
 }
 
@@ -2433,54 +2107,8 @@ ShellAdapter::state() const
 // --- Notifications -----------------------------------------------------------
 
 static void
-retire_file(Registry &registry, Widget *browser, const string &path)
-{
-	auto bit = registry.files.find(browser);
-	if (bit == registry.files.end())
-		return;
-	auto it = bit->second.find(path);
-	if (it == bit->second.end())
-		return;
-
-	const QAccessible::Id id = it->second;
-	bit->second.erase(it);
-	if (bit->second.empty())
-		registry.files.erase(bit);
-	if (registry.focus == id)
-		registry.focus = 0;
-
-	auto *adapter =
-		dynamic_cast<FileAdapter *>(QAccessible::accessibleInterface(id));
-	if (!adapter)
-		return;
-
-	QAccessibleEvent event(adapter, QAccessible::ObjectDestroyed);
-	notify(&event);
-	adapter->detach();
-	QAccessible::deleteAccessibleInterface(id);
-}
-
-static void
-retire_browser_files(Registry &registry, Widget *browser)
-{
-	auto it = registry.files.find(browser);
-	if (it == registry.files.end())
-		return;
-
-	vector<string> paths;
-	paths.reserve(it->second.size());
-	for (const auto &entry : it->second)
-		paths.push_back(entry.first);
-	for (const string &path : paths)
-		retire_file(registry, browser, path);
-}
-
-static void
 retire_widget(Registry &registry, Widget *w)
 {
-	if (dynamic_cast<Browser *>(w))
-		retire_browser_files(registry, w);
-
 	auto it = registry.widgets.find(w);
 	if (it == registry.widgets.end())
 		return;
@@ -2634,64 +2262,6 @@ notify_listing_replaced(QAccessibleInterface *list)
 	notify(&created);
 }
 
-static void
-reconcile_file_membership(
-	Window *window, BrowserAdapter *adapter, Browser *browser)
-{
-	adapter->last_file_rev_ = browser->file_rev_;
-
-	vector<string> now;
-	now.reserve(browser->files_.size());
-	for (const Browser::File &file : browser->files_)
-		now.push_back(file.path);
-	// A rescan that found the directory exactly as it was is not a change.
-	if (adapter->last_file_paths_ == now)
-		return;
-
-	// Only what a client has already asked for gets retired: an id that was
-	// never handed out has nothing to invalidate, and a path that survives
-	// the rescan keeps the one it had.
-	unordered_set<string> next(now.begin(), now.end());
-	Registry *registry = find_registry(window);
-	for (const string &path : adapter->last_file_paths_) {
-		if (registry && !next.count(path))
-			retire_file(*registry, browser, path);
-	}
-
-	// Arrivals are not announced one by one.  Wrappers are made on child(i),
-	// and making one for every new path just to say it exists is the event
-	// flood and the eager materialisation the plan rules out together.
-	notify_listing_replaced(adapter);
-	adapter->last_file_paths_ = std::move(now);
-}
-
-static void
-reconcile_file_selection(Window *window, BrowserAdapter *list, Browser *browser,
-	const string &was, const string &now)
-{
-	if (was == now)
-		return;
-
-	if (!was.empty()) {
-		if (QAccessibleInterface *iface = existing_file(window, browser, was)) {
-			QAccessibleEvent event(iface, QAccessible::SelectionRemove);
-			notify(&event);
-		}
-	}
-	if (!now.empty()) {
-		if (QAccessibleInterface *iface =
-				interface_for_file(window, browser, now)) {
-			QAccessibleEvent event(iface, QAccessible::SelectionAdd);
-			notify(&event);
-		}
-	}
-
-	// The old file may already have been retired with the listing.  The
-	// list still has a selection change to announce.
-	QAccessibleEvent within(list, QAccessible::SelectionWithin);
-	notify(&within);
-}
-
 // Losing the focus is not gaining it elsewhere: there is one event for
 // taking the focus and none for dropping it, so the control that had it says
 // that it no longer does, and only a real new focus announces itself.
@@ -2728,34 +2298,6 @@ notify_focus(Window *window, Widget *w)
 		changed.focused = 1;
 		QAccessibleStateChangeEvent event(before, changed);
 		notify(&event);
-	}
-}
-
-// Scrolling changes extents and offscreen state, and neither is anything the
-// bridge will carry: it translates StateChanged only for checked, active,
-// disabled and focused, and drops LocationChanged on the floor.  Extents and
-// states are queried live, so a client that wants them asks -- and walking
-// every materialised row per frame to map rectangles nobody would receive is
-// the whole of what that would buy.  Selection has its own events below.
-static void
-reconcile_files(Window *window, BrowserAdapter *adapter)
-{
-	if (!adapter->isValid())
-		return;
-
-	Browser *browser = adapter->browser();
-	if (browser->file_rev_ != adapter->last_file_rev_)
-		reconcile_file_membership(window, adapter, browser);
-
-	string cursor_path;
-	if (const int row = cursor_row(browser); row >= 0)
-		cursor_path = browser->files_[size_t(row)].path;
-
-	if (cursor_path != adapter->last_cursor_path_) {
-		reconcile_file_selection(
-			window, adapter, browser, adapter->last_cursor_path_, cursor_path);
-		notify_focus(window, window->kit().focus_);
-		adapter->last_cursor_path_ = std::move(cursor_path);
 	}
 }
 
@@ -2806,17 +2348,29 @@ reconcile_child_list(Window *window, QAccessibleInterface *parent,
 	last = std::move(now);
 }
 
+// The browser changes its revision only when its cells change.  Thus the
+// revision is sufficient, and many rescans between two sweeps give one
+// announcement.  The chooser compares the addresses of its rows.  The arrow
+// keys change the selection without a new listing, so each sweep compares the
+// selection.
 static void
 reconcile_file_rows(Window *window, FileRowsAdapter *adapter)
 {
-	auto *rows = (FileRows *) adapter->widget_;
-	vector<Widget *> now;
-	semantic_children(rows, now);
-	if (now != adapter->last_children_) {
-		notify_listing_replaced(adapter);
-		adapter->last_children_ = std::move(now);
+	Widget *list = adapter->widget_;
+	if (auto *browser = dynamic_cast<Browser *>(list)) {
+		if (browser->file_rev_ != adapter->last_file_rev) {
+			adapter->last_file_rev = browser->file_rev_;
+			notify_listing_replaced(adapter);
+		}
+	} else {
+		vector<Widget *> now;
+		semantic_children(list, now);
+		if (now != adapter->last_children_) {
+			notify_listing_replaced(adapter);
+			adapter->last_children_ = std::move(now);
+		}
 	}
-	QAccessibleInterface *selected = interface_for(window, rows->selected);
+	QAccessibleInterface *selected = interface_for(window, selected_row(list));
 	const QAccessible::Id id = selected ? QAccessible::uniqueId(selected) : 0;
 	if (id == adapter->last_selected)
 		return;
@@ -2838,13 +2392,6 @@ reconcile_children(Window *window, WidgetAdapter *adapter)
 {
 	if (!adapter->widget_)
 		return;
-
-	// A listing's children are rows rather than widgets, and are diffed by
-	// path against the model instead of by pointer against the tree.
-	if (auto *list = dynamic_cast<BrowserAdapter *>(adapter)) {
-		reconcile_files(window, list);
-		return;
-	}
 
 	if (auto *rows = dynamic_cast<FileRowsAdapter *>(adapter)) {
 		reconcile_file_rows(window, rows);
@@ -2944,6 +2491,10 @@ reconcile_window(Window *window)
 	for (const auto &entry : registry->widgets)
 		widgets.push_back(entry.first);
 	for (Widget *w : widgets) {
+		// The name and the state of a row do not change, and selection has
+		// events of its own.  A listing can have very many rows.
+		if (listing(w->parent_))
+			continue;
 		auto it = registry->widgets.find(w);
 		if (it == registry->widgets.end())
 			continue;
@@ -3086,14 +2637,6 @@ accessible_forget_window(Window *window)
 				QAccessible::accessibleInterface(entry.second)))
 			adapter->detach();
 		QAccessible::deleteAccessibleInterface(entry.second);
-	}
-	for (const auto &browser : registry.files) {
-		for (const auto &entry : browser.second) {
-			if (auto *adapter = dynamic_cast<FileAdapter *>(
-					QAccessible::accessibleInterface(entry.second)))
-				adapter->detach();
-			QAccessible::deleteAccessibleInterface(entry.second);
-		}
 	}
 	// The shell's interface, and an object-backed client's, belong to Qt's
 	// cache, which drops them when their QObject goes.

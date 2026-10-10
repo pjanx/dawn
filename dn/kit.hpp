@@ -281,9 +281,9 @@ struct Widget {
 	// by a different name in every widget that draws one.
 	[[nodiscard]] virtual QChar mnemonic_key() const { return {}; }
 	virtual bool traps_focus() const { return false; }
-	// The one focusable below this that stands for the whole of it in the
-	// Tab order: a listing is one stop, and the arrows are what walk it.
-	// Which one that is belongs to the widget -- a list answers with its
+	// This, or the one focusable below this, that stands for the whole of it
+	// in the Tab order: a listing is one stop, and the arrows are what walk
+	// it.  Which one that is belongs to the widget -- a list answers with its
 	// selection, so that tabbing away and back returns to the same row.
 	// Null for everything that is no such group.
 	virtual Widget *tab_stop() { return nullptr; }
@@ -1084,6 +1084,7 @@ struct Kit {
 	// through here, so the two can never drift into a ring that outlives its
 	// focus, or focus with no ring.  Re-seating the same focus across a tree
 	// rebuild is not a focus change, and leaves the ring as it found it.
+	// The widget that gets the focus can be the stop of the widget given.
 	void set_focus(Widget *w, bool ring);
 	// Focus carried over to the successor of a widget that has just been
 	// rebuilt away.  The ring is whatever it already was, because nothing

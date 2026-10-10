@@ -37,7 +37,7 @@ struct BrowseSetup {
 	bool filter_files = true;
 };
 
-struct Browser : Widget {
+struct Browser : Composite {
 	struct File {
 		// Identity.  mtime and size say which version of the file the
 		// thumbnail state below is about; a completion carrying different
@@ -80,8 +80,8 @@ struct Browser : Widget {
 		};
 		Progress progress;
 
-		// Laid out as if unscrolled, so that scrolling is no relayout;
-		// on_screen() says where one of them is drawn.
+		// Laid out as if unscrolled; on_screen() says where one of them is
+		// drawn.
 		Rect tile{};
 		Rect cell{};
 		Rect cap{};
@@ -123,6 +123,9 @@ struct Browser : Widget {
 	BrowseSetup setup_;
 	BrowserView view_ = BrowserView::Tile;
 	int thumb_size_ = 256;
+	// The listing or its measures changed, and the grid needs a new layout.
+	// A scroll or a focus change only moves the cells.
+	bool grid_dirty_ = true;
 	// A sync of atlas residency is in the event loop: the visible band moved,
 	// or pixels arrived.  Layout syncs without one.
 	bool thumbs_dirty_ = false;
@@ -144,23 +147,18 @@ struct Browser : Widget {
 	int layout_cursor_ = -1;
 	float layout_cell_x_ = 0;
 	int layout_w_ = 0;
-	int mid_file_ = -1;
-	// What a left press landed on, and where: a press that travels far
-	// enough drags that file out instead of opening it.
-	int press_file_ = -1;
-	float press_x_ = 0;
-	float press_y_ = 0;
 
 	bool can_prev_dir_ = false;
 	bool can_next_dir_ = false;
 	bool can_parent_dir_ = false;
-	// Only ever replaced through set_files(), which owns the two below.
+	// Only ever replaced through set_files(), which owns the two below, and
+	// the cells: kids[i] shows files_[i].
 	std::vector<File> files_;
 	// Path to current row, rebuilt with the listing so a query does not
 	// walk files_ for every accessible child.
 	std::unordered_map<std::string, int> file_by_path_;
-	// Bumped only when the listing is replaced, so accessibility can skip
-	// membership work on ordinary frames.
+	// Moves only when a cell comes, goes, or gets a new index.  An unchanged
+	// rescan keeps it, so accessibility announces only a real change.
 	uint64_t file_rev_ = 0;
 	std::vector<DirRow> side_dirs_;
 	std::unordered_map<std::string, CachedSize> size_cache_;
@@ -182,10 +180,11 @@ struct Browser : Widget {
 	Size measure_content(Kit &kit, int max_w, int max_h) override;
 	void arrange_content(Kit &kit, Rect alloc) override;
 	void paint(Kit &kit) const override;
+	Widget *hit_at(float x, float y) override;
 	[[nodiscard]] bool focusable() const override;
-	[[nodiscard]] Qt::CursorShape cursor() const override;
-	[[nodiscard]] QString tip(const Kit &) const override;
-	[[nodiscard]] Rect tip_anchor() const override { return {}; }
+	// The cell at the cursor, or this when there is no cursor.  While the
+	// focus is in the browser, it is on this widget.
+	Widget *tab_stop() override;
 
 	void init();
 	void open_dir(const QUrl &url, bool record);
@@ -194,7 +193,8 @@ struct Browser : Widget {
 	bool hist_forward();
 	[[nodiscard]] bool hist_can_back() const;
 	[[nodiscard]] bool hist_can_forward() const;
-	// The listing, its path index and its revision, which only move as one.
+	// The listing, its cells, its path index and its revision, which only
+	// move as one.  Cells stay with their paths.
 	void set_files(std::vector<File> files);
 	void select_file(const QUrl &url);
 	void select_index(int index, bool reveal);
@@ -214,8 +214,31 @@ struct Browser : Widget {
 	bool scroll(Kit &kit, float x, float y, int delta) override;
 	bool pan(Kit &kit, float x, float y, float dx, float dy) override;
 	bool key(Kit &kit, const Key &ev) override;
+};
+
+// One file of a Browser, which is its parent and sets its layout.  The cell in
+// kids[i] shows files_[i].  A cell that the listing dropped has the index -1.
+struct FileCell : Widget {
+	int index = -1;
+	// Where a left press on the thumbnail started.  When the pointer then
+	// moves far enough, the press drags the file out, and does not open it.
+	float drag_x_ = 0.f;
+	float drag_y_ = 0.f;
+	bool drag_armed_ = false;
+
+	FileCell() { this->hittable = true; }
+	Size measure_content(Kit &, int, int) override { return {}; }
+	void paint(Kit &kit) const override;
+	[[nodiscard]] bool focusable() const override { return shown(); }
+	bool activate(Kit &kit) override;
+	[[nodiscard]] Qt::CursorShape cursor() const override;
+	[[nodiscard]] QString tip(const Kit &kit) const override;
+	[[nodiscard]] Rect tip_anchor() const override { return {}; }
+	bool press(Kit &kit, float x, float y, Qt::MouseButton button) override;
+	bool release(Kit &kit, float x, float y, Qt::MouseButton button) override;
 	bool double_click(Kit &kit, float x, float y, Qt::MouseButton button,
 		unsigned mods) override;
+	bool motion(Kit &kit, float x, float y) override;
 };
 
 std::unique_ptr<Page> make_browser_page(

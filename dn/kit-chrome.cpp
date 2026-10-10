@@ -10,7 +10,6 @@
 #include <libdn/gettext.hpp>
 
 #include "assoc.hpp"
-#include "kit-browser.hpp"
 #include "kit-chrome.hpp"
 #include "kit-files.hpp"
 #include "url.hpp"
@@ -683,18 +682,15 @@ constexpr float kChipPadY = 2.f;
 
 // Anything the keyboard can reach is worth a hint, so this asks focusable()
 // rather than testing for a type: a widget opts in by being reachable at all.
-// The exception is a container that is focusable as a whole -- one chip over
-// the entire browser well would say nothing useful, and its files get their
-// own targets below.
+// The exception is a group, such as a listing: one chip over all of it would
+// say nothing useful, and its members get chips of their own.
 static void
 collect_targets(Widget *w, Rect host, vector<Widget *> &out)
 {
 	if (!w || !w->shown())
 		return;
-	if (dynamic_cast<Browser *>(w))
-		return;
 
-	if (w->focusable() && visible_rect(w, host).w > 0)
+	if (!w->tab_stop() && w->focusable() && visible_rect(w, host).w > 0)
 		out.push_back(w);
 	for (const auto &k : w->children())
 		collect_targets(k.get(), host, out);
@@ -892,32 +888,6 @@ Hint::collect(Widget *scope)
 		t.at = visible_rect(w, host);
 		this->targets_.push_back(t);
 	}
-
-	// TODO(p): Turn the Browser into a composed widget.
-	if (scope != this->page)
-		return;
-
-	auto *browser = dynamic_cast<Browser *>(this->page->content);
-	if (!browser)
-		return;
-
-	const Rect well = browser->r;
-	for (int i = 0; i < int(browser->files_.size()); i++) {
-		const Browser::File &f = browser->files_[size_t(i)];
-		if (f.tile.empty())
-			continue;
-
-		const Rect clipped = browser->on_screen(f.tile).intersect(well);
-		if (clipped.empty())
-			continue;
-
-		Target t;
-		t.browser = browser;
-		t.file_i = i;
-		t.file_rev = browser->file_rev_;
-		t.at = clipped;
-		this->targets_.push_back(t);
-	}
 }
 
 void
@@ -929,20 +899,15 @@ Hint::assign_labels()
 		this->targets_[size_t(i)].label = label_at(i, len);
 }
 
-// A target that is out of sight, that cannot take the focus, or that is of an
-// older listing gets an empty rect, and nothing matches it.
+// A target that is out of sight, or that cannot take the focus, gets an empty
+// rect, and nothing matches it.
 void
 Hint::refresh_rects()
 {
 	for (Target &t : this->targets_) {
 		t.at = {};
-		if (t.widget) {
-			if (t.widget->focusable())
-				t.at = visible_rect(t.widget, this->page->r);
-		} else if (t.browser && t.file_rev == t.browser->file_rev_) {
-			const Browser::File &f = t.browser->files_[size_t(t.file_i)];
-			t.at = t.browser->on_screen(f.tile).intersect(t.browser->r);
-		}
+		if (t.widget->focusable())
+			t.at = visible_rect(t.widget, this->page->r);
 	}
 }
 
@@ -968,22 +933,12 @@ void
 Hint::fire(Kit &kit, Target t)
 {
 	Widget *widget = t.widget;
-	Browser *browser = t.browser;
-	const int file_i = t.file_i;
-	const uint64_t file_rev = t.file_rev;
 	close(kit);
-	if (widget) {
-		// Whatever this widget calls its default action; one that has none
-		// takes the keyboard instead, which is what hinting a field is for.
-		// Re-checked inside, because a target collected when the overlay
-		// opened may have been disabled or hidden since.
-		kit.activate(widget);
-		return;
-	}
-	if (!browser || file_rev != browser->file_rev_)
-		return;
-
-	browser->activate_file(browser->file_url(file_i));
+	// Whatever this widget calls its default action; one that has none
+	// takes the keyboard instead, which is what hinting a field is for.
+	// Re-checked inside, because a target collected when the overlay
+	// opened may have been disabled or hidden since.
+	kit.activate(widget);
 }
 
 // --- Page --------------------------------------------------------------------

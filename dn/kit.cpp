@@ -2948,16 +2948,16 @@ collect_focusable(Widget *w, const Widget *keep, vector<Widget *> &out)
 {
 	if (!w || !w->shown() || dynamic_cast<Titlebar *>(w))
 		return;
-	if (w->focusable() || w == keep)
-		out.push_back(w);
 
 	// A group stands for itself with one of its own, and Tab steps over
-	// everything else it holds.
+	// everything else it holds, the group included.
 	if (Widget *stop = w->tab_stop()) {
 		if (stop->shown() && (stop->focusable() || stop == keep))
 			out.push_back(stop);
 		return;
 	}
+	if (w->focusable() || w == keep)
+		out.push_back(w);
 	for (const auto &k : w->children())
 		collect_focusable(k.get(), keep, out);
 }
@@ -4486,6 +4486,11 @@ deliver_focus_lost(Kit &kit)
 void
 Kit::set_focus(Widget *w, bool ring)
 {
+	// A group takes the focus on its stop.
+	if (Widget *stop = w ? w->tab_stop() : nullptr;
+		stop && stop != w && stop->focusable())
+		w = stop;
+
 	const bool moved = this->focus_ != w;
 	if (moved) {
 		this->focus_at_ = chrono::steady_clock::now();

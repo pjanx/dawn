@@ -353,6 +353,25 @@ request_render(const Browser &b)
 		b.kit_.request_render();
 }
 
+// The listing, or what the grid measures, changed.
+static void
+relayout(Browser &b)
+{
+	b.grid_dirty_ = true;
+	b.invalidate_arrange();
+}
+
+// While the focus is in the browser, it is on the stop: the cell at the
+// cursor, or the browser itself.  Code that changes the cursor calls this,
+// if it does not move the focus itself.
+static void
+follow_cursor(Browser &b)
+{
+	Kit &kit = b.kit_;
+	if (within(kit.focus_, &b) && kit.focus_ != b.tab_stop())
+		kit.set_focus(b.tab_stop(), kit.focus_visible_);
+}
+
 // --- Widgets -----------------------------------------------------------------
 
 static bool
@@ -1208,7 +1227,7 @@ sync_thumbs(Browser &b)
 }
 
 // One sync for a batch of events that moved the visible band, or brought
-// pixels.  The handlers queue it before they ask for a frame.
+// pixels.
 static void
 queue_sync_thumbs(Browser &b)
 {
@@ -1268,7 +1287,7 @@ apply_thumb(Browser &b, uint64_t gen, string path, int64_t mtime, uint64_t size,
 				f.mtime, f.size, update.geometry_w, update.geometry_h};
 		}
 		if (f.image_w != old_w || f.image_h != old_h)
-			b.invalidate_arrange();
+			relayout(b);
 		if (update.failed || !update.ram.empty() || update.gpu_pending) {
 			if (!update.gpu_pending && !f.gpu.empty()) {
 				b.sheet_.release(f.gpu);
@@ -1503,7 +1522,7 @@ scroll_to_row(Browser &b, const Browser::GridRow &row)
 	else if (float(row.y + row.h) > b.scroll_.offset + vis)
 		b.scroll_.offset = max(0.f, float(row.y + row.h) - vis);
 	b.scroll_.offset = clamp(b.scroll_.offset, 0.f, b.scroll_.max_offset());
-	queue_sync_thumbs(b);
+	b.invalidate_arrange();
 }
 
 static void
@@ -1514,7 +1533,7 @@ page_scroll(Browser &b, int dir)
 	const float step = vis > rh ? vis - rh : vis;
 	b.scroll_.offset = clamp(
 		b.scroll_.offset + float(dir) * step, 0.f, b.scroll_.max_offset());
-	queue_sync_thumbs(b);
+	b.invalidate_arrange();
 	request_render(b);
 }
 
@@ -1534,6 +1553,7 @@ move_cursor(Browser &b, CursorDir dir)
 		}
 		remember_cursor_x(b);
 		scroll_to_row(b, b.rows_[size_t(row_i)]);
+		follow_cursor(b);
 		request_render(b);
 		return;
 	}
@@ -1572,6 +1592,7 @@ move_cursor(Browser &b, CursorDir dir)
 	row_i = find_cursor_row(b);
 	if (row_i >= 0)
 		scroll_to_row(b, b.rows_[size_t(row_i)]);
+	follow_cursor(b);
 	request_render(b);
 }
 
@@ -1585,6 +1606,7 @@ move_cursor_home(Browser &b)
 	b.cursor_ = row.first;
 	remember_cursor_x(b);
 	scroll_to_row(b, row);
+	follow_cursor(b);
 	request_render(b);
 }
 
@@ -1598,6 +1620,7 @@ move_cursor_end(Browser &b)
 	b.cursor_ = row.first + row.count - 1;
 	remember_cursor_x(b);
 	scroll_to_row(b, row);
+	follow_cursor(b);
 	request_render(b);
 }
 
@@ -1708,27 +1731,6 @@ layout_grid(Browser &b, Rect area)
 		b.layout_w_ = area.w;
 	}
 	b.scroll_.set_metrics(b.kit_, float(y + pad * 2), float(area.h));
-}
-
-static int
-hit_cell(const Browser &b, float x, float y)
-{
-	for (int i = 0; i < int(b.files_.size()); i++) {
-		if (b.on_screen(b.files_[size_t(i)].cell).contains(x, y))
-			return i;
-	}
-	return -1;
-}
-
-// The cell also covers the caption and the padding around the thumbnail,
-// which merely select the file; the tile is what opens it.
-static int
-hit_file(const Browser &b, float x, float y)
-{
-	const int i = hit_cell(b, x, y);
-	if (i < 0 || !b.on_screen(b.files_[size_t(i)].tile).contains(x, y))
-		return -1;
-	return i;
 }
 
 static bool
@@ -2098,8 +2100,11 @@ scan_dir(Browser &b)
 		if (!o.gpu.empty())
 			b.sheet_.release(o.gpu);
 	}
-	b.set_files(std::move(files));
+	// Clear the cursor before set_files() retires cells.  A retirement can
+	// move the focus through tab_stop(), and the old cursor is an index into
+	// the old listing.
 	clear_cursor(b);
+	b.set_files(std::move(files));
 	if (!keep.empty()) {
 		if (const auto it = b.file_by_path_.find(keep);
 			it != b.file_by_path_.end()) {
@@ -2107,6 +2112,7 @@ scan_dir(Browser &b)
 			remember_cursor_x(b);
 		}
 	}
+	follow_cursor(b);
 
 	for (const Volume &v : list_volumes())
 		push_place(b, root, v.path, v.name.c_str(), v.icon, {});
@@ -2221,7 +2227,7 @@ set_thumb_size(Browser &b, int size)
 	if (size == b.thumb_size_)
 		return;
 	b.thumb_size_ = size;
-	b.invalidate_arrange();
+	relayout(b);
 	b.thumb_gen_++;
 	b.thumbnailer_.set_epoch(b.thumbnail_client_, b.thumb_gen_);
 	b.thumb_inflight_.clear();
@@ -2245,7 +2251,7 @@ set_view(Browser &b, BrowserView view)
 	if (view == b.view_)
 		return;
 	b.view_ = view;
-	b.invalidate_arrange();
+	relayout(b);
 	request_render(b);
 }
 
@@ -2254,6 +2260,7 @@ set_view(Browser &b, BrowserView view)
 void
 Browser::rescale(Kit &)
 {
+	relayout(*this);
 	if (!this->files_.empty()) {
 		invalidate_thumbs(*this);
 		enqueue_thumbs(*this);
@@ -2425,7 +2432,7 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::Filenames:
 		b.show_names_ = !b.show_names_;
-		b.invalidate_arrange();
+		relayout(b);
 		request_render(b);
 		return true;
 	case Action::Search: {
@@ -2523,12 +2530,35 @@ Browser::measure_content(Kit &, int max_w, int max_h)
 	return {max_w, max_h};
 }
 
+// Input arranges the tree before each event.  After a scroll or a cursor move,
+// only the cells move, and the grid keeps its layout.
 void
 Browser::arrange_content(Kit &kit, Rect alloc)
 {
-	this->r = alloc;
-	layout_grid(*this, this->r);
-	sync_thumbs(*this);
+	const bool regrid = this->grid_dirty_ || alloc != this->r;
+	if (regrid) {
+		this->r = alloc;
+		this->grid_dirty_ = false;
+		layout_grid(*this, alloc);
+	}
+	for (size_t i = 0; i < this->kids.size(); i++)
+		this->kids[i]->arrange(kit, on_screen(this->files_[i].cell));
+	// Each event of a batch can move the cells.  One sync is sufficient.
+	if (regrid)
+		sync_thumbs(*this);
+	else
+		queue_sync_thumbs(*this);
+}
+
+Widget *
+Browser::hit_at(float x, float y)
+{
+	if (!shown() || this->r.empty() || !this->r.contains(x, y))
+		return nullptr;
+	if (this->scroll_.visible() &&
+		this->scroll_.bar_rect(this->r).contains(x, y))
+		return this;
+	return Composite::hit_at(x, y);
 }
 
 bool
@@ -2537,23 +2567,12 @@ Browser::focusable() const
 	return shown() && this->r.w > 0 && this->r.h > 0;
 }
 
-Qt::CursorShape
-Browser::cursor() const
+Widget *
+Browser::tab_stop()
 {
-	if (hit_file(*this, this->kit_.mouse_x_, this->kit_.mouse_y_) < 0)
-		return Qt::ArrowCursor;
-	return Qt::PointingHandCursor;
-}
-
-QString
-Browser::tip(const Kit &) const
-{
-	if (this->show_names_)
-		return {};
-	const int i = hit_file(*this, this->kit_.mouse_x_, this->kit_.mouse_y_);
-	if (i < 0)
-		return {};
-	return QString::fromStdString(this->files_[size_t(i)].name);
+	if (this->cursor_ < 0 || this->cursor_ >= int(this->kids.size()))
+		return this;
+	return this->kids[size_t(this->cursor_)].get();
 }
 
 void
@@ -2565,17 +2584,44 @@ Browser::select_file(const QUrl &url)
 void
 Browser::set_files(vector<File> files)
 {
+	// The path index still describes the old listing, and finds the cell of
+	// each path that stays.
+	vector<unique_ptr<Widget>> cells(files.size());
+	bool moved = false;
+	for (size_t i = 0; i < files.size(); i++) {
+		if (const auto it = this->file_by_path_.find(files[i].path);
+			it != this->file_by_path_.end())
+			cells[i] = std::move(this->kids[size_t(it->second)]);
+		if (!cells[i]) {
+			cells[i] = make_unique<FileCell>();
+			cells[i]->parent_ = this;
+		}
+		auto *cell = (FileCell *) cells[i].get();
+		moved |= cell->index != int(i);
+		cell->index = int(i);
+	}
+	// An index into the old listing would name a file of the new one.
+	vector<unique_ptr<Widget>> gone;
+	for (auto &k : this->kids) {
+		if (!k)
+			continue;
+		((FileCell *) k.get())->index = -1;
+		gone.push_back(std::move(k));
+	}
+
+	this->kids = std::move(cells);
 	this->files_ = std::move(files);
-	invalidate_arrange();
 	this->file_by_path_.clear();
 	this->file_by_path_.reserve(this->files_.size());
 	for (int i = 0; i < int(this->files_.size()); i++)
 		this->file_by_path_.emplace(this->files_[size_t(i)].path, i);
-	this->file_rev_++;
+	if (moved || !gone.empty())
+		this->file_rev_++;
+	relayout(*this);
 
-	// Indexes into the old listing would now name other files.
-	this->press_file_ = -1;
-	this->mid_file_ = -1;
+	// Last: a retirement can close the Hint, which arranges the tree.
+	for (auto &cell : gone)
+		this->kit_.retire(cell);
 }
 
 int
@@ -2592,16 +2638,16 @@ Browser::select_index(int index, bool reveal)
 {
 	if (index < 0 || index >= int(this->files_.size())) {
 		clear_cursor(*this);
-		request_render(*this);
-		return;
+	} else {
+		this->cursor_ = index;
+		remember_cursor_x(*this);
+		// Scrolling needs a laid-out row; a hidden browser has none yet.
+		if (reveal) {
+			if (const int ri = find_cursor_row(*this); ri >= 0)
+				scroll_to_row(*this, this->rows_[size_t(ri)]);
+		}
 	}
-	this->cursor_ = index;
-	remember_cursor_x(*this);
-	// Scrolling needs a laid-out row; a hidden browser has none yet.
-	if (reveal) {
-		if (const int ri = find_cursor_row(*this); ri >= 0)
-			scroll_to_row(*this, this->rows_[size_t(ri)]);
-	}
+	follow_cursor(*this);
 	request_render(*this);
 }
 
@@ -2638,64 +2684,12 @@ void
 Browser::paint(Kit &kit) const
 {
 	kit.draw_fill(this->r, kit.colours_[ColourWell]);
-	const int th = kit.px(float(this->thumb_size_));
-	const Colour ink = kit.colours_[ColourInk];
-	const float glow_a = kit.ink_alpha();
-	const Colour glow_hot = col(ink, glow_a);
-	const Colour glow_idle = col(ink, kGlowAlpha * glow_a);
-	const Colour frame = kit.colours_[ColourFrame];
-	for (int i = 0; i < int(this->files_.size()); i++) {
-		const File &f = this->files_[size_t(i)];
-		if (!thumb_in_band(*this, f, 0.f))
+	for (size_t i = 0; i < this->kids.size(); i++) {
+		if (!thumb_in_band(*this, this->files_[i], 0.f))
 			continue;
-		const Rect tile = on_screen(f.tile);
-		const int tw = tile.w > 0 ? tile.w : th;
-		const int thp = tile.h > 0 ? tile.h : th;
-		const int tx = tile.x;
-		const int ty = tile.y;
-		const bool focused =
-			kit.focus_ == this && this->cursor_ >= 0 && i == this->cursor_;
-		if (!f.gpu.empty()) {
-			// The tile is reserved from the source geometry, which may
-			// already describe a newer version of the file than the atlas
-			// entry does.  Fit the bitmap by its own dimensions rather
-			// than stretching it to whatever the layout reserved.
-			const float fit =
-				min(float(tw) / float(f.gpu.w), float(thp) / float(f.gpu.h));
-			const int dw = max(1, int(lround(float(f.gpu.w) * fit)));
-			const int dh = max(1, int(lround(float(f.gpu.h) * fit)));
-			const int dx = tx + (tw - dw) / 2;
-			const int dy = ty + (thp - dh) / 2;
-			const int border = kit.px(kBorder);
-			// The frame fills the band the glow starts outside of, so it
-			// sits against the thumbnail without eating into the image.
-			const Rect outer = {
-				dx - border, dy - border, dw + 2 * border, dh + 2 * border};
-			kit.draw_glow(outer, focused ? glow_hot : glow_idle);
-			kit.list_.add_rect_stroke(outer.box(), frame, border);
-			kit.list_.add_thumb({dx, dy, dx + dw, dy + dh}, f.gpu.texels(),
-				{1, 1, 1, 1},
-				{kit.colours_[ColourWell], kit.colours_[ColourToolbarBottom],
-					float(dx), float(dy), float(max(1, kit.px(kCheckPts)))});
-		} else {
-			kit.list_.add_rect_filled({tx, ty, tx + tw, ty + thp},
-				focused ? kit.colours_[ColourPress]
-						: kit.colours_[ColourHover]);
-			const int sz = min(tw, thp) / 2;
-			kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
-				f.progress.failed ? kMissingIcon : kPendingIcon, ink);
-		}
-		if (this->show_names_ && f.cap.h > 0) {
-			const Rect cap = on_screen(f.cap);
-			const auto &cached =
-				this->text_cache_.get(kit, caption_name(f.name), cap.w,
-					kCapLines, false, TextAlign::Center);
-			kit.clip_to(cap);
-			kit.emit_layout(float(cap.x),
-				float(cap.y + (cap.h - cached.height) / 2), cached, glow_hot,
-				-1);
-			kit.clip_pop();
-		}
+		kit.clip_to(this->kids[i]->r);
+		this->kids[i]->paint(kit);
+		kit.clip_pop();
 	}
 	this->scroll_.paint(kit, this->r);
 }
@@ -2824,6 +2818,7 @@ Browser::key(Kit &kit, const Key &ev)
 	case unsigned(Qt::NoModifier):
 		if (ev.key == Qt::Key_Escape && this->cursor_ >= 0) {
 			clear_cursor(*this);
+			follow_cursor(*this);
 			request_render(*this);
 			return true;
 		}
@@ -2861,12 +2856,12 @@ Browser::key(Kit &kit, const Key &ev)
 		switch (ev.key) {
 		case Qt::Key_Up:
 			this->scroll_.offset = 0;
-			queue_sync_thumbs(*this);
+			invalidate_arrange();
 			request_render(*this);
 			return true;
 		case Qt::Key_Down:
 			this->scroll_.offset = this->scroll_.max_offset();
-			queue_sync_thumbs(*this);
+			invalidate_arrange();
 			request_render(*this);
 			return true;
 		}
@@ -2876,99 +2871,242 @@ Browser::key(Kit &kit, const Key &ev)
 	return false;
 }
 
+// What reaches the browser itself is a press beside the files, or on the
+// scroll bar.  The cells take the rest.
 bool
 Browser::press(Kit &kit, float x, float y, Qt::MouseButton button)
 {
 	if (button == Qt::RightButton) {
 		kit.set_focus(this, false);
-		const int i = hit_file(*this, x, y);
-		if (i >= 0) {
-			this->cursor_ = i;
-			remember_cursor_x_at(*this, x);
-			show_file_context(*this, kit, this->files_[size_t(i)].path,
-				{int(x), int(y), 0, 0}, false);
-			return true;
-		}
 		if (this->dir_url_.isEmpty())
 			return false;
 		show_file_context(
 			*this, kit, dir_path(*this), {int(x), int(y), 0, 0}, false);
 		return true;
 	}
-	if (button == Qt::MiddleButton) {
-		const int i = hit_file(*this, x, y);
-		if (i < 0)
-			return false;
-		kit.set_focus(this, false);
-		this->mid_file_ = i;
-		kit.pressed_ = this;
-		return true;
-	}
 	if (button != Qt::LeftButton)
 		return false;
 	if (this->scroll_.press(x, y, button, this->r)) {
-		queue_sync_thumbs(*this);
+		invalidate_arrange();
 		kit.set_focus(this, false);
 		kit.pressed_ = this;
 		return true;
 	}
+	// The cursor goes first, or the focus goes to its cell.
+	clear_cursor(*this);
 	kit.set_focus(this, false);
-	if (const int cell = hit_cell(*this, x, y); cell >= 0) {
-		this->cursor_ = cell;
-		remember_cursor_x_at(*this, x);
-		request_render(*this);
-	} else if (this->cursor_ >= 0) {
-		clear_cursor(*this);
-		request_render(*this);
-	}
-
-	const int i = hit_file(*this, x, y);
-
-	// A press that travels far enough drags the file out rather than
-	// opening it; until then it is still an ordinary click.
-	this->press_file_ = (kit.touch_press_ || !kit.start_drag) ? -1 : i;
-	this->press_x_ = x;
-	this->press_y_ = y;
 	kit.pressed_ = this;
 	return true;
 }
 
-static void
-activate_hit(Browser &b, float x, float y)
+bool
+Browser::release(Kit &, float, float, Qt::MouseButton button)
 {
-	const int i = hit_file(b, x, y);
-	if (i < 0 || i >= int(b.files_.size()))
-		return;
-	b.cursor_ = i;
-	remember_cursor_x_at(b, x);
-	if (b.page_ && b.page_->host && b.page_->host->activate)
-		b.page_->host->activate(b.file_url(i));
+	return this->scroll_.release(button);
 }
 
 bool
-Browser::release(Kit &kit, float x, float y, Qt::MouseButton button)
+Browser::motion(Kit &, float, float y)
 {
-	if (button == Qt::MiddleButton) {
-		if (kit.pressed_ != this)
+	if (!this->scroll_.dragging)
+		return false;
+
+	invalidate_arrange();
+	return this->scroll_.motion(y, this->r);
+}
+
+bool
+Browser::scroll(Kit &, float, float, int delta)
+{
+	invalidate_arrange();
+	return this->scroll_.wheel(delta, row_h(*this));
+}
+
+bool
+Browser::pan(Kit &, float, float, float, float dy)
+{
+	invalidate_arrange();
+	return this->scroll_.pan(dy);
+}
+
+// --- Cells -------------------------------------------------------------------
+
+static Browser &
+browser_of(const FileCell &cell)
+{
+	return *(Browser *) cell.parent_;
+}
+
+// The cell also covers the caption and the padding around the thumbnail,
+// which merely select the file; the tile is what opens it.
+static bool
+on_tile(const FileCell &cell, float x, float y)
+{
+	const Browser &b = browser_of(cell);
+	return b.on_screen(b.files_[size_t(cell.index)].tile).contains(x, y);
+}
+
+static void
+open_cell(FileCell &cell, float x)
+{
+	Browser &b = browser_of(cell);
+	b.cursor_ = cell.index;
+	remember_cursor_x_at(b, x);
+	if (b.page_ && b.page_->host && b.page_->host->activate)
+		b.page_->host->activate(b.file_url(cell.index));
+}
+
+void
+FileCell::paint(Kit &kit) const
+{
+	const Browser &b = browser_of(*this);
+	const Browser::File &f = b.files_[size_t(this->index)];
+	const int th = kit.px(float(b.thumb_size_));
+	const Colour ink = kit.colours_[ColourInk];
+	const float glow_a = kit.ink_alpha();
+	const Colour glow_hot = col(ink, glow_a);
+	const Colour glow_idle = col(ink, kGlowAlpha * glow_a);
+	const Colour frame = kit.colours_[ColourFrame];
+	const Rect tile = b.on_screen(f.tile);
+	const int tw = tile.w > 0 ? tile.w : th;
+	const int thp = tile.h > 0 ? tile.h : th;
+	const int tx = tile.x;
+	const int ty = tile.y;
+	const bool focused = kit.focus_ == this;
+	if (!f.gpu.empty()) {
+		// The tile is reserved from the source geometry, which may
+		// already describe a newer version of the file than the atlas
+		// entry does.  Fit the bitmap by its own dimensions rather
+		// than stretching it to whatever the layout reserved.
+		const float fit =
+			min(float(tw) / float(f.gpu.w), float(thp) / float(f.gpu.h));
+		const int dw = max(1, int(lround(float(f.gpu.w) * fit)));
+		const int dh = max(1, int(lround(float(f.gpu.h) * fit)));
+		const int dx = tx + (tw - dw) / 2;
+		const int dy = ty + (thp - dh) / 2;
+		const int border = kit.px(kBorder);
+		// The frame fills the band the glow starts outside of, so it
+		// sits against the thumbnail without eating into the image.
+		const Rect outer = {
+			dx - border, dy - border, dw + 2 * border, dh + 2 * border};
+		kit.draw_glow(outer, focused ? glow_hot : glow_idle);
+		kit.list_.add_rect_stroke(outer.box(), frame, border);
+		kit.list_.add_thumb({dx, dy, dx + dw, dy + dh}, f.gpu.texels(),
+			{1, 1, 1, 1},
+			{kit.colours_[ColourWell], kit.colours_[ColourToolbarBottom],
+				float(dx), float(dy), float(max(1, kit.px(kCheckPts)))});
+	} else {
+		kit.list_.add_rect_filled({tx, ty, tx + tw, ty + thp},
+			focused ? kit.colours_[ColourPress] : kit.colours_[ColourHover]);
+		const int sz = min(tw, thp) / 2;
+		kit.draw_icon(tx + (tw - sz) / 2, ty + (thp - sz) / 2, sz,
+			f.progress.failed ? kMissingIcon : kPendingIcon, ink);
+	}
+	if (b.show_names_ && f.cap.h > 0) {
+		// The browser keeps the captions, which its layout measures.
+		const Rect cap = b.on_screen(f.cap);
+		const auto &cached = b.text_cache_.get(kit, caption_name(f.name), cap.w,
+			kCapLines, false, TextAlign::Center);
+		kit.clip_to(cap);
+		kit.emit_layout(float(cap.x),
+			float(cap.y + (cap.h - cached.height) / 2), cached, glow_hot, -1);
+		kit.clip_pop();
+	}
+}
+
+bool
+FileCell::activate(Kit &)
+{
+	Browser &b = browser_of(*this);
+	b.activate_file(b.file_url(this->index));
+	return true;
+}
+
+Qt::CursorShape
+FileCell::cursor() const
+{
+	const Kit &kit = browser_of(*this).kit_;
+	return on_tile(*this, kit.mouse_x_, kit.mouse_y_) ? Qt::PointingHandCursor
+													  : Qt::ArrowCursor;
+}
+
+QString
+FileCell::tip(const Kit &kit) const
+{
+	const Browser &b = browser_of(*this);
+	if (b.show_names_ || !on_tile(*this, kit.mouse_x_, kit.mouse_y_))
+		return {};
+	return QString::fromStdString(b.files_[size_t(this->index)].name);
+}
+
+// A press that moves the cursor then focuses this cell.  In the browser, the
+// focus is on the cell at the cursor.
+bool
+FileCell::press(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	Browser &b = browser_of(*this);
+	if (button == Qt::RightButton) {
+		if (!on_tile(*this, x, y))
 			return false;
-		const int i = hit_file(*this, x, y);
-		if (i >= 0 && i == this->mid_file_ && this->page_ &&
-			this->page_->host && this->page_->host->new_window)
-			this->page_->host->new_window(file_url(i));
-		this->mid_file_ = -1;
+		b.cursor_ = this->index;
+		remember_cursor_x_at(b, x);
+		kit.set_focus(this, false);
+		show_file_context(b, kit, b.files_[size_t(this->index)].path,
+			{int(x), int(y), 0, 0}, false);
+		return true;
+	}
+	// This does not move the cursor, so the browser gets the focus.
+	if (button == Qt::MiddleButton) {
+		if (!on_tile(*this, x, y))
+			return false;
+		kit.set_focus(&b, false);
+		kit.pressed_ = this;
 		return true;
 	}
 	if (button != Qt::LeftButton)
 		return false;
-	this->press_file_ = -1;
-	if (kit.pressed_ != this)
+	b.cursor_ = this->index;
+	remember_cursor_x_at(b, x);
+	kit.set_focus(this, false);
+
+	// A press that travels far enough drags the file out rather than
+	// opening it; until then it is still an ordinary click.
+	this->drag_x_ = x;
+	this->drag_y_ = y;
+	this->drag_armed_ =
+		on_tile(*this, x, y) && !kit.touch_press_ && bool(kit.start_drag);
+	kit.pressed_ = this;
+	return true;
+}
+
+bool
+FileCell::release(Kit &kit, float x, float y, Qt::MouseButton button)
+{
+	if (button == Qt::LeftButton)
+		this->drag_armed_ = false;
+	if ((button != Qt::LeftButton && button != Qt::MiddleButton) ||
+		kit.pressed_ != this)
 		return false;
-	if (this->scroll_.release(button))
+	if (kit.hit(x, y) != this || !on_tile(*this, x, y))
 		return true;
-	Widget *hit = kit.root_ ? kit.root_->hit_at(x, y) : hit_at(x, y);
-	if (hit != this)
+
+	Browser &b = browser_of(*this);
+	if (button == Qt::MiddleButton)
+		open_new_window(b, b.files_[size_t(this->index)].path);
+	else
+		open_cell(*this, x);
+	return true;
+}
+
+bool
+FileCell::double_click(
+	Kit &, float x, float y, Qt::MouseButton button, unsigned)
+{
+	if (button != Qt::LeftButton)
 		return false;
-	activate_hit(*this, x, y);
+
+	if (on_tile(*this, x, y))
+		open_cell(*this, x);
 	return true;
 }
 
@@ -2998,55 +3136,22 @@ drag_thumbnail(const Browser::File &f)
 }
 
 bool
-Browser::motion(Kit &kit, float x, float y)
+FileCell::motion(Kit &kit, float x, float y)
 {
-	if (this->scroll_.dragging) {
-		const bool moved = this->scroll_.motion(y, this->r);
-		if (moved)
-			queue_sync_thumbs(*this);
-		return moved;
-	}
-
 	// Motion also bubbles up from a plain hover, and a release can go
 	// missing -- see the fullscreen workaround in Window::event.
-	if (this->press_file_ < 0 || !kit.left_down_ ||
-		this->press_file_ >= int(this->files_.size()) ||
-		!drag_threshold(kit, this->press_x_, this->press_y_, x, y))
+	if (!this->drag_armed_ || !kit.left_down_ ||
+		!drag_threshold(kit, this->drag_x_, this->drag_y_, x, y))
 		return false;
 
 	// Everything the drag needs is read out before it runs: its nested event
-	// loop may finish thumbnails and rescan the directory, and files_ does
-	// not survive that.
-	const QUrl url = file_url(this->press_file_);
-	const QImage icon = drag_thumbnail(this->files_[size_t(this->press_file_)]);
-	this->press_file_ = -1;
+	// loop may finish thumbnails and rescan the directory, and neither files_
+	// nor this cell survive that.
+	const Browser &b = browser_of(*this);
+	const QUrl url = b.file_url(this->index);
+	const QImage icon = drag_thumbnail(b.files_[size_t(this->index)]);
+	this->drag_armed_ = false;
 	start_file_drag(kit, url, icon);
-	return true;
-}
-
-bool
-Browser::double_click(Kit &, float x, float y, Qt::MouseButton button, unsigned)
-{
-	if (button != Qt::LeftButton)
-		return false;
-
-	activate_hit(*this, x, y);
-	return true;
-}
-
-bool
-Browser::scroll(Kit &, float, float, int delta)
-{
-	this->scroll_.wheel(delta, row_h(*this));
-	queue_sync_thumbs(*this);
-	return true;
-}
-
-bool
-Browser::pan(Kit &, float, float, float, float dy)
-{
-	this->scroll_.pan(dy);
-	queue_sync_thumbs(*this);
 	return true;
 }
 

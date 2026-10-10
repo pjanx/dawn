@@ -121,7 +121,6 @@ struct Sidebar : Panel {
 	bool key(Kit &kit, const Key &ev) override;
 };
 
-struct Browser;
 struct Page;
 
 struct Hint : Popup {
@@ -146,11 +145,6 @@ private:
 		Rect at{};
 		Rect chip{};
 		Widget *widget = nullptr;
-		// TODO(p): Unwanted dependency.
-		Browser *browser = nullptr;
-		int file_i = -1;
-		// The listing file_i indexes; a rescan retires the target.
-		uint64_t file_rev = 0;
 	};
 
 	std::vector<Target> targets_;
