@@ -1902,7 +1902,7 @@ Sep::paint(Kit &kit) const
 // --- Splitter ----------------------------------------------------------------
 
 // How far to either side of the line the mouse may still grab it, in points.
-constexpr float kGrabSlack = 4.f;
+constexpr float kGrabSlack = 2.f;
 
 Size
 Splitter::measure_content(Kit &kit, int, int max_h)
