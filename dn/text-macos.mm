@@ -293,33 +293,15 @@ TextLayout::cut_positions(vector<int> &out, string *error) const
 		set_error(error, "Core Text could not create a string");
 		return false;
 	}
-	out = {0, int(this->text_.size())};
-	for (const auto &native : this->impl_->lines) {
-		if (!native.line)
-			continue;
-		CFArrayRef runs = CTLineGetGlyphRuns(native.line);
-		for (CFIndex r = 0; r < CFArrayGetCount(runs); r++) {
-			CTRunRef run = CTRunRef(CFArrayGetValueAtIndex(runs, r));
-			const CFIndex count = CTRunGetGlyphCount(run);
-			vector<CFIndex> indexes((size_t(count)));
-			if (count)
-				CTRunGetStringIndices(run, CFRangeMake(0, 0), indexes.data());
-			const CFRange range = CTRunGetStringRange(run);
-			indexes.push_back(range.location);
-			indexes.push_back(range.location + range.length);
-			for (CFIndex index : indexes) {
-				// A glyph boundary must also be a composed-character boundary:
-				// separate marks can have their own glyphs and string indexes.
-				if (index >= 0 && index < this->text_.size() &&
-					CFStringGetRangeOfComposedCharactersAtIndex(text, index)
-							.location == index)
-					out.push_back(int(index));
-			}
-		}
+	// Core Text breaks clusters between composed characters,
+	// even those sharing a ligature glyph.
+	out = {0};
+	while (out.back() < this->text_.size()) {
+		const CFRange range =
+			CFStringGetRangeOfComposedCharactersAtIndex(text, out.back());
+		out.push_back(int(range.location + range.length));
 	}
 	CFRelease(text);
-	sort(out.begin(), out.end());
-	out.erase(unique(out.begin(), out.end()), out.end());
 	return true;
 }
 
