@@ -150,6 +150,25 @@ test_truncation(TextBackend &backend)
 							boundaries.isAtBoundary() &&
 							(!cut || !shown[cut - 1].isSpace())))
 						return;
+
+					// One more cluster of the next word must not fit,
+					// or the cut has dropped the whole word.
+					int next = cut;
+					while (next < source.size() && source[next].isSpace())
+						next++;
+					boundaries.setPosition(next);
+					if (lines != 1 || boundaries.toNextBoundary() < 0)
+						continue;
+					TextOptions longer = options;
+					longer.max_lines = 0;
+					auto more = backend.layout(
+						source.left(boundaries.position()) + ellipsis, longer,
+						&error);
+					if (!CHECK(more &&
+							(more->lines().size() != 1 ||
+								more->lines()[0].advance >
+									float(width) + .01f)))
+						return;
 				}
 			}
 		}
