@@ -86,13 +86,6 @@ struct Browser : Composite {
 		Rect cell{};
 		Rect cap{};
 	};
-	struct DirRow {
-		std::string path;
-		std::string name;
-		std::string tip;
-		const char *icon = nullptr;
-		bool current = false;
-	};
 	struct CachedSize {
 		int64_t mtime = 0;
 		uint64_t size = 0;
@@ -167,7 +160,6 @@ struct Browser : Composite {
 	// Moves only when a cell comes, goes, or gets a new index.  An unchanged
 	// rescan keeps it, so accessibility announces only a real change.
 	uint64_t file_rev_ = 0;
-	std::vector<DirRow> side_dirs_;
 	std::unordered_map<std::string, CachedSize> size_cache_;
 	std::unordered_map<std::string, ThumbInflight> thumb_inflight_;
 

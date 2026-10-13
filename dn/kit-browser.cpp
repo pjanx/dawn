@@ -1837,16 +1837,19 @@ tree_next_dir(const string &dir, const BrowseSetup &setup)
 }
 
 static void
-push_place(Browser &b, const string &root, string path, const char *name,
-	const char *icon, string tip)
+push_place(Browser &b, const string &path, const string &name, const char *icon,
+	const string &tip, bool current)
 {
-	Browser::DirRow row;
-	row.path = std::move(path);
-	row.name = name;
-	row.tip = std::move(tip);
-	row.icon = icon;
-	row.current = same_path(root, row.path);
-	b.side_dirs_.push_back(std::move(row));
+	auto row = make_unique<SideRow>();
+	row->path = path;
+	row->browser = &b;
+	row->pad_x = kWinPadX;
+	row->icon = icon;
+	row->text = QString::fromStdString(name);
+	row->tip_text = QString::fromStdString(tip);
+	row->active = current;
+	row->on_click = [&b, path](Kit &) { b.open_dir(url_of(path), true); };
+	b.places_->add_child(std::move(row), size_t(-1));
 }
 
 // --- Scan --------------------------------------------------------------------
@@ -1862,51 +1865,6 @@ matches_search(const Browser &b, const string &name)
 }
 
 static void
-fill_places(Browser &b)
-{
-	auto *list = b.places_;
-	// Rebuilding the sidebar is not the user moving the focus: erase_children
-	// leaves the focus on the list, and this puts it back on the successor of
-	// the row, leaving whatever decided the ring in the first place alone.
-	string restore_path;
-	if (auto *focus = dynamic_cast<SideRow *>(b.kit_.focus_);
-		focus && focus->parent_ == list)
-		restore_path = focus->path;
-	list->erase_children(b.kit_, 0);
-	for (int i = 0; i < int(b.side_dirs_.size()); i++) {
-		const Browser::DirRow &d = b.side_dirs_[size_t(i)];
-		if (d.path.empty()) {
-			list->add_child(make_unique<Sep>(), size_t(-1));
-			continue;
-		}
-
-		auto row = make_unique<SideRow>();
-		row->path = d.path;
-		row->browser = &b;
-		row->pad_x = kWinPadX;
-		row->icon = d.icon;
-		row->text = QString::fromStdString(d.name);
-		row->tip_text = QString::fromStdString(d.tip);
-		row->active = d.current;
-		const string path = d.path;
-		row->on_click = [&b, path](Kit &) {
-			if (!path.empty())
-				b.open_dir(url_of(path), true);
-		};
-		list->add_child(std::move(row), size_t(-1));
-	}
-	if (!restore_path.empty()) {
-		for (size_t i = list->kids.size(); i--;) {
-			auto *row = dynamic_cast<SideRow *>(list->kids[i].get());
-			if (row && row->path == restore_path) {
-				b.kit_.reseat_focus(row);
-				break;
-			}
-		}
-	}
-}
-
-static void
 scan_dir(Browser &b)
 {
 	string keep;
@@ -1918,11 +1876,10 @@ scan_dir(Browser &b)
 	b.can_next_dir_ = false;
 	b.can_parent_dir_ = false;
 	b.files_.clear();
-	b.side_dirs_.clear();
 	if (b.dir_url_.isEmpty()) {
 		clear_cursor(b);
 		b.set_files({});
-		fill_places(b);
+		b.places_->erase_children(b.kit_, 0);
 		return;
 	}
 
@@ -2028,28 +1985,39 @@ scan_dir(Browser &b)
 	}
 	follow_cursor(b);
 
-	for (const Volume &v : list_volumes())
-		push_place(b, root, v.path, v.name.c_str(), v.icon, {});
+	// Rebuilding the sidebar is not the user moving the focus: erase_children
+	// leaves the focus on the list, and this puts it back on the successor of
+	// the row, leaving whatever decided the ring in the first place alone.
+	string restore_path;
+	if (auto *focus = dynamic_cast<SideRow *>(b.kit_.focus_);
+		focus && focus->parent_ == b.places_)
+		restore_path = focus->path;
+	b.places_->erase_children(b.kit_, 0);
 
-	push_place(b, root, QDir::homePath().toStdString(), _("Home"),
-		"go-home-symbolic", {});
+	for (const Volume &v : list_volumes())
+		push_place(b, v.path, v.name, v.icon, {}, same_path(root, v.path));
+
+	const string home = QDir::homePath().toStdString();
+	push_place(
+		b, home, _("Home"), "go-home-symbolic", {}, same_path(root, home));
 	{
 		const QString pictures =
 			QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
 		const QFileInfo info(pictures);
 		if (info.isDir()) {
 			const string name = info.fileName().toStdString();
+			const string path = pictures.toStdString();
 			if (!name.empty())
-				push_place(b, root, pictures.toStdString(), name.c_str(),
-					"image-symbolic", {});
+				push_place(
+					b, path, name, "image-symbolic", {}, same_path(root, path));
 		}
 	}
 
 	for (const string &path : b.host_.bookmarks()) {
-		push_place(
-			b, root, path, dir_basename(path).c_str(), "folder-symbolic", path);
+		push_place(b, path, dir_basename(path), "folder-symbolic", path,
+			same_path(root, path));
 	}
-	b.side_dirs_.push_back({});
+	b.places_->add_child(make_unique<Sep>(), size_t(-1));
 
 	vector<filesystem::path> ancestors;
 	filesystem::path cur = without_trailing_sep(utf8_to_fs_path(root));
@@ -2065,32 +2033,28 @@ scan_dir(Browser &b)
 	}
 	reverse(ancestors.begin(), ancestors.end());
 	for (const filesystem::path &p : ancestors) {
-		Browser::DirRow row;
-		row.path = fs_path_to_utf8(p);
-		row.name = dir_basename(row.path);
-		row.icon = "go-up-symbolic";
-		b.side_dirs_.push_back(std::move(row));
+		const string path = fs_path_to_utf8(p);
+		push_place(b, path, dir_basename(path), "go-up-symbolic", {}, false);
 	}
-	{
-		Browser::DirRow row;
-		row.path = fs_path_to_utf8(without_trailing_sep(utf8_to_fs_path(root)));
-		row.name = dir_basename(root);
-		row.icon = "dot-large-symbolic";
-		row.current = true;
-		b.side_dirs_.push_back(std::move(row));
-	}
+	push_place(b, fs_path_to_utf8(without_trailing_sep(utf8_to_fs_path(root))),
+		dir_basename(root), "dot-large-symbolic", {}, true);
 	sort(children.begin(), children.end(),
 		[&](const DirEnt &a, const DirEnt &c) {
 			return dir_ent_less(b.setup_, a, c);
 		});
 	for (const DirEnt &kid : children) {
-		Browser::DirRow row;
-		row.path = kid.path;
-		row.name = dir_basename(kid.path);
-		row.icon = "go-down-symbolic";
-		b.side_dirs_.push_back(std::move(row));
+		push_place(
+			b, kid.path, dir_basename(kid.path), "go-down-symbolic", {}, false);
 	}
-	fill_places(b);
+	if (!restore_path.empty()) {
+		for (size_t i = b.places_->kids.size(); i--;) {
+			auto *row = dynamic_cast<SideRow *>(b.places_->kids[i].get());
+			if (row && row->path == restore_path) {
+				b.kit_.reseat_focus(row);
+				break;
+			}
+		}
+	}
 }
 
 static void

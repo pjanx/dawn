@@ -214,16 +214,13 @@ FileRow::release(Kit &kit, int, int, Qt::MouseButton button)
 	return button == Qt::LeftButton && kit.pressed_ == this;
 }
 
-// Callbacks can replace this row: retain its value and owner first.
 bool
 FileRow::activate(Kit &kit)
 {
-	FileList *owner = this->list;
-	const FileEntry entry = this->entry;
 	kit.set_focus(this, kit.focus_visible_);
-	owner->rows->select(kit, this);
-	if (owner->on_activate)
-		owner->on_activate(kit, entry);
+	this->list->rows->select(kit, this);
+	if (this->list->on_activate)
+		this->list->on_activate(kit, this->entry);
 	return true;
 }
 
@@ -335,11 +332,8 @@ void
 FileRows::select(Kit &kit, FileRow *row)
 {
 	this->selected = row;
-	if (row && this->list->on_select) {
-		// A path commit may replace this row during the callback.
-		const FileEntry entry = row->entry;
-		this->list->on_select(kit, entry);
-	}
+	if (row && this->list->on_select)
+		this->list->on_select(kit, row->entry);
 }
 
 Widget *
