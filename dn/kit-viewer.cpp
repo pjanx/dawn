@@ -187,7 +187,7 @@ spec_active(const Viewer &v, Action action)
 	case Action::Smooth:
 		return v.filter_;
 	case Action::Information:
-		return v.page_->sidebar->visible;
+		return v.sidebar_->visible;
 	case Action::Fixate:
 		return v.fixate_;
 	case Action::Lock:
@@ -630,7 +630,7 @@ stop_worker(Viewer &v)
 }
 
 static unique_ptr<Sidebar>
-make_sidebar(Viewer &v, const HostActions &host)
+make_sidebar(Viewer &v)
 {
 	const char *const labels[] = {
 		N_("Name:"), N_("Loader:"), N_("Width:"), N_("Height:")};
@@ -669,12 +669,10 @@ make_sidebar(Viewer &v, const HostActions &host)
 #endif
 
 	// The host only offers this when ExifTool is installed.
-	if (host.launch_exiftool) {
+	if (v.host_.launch_exiftool) {
 		auto exiftool = make_unique<Button>();
 		exiftool->text = QString::fromUtf8(_("Launch ExifTool"));
-		exiftool->on_click = [&v](Kit &) {
-			v.page_->host->launch_exiftool(v.url_);
-		};
+		exiftool->on_click = [&v](Kit &) { v.host_.launch_exiftool(v.url_); };
 		v.exiftool_button_ = exiftool.get();
 		col->add_child(std::move(exiftool), size_t(-1));
 	}
@@ -695,6 +693,7 @@ make_sidebar(Viewer &v, const HostActions &host)
 	auto side = make_unique<Sidebar>(std::move(col));
 	side->min_w = kInfoSidebarPts;
 	side->visible = false;
+	v.sidebar_ = side.get();
 	return side;
 }
 
@@ -884,7 +883,7 @@ apply_open(Viewer &v, uint64_t gen, const Viewer::CachedOpen &cached)
 	// After the new image is in place: a mode switch and a hidden banner both
 	// lay the page out, and the layout must not fit or render the old image.
 	v.opening_ = false;
-	v.page_->host->opened();
+	v.host_.opened();
 	v.set_message(message);
 	fill_info_texts(v);
 	sync_info(v);
@@ -1461,7 +1460,7 @@ show_view_context(const Viewer &v, Kit &kit)
 {
 	if (v.url_.isEmpty() || !v.image_)
 		return false;
-	v.page_->context->show(kit, v.url_, context_anchor(v), true);
+	v.context_->show(kit, v.url_, context_anchor(v), true);
 	return true;
 }
 
@@ -1871,7 +1870,7 @@ apply_action(Viewer &v, Action action)
 		snap_view(v, SnapDir::Right);
 		return true;
 	case Action::Information:
-		v.page_->set_sidebar(v.kit_, !v.page_->sidebar->visible);
+		v.sidebar_->set_visible(v.kit_, !v.sidebar_->visible);
 		request_render(v);
 		return true;
 	case Action::PageFirst:
@@ -1914,7 +1913,7 @@ apply_action(Viewer &v, Action action)
 		return true;
 	case Action::Trash:
 		if (!v.url_.isEmpty())
-			v.page_->host->trash(v.url_);
+			v.host_.trash(v.url_);
 		return true;
 	default:
 		return false;
@@ -1986,7 +1985,8 @@ apply_view(const Viewer &v)
 	};
 }
 
-Viewer::Viewer(Kit &kit) : kit_(kit)
+Viewer::Viewer(Kit &kit, const HostActions &host)
+	: kit_(kit), host_(host), context_(make_unique<ContextMenu>(host))
 {
 	this->hittable = true;
 }
@@ -2023,7 +2023,7 @@ Viewer::paint(Kit &) const
 unique_ptr<Page>
 make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 {
-	auto content = make_unique<Viewer>(kit);
+	auto content = make_unique<Viewer>(kit, host);
 	Viewer *v = content.get();
 	v->init();
 	auto error = make_banner(&v->error_label_);
@@ -2033,7 +2033,7 @@ make_viewer_page(Kit &kit, const HostActions &host, Viewer **out)
 	setup.mode = Mode::View;
 	setup.toolbar = make_toolbar(
 		kItems, [v](const ToolbarSpec &spec) { return make_item(*v, spec); });
-	setup.sidebar = make_sidebar(*v, host);
+	setup.sidebar = make_sidebar(*v);
 	setup.side = Page::Side::Right;
 	setup.actor = chain_actor(
 		host, [v](Action a) { return apply_action(*v, a); },
@@ -2054,7 +2054,7 @@ Viewer::open(const QUrl &url)
 	if (url == this->url_ && this->image_ && this->image_->nominal_width &&
 		this->image_->nominal_height) {
 		this->opening_ = false;
-		this->page_->host->opened();
+		this->host_.opened();
 		request_render(*this);
 		return;
 	}
@@ -2062,10 +2062,6 @@ Viewer::open(const QUrl &url)
 	this->url_ = url;
 	this->basename_ = url_basename(url).toStdString();
 	sync_info(*this);
-	// Opening fits to the well, which the first layout has yet to make.
-	if (this->r.empty())
-		this->page_->arrange(
-			this->kit_, {0, 0, this->kit_.host_w_, this->kit_.host_h_});
 	start_open(*this, false);
 }
 
@@ -2228,7 +2224,7 @@ Viewer::press(Kit &kit, int x, int y, Qt::MouseButton button)
 		const Rect dest = image_dest_rect(*this);
 		if (!dest.contains(x, y))
 			return false;
-		this->page_->context->show(kit, this->url_, {x, y, 0, 0}, false);
+		this->context_->show(kit, this->url_, {x, y, 0, 0}, false);
 		return true;
 	}
 	if (button != Qt::LeftButton && button != Qt::MiddleButton)
@@ -2312,7 +2308,7 @@ Viewer::double_click(Kit &kit, int, int, Qt::MouseButton button)
 		return false;
 
 	this->drag_ = Drag::None;
-	this->page_->actor.apply(Action::Fullscreen);
+	this->host_.apply(Action::Fullscreen);
 	return true;
 }
 

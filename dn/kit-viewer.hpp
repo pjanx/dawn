@@ -59,6 +59,8 @@ struct Viewer : Widget {
 	};
 
 	Kit &kit_;
+	const HostActions &host_;
+	Sidebar *sidebar_ = nullptr;
 	Panel *error_ = nullptr;
 	Label *error_label_ = nullptr;
 	Label *scale_label_ = nullptr;
@@ -127,6 +129,8 @@ struct Viewer : Widget {
 	bool browser_delays_ = false;
 
 	std::unique_ptr<Worker> worker_;
+	// A popup, owned apart from the children.
+	std::unique_ptr<ContextMenu> context_;
 	std::vector<CachedOpen> open_cache_;
 	uint64_t load_epoch_ = 1;
 	uint64_t open_gen_ = 0;
@@ -137,7 +141,7 @@ struct Viewer : Widget {
 	float scale_failed_target_ = 0;
 	RestoreView restore_view_{};
 
-	explicit Viewer(Kit &kit);
+	Viewer(Kit &kit, const HostActions &host);
 	~Viewer() override;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;

@@ -14,6 +14,7 @@ namespace dn
 
 struct Cropper : Widget {
 	Kit &kit_;
+	const HostActions &host_;
 	QUrl jpeg_url_;
 	std::vector<uint8_t> file_;
 	dawn::ImagePtr image_;
@@ -35,7 +36,7 @@ struct Cropper : Widget {
 	// What stands in for the image while there is none.
 	Label hint_;
 
-	explicit Cropper(Kit &kit);
+	Cropper(Kit &kit, const HostActions &host);
 	void open(const QUrl &url);
 	bool load_working(const std::vector<uint8_t> &data);
 	void reset_region();

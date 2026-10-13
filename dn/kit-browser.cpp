@@ -360,14 +360,14 @@ shift_enter(int key, unsigned mods)
 static void
 open_new_window(const Browser &b, const string &path)
 {
-	b.page_->host->new_window(url_of(path));
+	b.host_.new_window(url_of(path));
 }
 
 static void
 show_file_context(
 	const Browser &b, Kit &kit, const string &path, Rect anchor, bool kbd)
 {
-	b.page_->context->show(kit, url_of(path), anchor, kbd);
+	b.context_->show(kit, url_of(path), anchor, kbd);
 }
 
 static bool
@@ -2045,7 +2045,7 @@ scan_dir(Browser &b)
 		}
 	}
 
-	for (const string &path : b.page_->host->bookmarks()) {
+	for (const string &path : b.host_.bookmarks()) {
 		push_place(
 			b, root, path, dir_basename(path).c_str(), "folder-symbolic", path);
 	}
@@ -2112,7 +2112,7 @@ open_directory(Browser &b, const QUrl &url, bool record, float side_scroll)
 		push_hist(b.hist_back_, b);
 	}
 	b.dir_url_ = dir;
-	b.page_->host->retitle();
+	b.host_.retitle();
 	b.size_cache_.clear();
 	invalidate_thumbs(b);
 	b.scroll_.offset = 0;
@@ -2205,7 +2205,7 @@ spec_active(const Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		return b.page_->sidebar->visible;
+		return b.sidebar_->visible;
 	case Action::Filenames:
 		return b.show_names_;
 	case Action::Filter:
@@ -2272,6 +2272,7 @@ make_sidebar(Browser &b)
 	list->grow = true;
 	auto side = make_unique<Sidebar>(std::move(list));
 	side->min_w = kBrowseSidebarPts;
+	b.sidebar_ = side.get();
 	return side;
 }
 
@@ -2280,7 +2281,7 @@ apply_action(Browser &b, Action action)
 {
 	switch (action) {
 	case Action::Sidebar:
-		b.page_->set_sidebar(b.kit_, !b.page_->sidebar->visible);
+		b.sidebar_->set_visible(b.kit_, !b.sidebar_->visible);
 		request_render(b);
 		return true;
 	case Action::DirPrev: {
@@ -2340,10 +2341,9 @@ apply_action(Browser &b, Action action)
 		// Opening the popup is what moves it back into a tree the focus can
 		// reach, so it has to come first.
 		if (!b.search_->shown()) {
-			Toolbar *tb = b.page_->toolbar;
-			if (!tb->left->more->shown())
+			if (!b.toolbar_->left->more->shown())
 				return false;
-			tb->overflow->open_slot(b.kit_, *tb->left);
+			b.toolbar_->overflow->open_slot(b.kit_, *b.toolbar_->left);
 		}
 		if (!b.search_->focusable())
 			return false;
@@ -2393,7 +2393,7 @@ apply_action(Browser &b, Action action)
 		return true;
 	case Action::Trash:
 		if (b.cursor_ >= 0)
-			b.page_->host->trash(b.file_url(b.cursor_));
+			b.host_.trash(b.file_url(b.cursor_));
 		return true;
 	default:
 		return false;
@@ -2402,8 +2402,9 @@ apply_action(Browser &b, Action action)
 
 // --- Browser -----------------------------------------------------------------
 
-Browser::Browser(Kit &kit, Thumbnailer &thumbnailer)
-	: kit_(kit), thumbnailer_(thumbnailer)
+Browser::Browser(Kit &kit, const HostActions &host, Thumbnailer &thumbnailer)
+	: kit_(kit), host_(host), thumbnailer_(thumbnailer),
+	  context_(make_unique<ContextMenu>(host))
 {
 	this->hittable = true;
 }
@@ -2552,7 +2553,7 @@ void
 Browser::activate_file(const QUrl &url)
 {
 	this->select_file(url);
-	this->page_->host->activate(url);
+	this->host_.activate(url);
 }
 
 void
@@ -2594,13 +2595,14 @@ unique_ptr<Page>
 make_browser_page(
 	Kit &kit, const HostActions &host, Thumbnailer &thumbnailer, Browser **out)
 {
-	auto content = make_unique<Browser>(kit, thumbnailer);
+	auto content = make_unique<Browser>(kit, host, thumbnailer);
 	Browser *b = content.get();
 	b->init();
 	PageSetup setup;
 	setup.mode = Mode::Browse;
 	setup.toolbar = make_toolbar(
 		kItems, [b](const ToolbarSpec &spec) { return make_item(*b, spec); });
+	b->toolbar_ = setup.toolbar.get();
 	setup.sidebar = make_sidebar(*b);
 	setup.side = Page::Side::Left;
 	setup.actor = chain_actor(
@@ -2829,7 +2831,7 @@ open_cell(FileCell &cell, int x)
 	Browser &b = browser_of(cell);
 	b.cursor_ = cell.index;
 	remember_cursor_x_at(b, x);
-	b.page_->host->activate(b.file_url(cell.index));
+	b.host_.activate(b.file_url(cell.index));
 }
 
 void

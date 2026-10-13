@@ -108,9 +108,14 @@ struct Browser : Composite {
 	};
 
 	Kit &kit_;
+	const HostActions &host_;
 	Thumbnailer &thumbnailer_;
 	uint64_t thumbnail_client_ = 0;
+	Toolbar *toolbar_ = nullptr;
+	Sidebar *sidebar_ = nullptr;
 	ScrollColumn *places_ = nullptr;
+	// A popup, owned apart from the children.
+	std::unique_ptr<ContextMenu> context_;
 
 	// Enumeration below is std::filesystem; this is the identity above it.
 	QUrl dir_url_;
@@ -176,7 +181,7 @@ struct Browser : Composite {
 	Sheet sheet_{Sheet::kSize, false};
 	uint64_t thumb_gen_ = 0;
 
-	Browser(Kit &kit, Thumbnailer &thumbnailer);
+	Browser(Kit &kit, const HostActions &host, Thumbnailer &thumbnailer);
 	~Browser() override;
 
 	Size measure_content(Kit &kit, int max_w, int max_h) override;

@@ -89,18 +89,18 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	add_apps(handlers.fallback);
 
 	auto *new_win = add_item_with_mnemonic(N_("Open in _New Window"));
-	new_win->on_click = [this, url](Kit &) { this->host->new_window(url); };
+	new_win->on_click = [this, url](Kit &) { this->host_.new_window(url); };
 	if (apps_sep) {
 		add_item_with_mnemonic(N_("Open _With"))->sub = apps.get();
 		this->subs_.push_back(std::move(apps));
 	}
 	if (QFileInfo(path).isDir()) {
 		add_sep();
-		auto *bookmark = add_item_with_mnemonic(this->host->bookmarked(url)
+		auto *bookmark = add_item_with_mnemonic(this->host_.bookmarked(url)
 				? N_("Remove from _Bookmarks")
 				: N_("Add to _Bookmarks"));
 		bookmark->on_click = [this, url](
-								 Kit &) { this->host->toggle_bookmark(url); };
+								 Kit &) { this->host_.toggle_bookmark(url); };
 	}
 	add_sep();
 	auto *copy = add_item_with_mnemonic(N_("_Copy"));
@@ -112,7 +112,7 @@ ContextMenu::fill_items(Kit &kit, const QUrl &url)
 	if (QFileInfo(path).isFile()) {
 		auto *trash = add_item_with_mnemonic(N_("Move to _Trash"));
 		trash->accel = accel_label(action_def(Action::Trash));
-		trash->on_click = [this, url](Kit &) { this->host->trash(url); };
+		trash->on_click = [this, url](Kit &) { this->host_.trash(url); };
 	}
 }
 
@@ -974,8 +974,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 		add_child(std::move(split), size_t(-1));
 		if (this->sidebar->min_w > 0.f)
 			this->sidebar_w = this->sidebar->min_w;
-		// A Splitter starts visible, but a sidebar can start hidden.
-		this->splitter->visible = this->sidebar->visible;
 	}
 
 	// macOS has a real menu bar for this; everywhere else it is a button
@@ -999,7 +997,6 @@ Page::Page(unique_ptr<Toolbar> tb, unique_ptr<Sidebar> sb, Side s,
 	this->toolbar->left->add_item(std::move(app), 0);
 #endif
 	this->hint = make_unique<Hint>();
-	this->context = make_unique<ContextMenu>();
 }
 
 static void
@@ -1051,16 +1048,6 @@ Page::set_banner(Kit &kit, unique_ptr<Widget> w)
 		invalidate_measure();
 	}
 	this->banner = add_child(std::move(w), at);
-}
-
-void
-Page::set_sidebar(Kit &kit, bool open)
-{
-	if (!this->sidebar)
-		return;
-
-	this->splitter->set_visible(kit, open);
-	this->sidebar->set_visible(kit, open);
 }
 
 Size
@@ -1242,7 +1229,6 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 	auto page = make_unique<Page>(std::move(setup.toolbar),
 		std::move(setup.sidebar), setup.side, std::move(setup.content));
 	page->host = &host;
-	page->context->host = &host;
 	page->menu_tree = mode_def(setup.mode).menu;
 	page->keys = mode_def(setup.mode).keys;
 	page->actor = std::move(setup.actor);
@@ -1272,7 +1258,6 @@ make_page(Kit &kit, const HostActions &host, PageSetup setup)
 			!(top && top->transient))
 			kit.cycle_focus_in(kit.focus_scope(), 1, true);
 	};
-	page->content->page_ = page.get();
 	page->bind_actions(kit);
 	return page;
 }

@@ -25,7 +25,7 @@ namespace dn
 
 // --- Loading -----------------------------------------------------------------
 
-Cropper::Cropper(Kit &kit) : kit_(kit)
+Cropper::Cropper(Kit &kit, const HostActions &host) : kit_(kit), host_(host)
 {
 	this->hittable = true;
 	this->hint_.text = QString::fromUtf8(_("Open a JPEG file")) +
@@ -82,7 +82,7 @@ void
 Cropper::open(const QUrl &url)
 {
 	this->jpeg_url_ = url;
-	this->page_->host->retitle();
+	this->host_.retitle();
 	this->file_.clear();
 	this->image_.reset();
 	this->grid_ = {};
@@ -570,7 +570,7 @@ constexpr ToolbarSpec kItems[] = {
 unique_ptr<Page>
 make_crop_jpeg_page(Kit &kit, const HostActions &host, Cropper **out)
 {
-	auto content = make_unique<Cropper>(kit);
+	auto content = make_unique<Cropper>(kit, host);
 	Cropper *c = content.get();
 	if (out)
 		*out = c;

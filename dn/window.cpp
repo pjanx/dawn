@@ -1238,6 +1238,12 @@ Window::open_viewer(const QUrl &url)
 {
 	if (!this->viewer_)
 		return;
+
+	// Opening fits to the well, which the first layout has yet to make,
+	// and the page may not be the one on screen yet.
+	if (this->viewer_->r.empty())
+		this->pages_[size_t(Mode::View)]->arrange(
+			this->kit_, {0, 0, this->kit_.host_w_, this->kit_.host_h_});
 	this->viewer_->open(url);
 	sync_viewer_preloads();
 	sync_title();
@@ -1729,16 +1735,14 @@ Window::open_any(const QUrl &input)
 		cancel_viewer_loads();
 		set_mode(Mode::Browse);
 	} else {
-		if (this->viewer_)
-			this->viewer_->open(url);
-		set_mode(Mode::View);
 		if (this->browser_ && !path.isEmpty()) {
 			const QFileInfo parent(info.absolutePath());
 			if (parent.exists() && parent.isDir() && parent.isReadable())
 				this->browser_->open_dir(
 					path_to_url(parent.absoluteFilePath()), true);
 		}
-		sync_viewer_preloads();
+		open_viewer(url);
+		set_mode(Mode::View);
 	}
 	request_render();
 	sync_title();

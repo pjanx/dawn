@@ -232,10 +232,6 @@ struct TextCache {
 // --- Widget ------------------------------------------------------------------
 
 struct Widget {
-	// FIXME: We shouldn't cache the Page in everything,
-	// that's dependency inversion.
-	Page *page_ = nullptr;
-
 	Rect r;
 	bool visible = true;
 	bool layout_visible = true;

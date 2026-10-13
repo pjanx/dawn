@@ -43,11 +43,12 @@ struct HostActions {
 // The menu that a right click on a file opens: what this application knows
 // how to do with it, plus whatever the desktop can open it with.
 class ContextMenu : public Menu {
+	const HostActions &host_;
+
 	void fill_items(Kit &kit, const QUrl &url);
 
 public:
-	const HostActions *host = nullptr;
-
+	explicit ContextMenu(const HostActions &host) : host_(host) {}
 	void show(Kit &kit, const QUrl &url, Rect anchor, bool kbd);
 };
 
@@ -134,7 +135,6 @@ struct Page : Composite {
 	Page(std::unique_ptr<Toolbar> tb, std::unique_ptr<Sidebar> sb, Side side,
 		std::unique_ptr<Widget> body);
 	void set_banner(Kit &kit, std::unique_ptr<Widget> w);
-	void set_sidebar(Kit &kit, bool open);
 	void open_app_menu(Kit &kit, bool kbd);
 	void bind_actions(Kit &kit);
 
@@ -146,7 +146,6 @@ struct Page : Composite {
 	// Popups, owned apart from the children.
 	std::unique_ptr<Menu> app_menu;
 	std::unique_ptr<Hint> hint;
-	std::unique_ptr<ContextMenu> context;
 };
 
 enum class Slot : uint8_t { Left, Middle, Right };
