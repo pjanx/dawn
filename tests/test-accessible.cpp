@@ -366,6 +366,18 @@ dump_geometry(AtspiAccessible *scope, int depth)
 
 // --- Actions, state and geometry ---------------------------------------------
 
+// Qt 6.12 renamed two actions: "SetFocus" to "Set Focus",
+// and "ShowMenu" to "Show Menu".
+static bool
+is_action(const gchar *name, const char *want)
+{
+	if (!name)
+		return false;
+	string bare = name;
+	erase(bare, ' ');
+	return bare == want;
+}
+
 static bool
 has_action(AtspiAccessible *obj, const char *want)
 {
@@ -377,7 +389,7 @@ has_action(AtspiAccessible *obj, const char *want)
 	const gint n = atspi_action_get_n_actions(action, nullptr);
 	for (gint i = 0; i < n && !found; i++) {
 		gchar *name = atspi_action_get_action_name(action, i, nullptr);
-		found = name && !strcmp(name, want);
+		found = is_action(name, want);
 		g_free(name);
 	}
 	g_object_unref(action);
@@ -395,7 +407,7 @@ do_action(AtspiAccessible *obj, const char *want)
 	const gint n = atspi_action_get_n_actions(action, nullptr);
 	for (gint i = 0; i < n && !done; i++) {
 		gchar *name = atspi_action_get_action_name(action, i, nullptr);
-		if (name && !strcmp(name, want))
+		if (is_action(name, want))
 			done = atspi_action_do_action(action, i, nullptr);
 		g_free(name);
 	}
