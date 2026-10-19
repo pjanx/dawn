@@ -234,6 +234,15 @@ take_reported_metadata(WuffsLoadContext &ctx, Error *error)
 		ctx.meta_iccp = std::move(bytes);
 		ctx.have_iccp = true;
 		break;
+	case WUFFS_BASE__FOURCC__CICP: {
+		uint8_t primaries = wuffs_base__more_information__metadata_parsed__cicp(&minfo,
+			WUFFS_BASE__MORE_INFORMATION__METADATA_PARSED__CICP__COLOR_PRIMARIES);
+		uint8_t transfer = wuffs_base__more_information__metadata_parsed__cicp(&minfo,
+			WUFFS_BASE__MORE_INFORMATION__METADATA_PARSED__CICP__TRANSFER_FUNCTION);
+		if (cicp_hdr(primaries, transfer, ctx.hdr_primaries))
+			ctx.hdr_transfer = transfer;
+		break;
+	}
 	case WUFFS_BASE__FOURCC__XMP:
 		if (ctx.have_xmp) {
 			add_warning(*ctx.octx, _("ignoring repeated XMP"));
@@ -466,34 +475,6 @@ load_wuffs_frame(WuffsLoadContext &ctx, Error *error)
 	return ok;
 }
 
-// PNG cICP, which Wuffs does not parse, and which has to come before IDAT:
-// its colour primaries and transfer characteristics, for RGB in full range.
-static bool
-png_cicp(span<const uint8_t> data, uint8_t *primaries, uint8_t *transfer)
-{
-	static const uint8_t signature[] = {
-		0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
-	if (data.size() < sizeof signature ||
-		memcmp(data.data(), signature, sizeof signature))
-		return false;
-
-	for (size_t at = sizeof signature; data.size() - at >= 12;) {
-		const uint8_t *chunk = data.data() + at;
-		const size_t length = be32(chunk);
-		if (!memcmp(chunk + 4, "IDAT", 4) || data.size() - at - 12 < length)
-			return false;
-		if (!memcmp(chunk + 4, "cICP", 4)) {
-			if (length != 4 || chunk[10] || !chunk[11])
-				return false;
-			*primaries = chunk[8];
-			*transfer = chunk[9];
-			return true;
-		}
-		at += 12 + length;
-	}
-	return false;
-}
-
 static ImagePtr
 open_wuffs(wuffs_base__image_decoder *dec, span<const uint8_t> data,
 	const OpenContext &octx, Error *error)
@@ -511,6 +492,8 @@ open_wuffs(wuffs_base__image_decoder *dec, span<const uint8_t> data,
 		ctx.dec, WUFFS_BASE__FOURCC__EXIF, true);
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__ICCP, true);
+	wuffs_base__image_decoder__set_report_metadata(
+		ctx.dec, WUFFS_BASE__FOURCC__CICP, true);
 	wuffs_base__image_decoder__set_report_metadata(
 		ctx.dec, WUFFS_BASE__FOURCC__SRGB, true);
 	wuffs_base__image_decoder__set_report_metadata(
@@ -552,14 +535,10 @@ open_wuffs(wuffs_base__image_decoder *dec, span<const uint8_t> data,
 
 	// PNG (3rd edition) Table 1: iCCP outranks sRGB, which outranks cHRM and
 	// gAMA; lower-priority chunks are to be ignored.  cICP comes first, but
-	// only PQ and HLG are acted on (https://www.w3.org/TR/png-hdr-pq/), as
-	// honouring the rest would change how existing SDR images look.
+	// only PQ and HLG are acted on (https://www.w3.org/TR/png-hdr-pq/),
+	// as honouring the rest would change how existing SDR images look.
 	// A missing half of the cHRM/gAMA pair is filled in from sRGB,
 	// as the specification says nothing about halves.
-	uint8_t cicp_code = 0, cicp_transfer = 0;
-	if (png_cicp(data, &cicp_code, &cicp_transfer) &&
-		cicp_hdr(cicp_code, cicp_transfer, ctx.hdr_primaries))
-		ctx.hdr_transfer = cicp_transfer;
 	if (ctx.have_iccp)
 		ctx.source = ctx.cmm->get_profile(ctx.meta_iccp);
 	if (!ctx.source && ctx.have_srgb)
