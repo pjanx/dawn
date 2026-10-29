@@ -1248,7 +1248,8 @@ schedule_preloads(Viewer &v)
 static void
 reload_open(Viewer &v, bool keep_view)
 {
-	if (keep_view)
+	// During an open, the view is not yet the view of this image.
+	if (keep_view && !v.opening_)
 		v.restore_view_ = {true, v.scale_, v.pan_x_, v.pan_y_, v.orientation_,
 			v.angle_, v.view_locked_};
 	start_open(v, true);
