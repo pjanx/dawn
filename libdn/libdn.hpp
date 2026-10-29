@@ -475,10 +475,12 @@ struct JpegGrid {
 };
 bool jpeg_grid(std::span<const uint8_t> data, JpegGrid *out, Error *error);
 
-/// Turns stored pixels, then crops in the rotated image's MCU grid.  Zero width
-/// or height means to the edge.  Rotations that cannot preserve every block
-/// fail.  All markers are copied unchanged, including Exif orientation and
-/// dimensions.  Returns empty on failure.
+/// Rotates stored pixels, then crops in the rotated image's MCU grid.
+/// Zero width or height means to the edge.  Rotations that cannot preserve
+/// every block fail.  Markers are copied unchanged, including Exif orientation
+/// and dimensions, except those invalidated by the result: the Multi-Picture
+/// Format index, ISO 21496-1 and Apple gain map segments.  Any Exif thumbnail
+/// is unlinked.  Returns empty on failure.
 std::vector<uint8_t> jpeg_transform(std::span<const uint8_t> data,
 	Orientation op, uint32_t x, uint32_t y, uint32_t w, uint32_t h,
 	Error *error);

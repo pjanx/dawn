@@ -60,7 +60,9 @@ Cropper::load_working(const vector<uint8_t> &data)
 		return false;
 
 	// libjpeg-turbo transforms keep nothing past the primary image's EOI,
-	// such as gain maps or depth maps.
+	// such as gain maps or depth maps.  We also remove the index of these
+	// images, thus we remember the count from the time of opening the file.
+	grid.mpf_images = max(grid.mpf_images, this->grid_.mpf_images);
 	if (grid.mpf_images)
 		set_message(dawn::format_message(
 			P_("Saving drops %u embedded image",

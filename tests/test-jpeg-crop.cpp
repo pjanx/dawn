@@ -128,15 +128,16 @@ static void
 test_metadata()
 {
 	// A little-endian Exif orientation IFD, kept byte-for-byte through
-	// a rotation.
-	const uint8_t exif[] = {0xff, 0xe1, 0, 34, 'E', 'x', 'i', 'f', 0, 0, 'I',
-		'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, 7, 0, 0, 0, 0,
-		0, 0, 0};
+	// a rotation, except for the link to its thumbnail IFD1.
+	uint8_t exif[] = {0xff, 0xe1, 0, 52, 'E', 'x', 'i', 'f', 0, 0, 'I', 'I',
+		42, 0, 8, 0, 0, 0, 1, 0, 0x12, 1, 3, 0, 1, 0, 0, 0, 7, 0, 0, 0, 26, 0,
+		0, 0, 1, 0, 3, 1, 3, 0, 1, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0};
 	auto data = fixture("quads420.jpg");
 	data.insert(data.begin() + 2, begin(exif), end(exif));
 	dawn::Error error;
 	auto output = dawn::jpeg_transform(
 		data, dawn::Orientation::Rotate90, 0, 0, 0, 0, &error);
+	exif[32] = 0;
 	CHECK(search(output.begin(), output.end(), begin(exif), end(exif)) !=
 		output.end());
 	auto image = decode(output);
@@ -153,11 +154,11 @@ test_metadata()
 	CHECK(decode(output));
 }
 
-// The transform keeps the MPF index, but not the images past EOI.
+// The transform keeps neither the images past EOI, nor what describes them.
 static void
 test_mpf()
 {
-	auto data = fixture("gainmap.jpg");
+	auto data = fixture("gainmap-iso.jpg");
 	dawn::Error error;
 	dawn::JpegGrid grid;
 	CHECK(dawn::jpeg_grid(data, &grid, &error));
@@ -165,6 +166,12 @@ test_mpf()
 
 	auto output = dawn::jpeg_transform(
 		data, dawn::Orientation::Rotate0, 16, 16, 32, 16, &error);
+	CHECK(dawn::jpeg_grid(output, &grid, &error));
+	CHECK(!grid.mpf_images);
+	for (string_view id : {"MPF", "urn:iso:std:iso:ts:21496:-1"})
+		CHECK(search(output.begin(), output.end(), id.begin(), id.end()) ==
+			output.end());
+
 	dawn::OpenContext ctx;
 	ctx.gain_maps = true;
 	auto cropped = dawn::open_from_data(output, ctx, &error);

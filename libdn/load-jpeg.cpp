@@ -168,6 +168,9 @@ enum JpegMarker : uint8_t {
 	APP5,
 	APP6,
 	APP7,
+	APP8,
+	APP9,
+	APP10,
 };
 
 struct JpegMetadata {
@@ -227,6 +230,9 @@ next_jpeg_segment(
 	return false;
 }
 
+// ISO 21496-1 metadata, as Ultra HDR 1.1 stores it in JPEG.
+static constexpr char kIsoNs[] = "urn:iso:std:iso:ts:21496:-1";
+
 static void
 parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 {
@@ -267,11 +273,9 @@ parse_jpeg_metadata(span<const uint8_t> data, JpegMetadata *meta)
 			!memcmp(payload.data(), xmp_ns, sizeof xmp_ns) && meta->xmp.empty())
 			meta->xmp.assign(payload.begin() + sizeof xmp_ns, payload.end());
 
-		// ISO 21496-1 metadata, as Ultra HDR 1.1 stores it in JPEG.
-		static constexpr char iso_ns[] = "urn:iso:std:iso:ts:21496:-1";
-		if (marker == APP2 && payload.size() >= sizeof iso_ns &&
-			!memcmp(payload.data(), iso_ns, sizeof iso_ns) && meta->iso.empty())
-			meta->iso.assign(payload.begin() + sizeof iso_ns, payload.end());
+		if (marker == APP2 && payload.size() >= sizeof kIsoNs &&
+			!memcmp(payload.data(), kIsoNs, sizeof kIsoNs) && meta->iso.empty())
+			meta->iso.assign(payload.begin() + sizeof kIsoNs, payload.end());
 	}
 
 	if (!icc_done)
@@ -766,6 +770,42 @@ jpeg_grid(span<const uint8_t> data, JpegGrid *out, Error *error)
 	return ok;
 }
 
+// TurboJPEG can only filter markers by class.  Some markers describe data not
+// kept by a transform: images after the EOI of the primary image,
+// or the Exif thumbnail, which the transform neither rotates nor crops.
+static vector<uint8_t>
+drop_stale_markers(unsigned char *data, size_t length)
+{
+	vector<uint8_t> result;
+	const uint8_t *kept = data, *end = data + length;
+	uint8_t marker = 0;
+	span<const uint8_t> payload, rest(data, length);
+	while (next_jpeg_segment(rest, &marker, &payload)) {
+		// End the IFD chain after IFD0, so that IFD1 has no link.
+		tiffer T = {};
+		if (marker == APP1 && payload.size() >= 6 &&
+			!memcmp(payload.data(), "Exif\0", 5) &&
+			tiffer_init(&T, payload.data() + 6, payload.size() - 6) &&
+			tiffer_next_ifd(&T) &&
+			size_t(T.end - T.p) >= T.remaining_fields * 12u + 4)
+			memset(data + (T.p - data) + T.remaining_fields * 12, 0, 4);
+
+		// The index of the images, ISO 21496-1 for the gain map,
+		// and the gain curve of Apple.
+		if ((marker == APP2 && payload.size() >= 4 &&
+				!memcmp(payload.data(), "MPF\0", 4)) ||
+			(marker == APP2 && payload.size() >= sizeof kIsoNs &&
+				!memcmp(payload.data(), kIsoNs, sizeof kIsoNs)) ||
+			(marker == APP10 && payload.size() >= 5 &&
+				!memcmp(payload.data(), "AROT\0", 5))) {
+			result.insert(result.end(), kept, payload.data() - 4);
+			kept = payload.data() + payload.size();
+		}
+	}
+	result.insert(result.end(), kept, end);
+	return result;
+}
+
 vector<uint8_t>
 jpeg_transform(span<const uint8_t> data, Orientation op, uint32_t x, uint32_t y,
 	uint32_t w, uint32_t h, Error *error)
@@ -811,7 +851,7 @@ jpeg_transform(span<const uint8_t> data, Orientation op, uint32_t x, uint32_t y,
 		if (error)
 			*error = {Error::Code::Open, tj3GetErrorStr(handle)};
 	} else
-		result.assign(output, output + length);
+		result = drop_stale_markers(output, length);
 	tj3Free(output);
 	if (handle)
 		tj3Destroy(handle);
