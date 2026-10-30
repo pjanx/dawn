@@ -43,8 +43,8 @@ modules:
       - -DFEATURE_xcb=ON
     sources:
       - type: archive
-        url: https://download.qt.io/official_releases/qt/6.11/6.11.2/submodules/qtbase-everywhere-src-6.11.2.tar.xz
-        sha256: 5b2e00eccaf5a4d8c14134ffa0ea8dfd0a35ae1ffc7f8d87fa4305a1ed23cf22
+        url: https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/qtbase-everywhere-src-6.12.0.tar.xz
+        sha256: a951bd163c7b80fc6b8c88d7668fb56abf91c152373e13c10666763238131307
 
   # The release tarball vendors its crates, hence --offline works.
   # Upstream installs no pkg-config file; msys2-configure.sh writes one, too.
@@ -61,8 +61,8 @@ modules:
       - install -Dm644 resvg.pc /app/lib/pkgconfig/resvg.pc
     sources:
       - type: archive
-        url: https://github.com/linebender/resvg/releases/download/v0.48.1/resvg-0.48.1.tar.xz
-        sha256: 13ed5a2bae7a01156288ecae5bf944cf7d1c572742c19fc68027947a4d87294c
+        url: https://github.com/linebender/resvg/releases/download/v0.49.0/resvg-0.49.0.tar.xz
+        sha256: a1b167d575d0be44e303c76b46fe0aefc5c5748a46979ebae6a7dc3276c2ce8c
       - type: inline
         dest-filename: resvg.pc
         contents: |
@@ -73,7 +73,7 @@ modules:
 
           Name: resvg
           Description: SVG rendering library (C API)
-          Version: 0.48.1
+          Version: 0.49.0
           Libs: -L${libdir} -lresvg
           Cflags: -I${includedir}/resvg
 
@@ -116,8 +116,8 @@ modules:
       - --disable-lcms
     sources:
       - type: archive
-        url: https://www.libraw.org/data/LibRaw-0.22.2.tar.gz
-        sha256: de86b035655accff8d4010f1a221fdf50d353cb7b1422ba26f14a0db92612cfa
+        url: https://www.libraw.org/data/LibRaw-0.22.3.tar.gz
+        sha256: 789f3c33466210a1a0907f747a97c715d21bbf4af712f257fcbbd90111b227e4
 
   # Only the library and its GD image device are retained by the application.
   # The tag tarball is the bare git tree: no configure, and no autogen.sh.
@@ -126,8 +126,8 @@ modules:
       - --disable-static
     sources:
       - type: archive
-        url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.16.tar.gz
-        sha256: 50f36f939b751274b5f0abef9fb38c23c101ebf8bba0934cfbf5444ec37011f0
+        url: https://github.com/caolanm/libwmf/archive/refs/tags/v0.2.17.tar.gz
+        sha256: b4ba7d95297f26341fcdd2595532eaf88026a251630985a3ab2e0443f4ee8d13
       - type: shell
         commands:
           - autoreconf -fi
@@ -141,5 +141,5 @@ modules:
     sources:
       - type: git
         url: https://github.com/mircomir/jxrlib.git
-        tag: '1.4.3'
-        commit: 16db741dff5986a8f66ce6c9409937b70feb0730
+        tag: '1.4.4'
+        commit: ddda911f389362fc33ba3babf223ce912f3cc909

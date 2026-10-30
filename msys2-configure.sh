@@ -85,8 +85,8 @@ fetch() {
 	ln -sf "$name" exiftool.tar.gz
 
 	# resvg (unstable API, so pinning isn't a bad idea)
-	url=https://github.com/linebender/resvg/releases/download/v0.48.1/resvg-0.48.1.tar.xz
-	sha256=13ed5a2bae7a01156288ecae5bf944cf7d1c572742c19fc68027947a4d87294c
+	url=https://github.com/linebender/resvg/releases/download/v0.49.0/resvg-0.49.0.tar.xz
+	sha256=a1b167d575d0be44e303c76b46fe0aefc5c5748a46979ebae6a7dc3276c2ce8c
 	name=$(basename "$url")
 	echo "$sha256 *$name" >> db.sums
 	status Fetching "$name"
