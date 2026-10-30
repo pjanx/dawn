@@ -21,7 +21,8 @@ apt install cargo librsvg2-dev libxcursor-dev libheif-dev libtiff-dev \
   libpoppler-cpp-dev
 ```
 
-Cargo builds the in-tree libdnrs library, which requires a recent Rust version.
+Cargo builds the in-tree libdnrs library, which requires a recent Rust version,
+such as from `apt install -t trixie-backports cargo`.
 Build with `-DDAWN_WITH_DNRS=OFF` to skip it.
 
 .libresvg-dev is required but not often packaged; thus, you may need to build it

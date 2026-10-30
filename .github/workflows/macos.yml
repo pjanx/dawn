@@ -26,6 +26,10 @@ jobs:
           brew install cmake pkgconf glslang molten-vk qtbase qttranslations \
             resvg rust shared-mime-info vulkan-loader jpeg-turbo webp
 
+          # The runner's rustup proxies shadow Homebrew's rust, and they race
+          # to install a toolchain when cargo runs rustc in parallel.
+          echo "$(brew --prefix rust)/bin" >> "$GITHUB_PATH"
+
       - name: Build package
         run: |
           cmake -S . -B build \
