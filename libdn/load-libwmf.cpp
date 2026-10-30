@@ -12,7 +12,6 @@
 #include <libwmf/api.h>
 #include <libwmf/gd.h>
 
-#include <cstring>
 #include <memory>
 
 using namespace std;
@@ -109,7 +108,7 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 		return false;
 	}
 	device->type = wmf_gd_png;
-	device->flags |= WMF_GD_OUTPUT_MEMORY;
+	device->flags |= WMF_GD_OUTPUT_MEMORY | WMF_GD_OWN_BUFFER;
 
 	status = wmf_mem_open(wmf.api, data.data(), long(data.size()));
 	if (status != wmf_E_None) {
@@ -140,22 +139,20 @@ wmf_open_and_scan(WmfApi &wmf, vector<uint8_t> &data, wmfD_Rect *bbox,
 	return true;
 }
 
-/// libwmf reports no length for what it writes to memory, though PNG is
-/// self-delimiting, so measure its own output by walking the chunks.
-static size_t
-png_length(const char *data)
+/// libwmf reports no length for what it writes to memory, but its sink gets
+/// the length of each part, so collect the PNG there.
+static int
+wmf_png_sink(void *context, char *buffer, int length)
 {
-	auto png = (const uint8_t *) data;
-	if (memcmp(png, "\x89PNG\r\n\x1a\n", 8))
+	auto png = (vector<uint8_t> *) context;
+	if (length <= 0)
+		return length;
+	try {
+		png->insert(png->end(), buffer, buffer + length);
+	} catch (const bad_alloc &) {
 		return 0;
-
-	const uint8_t *chunk = png + 8;
-	for (bool last = false; !last;) {
-		size_t length = be32(chunk);
-		last = !memcmp(chunk + 4, "IEND", 4);
-		chunk += 12 + length;
 	}
-	return size_t(chunk - png);
+	return length;
 }
 
 bool
@@ -180,21 +177,22 @@ WmfRenderClosure::render(const OpenContext &ctx, double scale, Error *error)
 			wmf, data_, &bbox, &base_width, &base_height, ctx, error))
 		return nullptr;
 
+	vector<uint8_t> png;
 	wmf_gd_t *device = WMF_GD_GetData(wmf.api);
 	device->bbox = bbox;
 	device->width = width;
 	device->height = height;
+	device->sink.context = &png;
+	device->sink.function = wmf_png_sink;
 
 	wmf_error_t status = wmf_play(wmf.api, 0, &bbox);
-	size_t length =
-		status == wmf_E_None && device->memory ? png_length(device->memory) : 0;
-	if (!length) {
+	if (status != wmf_E_None || png.empty()) {
 		set_error(error,
 			status == wmf_E_None ? _("GD device produced no image")
 								 : wmf_error_string(status));
 		return nullptr;
 	}
-	return load_wuffs({(const uint8_t *) device->memory, length}, ctx, error);
+	return load_wuffs(png, ctx, error);
 }
 
 ImagePtr
